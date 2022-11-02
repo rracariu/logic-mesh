@@ -13,9 +13,7 @@ pub struct SineWave {
 }
 
 impl SineWave {
-    pub async fn execute(){
-
-    }
+    pub async fn execute() {}
 }
 
 impl Block for SineWave {
