@@ -4,8 +4,9 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-libhaystack = {version = "^1.0.10", default-feature = false, features = ["value"] }
-tokio ={version = "^1.21.2", features = ["rt-multi-thread", "sync", "macros"]}
+libhaystack = {version = "^1.0.10", default-features = false, features = ["value"] }
+tokio ={version = "^1.21.2", features = ["rt-multi-thread", "sync", "time", "macros"]}
+futures = "0.3.25"
 
 [profile.release]
 opt-level = "s"

@@ -1,20 +1,29 @@
 use tokio::sync::mpsc::{channel, Receiver, Sender};
 
-use libhaystack::val::Value;
+use libhaystack::val::{kind::HaystackKind, Value};
 
-use crate::base::input::{BaseInput, Input};
+use crate::base::input::{BaseInput, Input, InputDefault, InputDesc};
 
 pub type InputImpl = BaseInput<Receiver<Value>, Sender<Value>>;
 
 impl InputImpl {
-    pub fn new() -> Self {
-        let mut it = Self {
-            ..Default::default()
-        };
+    pub fn new_without_default(name: &str, kind: HaystackKind) -> Self {
+        Self::new(name, kind, Default::default())
+    }
 
-        it.init();
+    pub fn new(name: &str, kind: HaystackKind, default: InputDefault) -> Self {
+        let (tx, rx) = channel::<Value>(32);
 
-        it
+        Self {
+            desc: InputDesc {
+                name: name.to_string(),
+                kind,
+            },
+            default,
+            rx,
+            tx,
+            val: Default::default(),
+        }
     }
 }
 
@@ -22,36 +31,44 @@ impl Input for InputImpl {
     type Rx = Receiver<Value>;
     type Tx = Sender<Value>;
 
-    fn init(&mut self) {
-        let (tx, rx) = channel::<Value>(32);
-        self.rx = Some(rx);
-        self.tx = Some(tx)
+    fn desc(&self) -> &InputDesc {
+        &self.desc
     }
 
-    fn reader(&self) -> &Option<Self::Rx> {
+    fn default(&self) -> &InputDefault {
+        &self.default
+    }
+
+    fn reader(&self) -> &Self::Rx {
         &self.rx
     }
 
-    fn writer(&mut self) -> &mut Option<Self::Tx> {
+    fn writer(&mut self) -> &mut Self::Tx {
         &mut self.tx
     }
 }
 
 #[cfg(test)]
 mod test {
+    use libhaystack::val::{kind::HaystackKind, Value};
+
+    use crate::base::input::InputDefault;
+
     use super::InputImpl;
-    use crate::base::input::Input;
 
     #[test]
     fn test_input_init() {
-        let mut input = InputImpl::default();
+        let input = InputImpl::new(
+            "test",
+            HaystackKind::Bool,
+            InputDefault {
+                val: 0.into(),
+                min: Value::Null,
+                max: Value::Null,
+            },
+        );
 
-        assert!(input.reader().is_none());
-        assert!(input.writer().is_none());
-
-        input.init();
-
-        assert!(input.reader().is_some());
-        assert!(input.writer().is_some());
+        assert_eq!(input.desc.name, "test");
+        assert_eq!(input.desc.kind, HaystackKind::Bool);
     }
 }

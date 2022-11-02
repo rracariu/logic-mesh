@@ -4,25 +4,19 @@ use libhaystack::val::Value;
 
 use crate::base::{
     input::Input,
-    link::{Link, LinkState},
-    output::{BaseOutput, Output},
+    link::{BaseLink, LinkState},
+    output::BaseOutput,
 };
 
-pub type OutputImpl = BaseOutput<Link<Sender<Value>>>;
-
-impl Output for OutputImpl {}
+pub type OutputImpl = BaseOutput<BaseLink<Sender<Value>>>;
 
 impl OutputImpl {
     pub fn connect<In: Input<Tx = Sender<Value>>>(&mut self, input: &mut In) {
-        let mut link = Link::<In::Tx>::new();
+        let mut link = BaseLink::<In::Tx>::new();
 
-        link.tx = input.writer().clone();
+        link.tx = Some(input.writer().clone());
 
-        link.state = if link.tx.is_some() {
-            LinkState::Connected
-        } else {
-            LinkState::Disconnected
-        };
+        link.state = LinkState::Connected;
 
         self.links.push(link);
     }
@@ -34,15 +28,6 @@ impl OutputImpl {
                     link.state = LinkState::Error;
                 }
             }
-        }
-    }
-}
-
-#[allow(clippy::derivable_impls)]
-impl Default for OutputImpl {
-    fn default() -> Self {
-        Self {
-            links: Default::default(),
         }
     }
 }

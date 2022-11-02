@@ -1,28 +1,34 @@
-use libhaystack::val::Value;
+use libhaystack::val::{kind::HaystackKind, Value};
+
+pub struct InputDesc {
+    pub name: String,
+    pub kind: HaystackKind,
+}
+
+#[derive(Debug, Default)]
+pub struct InputDefault {
+    pub val: Value,
+    pub min: Value,
+    pub max: Value,
+}
 
 pub trait Input {
     type Rx;
     type Tx;
 
-    fn init(&mut self);
+    fn desc(&self) -> &InputDesc;
 
-    fn reader(&self) -> &Option<Self::Rx>;
+    fn default(&self) -> &InputDefault;
 
-    fn writer(&mut self) -> &mut Option<Self::Tx>;
+    fn reader(&self) -> &Self::Rx;
+
+    fn writer(&mut self) -> &mut Self::Tx;
 }
 
 pub struct BaseInput<Rx, Tx> {
-    pub rx: Option<Rx>,
-    pub tx: Option<Tx>,
+    pub desc: InputDesc,
+    pub default: InputDefault,
+    pub rx: Rx,
+    pub tx: Tx,
     pub val: Option<Value>,
-}
-
-impl<Rx, Tx> Default for BaseInput<Rx, Tx> {
-    fn default() -> Self {
-        Self {
-            rx: Default::default(),
-            tx: Default::default(),
-            val: Default::default(),
-        }
-    }
 }
