@@ -1,6 +1,9 @@
 use libhaystack::val::kind::HaystackKind;
 
-use super::link::Link;
+use super::{
+    input::Input,
+    link::{BaseLink, Link, LinkState},
+};
 
 #[derive(Debug)]
 pub struct OutDesc {

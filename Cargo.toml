@@ -4,7 +4,9 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-libhaystack = {version = "^1.0.10", default-features = false, features = ["value"] }
+libhaystack = {version = "^1.0.10", default-features = false}
+uuid = {version = "1.2.2", features = ["v4"]}
+lazy_static = "1.4.0"
 tokio ={version = "^1.21.2", features = ["rt-multi-thread", "sync", "time", "macros"]}
 futures = "0.3.25"
 

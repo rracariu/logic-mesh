@@ -1,3 +1,6 @@
+#![feature(async_fn_in_trait)]
+
+use crate::base::block::Block;
 use futures::{future::select_all, FutureExt};
 use libhaystack::val::Value;
 use tokio_impl::test_add_block::TestAddBlock;

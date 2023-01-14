@@ -8,11 +8,13 @@ use crate::base::{
     output::BaseOutput,
 };
 
+use super::input::InputImpl;
+
 pub type OutputImpl = BaseOutput<BaseLink<Sender<Value>>>;
 
 impl OutputImpl {
-    pub fn connect<In: Input<Tx = Sender<Value>>>(&mut self, input: &mut In) {
-        let mut link = BaseLink::<In::Tx>::new();
+    pub fn connect(&mut self, input: &mut InputImpl) {
+        let mut link = BaseLink::<<InputImpl as Input>::Tx>::new();
 
         link.tx = Some(input.writer().clone());
 
@@ -26,6 +28,8 @@ impl OutputImpl {
             if let Some(tx) = &link.tx {
                 if let Err(__) = tx.send(value.clone()).await {
                     link.state = LinkState::Error;
+                } else {
+                    link.state = LinkState::Connected;
                 }
             }
         }

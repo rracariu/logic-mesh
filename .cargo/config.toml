@@ -1,0 +1,8 @@
+[build]
+rustflags = ["--cfg", 'feature="value"', 
+            "--cfg", 'feature="units"',
+            "--cfg", 'feature="timezone"',
+            "--cfg", 'feature="timezone-db"',
+            "--cfg", 'feature="encoders"', 
+            "--cfg", 'feature="zinc"', 
+            "--cfg", 'feature="zinc-encoding"']

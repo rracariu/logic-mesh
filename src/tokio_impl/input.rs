@@ -1,17 +1,20 @@
+use std::pin::Pin;
+
+use futures::{Future, FutureExt};
 use tokio::sync::mpsc::{channel, Receiver, Sender};
 
 use libhaystack::val::{kind::HaystackKind, Value};
 
-use crate::base::input::{BaseInput, Input, InputDefault, InputDesc};
+use crate::base::input::{BaseInput, InputDefault, InputDesc, InputReceiver};
 
 pub type InputImpl = BaseInput<Receiver<Value>, Sender<Value>>;
 
 impl InputImpl {
-    pub fn new_without_default(name: &str, kind: HaystackKind) -> Self {
-        Self::new(name, kind, Default::default())
+    pub fn new(name: &str, kind: HaystackKind) -> Self {
+        Self::new_with_default(name, kind, Default::default())
     }
 
-    pub fn new(name: &str, kind: HaystackKind, default: InputDefault) -> Self {
+    pub fn new_with_default(name: &str, kind: HaystackKind, default: InputDefault) -> Self {
         let (tx, rx) = channel::<Value>(32);
 
         Self {
@@ -27,24 +30,9 @@ impl InputImpl {
     }
 }
 
-impl Input for InputImpl {
-    type Rx = Receiver<Value>;
-    type Tx = Sender<Value>;
-
-    fn desc(&self) -> &InputDesc {
-        &self.desc
-    }
-
-    fn default(&self) -> &InputDefault {
-        &self.default
-    }
-
-    fn reader(&self) -> &Self::Rx {
-        &self.rx
-    }
-
-    fn writer(&mut self) -> &mut Self::Tx {
-        &mut self.tx
+impl InputReceiver for InputImpl {
+    fn receiver(&mut self) -> Pin<Box<dyn Future<Output = Option<Value>> + Send + '_>> {
+        self.rx.recv().boxed()
     }
 }
 
@@ -58,7 +46,7 @@ mod test {
 
     #[test]
     fn test_input_init() {
-        let input = InputImpl::new(
+        let input = InputImpl::new_with_default(
             "test",
             HaystackKind::Bool,
             InputDefault {

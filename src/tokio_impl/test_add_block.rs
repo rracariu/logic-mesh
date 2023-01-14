@@ -1,26 +1,31 @@
 use tokio::time::{sleep, Duration};
 
 use libhaystack::val::{kind::HaystackKind, Value};
+use uuid::Uuid;
 
 use crate::base::{
-    block::{Block, BlockDesc, BlockState},
-    input::Input,
+    block::{Block, BlockDesc, BlockProps, BlockState},
+    input::{Input, InputReceiver},
     output::Output,
 };
 
-use super::{input::InputImpl, output::OutputImpl};
-use futures::{future::select_all, FutureExt};
+use super::{block::read_block_inputs, input::InputImpl, output::OutputImpl};
 
 pub struct TestAddBlock {
+    id: Uuid,
     desc: BlockDesc,
     pub input_a: InputImpl,
     pub input_b: InputImpl,
     pub out: OutputImpl,
 }
 
-impl Block for TestAddBlock {
+impl BlockProps for TestAddBlock {
     type Rx = <InputImpl as Input>::Rx;
     type Tx = <InputImpl as Input>::Tx;
+
+    fn id(&self) -> &uuid::Uuid {
+        &self.id
+    }
 
     fn desc(&self) -> &BlockDesc {
         &self.desc
@@ -30,8 +35,8 @@ impl Block for TestAddBlock {
         BlockState::Running
     }
 
-    fn inputs(&self) -> Vec<&dyn Input<Rx = Self::Rx, Tx = Self::Tx>> {
-        vec![&self.input_a, &self.input_b]
+    fn inputs(&mut self) -> Vec<&mut dyn InputReceiver<Rx = Self::Rx, Tx = Self::Tx>> {
+        vec![&mut self.input_a, &mut self.input_b]
     }
 
     fn output(&self) -> &dyn Output {
@@ -39,18 +44,9 @@ impl Block for TestAddBlock {
     }
 }
 
-impl TestAddBlock {
-    pub fn new(name: &str) -> Self {
-        TestAddBlock {
-            desc: BlockDesc { name: name.into() },
-            input_a: InputImpl::new_without_default("a", HaystackKind::Number),
-            input_b: InputImpl::new_without_default("b", HaystackKind::Number),
-            out: OutputImpl::new(HaystackKind::Number),
-        }
-    }
-
-    pub async fn execute(&mut self) {
-        self.read_inputs().await;
+impl Block for TestAddBlock {
+    async fn execute(&mut self) {
+        read_block_inputs(self).await;
 
         if self.input_a.val.is_some() || self.input_b.val.is_some() {
             let res = get_num(&self.input_a.val) + get_num(&self.input_b.val);
@@ -63,17 +59,19 @@ impl TestAddBlock {
             self.out.set(res.into()).await;
         }
     }
+}
 
-    async fn read_inputs(&mut self) {
-        let a = self.input_a.rx.recv().boxed();
-        let b = self.input_b.rx.recv().boxed();
-
-        let (val, idx, _) = select_all(vec![a, b]).await;
-
-        match idx {
-            0 => self.input_a.val = val,
-            1 => self.input_b.val = val,
-            _ => {}
+impl TestAddBlock {
+    pub fn new(name: &str) -> Self {
+        Self {
+            id: Uuid::new_v4(),
+            desc: BlockDesc {
+                name: name.into(),
+                library: "".into(),
+            },
+            input_a: InputImpl::new("a", HaystackKind::Number),
+            input_b: InputImpl::new("b", HaystackKind::Number),
+            out: OutputImpl::new(HaystackKind::Number),
         }
     }
 }
