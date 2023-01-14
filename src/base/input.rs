@@ -17,7 +17,7 @@ pub struct InputDefault {
 
 pub trait Input {
     type Rx;
-    type Tx;
+    type Tx: Clone;
 
     fn desc(&self) -> &InputDesc;
 

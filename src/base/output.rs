@@ -1,9 +1,6 @@
 use libhaystack::val::kind::HaystackKind;
 
-use super::{
-    input::Input,
-    link::{BaseLink, Link, LinkState},
-};
+use super::link::{BaseLink, Link};
 
 #[derive(Debug)]
 pub struct OutDesc {
@@ -17,6 +14,11 @@ pub trait Output {
     fn is_connected(&self) -> bool;
 
     fn links(&self) -> Vec<&dyn Link>;
+}
+
+pub trait OutputLink: Output {
+    type Tx: Clone;
+    fn add_link(&mut self, link: BaseLink<Self::Tx>);
 }
 
 #[derive(Debug)]

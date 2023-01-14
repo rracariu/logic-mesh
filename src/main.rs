@@ -1,6 +1,7 @@
 #![feature(async_fn_in_trait)]
 
 use crate::base::block::Block;
+use base::block::BlockConnect;
 use futures::{future::select_all, FutureExt};
 use libhaystack::val::Value;
 use tokio_impl::test_add_block::TestAddBlock;
@@ -14,11 +15,11 @@ async fn main() {
 
     let mut block2 = TestAddBlock::new("block2");
 
-    block1.out.connect(&mut block2.input_a);
-    block1.out.connect(&mut block2.input_b);
+    block1.connect(&mut block2.input_a);
+    block1.connect(&mut block2.input_b);
 
-    block2.out.connect(&mut block1.input_a);
-    block2.out.connect(&mut block1.input_b);
+    block2.connect(&mut block1.input_a);
+    block2.connect(&mut block1.input_b);
 
     block1.out.set(Value::make_int(2)).await;
 

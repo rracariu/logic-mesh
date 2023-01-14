@@ -5,24 +5,22 @@ use libhaystack::val::Value;
 use crate::base::{
     input::Input,
     link::{BaseLink, LinkState},
-    output::BaseOutput,
+    output::{BaseOutput, OutputLink},
 };
 
 use super::input::InputImpl;
 
 pub type OutputImpl = BaseOutput<BaseLink<Sender<Value>>>;
 
-impl OutputImpl {
-    pub fn connect(&mut self, input: &mut InputImpl) {
-        let mut link = BaseLink::<<InputImpl as Input>::Tx>::new();
+impl OutputLink for OutputImpl {
+    type Tx = <InputImpl as Input>::Tx;
 
-        link.tx = Some(input.writer().clone());
-
-        link.state = LinkState::Connected;
-
+    fn add_link(&mut self, link: BaseLink<Self::Tx>) {
         self.links.push(link);
     }
+}
 
+impl OutputImpl {
     pub async fn set(&mut self, value: Value) {
         for link in &mut self.links {
             if let Some(tx) = &link.tx {

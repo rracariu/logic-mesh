@@ -1,7 +1,7 @@
 use uuid::Uuid;
 
 use super::input::{Input, InputReceiver};
-use super::output::Output;
+use super::output::OutputLink;
 
 #[derive(Default, Debug, Clone, Copy)]
 pub enum BlockState {
@@ -18,7 +18,7 @@ pub struct BlockDesc {
 
 pub trait BlockProps {
     type Rx;
-    type Tx;
+    type Tx: Clone;
 
     fn id(&self) -> &Uuid;
 
@@ -28,9 +28,13 @@ pub trait BlockProps {
 
     fn inputs(&mut self) -> Vec<&mut dyn (InputReceiver<Rx = Self::Rx, Tx = Self::Tx>)>;
 
-    fn output(&self) -> &dyn Output;
+    fn output(&mut self) -> &mut dyn OutputLink<Tx = Self::Tx>;
 }
 
-pub trait Block: BlockProps {
+pub trait BlockConnect: BlockProps {
+    fn connect<I: Input<Tx = Self::Tx>>(&mut self, input: &mut I);
+}
+
+pub trait Block: BlockProps + BlockConnect {
     async fn execute(&mut self);
 }

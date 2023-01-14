@@ -1,12 +1,9 @@
-use libhaystack::val::Value;
-use tokio::sync::mpsc::Sender;
 use uuid::Uuid;
 
 use crate::base::{
     block::{Block, BlockDesc, BlockProps, BlockState},
     input::{Input, InputReceiver},
-    link::{BaseLink, LinkState},
-    output::Output,
+    output::OutputLink,
 };
 
 use super::{input::InputImpl, output::OutputImpl};
@@ -38,8 +35,8 @@ impl BlockProps for SineWave {
         vec![&mut self.period]
     }
 
-    fn output(&self) -> &dyn Output {
-        &self.out
+    fn output(&mut self) -> &mut dyn OutputLink<Tx = Self::Tx> {
+        &mut self.out
     }
 }
 

@@ -6,7 +6,7 @@ use uuid::Uuid;
 use crate::base::{
     block::{Block, BlockDesc, BlockProps, BlockState},
     input::{Input, InputReceiver},
-    output::Output,
+    output::OutputLink,
 };
 
 use super::{block::read_block_inputs, input::InputImpl, output::OutputImpl};
@@ -39,8 +39,8 @@ impl BlockProps for TestAddBlock {
         vec![&mut self.input_a, &mut self.input_b]
     }
 
-    fn output(&self) -> &dyn Output {
-        &self.out
+    fn output(&mut self) -> &mut dyn OutputLink<Tx = Self::Tx> {
+        &mut self.out
     }
 }
 
