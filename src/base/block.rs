@@ -1,7 +1,7 @@
 use uuid::Uuid;
 
-use super::input::{Input, InputReceiver};
-use super::output::OutputLink;
+use super::input::{Input, InputProps};
+use super::output::Output;
 
 #[derive(Default, Debug, Clone, Copy)]
 pub enum BlockState {
@@ -26,13 +26,13 @@ pub trait BlockProps {
 
     fn state(&self) -> BlockState;
 
-    fn inputs(&mut self) -> Vec<&mut dyn (InputReceiver<Rx = Self::Rx, Tx = Self::Tx>)>;
+    fn inputs(&mut self) -> Vec<&mut dyn Input<Rx = Self::Rx, Tx = Self::Tx>>;
 
-    fn output(&mut self) -> &mut dyn OutputLink<Tx = Self::Tx>;
+    fn output(&mut self) -> &mut dyn Output<Tx = Self::Tx>;
 }
 
 pub trait BlockConnect: BlockProps {
-    fn connect<I: Input<Tx = Self::Tx>>(&mut self, input: &mut I);
+    fn connect<I: InputProps<Tx = Self::Tx>>(&mut self, input: &mut I);
 }
 
 pub trait Block: BlockProps + BlockConnect {

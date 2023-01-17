@@ -15,7 +15,7 @@ pub struct InputDefault {
     pub max: Value,
 }
 
-pub trait Input {
+pub trait InputProps {
     type Rx;
     type Tx: Clone;
 
@@ -29,7 +29,7 @@ pub trait Input {
 
     fn set_value(&mut self, value: Value);
 }
-pub trait InputReceiver: Input {
+pub trait Input: InputProps {
     fn receiver(&mut self) -> Pin<Box<dyn Future<Output = Option<Value>> + Send + '_>>;
 }
 
@@ -41,7 +41,7 @@ pub struct BaseInput<Rx, Tx> {
     pub val: Option<Value>,
 }
 
-impl<Rx, Tx: Clone> Input for BaseInput<Rx, Tx> {
+impl<Rx, Tx: Clone> InputProps for BaseInput<Rx, Tx> {
     type Rx = Rx;
     type Tx = Tx;
 

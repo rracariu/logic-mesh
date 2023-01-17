@@ -2,8 +2,8 @@ use uuid::Uuid;
 
 use crate::base::{
     block::{Block, BlockDesc, BlockProps, BlockState},
-    input::{Input, InputReceiver},
-    output::OutputLink,
+    input::{Input, InputProps},
+    output::Output,
 };
 
 use super::{input::InputImpl, output::OutputImpl};
@@ -16,8 +16,8 @@ pub struct SineWave {
 }
 
 impl BlockProps for SineWave {
-    type Rx = <InputImpl as Input>::Rx;
-    type Tx = <InputImpl as Input>::Tx;
+    type Rx = <InputImpl as InputProps>::Rx;
+    type Tx = <InputImpl as InputProps>::Tx;
 
     fn id(&self) -> &Uuid {
         &self.id
@@ -31,11 +31,11 @@ impl BlockProps for SineWave {
         BlockState::Running
     }
 
-    fn inputs(&mut self) -> Vec<&mut dyn InputReceiver<Rx = Self::Rx, Tx = Self::Tx>> {
+    fn inputs(&mut self) -> Vec<&mut dyn Input<Rx = Self::Rx, Tx = Self::Tx>> {
         vec![&mut self.period]
     }
 
-    fn output(&mut self) -> &mut dyn OutputLink<Tx = Self::Tx> {
+    fn output(&mut self) -> &mut dyn Output<Tx = Self::Tx> {
         &mut self.out
     }
 }

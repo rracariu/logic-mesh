@@ -3,17 +3,17 @@ use tokio::sync::mpsc::Sender;
 use libhaystack::val::Value;
 
 use crate::base::{
-    input::Input,
+    input::InputProps,
     link::{BaseLink, LinkState},
-    output::{BaseOutput, OutputLink},
+    output::{BaseOutput, Output},
 };
 
 use super::input::InputImpl;
 
 pub type OutputImpl = BaseOutput<BaseLink<Sender<Value>>>;
 
-impl OutputLink for OutputImpl {
-    type Tx = <InputImpl as Input>::Tx;
+impl Output for OutputImpl {
+    type Tx = <InputImpl as InputProps>::Tx;
 
     fn add_link(&mut self, link: BaseLink<Self::Tx>) {
         self.links.push(link);

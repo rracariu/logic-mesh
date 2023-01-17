@@ -2,12 +2,12 @@ use futures::future::select_all;
 
 use crate::base::{
     block::{Block, BlockConnect, BlockProps},
-    input::Input,
+    input::InputProps,
     link::{BaseLink, LinkState},
 };
 
 impl<T: Block> BlockConnect for T {
-    fn connect<I: Input<Tx = Self::Tx>>(&mut self, input: &mut I) {
+    fn connect<I: InputProps<Tx = Self::Tx>>(&mut self, input: &mut I) {
         let mut link = BaseLink::<Self::Tx>::new();
 
         link.tx = Some(input.writer().clone());

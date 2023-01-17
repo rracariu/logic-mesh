@@ -5,8 +5,8 @@ use uuid::Uuid;
 
 use crate::base::{
     block::{Block, BlockDesc, BlockProps, BlockState},
-    input::{Input, InputReceiver},
-    output::OutputLink,
+    input::{Input, InputProps},
+    output::Output,
 };
 
 use super::{block::read_block_inputs, input::InputImpl, output::OutputImpl};
@@ -20,8 +20,8 @@ pub struct TestAddBlock {
 }
 
 impl BlockProps for TestAddBlock {
-    type Rx = <InputImpl as Input>::Rx;
-    type Tx = <InputImpl as Input>::Tx;
+    type Rx = <InputImpl as InputProps>::Rx;
+    type Tx = <InputImpl as InputProps>::Tx;
 
     fn id(&self) -> &uuid::Uuid {
         &self.id
@@ -35,11 +35,11 @@ impl BlockProps for TestAddBlock {
         BlockState::Running
     }
 
-    fn inputs(&mut self) -> Vec<&mut dyn InputReceiver<Rx = Self::Rx, Tx = Self::Tx>> {
+    fn inputs(&mut self) -> Vec<&mut dyn Input<Rx = Self::Rx, Tx = Self::Tx>> {
         vec![&mut self.input_a, &mut self.input_b]
     }
 
-    fn output(&mut self) -> &mut dyn OutputLink<Tx = Self::Tx> {
+    fn output(&mut self) -> &mut dyn Output<Tx = Self::Tx> {
         &mut self.out
     }
 }

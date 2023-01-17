@@ -8,7 +8,7 @@ pub struct OutDesc {
     pub kind: HaystackKind,
 }
 
-pub trait Output {
+pub trait OutputProps {
     fn desc(&self) -> &OutDesc;
 
     fn is_connected(&self) -> bool;
@@ -16,7 +16,7 @@ pub trait Output {
     fn links(&self) -> Vec<&dyn Link>;
 }
 
-pub trait OutputLink: Output {
+pub trait Output: OutputProps {
     type Tx: Clone;
     fn add_link(&mut self, link: BaseLink<Self::Tx>);
 }
@@ -27,7 +27,7 @@ pub struct BaseOutput<L: Link> {
     pub links: Vec<L>,
 }
 
-impl<L: Link> Output for BaseOutput<L> {
+impl<L: Link> OutputProps for BaseOutput<L> {
     fn desc(&self) -> &OutDesc {
         &self.desc
     }
