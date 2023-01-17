@@ -1,7 +1,7 @@
 use futures::future::select_all;
 
 use crate::base::{
-    block::{Block, BlockConnect, BlockProps},
+    block::{Block, BlockConnect},
     input::InputProps,
     link::{BaseLink, LinkState},
 };
@@ -18,10 +18,7 @@ impl<T: Block> BlockConnect for T {
     }
 }
 
-pub async fn read_block_inputs<B: Block>(block: &mut B)
-where
-    <B as BlockProps>::Tx: Clone,
-{
+pub async fn read_block_inputs<B: Block>(block: &mut B) {
     let input_futures = block
         .inputs()
         .into_iter()
