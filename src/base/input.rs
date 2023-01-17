@@ -29,8 +29,9 @@ pub trait InputProps {
 
     fn set_value(&mut self, value: Value);
 }
+pub trait InputReceiver = Future<Output = Option<Value>> + Send;
 pub trait Input: InputProps {
-    fn receiver(&mut self) -> Pin<Box<dyn Future<Output = Option<Value>> + Send + '_>>;
+    fn receiver(&mut self) -> Pin<Box<dyn InputReceiver + '_>>;
 }
 
 pub struct BaseInput<Rx, Tx> {

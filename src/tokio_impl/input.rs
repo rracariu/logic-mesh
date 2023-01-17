@@ -1,11 +1,11 @@
 use std::pin::Pin;
 
-use futures::{Future, FutureExt};
+use futures::FutureExt;
 use tokio::sync::mpsc::{channel, Receiver, Sender};
 
 use libhaystack::val::{kind::HaystackKind, Value};
 
-use crate::base::input::{BaseInput, Input, InputDefault, InputDesc};
+use crate::base::input::{BaseInput, Input, InputDefault, InputDesc, InputReceiver};
 
 pub type InputImpl = BaseInput<Receiver<Value>, Sender<Value>>;
 
@@ -31,7 +31,7 @@ impl InputImpl {
 }
 
 impl Input for InputImpl {
-    fn receiver(&mut self) -> Pin<Box<dyn Future<Output = Option<Value>> + Send + '_>> {
+    fn receiver(&mut self) -> Pin<Box<dyn InputReceiver + '_>> {
         self.rx.recv().boxed()
     }
 }

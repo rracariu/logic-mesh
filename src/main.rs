@@ -1,4 +1,5 @@
 #![feature(async_fn_in_trait)]
+#![feature(trait_alias)]
 
 use crate::base::block::Block;
 use base::block::BlockConnect;
