@@ -1,3 +1,5 @@
+// Copyright (c) 2022-2023, IntriSemantics Corp.
+
 use std::pin::Pin;
 
 use futures::Future;
@@ -14,7 +16,6 @@ pub struct InputDefault {
     pub min: Value,
     pub max: Value,
 }
-
 pub trait InputProps {
     type Rx;
     type Tx: Clone;

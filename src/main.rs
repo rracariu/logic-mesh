@@ -1,3 +1,6 @@
+// Copyright (c) 2022-2023, IntriSemantics Corp.
+
+#![warn(incomplete_features)]
 #![feature(async_fn_in_trait)]
 #![feature(trait_alias)]
 

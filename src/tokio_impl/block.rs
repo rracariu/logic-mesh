@@ -1,3 +1,5 @@
+// Copyright (c) 2022-2023, IntriSemantics Corp.
+
 use futures::future::select_all;
 
 use crate::base::{
@@ -27,9 +29,9 @@ pub async fn read_block_inputs<B: Block>(block: &mut B) {
 
     let (val, idx, _) = select_all(input_futures).await;
 
-    let mut inputs = block.inputs();
-    if let Some(input) = inputs.get_mut(idx) {
-        if let Some(value) = val {
+    if let Some(value) = val {
+        let mut inputs = block.inputs();
+        if let Some(input) = inputs.get_mut(idx) {
             input.set_value(value)
         }
     }

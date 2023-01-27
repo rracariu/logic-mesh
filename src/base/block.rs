@@ -1,3 +1,5 @@
+// Copyright (c) 2022-2023, IntriSemantics Corp.
+
 use uuid::Uuid;
 
 use super::input::{Input, InputProps};

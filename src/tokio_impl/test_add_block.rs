@@ -1,3 +1,5 @@
+// Copyright (c) 2022-2023, IntriSemantics Corp.
+
 use tokio::time::{sleep, Duration};
 
 use libhaystack::val::{kind::HaystackKind, Value};
