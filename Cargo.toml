@@ -3,7 +3,11 @@ name = "logic-mesh"
 version = "0.1.0"
 edition = "2021"
 
+[workspace]
+members = ["block_macro"]
+
 [dependencies]
+block_macro = { path = "block_macro"}
 libhaystack = {version = "^1.0.10", default-features = false}
 uuid = {version = "1.2.2", features = ["v4"]}
 lazy_static = "1.4.0"

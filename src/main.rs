@@ -1,14 +1,17 @@
 // Copyright (c) 2022-2023, IntriSemantics Corp.
 
-#![warn(incomplete_features)]
+#![allow(incomplete_features)]
 #![feature(async_fn_in_trait)]
 #![feature(trait_alias)]
 
+#[macro_use]
+extern crate block_macro;
+
 use crate::base::block::Block;
-use base::block::BlockConnect;
+use base::block::{BlockConnect, BlockProps};
 use futures::{future::select_all, FutureExt};
 use libhaystack::val::Value;
-use tokio_impl::test_add_block::TestAddBlock;
+use tokio_impl::{sinewave_block, test_add_block::TestAddBlock};
 
 mod base;
 mod tokio_impl;
@@ -24,6 +27,9 @@ async fn main() {
 
     block2.connect(&mut block1.input_a);
     block2.connect(&mut block1.input_b);
+
+    let sine = sinewave_block::SineWave::new("ffo");
+    sine.id();
 
     block1.out.set(Value::make_int(2)).await;
 

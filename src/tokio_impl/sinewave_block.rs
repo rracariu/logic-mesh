@@ -1,5 +1,6 @@
 // Copyright (c) 2022-2023, IntriSemantics Corp.
 
+use libhaystack::val::kind::HaystackKind;
 use uuid::Uuid;
 
 use crate::base::{
@@ -10,6 +11,9 @@ use crate::base::{
 
 use super::{input::InputImpl, output::OutputImpl};
 
+#[derive(BlockProps)]
+#[name = "SineWave"]
+#[lib = "math"]
 pub struct SineWave {
     id: Uuid,
     pub period: InputImpl,
@@ -17,31 +21,20 @@ pub struct SineWave {
     desc: BlockDesc,
 }
 
-impl BlockProps for SineWave {
-    type Rx = <InputImpl as InputProps>::Rx;
-    type Tx = <InputImpl as InputProps>::Tx;
-
-    fn id(&self) -> &Uuid {
-        &self.id
-    }
-
-    fn desc(&self) -> &BlockDesc {
-        &self.desc
-    }
-
-    fn state(&self) -> BlockState {
-        BlockState::Running
-    }
-
-    fn inputs(&mut self) -> Vec<&mut dyn Input<Rx = Self::Rx, Tx = Self::Tx>> {
-        vec![&mut self.period]
-    }
-
-    fn output(&mut self) -> &mut dyn Output<Tx = Self::Tx> {
-        &mut self.out
-    }
-}
-
 impl Block for SineWave {
     async fn execute(&mut self) {}
+}
+
+impl SineWave {
+    pub fn new(name: &str) -> Self {
+        Self {
+            id: Uuid::new_v4(),
+            desc: BlockDesc {
+                name: name.into(),
+                library: "".into(),
+            },
+            period: InputImpl::new("a", HaystackKind::Number),
+            out: OutputImpl::new(HaystackKind::Number),
+        }
+    }
 }
