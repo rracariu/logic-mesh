@@ -13,12 +13,11 @@ use super::{input::InputImpl, output::OutputImpl};
 
 #[derive(BlockProps)]
 #[name = "SineWave"]
-#[lib = "math"]
+#[library = "math"]
 pub struct SineWave {
     id: Uuid,
     pub period: InputImpl,
     pub out: OutputImpl,
-    desc: BlockDesc,
 }
 
 impl Block for SineWave {
@@ -29,10 +28,6 @@ impl SineWave {
     pub fn new(name: &str) -> Self {
         Self {
             id: Uuid::new_v4(),
-            desc: BlockDesc {
-                name: name.into(),
-                library: "".into(),
-            },
             period: InputImpl::new("a", HaystackKind::Number),
             out: OutputImpl::new(HaystackKind::Number),
         }

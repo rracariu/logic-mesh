@@ -10,13 +10,13 @@ use std::collections::BTreeMap;
 use litrs::Literal;
 use proc_macro::TokenStream;
 
-#[proc_macro_derive(BlockProps, attributes(name, lib, version))]
+#[proc_macro_derive(BlockProps, attributes(name, library, version))]
 pub fn block_props(input: TokenStream) -> TokenStream {
     let ast: syn::DeriveInput = syn::parse(input).unwrap();
 
     let gen = block_props_impl(&ast);
 
-    //eprintln!("block_props: {gen}");
+    eprintln!("block_props: {gen}");
 
     gen
 }
@@ -24,6 +24,57 @@ pub fn block_props(input: TokenStream) -> TokenStream {
 fn block_props_impl(ast: &syn::DeriveInput) -> TokenStream {
     let name = &ast.ident;
 
+    let attrs = get_attributes_map(ast);
+
+    let k = attrs.keys().map(|k| format_ident!("{}", k));
+    let v = attrs.values();
+
+    let block_desc = format_ident!("_{}_DESC", name.to_string().to_uppercase());
+
+    let tokens = quote! {
+
+        use lazy_static::lazy_static;
+
+        lazy_static! {
+            static ref #block_desc: BlockDesc = {
+                let desc = BlockDesc {
+                    #(#k : #v.to_string(),)*
+                };
+
+                desc
+            };
+        }
+
+        impl BlockProps for #name {
+            type Rx = <InputImpl as InputProps>::Rx;
+            type Tx = <InputImpl as InputProps>::Tx;
+
+            fn id(&self) -> &Uuid {
+                &self.id
+            }
+
+            fn desc(&self) -> &BlockDesc {
+                &#block_desc
+            }
+
+            fn state(&self) -> BlockState {
+                BlockState::Fault
+            }
+
+            fn inputs(&mut self) -> Vec<&mut dyn Input<Rx = Self::Rx, Tx = Self::Tx>> {
+                vec![&mut self.period]
+            }
+
+            fn output(&mut self) -> &mut dyn Output<Tx = Self::Tx> {
+                &mut self.out
+            }
+        }
+    };
+
+    tokens.into()
+}
+
+fn get_attributes_map(ast: &syn::DeriveInput) -> BTreeMap<String, String> {
     let attrs: BTreeMap<String, String> = ast
         .attrs
         .iter()
@@ -44,41 +95,5 @@ fn block_props_impl(ast: &syn::DeriveInput) -> TokenStream {
             }
         })
         .collect();
-
-    let k = attrs.keys().map(|k| format_ident!("_{}", k.to_uppercase()));
-    let v = attrs.values();
-
-    let tokens = quote! {
-
-        impl #name {
-            #(const #k:&str = #v;)*
-        }
-
-        impl BlockProps for #name {
-            type Rx = <InputImpl as InputProps>::Rx;
-            type Tx = <InputImpl as InputProps>::Tx;
-
-            fn id(&self) -> &Uuid {
-                &self.id
-            }
-
-            fn desc(&self) -> &BlockDesc {
-                &self.desc
-            }
-
-            fn state(&self) -> BlockState {
-                BlockState::Fault
-            }
-
-            fn inputs(&mut self) -> Vec<&mut dyn Input<Rx = Self::Rx, Tx = Self::Tx>> {
-                vec![&mut self.period]
-            }
-
-            fn output(&mut self) -> &mut dyn Output<Tx = Self::Tx> {
-                &mut self.out
-            }
-        }
-    };
-
-    tokens.into()
+    attrs
 }
