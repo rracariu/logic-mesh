@@ -5,6 +5,7 @@ use std::pin::Pin;
 use futures::Future;
 use libhaystack::val::{kind::HaystackKind, Value};
 
+#[derive(Debug, Default)]
 pub struct InputDesc {
     pub name: String,
     pub kind: HaystackKind,
@@ -35,6 +36,7 @@ pub trait Input: InputProps {
     fn receiver(&mut self) -> Pin<Box<dyn InputReceiver + '_>>;
 }
 
+#[derive(Debug, Default)]
 pub struct BaseInput<Rx, Tx> {
     pub desc: InputDesc,
     pub default: InputDefault,

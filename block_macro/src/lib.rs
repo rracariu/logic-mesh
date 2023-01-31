@@ -5,12 +5,22 @@ extern crate syn;
 #[macro_use]
 extern crate quote;
 
-use std::collections::BTreeMap;
+mod block;
+mod block_props;
 
-use litrs::Literal;
+use block::block_impl;
+use block_props::block_props_impl;
 use proc_macro::TokenStream;
 
-#[proc_macro_derive(BlockProps, attributes(name, library, version))]
+#[proc_macro_attribute]
+pub fn block(_args: TokenStream, input: TokenStream) -> TokenStream {
+    let gen = block_impl(input);
+    eprintln!("block: {gen}");
+
+    gen
+}
+
+#[proc_macro_derive(BlockProps, attributes(name, library, input))]
 pub fn block_props(input: TokenStream) -> TokenStream {
     let ast: syn::DeriveInput = syn::parse(input).unwrap();
 
@@ -19,81 +29,4 @@ pub fn block_props(input: TokenStream) -> TokenStream {
     eprintln!("block_props: {gen}");
 
     gen
-}
-
-fn block_props_impl(ast: &syn::DeriveInput) -> TokenStream {
-    let name = &ast.ident;
-
-    let attrs = get_attributes_map(ast);
-
-    let k = attrs.keys().map(|k| format_ident!("{}", k));
-    let v = attrs.values();
-
-    let block_desc = format_ident!("_{}_DESC", name.to_string().to_uppercase());
-
-    let tokens = quote! {
-
-        use lazy_static::lazy_static;
-
-        lazy_static! {
-            static ref #block_desc: BlockDesc = {
-                let desc = BlockDesc {
-                    #(#k : #v.to_string(),)*
-                };
-
-                desc
-            };
-        }
-
-        impl BlockProps for #name {
-            type Rx = <InputImpl as InputProps>::Rx;
-            type Tx = <InputImpl as InputProps>::Tx;
-
-            fn id(&self) -> &Uuid {
-                &self.id
-            }
-
-            fn desc(&self) -> &BlockDesc {
-                &#block_desc
-            }
-
-            fn state(&self) -> BlockState {
-                BlockState::Fault
-            }
-
-            fn inputs(&mut self) -> Vec<&mut dyn Input<Rx = Self::Rx, Tx = Self::Tx>> {
-                vec![&mut self.period]
-            }
-
-            fn output(&mut self) -> &mut dyn Output<Tx = Self::Tx> {
-                &mut self.out
-            }
-        }
-    };
-
-    tokens.into()
-}
-
-fn get_attributes_map(ast: &syn::DeriveInput) -> BTreeMap<String, String> {
-    let attrs: BTreeMap<String, String> = ast
-        .attrs
-        .iter()
-        .filter_map(|attr| {
-            if let Some(id) = attr.path.get_ident().map(|id| id.to_string()) {
-                for tok in TokenStream::from(attr.tokens.clone()) {
-                    match Literal::try_from(tok) {
-                        Ok(Literal::String(lit)) => {
-                            return Some((id, lit.into_value().to_string()))
-                        }
-                        _ => continue,
-                    }
-                }
-
-                None
-            } else {
-                None
-            }
-        })
-        .collect();
-    attrs
 }

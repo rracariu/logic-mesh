@@ -11,11 +11,13 @@ use crate::base::{
 
 use super::{input::InputImpl, output::OutputImpl};
 
-#[derive(BlockProps)]
+#[block]
+#[derive(BlockProps, Debug)]
 #[name = "SineWave"]
 #[library = "math"]
+#[input(kind = Number, 16)]
 pub struct SineWave {
-    id: Uuid,
+    #[input(kind = Number)]
     pub period: InputImpl,
     pub out: OutputImpl,
 }
@@ -28,6 +30,7 @@ impl SineWave {
     pub fn new(name: &str) -> Self {
         Self {
             id: Uuid::new_v4(),
+            state: BlockState::Stopped,
             period: InputImpl::new("a", HaystackKind::Number),
             out: OutputImpl::new(HaystackKind::Number),
         }
