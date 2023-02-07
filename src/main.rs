@@ -28,7 +28,7 @@ async fn main() {
     block2.connect(&mut block1.input_a);
     block2.connect(&mut block1.input_b);
 
-    let sine = sinewave_block::SineWave::new("ffo");
+    let sine = sinewave_block::SineWave::new();
     sine.id();
 
     block1.out.set(Value::make_int(2)).await;

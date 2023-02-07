@@ -1,19 +1,18 @@
 // Copyright (c) 2022-2023, IntriSemantics Corp.
 
-use std::collections::BTreeMap;
-
-use litrs::Literal;
 use proc_macro::TokenStream;
+
+use crate::utils::{get_attributes_map, get_block_input_attribute};
 
 pub(super) fn block_props_impl(ast: &syn::DeriveInput) -> TokenStream {
     let name = &ast.ident;
 
-    let attrs = get_attributes_map(ast);
-
-    let k = attrs.keys().map(|k| format_ident!("{}", k));
-    let v = attrs.values();
+    let block_props_attrs = get_attributes_map(ast);
+    let prop_names = block_props_attrs.keys().map(|k| format_ident!("{}", k));
+    let prop_values = block_props_attrs.values();
 
     let block_desc = format_ident!("_{}_DESC", name.to_string().to_uppercase());
+    let input_init = create_input_init(ast);
 
     let tokens = quote! {
 
@@ -22,11 +21,23 @@ pub(super) fn block_props_impl(ast: &syn::DeriveInput) -> TokenStream {
         lazy_static! {
             static ref #block_desc: BlockDesc = {
                 let desc = BlockDesc {
-                    #(#k : #v.to_string(),)*
+                    #(#prop_names : #prop_values.to_string(),)*
                 };
 
                 desc
             };
+        }
+
+        impl #name {
+            pub fn new() -> Self {
+                Self {
+                    id:  Uuid::new_v4(),
+                    state: BlockState::Stopped,
+                    period: InputImpl::new("period", HaystackKind::Number),
+                    out:  OutputImpl::new(HaystackKind::Number),
+                    #input_init
+                }
+            }
         }
 
         impl BlockProps for #name {
@@ -58,26 +69,34 @@ pub(super) fn block_props_impl(ast: &syn::DeriveInput) -> TokenStream {
     tokens.into()
 }
 
-fn get_attributes_map(ast: &syn::DeriveInput) -> BTreeMap<String, String> {
-    let attrs: BTreeMap<String, String> = ast
-        .attrs
-        .iter()
-        .filter_map(|attr| {
-            if let Some(id) = attr.path.get_ident().map(|id| id.to_string()) {
-                for tok in TokenStream::from(attr.tokens.clone()) {
-                    match Literal::try_from(tok) {
-                        Ok(Literal::String(lit)) => {
-                            return Some((id, lit.into_value().to_string()))
-                        }
-                        _ => continue,
-                    }
-                }
+fn create_input_init(ast: &syn::DeriveInput) -> proc_macro2::TokenStream {
+    let block_input_props = get_block_input_attribute(ast);
 
-                None
-            } else {
-                None
-            }
-        })
-        .collect();
-    attrs
+    if block_input_props.is_empty() {
+        proc_macro2::TokenStream::default()
+    } else {
+        let kind = format_ident!(
+            "{}",
+            block_input_props
+                .get("kind")
+                .cloned()
+                .unwrap_or("Null".into())
+        );
+
+        let name = block_input_props
+            .get("name")
+            .cloned()
+            .unwrap_or("in".into());
+
+        let count = block_input_props
+            .get("count")
+            .and_then(|e| e.parse::<usize>().ok())
+            .unwrap_or(1);
+
+        let names = (0..count).map(|i| format!("{name}{i}"));
+
+        quote! {
+            _inputs: vec![ #(InputImpl::new(#names, HaystackKind::#kind)),* ]
+        }
+    }
 }

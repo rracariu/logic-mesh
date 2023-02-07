@@ -12,3 +12,4 @@ proc-macro = true
 syn = "1.0.107"
 quote = "1.0.23"
 litrs = "0.3.0"
+proc-macro2 = "1.0.51"
