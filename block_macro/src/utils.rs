@@ -2,45 +2,24 @@
 
 use std::collections::BTreeMap;
 
-use syn::{Lit, Meta, NestedMeta};
+use syn::{Attribute, Lit, Meta, NestedMeta, TypePath};
 
+///
+/// Get all the inputs fields and their attributes
+///
 pub(super) fn get_block_inputs_props(
     ast: &syn::DeriveInput,
 ) -> BTreeMap<String, BTreeMap<String, String>> {
-    let mut props: BTreeMap<String, BTreeMap<String, String>> = BTreeMap::new();
+    get_block_field_props(ast, "input")
+}
 
-    if let syn::Data::Struct(struct_data) = &ast.data {
-        if let syn::Fields::Named(fields) = &struct_data.fields {
-            for field in &fields.named {
-                if let Some(field_name) = field.ident.as_ref() {
-                    if let syn::Type::Path(ty) = &field.ty {
-                        if ty
-                            .path
-                            .get_ident()
-                            .filter(|id| id.to_string().starts_with::<&String>(&"InputImpl".into()))
-                            .is_some()
-                        {
-                            for attr in field.attrs.iter().filter(|attr| {
-                                attr.path
-                                    .get_ident()
-                                    .filter(|id| id.to_string().as_str() == "input")
-                                    .is_some()
-                            }) {
-                                let mut attr_props: BTreeMap<String, String> = BTreeMap::new();
-                                get_attribute_props(&attr, &mut attr_props);
-
-                                if !attr_props.is_empty() {
-                                    props.insert(field_name.to_string(), attr_props);
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    props
+///
+/// Get all the output fields and their attributes
+///
+pub(super) fn get_block_output_props(
+    ast: &syn::DeriveInput,
+) -> BTreeMap<String, BTreeMap<String, String>> {
+    get_block_field_props(ast, "output")
 }
 
 ///
@@ -112,4 +91,59 @@ fn get_attribute_props(input_attr: &syn::Attribute, attrs: &mut BTreeMap<String,
             }
         })
     }
+}
+
+fn field_type_is(ty: &TypePath, field_type: &str) -> bool {
+    let it: String = match field_type {
+        "input" => "InputImpl",
+        "output" => "OutputImpl",
+        _ => panic!("Invalid field type."),
+    }
+    .into();
+
+    ty.path
+        .get_ident()
+        .filter(|id| id.to_string().starts_with::<&String>(&it))
+        .is_some()
+}
+
+fn filed_attribute_is(attr: &Attribute, field_type: &str) -> bool {
+    attr.path
+        .get_ident()
+        .filter(|id| id.to_string().as_str() == field_type)
+        .is_some()
+}
+
+fn get_block_field_props(
+    ast: &syn::DeriveInput,
+    field_type: &str,
+) -> BTreeMap<String, BTreeMap<String, String>> {
+    let mut props: BTreeMap<String, BTreeMap<String, String>> = BTreeMap::new();
+
+    if let syn::Data::Struct(struct_data) = &ast.data {
+        if let syn::Fields::Named(fields) = &struct_data.fields {
+            for field in &fields.named {
+                if let Some(field_name) = field.ident.as_ref() {
+                    if let syn::Type::Path(ty) = &field.ty {
+                        if field_type_is(ty, field_type) {
+                            for attr in field
+                                .attrs
+                                .iter()
+                                .filter(|attr| filed_attribute_is(attr, field_type))
+                            {
+                                let mut attr_props: BTreeMap<String, String> = BTreeMap::new();
+                                get_attribute_props(attr, &mut attr_props);
+
+                                if !attr_props.is_empty() {
+                                    props.insert(field_name.to_string(), attr_props);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    props
 }
