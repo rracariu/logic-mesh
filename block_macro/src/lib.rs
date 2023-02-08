@@ -29,7 +29,7 @@ pub fn block_props(input: TokenStream) -> TokenStream {
 
     let gen = block_props_impl(&ast);
 
-    //eprintln!("block_props: {gen}");
+    eprintln!("block_props: {gen}");
 
     gen
 }

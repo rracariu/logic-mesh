@@ -18,9 +18,9 @@ use super::{input::InputImpl, output::OutputImpl};
 #[library = "math"]
 #[input(kind = "Bool", count = 4)]
 pub struct SineWave {
-    #[input(kind = Number)]
+    #[input(kind = "Number")]
     pub period: InputImpl,
-    #[output(kind = Number)]
+    #[output(kind = "Number")]
     pub out: OutputImpl,
 }
 
