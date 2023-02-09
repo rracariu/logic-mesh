@@ -43,6 +43,9 @@ pub trait InputProps {
     /// Get a reference to this input writer type
     fn writer(&mut self) -> &mut Self::Tx;
 
+    /// Gets this input value
+    fn get_value(&self) -> &Option<Value>;
+
     /// Sets this input value
     fn set_value(&mut self, value: Value);
 
@@ -106,6 +109,10 @@ impl<Rx, Tx: Clone> InputProps for BaseInput<Rx, Tx> {
 
     fn writer(&mut self) -> &mut Self::Tx {
         &mut self.tx
+    }
+
+    fn get_value(&self) -> &Option<Value> {
+        &self.val
     }
 
     fn set_value(&mut self, value: Value) {

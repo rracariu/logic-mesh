@@ -7,7 +7,7 @@ use crate::base::link::{BaseLink, LinkState};
 use uuid::Uuid;
 
 /// Determines the state a block is in
-#[derive(Default, Debug, Clone, Copy)]
+#[derive(Default, Debug, Clone, Copy, PartialEq)]
 pub enum BlockState {
     #[default]
     Stopped,
@@ -39,14 +39,20 @@ pub trait BlockProps {
     /// Blocks state
     fn state(&self) -> BlockState;
 
-    /// List all the block inputs
-    fn inputs(&mut self) -> Vec<&mut dyn Input<Rx = Self::Rx, Tx = Self::Tx>>;
+    /// Set the blocks state
+    fn set_state(&mut self, state: BlockState) -> BlockState;
 
-    /// Mutable reference to the block's output
-    fn output_mut(&mut self) -> &mut dyn Output<Tx = Self::Tx>;
+    /// List all the block inputs
+    fn inputs(&self) -> Vec<&dyn Input<Rx = Self::Rx, Tx = Self::Tx>>;
+
+    /// List all the block inputs
+    fn inputs_mut(&mut self) -> Vec<&mut dyn Input<Rx = Self::Rx, Tx = Self::Tx>>;
 
     /// The block output
     fn output(&self) -> &dyn Output<Tx = Self::Tx>;
+
+    /// Mutable reference to the block's output
+    fn output_mut(&mut self) -> &mut dyn Output<Tx = Self::Tx>;
 }
 
 /// Block connection functions
@@ -62,7 +68,7 @@ pub trait BlockConnect: BlockProps {
     /// # Arguments
     /// - input: The block input to be connected
     ///
-    fn connect<I: InputProps<Tx = Self::Tx>>(&mut self, input: &mut I);
+    fn connect<I: InputProps<Tx = Self::Tx> + ?Sized>(&mut self, input: &mut I);
 
     /// Disconnect this block from the given input
     /// # Arguments
@@ -88,7 +94,7 @@ impl<T: Block> BlockConnect for T {
         self.output_mut().remove_link(link)
     }
 
-    fn connect<I: InputProps<Tx = Self::Tx>>(&mut self, input: &mut I) {
+    fn connect<I: InputProps<Tx = Self::Tx> + ?Sized>(&mut self, input: &mut I) {
         if input.block_id() == self.id() {
             return;
         }

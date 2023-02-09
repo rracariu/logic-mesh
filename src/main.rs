@@ -9,26 +9,28 @@ extern crate block_macro;
 
 use crate::base::block::Block;
 use base::block::{BlockConnect, BlockProps};
+use blocks::maths::Add;
 use futures::{future::select_all, FutureExt};
 use libhaystack::val::Value;
-use tokio_impl::{sinewave_block, test_add_block::TestAddBlock};
+use tokio_impl::sinewave_block;
 
-mod base;
+pub mod base;
+pub mod blocks;
 mod tokio_impl;
 
 #[tokio::main]
 async fn main() {
-    let mut block1 = TestAddBlock::new("block1");
+    let mut block1 = Add::new("block1");
 
-    let mut block2 = TestAddBlock::new("block2");
+    let mut block2 = Add::new("block2");
 
-    block1.connect(&mut block2.input_a);
-    block1.connect(&mut block2.input_b);
+    block1.connect(block2.inputs_mut()[0]);
+    block1.connect(block2.inputs_mut()[1]);
 
-    block2.connect(&mut block1.input_a);
-    block2.connect(&mut block1.input_b);
+    block2.connect(block1.inputs_mut()[0]);
+    block2.connect(block1.inputs_mut()[1]);
 
-    let sine = sinewave_block::SineWave::new();
+    let sine = sinewave_block::SineWave::new("");
     sine.id();
 
     block1.out.set(Value::make_int(2)).await;

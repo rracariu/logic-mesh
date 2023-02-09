@@ -1,3 +1,5 @@
+// Copyright (c) 2022-2023, IntriSemantics Corp.
+
 use libhaystack::val::kind::HaystackKind;
 
 use super::link::{BaseLink, Link};

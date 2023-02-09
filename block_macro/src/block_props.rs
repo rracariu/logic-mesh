@@ -3,6 +3,7 @@
 use std::collections::BTreeMap;
 
 use proc_macro::TokenStream;
+use proc_macro2::{Group, TokenTree};
 
 use crate::utils::{
     get_block_attributes, get_block_input_attribute, get_block_inputs_props, get_block_output_props,
@@ -17,7 +18,11 @@ pub(super) fn block_props_impl(ast: &syn::DeriveInput) -> TokenStream {
 
     let block_input_props = get_block_inputs_props(ast);
     let input_fields_init = create_block_input_fields_init(&block_input_props);
-    let input_refs = create_input_members_ref(!block_defined_inputs.is_empty(), &block_input_props);
+    let input_mut_refs =
+        create_input_members_ref(!block_defined_inputs.is_empty(), &block_input_props, true);
+
+    let input_refs =
+        create_input_members_ref(!block_defined_inputs.is_empty(), &block_input_props, false);
 
     // Block output
     let block_output_props = get_block_output_props(ast);
@@ -48,10 +53,11 @@ pub(super) fn block_props_impl(ast: &syn::DeriveInput) -> TokenStream {
 
         // Generated constructor
         impl #block_ident {
-            pub fn new() -> Self {
+            pub fn new(name: &str) -> Self {
                 let uuid = Uuid::new_v4();
                 Self {
                     id: uuid,
+                    name: name.to_string(),
                     state: BlockState::Stopped,
 
                     #output_field_init,
@@ -79,8 +85,17 @@ pub(super) fn block_props_impl(ast: &syn::DeriveInput) -> TokenStream {
                 self.state
             }
 
-            fn inputs(&mut self) -> Vec<&mut dyn Input<Rx = Self::Rx, Tx = Self::Tx>> {
+            fn set_state(&mut self, state: BlockState) -> BlockState {
+                self.state = state;
+                self.state
+            }
+
+            fn inputs(&self) -> Vec<&dyn Input<Rx = Self::Rx, Tx = Self::Tx>> {
                 #input_refs
+            }
+
+            fn inputs_mut(&mut self) -> Vec<&mut dyn Input<Rx = Self::Rx, Tx = Self::Tx>> {
+                #input_mut_refs
             }
 
             fn output_mut(&mut self) -> &mut dyn Output<Tx = Self::Tx> {
@@ -181,6 +196,7 @@ fn create_block_output_field_init(
 fn create_input_members_ref(
     has_block_defined_inputs: bool,
     block_input_props: &BTreeMap<String, BTreeMap<String, String>>,
+    mutable: bool,
 ) -> proc_macro2::TokenStream {
     if !has_block_defined_inputs && block_input_props.is_empty() {
         quote! {
@@ -189,16 +205,30 @@ fn create_input_members_ref(
     } else {
         let input_field = block_input_props.keys().map(|id| format_ident!("{id}"));
 
+        let (borrow, iter) = if mutable {
+            (
+                TokenTree::from(format_ident!("mut")),
+                TokenTree::from(format_ident!("iter_mut")),
+            )
+        } else {
+            let empty = TokenTree::Group(Group::new(
+                proc_macro2::Delimiter::None,
+                TokenStream::default().into(),
+            ));
+
+            (empty, TokenTree::from(format_ident!("iter")))
+        };
+
         if has_block_defined_inputs {
             quote! {
-                let mut inputs = vec![ #(&mut self.#input_field as &mut dyn Input<Rx = Self::Rx, Tx = Self::Tx>),* ];
-                inputs.extend(self._inputs.iter_mut().map(|input| input as &mut dyn Input<Rx = Self::Rx, Tx = Self::Tx>));
+                let mut inputs = vec![ #(&#borrow self.#input_field as &#borrow dyn Input<Rx = Self::Rx, Tx = Self::Tx>),* ];
+                inputs.extend(self._inputs.#iter().map(|input| input as &#borrow dyn Input<Rx = Self::Rx, Tx = Self::Tx>));
 
                 inputs
             }
         } else {
             quote! {
-                vec![ #(&mut self.#input_field),* ]
+                vec![ #(&#borrow self.#input_field),* ]
             }
         }
     }
