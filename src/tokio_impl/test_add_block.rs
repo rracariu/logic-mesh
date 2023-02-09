@@ -41,8 +41,12 @@ impl BlockProps for TestAddBlock {
         vec![&mut self.input_a, &mut self.input_b]
     }
 
-    fn output(&mut self) -> &mut dyn Output<Tx = Self::Tx> {
+    fn output_mut(&mut self) -> &mut dyn Output<Tx = Self::Tx> {
         &mut self.out
+    }
+
+    fn output(&self) -> &dyn Output<Tx = Self::Tx> {
+        &self.out
     }
 }
 

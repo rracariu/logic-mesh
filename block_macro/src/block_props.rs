@@ -83,8 +83,12 @@ pub(super) fn block_props_impl(ast: &syn::DeriveInput) -> TokenStream {
                 #input_refs
             }
 
-            fn output(&mut self) -> &mut dyn Output<Tx = Self::Tx> {
+            fn output_mut(&mut self) -> &mut dyn Output<Tx = Self::Tx> {
                 &mut #out_ref
+            }
+
+            fn output(&self) -> &dyn Output<Tx = Self::Tx> {
+                & #out_ref
             }
         }
     };

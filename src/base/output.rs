@@ -18,7 +18,10 @@ pub trait OutputProps {
 
 pub trait Output: OutputProps {
     type Tx: Clone;
+
     fn add_link(&mut self, link: BaseLink<Self::Tx>);
+
+    fn remove_link(&mut self, link: &dyn Link);
 }
 
 #[derive(Debug)]

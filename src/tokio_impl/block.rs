@@ -2,24 +2,7 @@
 
 use futures::future::select_all;
 
-use crate::base::{
-    block::{Block, BlockConnect},
-    input::InputProps,
-    link::{BaseLink, LinkState},
-};
-
-impl<T: Block> BlockConnect for T {
-    fn connect<I: InputProps<Tx = Self::Tx>>(&mut self, input: &mut I) {
-        let mut link = BaseLink::<Self::Tx>::new(*input.block_id(), input.name().to_string());
-
-        link.tx = Some(input.writer().clone());
-
-        link.state = LinkState::Connected;
-
-        self.output().add_link(link);
-        input.increment_conn();
-    }
-}
+use crate::base::block::Block;
 
 pub async fn read_block_inputs<B: Block>(block: &mut B) {
     let input_futures = block
