@@ -6,6 +6,7 @@ use super::output::Output;
 use crate::base::link::{BaseLink, LinkState};
 use uuid::Uuid;
 
+/// Determines the state a block is in
 #[derive(Default, Debug, Clone, Copy)]
 pub enum BlockState {
     #[default]
@@ -14,8 +15,11 @@ pub enum BlockState {
     Fault,
 }
 
+/// Contains information about the block
 pub struct BlockDesc {
+    /// The block name
     pub name: String,
+    /// The block library
     pub library: String,
 }
 
@@ -71,6 +75,10 @@ pub trait Block: BlockProps + BlockConnect {
     async fn execute(&mut self);
 }
 
+///
+/// Implements the `BlockConnect` trait for all types
+/// that are `Block`s
+///
 impl<T: Block> BlockConnect for T {
     fn links(&self) -> Vec<&dyn Link> {
         self.output().links()
@@ -102,7 +110,7 @@ impl<T: Block> BlockConnect for T {
 
         let links = self
             .links()
-            .into_iter()
+            .iter()
             .filter(|link| {
                 link.target_input() == input.name() && link.target_block_id() == input.block_id()
             })
@@ -111,6 +119,6 @@ impl<T: Block> BlockConnect for T {
             })
             .collect::<Vec<_>>();
 
-        links.iter().for_each(|l| self.remove_link(l));
+        links.iter().for_each(|link| self.remove_link(link));
     }
 }
