@@ -65,14 +65,15 @@ impl Block for TestAddBlock {
 
 impl TestAddBlock {
     pub fn new(name: &str) -> Self {
+        let uuid = Uuid::new_v4();
         Self {
-            id: Uuid::new_v4(),
+            id: uuid,
             desc: BlockDesc {
                 name: name.into(),
                 library: "".into(),
             },
-            input_a: InputImpl::new("a", HaystackKind::Number),
-            input_b: InputImpl::new("b", HaystackKind::Number),
+            input_a: InputImpl::new("a", HaystackKind::Number, uuid),
+            input_b: InputImpl::new("b", HaystackKind::Number, uuid),
             out: OutputImpl::new(HaystackKind::Number),
         }
     }

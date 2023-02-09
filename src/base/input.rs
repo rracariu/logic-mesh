@@ -4,12 +4,7 @@ use std::pin::Pin;
 
 use futures::Future;
 use libhaystack::val::{kind::HaystackKind, Value};
-
-#[derive(Debug, Default)]
-pub struct InputDesc {
-    pub name: String,
-    pub kind: HaystackKind,
-}
+use uuid::Uuid;
 
 #[derive(Debug, Default)]
 pub struct InputDefault {
@@ -21,7 +16,17 @@ pub trait InputProps {
     type Rx;
     type Tx: Clone;
 
-    fn desc(&self) -> &InputDesc;
+    fn name(&self) -> &str;
+
+    fn kind(&self) -> &HaystackKind;
+
+    fn block_id(&self) -> &Uuid;
+
+    fn increment_conn(&mut self) -> usize;
+
+    fn decrement_conn(&mut self) -> usize;
+
+    fn is_connected(&self) -> bool;
 
     fn default(&self) -> &InputDefault;
 
@@ -38,19 +43,46 @@ pub trait Input: InputProps {
 
 #[derive(Debug, Default)]
 pub struct BaseInput<Rx, Tx> {
-    pub desc: InputDesc,
-    pub default: InputDefault,
+    pub name: String,
+    pub kind: HaystackKind,
+    pub block_id: Uuid,
+    pub connection_count: usize,
     pub rx: Rx,
     pub tx: Tx,
     pub val: Option<Value>,
+    pub default: InputDefault,
 }
 
 impl<Rx, Tx: Clone> InputProps for BaseInput<Rx, Tx> {
     type Rx = Rx;
     type Tx = Tx;
 
-    fn desc(&self) -> &InputDesc {
-        &self.desc
+    fn name(&self) -> &str {
+        &self.name
+    }
+
+    fn kind(&self) -> &HaystackKind {
+        &self.kind
+    }
+
+    fn block_id(&self) -> &Uuid {
+        &self.block_id
+    }
+
+    fn increment_conn(&mut self) -> usize {
+        self.connection_count += 1;
+        self.connection_count
+    }
+
+    fn decrement_conn(&mut self) -> usize {
+        if self.connection_count > 1 {
+            self.connection_count -= 1;
+        }
+        self.connection_count
+    }
+
+    fn is_connected(&self) -> bool {
+        self.connection_count > 0
     }
 
     fn default(&self) -> &InputDefault {

@@ -30,10 +30,12 @@ pub(super) fn block_props_impl(ast: &syn::DeriveInput) -> TokenStream {
     let prop_values = block_props_attrs.values();
     let block_desc = format_ident!("_{}_DESC", block_ident.to_string().to_uppercase());
 
+    // The code that gets generated for the blocks
     let tokens = quote! {
 
         use lazy_static::lazy_static;
 
+        // Accessor for block static properties
         lazy_static! {
             static ref #block_desc: BlockDesc = {
                 let desc = BlockDesc {
@@ -44,10 +46,12 @@ pub(super) fn block_props_impl(ast: &syn::DeriveInput) -> TokenStream {
             };
         }
 
+        // Generated constructor
         impl #block_ident {
             pub fn new() -> Self {
+                let uuid = Uuid::new_v4();
                 Self {
-                    id:  Uuid::new_v4(),
+                    id: uuid,
                     state: BlockState::Stopped,
 
                     #output_field_init,
@@ -57,6 +61,8 @@ pub(super) fn block_props_impl(ast: &syn::DeriveInput) -> TokenStream {
             }
         }
 
+        // Implementation of the BlockProps trait
+        // using the attributes
         impl BlockProps for #block_ident {
             type Rx = <InputImpl as InputProps>::Rx;
             type Tx = <InputImpl as InputProps>::Tx;
@@ -93,14 +99,16 @@ fn create_block_input_fields_init(
         proc_macro2::TokenStream::default()
     } else {
         let input_field = block_input_props.keys().map(|k| format_ident!("{k}"));
-        let input_name = block_input_props.keys();
+        let input_name = block_input_props
+            .iter()
+            .map(|(name, props)| props.get("name").cloned().unwrap_or(name.clone()));
 
         let kind = block_input_props.iter().map(|(_, props)| {
             format_ident!("{}", props.get("kind").cloned().unwrap_or("Null".into()))
         });
 
         quote! {
-            #(#input_field: InputImpl::new(#input_name, HaystackKind::#kind)),*
+            #(#input_field: InputImpl::new(#input_name, HaystackKind::#kind, uuid.clone())),*
         }
     }
 }
@@ -132,7 +140,7 @@ fn create_block_defined_input_init(
         let names = (0..count).map(|i| format!("{name}{i}"));
 
         quote! {
-            _inputs: vec![ #(InputImpl::new(#names, HaystackKind::#kind)),* ],
+            _inputs: vec![ #(InputImpl::new(#names, HaystackKind::#kind, uuid.clone())),* ],
         }
     }
 }
@@ -147,7 +155,11 @@ fn create_block_output_field_init(
             .keys()
             .map(|id| format_ident!("{id}"))
             .next();
-        let output_name = block_output_props.keys().next();
+
+        let output_name = block_output_props
+            .iter()
+            .map(|(name, props)| props.get("name").cloned().unwrap_or(name.clone()))
+            .next();
 
         let kind = block_output_props
             .iter()
