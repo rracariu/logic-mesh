@@ -2,13 +2,17 @@
 
 use std::time::Duration;
 
+use futures::{future::select_all, FutureExt};
 use tokio::time::sleep;
 use uuid::Uuid;
 
-use crate::base::{
-    block::{Block, BlockDesc, BlockProps, BlockState},
-    input::{Input, InputProps},
-    output::Output,
+use crate::{
+    base::{
+        block::{Block, BlockDesc, BlockProps, BlockState},
+        input::{Input, InputProps},
+        output::Output,
+    },
+    tokio_impl::block::read_block_inputs_no_index,
 };
 
 use libhaystack::val::{kind::HaystackKind, Value};
@@ -32,7 +36,13 @@ pub struct SineWave {
 
 impl Block for SineWave {
     async fn execute(&mut self) {
-        read_block_inputs(self).await;
+        let millis = self.freq_millis().unwrap_or(100);
+
+        let (_, index, _) = select_all([
+            sleep(Duration::from_millis(millis)).boxed(),
+            read_block_inputs_no_index(self).boxed(),
+        ])
+        .await;
 
         if let Ok(millis) = self.freq_millis() {
             let amp = input_as_float_or_default(&self.amplitude);
@@ -40,7 +50,9 @@ impl Block for SineWave {
 
             let res = amp * (self.count / millis as f64).sin();
 
-            sleep(Duration::from_millis(millis)).await;
+            if index != 0 {
+                sleep(Duration::from_millis(millis)).await;
+            }
             self.count += 1.0;
             self.out.set(res.into()).await;
         } else {

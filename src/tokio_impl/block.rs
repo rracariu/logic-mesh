@@ -45,3 +45,7 @@ pub(crate) async fn read_block_inputs<B: Block>(block: &mut B) -> Option<usize> 
         None
     }
 }
+
+pub(crate) async fn read_block_inputs_no_index<B: Block>(block: &mut B) {
+    read_block_inputs(block).await;
+}
