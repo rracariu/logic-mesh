@@ -60,6 +60,7 @@ impl Block for Add {
         }
 
         if let Some(res) = val {
+            println!("Add: {}", res.value);
             self.out.set((res).into()).await
         }
     }

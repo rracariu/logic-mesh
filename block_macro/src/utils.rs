@@ -5,6 +5,29 @@ use std::collections::BTreeMap;
 use syn::{Attribute, Lit, Meta, NestedMeta, TypePath};
 
 ///
+/// Extract the block field names and their types.
+///
+pub(super) fn get_block_fields(ast: &syn::DeriveInput) -> BTreeMap<String, String> {
+    let mut members = BTreeMap::<String, String>::new();
+
+    if let syn::Data::Struct(struct_data) = &ast.data {
+        if let syn::Fields::Named(fields) = &struct_data.fields {
+            for field in &fields.named {
+                if let Some(id) = &field.ident {
+                    if let syn::Type::Path(ty) = &field.ty {
+                        if let Some(ty) = ty.path.get_ident() {
+                            members.insert(id.to_string(), ty.to_string());
+                        }
+                    }
+                }
+            }
+        }
+    };
+
+    members
+}
+
+///
 /// Get all the inputs fields and their attributes
 ///
 pub(super) fn get_block_inputs_props(

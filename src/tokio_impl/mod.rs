@@ -3,4 +3,3 @@
 pub mod block;
 pub mod input;
 pub mod output;
-pub mod sinewave_block;

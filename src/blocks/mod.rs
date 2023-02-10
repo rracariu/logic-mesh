@@ -5,6 +5,7 @@
 //!
 
 pub mod maths;
+pub mod misc;
 
 // Re-export implementations working with inputs and outputs
 

@@ -14,6 +14,7 @@ use block::block_impl;
 use block_props::block_props_impl;
 use proc_macro::TokenStream;
 
+#[allow(clippy::let_and_return)]
 #[proc_macro_attribute]
 pub fn block(_args: TokenStream, input: TokenStream) -> TokenStream {
     let gen = block_impl(input);
@@ -23,6 +24,7 @@ pub fn block(_args: TokenStream, input: TokenStream) -> TokenStream {
     gen
 }
 
+#[allow(clippy::let_and_return)]
 #[proc_macro_derive(BlockProps, attributes(name, library, input, output))]
 pub fn block_props(input: TokenStream) -> TokenStream {
     let ast: syn::DeriveInput = syn::parse(input).unwrap();
