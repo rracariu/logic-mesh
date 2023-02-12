@@ -97,7 +97,15 @@ impl<T: Block> BlockConnect for T {
     }
 
     fn connect<I: InputProps<Tx = Self::Tx> + ?Sized>(&mut self, input: &mut I) {
+        // Don't connect to itself
         if input.block_id() == self.id() {
+            return;
+        }
+
+        // Ignore connections to the same block and the same input.
+        if self.links().iter().any(|link| {
+            link.target_block_id() == input.block_id() && link.target_input() == input.name()
+        }) {
             return;
         }
 
@@ -119,14 +127,16 @@ impl<T: Block> BlockConnect for T {
         let links = self
             .links()
             .iter()
-            .filter(|link| {
+            .enumerate()
+            .filter(|(_, link)| {
                 link.target_input() == input.name() && link.target_block_id() == input.block_id()
             })
-            .map(|link| {
-                BaseLink::<Self::Tx>::new(*link.target_block_id(), link.target_input().to_string())
-            })
+            .map(|(idx, _)| idx)
             .collect::<Vec<_>>();
 
-        links.iter().for_each(|link| self.remove_link(link));
+        links.into_iter().for_each(|index| {
+            self.links().remove(index);
+            input.increment_conn();
+        });
     }
 }

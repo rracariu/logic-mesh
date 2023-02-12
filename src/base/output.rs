@@ -1,6 +1,6 @@
 // Copyright (c) 2022-2023, IntriSemantics Corp.
 
-use libhaystack::val::kind::HaystackKind;
+use libhaystack::val::{kind::HaystackKind, Value};
 
 use super::link::{BaseLink, Link};
 
@@ -21,14 +21,22 @@ pub trait OutputProps {
 pub trait Output: OutputProps {
     type Tx: Clone;
 
+    /// Adds a link to this output
     fn add_link(&mut self, link: BaseLink<Self::Tx>);
 
+    /// Remove a link from this output
     fn remove_link(&mut self, link: &dyn Link);
+
+    /// Set this output's value by
+    /// sending this value to all the registered links
+    /// of this output.
+    fn set(&mut self, value: Value);
 }
 
 #[derive(Debug)]
 pub struct BaseOutput<L: Link> {
     desc: OutDesc,
+    pub value: Value,
     pub links: Vec<L>,
 }
 
@@ -53,6 +61,7 @@ impl<L: Link> BaseOutput<L> {
                 name: name.to_string(),
                 kind,
             },
+            value: Value::default(),
             links: Vec::new(),
         }
     }

@@ -26,10 +26,8 @@ impl Output for OutputImpl {
             self.links.remove(index);
         }
     }
-}
 
-impl OutputImpl {
-    pub fn set(&mut self, value: Value) {
+    fn set(&mut self, value: Value) {
         for link in &mut self.links {
             if let Some(tx) = &link.tx {
                 if let Err(__) = tx.try_send(value.clone()) {
@@ -39,5 +37,6 @@ impl OutputImpl {
                 }
             }
         }
+        self.value = value
     }
 }

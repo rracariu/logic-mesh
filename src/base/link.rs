@@ -28,9 +28,11 @@ pub trait Link {
     fn target_input(&self) -> &str;
 }
 
-////
 /// Base Link that uses an abstract
-/// optional transmitter type `Tx`
+/// optional transmitter type `Tx`.
+///
+/// Links connect a block output to another block's input.
+/// A block output can have multiple links to multiple block inputs.
 ///
 #[derive(Debug, Default, Clone, PartialEq)]
 pub struct BaseLink<Tx> {
