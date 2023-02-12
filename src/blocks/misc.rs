@@ -18,7 +18,7 @@ use crate::{
 use libhaystack::val::{kind::HaystackKind, Value};
 use libhaystack::{units::units_generated::MILLISECOND, val::Number};
 
-use super::{read_block_inputs, InputImpl, OutputImpl};
+use super::{InputImpl, OutputImpl};
 
 #[block]
 #[derive(BlockProps, Debug)]
@@ -53,8 +53,9 @@ impl Block for SineWave {
             if index != 0 {
                 sleep(Duration::from_millis(millis)).await;
             }
+
             self.count += 1.0;
-            self.out.set(res.into()).await;
+            self.out.set(res.into());
         } else {
             self.set_state(BlockState::Fault);
         }
@@ -80,10 +81,6 @@ fn input_as_float_or_default(input: &InputImpl) -> f64 {
             _ => None,
         })
         .unwrap_or_default()
-}
-
-fn input_as_int_or_default(input: &InputImpl) -> i64 {
-    input_as_float_or_default(input) as i64
 }
 
 fn to_millis(dur: &Number) -> Result<u64, ()> {

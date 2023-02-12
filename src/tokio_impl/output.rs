@@ -29,10 +29,10 @@ impl Output for OutputImpl {
 }
 
 impl OutputImpl {
-    pub async fn set(&mut self, value: Value) {
+    pub fn set(&mut self, value: Value) {
         for link in &mut self.links {
             if let Some(tx) = &link.tx {
-                if let Err(__) = tx.send(value.clone()).await {
+                if let Err(__) = tx.try_send(value.clone()) {
                     link.state = LinkState::Error;
                 } else {
                     link.state = LinkState::Connected;

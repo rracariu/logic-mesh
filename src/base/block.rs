@@ -16,6 +16,8 @@ pub enum BlockState {
 }
 
 /// Contains information about the block
+/// Determines the state a block is in
+#[derive(Default, Debug, Clone, PartialEq)]
 pub struct BlockDesc {
     /// The block name
     pub name: String,
