@@ -4,6 +4,7 @@ use super::input::{Input, InputProps};
 use super::link::Link;
 use super::output::Output;
 use crate::base::link::{BaseLink, LinkState};
+use libhaystack::val::kind::HaystackKind;
 use uuid::Uuid;
 
 /// Determines the state a block is in
@@ -15,6 +16,12 @@ pub enum BlockState {
     Fault,
 }
 
+#[derive(Default, Debug, Clone, PartialEq)]
+pub struct BlockMember {
+    pub name: String,
+    pub kind: HaystackKind,
+}
+
 /// Contains information about the block
 /// Determines the state a block is in
 #[derive(Default, Debug, Clone, PartialEq)]
@@ -23,6 +30,10 @@ pub struct BlockDesc {
     pub name: String,
     /// The block library
     pub library: String,
+    /// List of the inputs of the block
+    pub inputs: Vec<BlockMember>,
+    /// The output of the block
+    pub output: BlockMember,
 }
 
 ///

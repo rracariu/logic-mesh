@@ -6,10 +6,18 @@ use wasm_bindgen::prelude::wasm_bindgen;
 use crate::Engine;
 
 #[derive(Default, Serialize, Deserialize)]
+pub struct BlockFieldProp {
+    pub name: String,
+    pub kind: String,
+}
+
+#[derive(Default, Serialize, Deserialize)]
 /// Block properties
 pub struct BlockProperties {
     pub name: String,
     pub lib: String,
+    pub inputs: Vec<BlockFieldProp>,
+    pub output: BlockFieldProp,
 }
 
 #[wasm_bindgen]

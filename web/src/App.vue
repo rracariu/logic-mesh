@@ -16,7 +16,7 @@ engine.run().then(() => console.log("Running here"))
 	<div>
 		<ul>
 			<li v-for="block in blocks">
-				{{ block.name }}
+				{{ block.name }} - {{ block.output }} - {{ block.inputs }}
 			</li>
 		</ul>
 

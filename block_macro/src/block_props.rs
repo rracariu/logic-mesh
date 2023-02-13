@@ -48,16 +48,23 @@ pub(super) fn block_props_impl(ast: &syn::DeriveInput) -> TokenStream {
     let block_field_init =
         create_block_fields_init(&block_fields, &block_input_props, &block_output_props);
 
+    // Create the code for getting input and output description
+    let input_desc = create_input_desc(&block_defined_inputs, &block_input_props);
+    let out_desc = create_output_desc(&block_output_props);
+
     // The code that gets generated for the blocks
     let tokens = quote! {
 
         use lazy_static::lazy_static;
+        use crate::base::block::BlockMember;
 
         // Accessor for block static properties
         lazy_static! {
             static ref #block_desc: BlockDesc = {
                 let desc = BlockDesc {
                     #(#prop_names : #prop_values.to_string(),)*
+                    #out_desc,
+                    #input_desc
                 };
 
                 desc
@@ -185,28 +192,28 @@ fn create_block_fields_init(
 
 // Init automatic inputs defined on the block attribure
 fn create_block_defined_input_init(
-    block_input_props: &BTreeMap<String, String>,
+    block_defined_input_props: &BTreeMap<String, String>,
 ) -> proc_macro2::TokenStream {
-    if block_input_props.is_empty() {
+    if block_defined_input_props.is_empty() {
         proc_macro2::TokenStream::default()
     } else {
         let kind = format_ident!(
             "{}",
-            block_input_props
+            block_defined_input_props
                 .get("kind")
                 .cloned()
                 .unwrap_or("Null".into())
         );
 
-        let name = block_input_props
+        let name = block_defined_input_props
             .get("name")
             .cloned()
             .unwrap_or("in".into());
 
-        let count = block_input_props
+        let count = block_defined_input_props
             .get("count")
             .and_then(|e| e.parse::<usize>().ok())
-            .unwrap_or(1);
+            .unwrap_or(0);
 
         let names = (0..count).map(|i| format!("{name}{i}"));
 
@@ -303,6 +310,65 @@ fn create_output_member_ref(
 
         quote! {
             self.#out_field
+        }
+    }
+}
+
+// Create the description of the input fields
+fn create_input_desc(
+    block_defined_input_props: &BTreeMap<String, String>,
+    block_input_props: &BTreeMap<String, BTreeMap<String, String>>,
+) -> proc_macro2::TokenStream {
+    let input_field_names = block_input_props.keys();
+
+    let input_field_kinds = block_input_props
+        .iter()
+        .map(|(_, props)| format_ident!("{}", props.get("kind").cloned().unwrap_or("Null".into())));
+
+    let kind = format_ident!(
+        "{}",
+        block_defined_input_props
+            .get("kind")
+            .cloned()
+            .unwrap_or("Null".into())
+    );
+
+    let name = block_defined_input_props
+        .get("name")
+        .cloned()
+        .unwrap_or("in".into());
+
+    let count = block_defined_input_props
+        .get("count")
+        .and_then(|e| e.parse::<usize>().ok())
+        .unwrap_or(0);
+
+    let block_defined_inputs = (0..count).map(|i| format!("{name}{i}"));
+
+    quote! {
+        inputs: vec![#(BlockMember { name: #input_field_names.to_string(), kind: HaystackKind::#input_field_kinds },)*
+        #(BlockMember { name: #block_defined_inputs.to_string(), kind: HaystackKind::#kind },)*],
+    }
+}
+
+// Create the description of the output field
+fn create_output_desc(
+    block_output_props: &BTreeMap<String, BTreeMap<String, String>>,
+) -> proc_macro2::TokenStream {
+    if block_output_props.is_empty() || block_output_props.len() > 1 {
+        panic!("Block must have exactly one output field.")
+    } else {
+        let name = block_output_props.keys().next();
+
+        let kind = block_output_props
+            .iter()
+            .map(|(_, props)| {
+                format_ident!("{}", props.get("kind").cloned().unwrap_or("Null".into()))
+            })
+            .next();
+
+        quote! {
+            output: BlockMember {name: #name.to_string(), kind: HaystackKind::#kind}
         }
     }
 }
