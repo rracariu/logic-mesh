@@ -80,7 +80,7 @@ impl Engine {
     /// Schedule a block to be executed by this engine
     pub fn schedule<B: Block + 'static>(&mut self, mut block: B) {
         self.blocks
-            .insert(block.id().to_string(), block.desc().clone());
+            .insert(block.id().to_string(), B::desc().clone());
 
         let receiver = self.block_messaging.notifications.subscribe();
         let sender = self.block_messaging.messaging.sender.clone();
@@ -137,5 +137,11 @@ impl Engine {
                 })
                 .await
         }
+    }
+}
+
+impl Default for Engine {
+    fn default() -> Self {
+        Self::new()
     }
 }
