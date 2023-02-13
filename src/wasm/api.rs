@@ -5,7 +5,7 @@ use wasm_bindgen::prelude::wasm_bindgen;
 
 use crate::blocks::registry::BLOCKS;
 
-use super::types::{Desc, EngineWrap};
+use super::types::{BlockProperties, BlocksEngine};
 
 #[wasm_bindgen(js_name = "listBlocks")]
 /// Lists all available blocks
@@ -13,7 +13,7 @@ pub fn list_blocks() -> Array {
     let arr = Array::new();
 
     BLOCKS.iter().for_each(|(_, block)| {
-        let desc = Desc {
+        let desc = BlockProperties {
             name: block.name.clone(),
             lib: block.library.clone(),
         };
@@ -27,6 +27,6 @@ pub fn list_blocks() -> Array {
 }
 
 #[wasm_bindgen(js_name = "initEngine")]
-pub fn init_engine() -> EngineWrap {
-    EngineWrap::new()
+pub fn init_engine() -> BlocksEngine {
+    BlocksEngine::new()
 }

@@ -9,6 +9,7 @@
 		"preview": "vite preview"
 	},
 	"dependencies": {
+		"@vue-flow/core": "^1.14.2",
 		"logic-mesh": "file:../pkg",
 		"vite-plugin-wasm": "^3.2.1",
 		"vue": "^3.2.45"

@@ -13,6 +13,7 @@ pub mod blocks;
 mod tokio_impl;
 pub use tokio_impl::engine::*;
 
+#[cfg(target_arch = "wasm32")]
 pub mod wasm;
 
 #[cfg(test)]
@@ -27,7 +28,7 @@ mod test {
     use tokio::{runtime::Runtime, sync::mpsc, time::sleep};
     use uuid::Uuid;
 
-    #[cfg(not(tokio_wasi))]
+    #[cfg(not(target_arch = "wasm32"))]
     #[tokio::test(flavor = "current_thread")]
     async fn engine_test() {
         let mut add1 = Add::new("block1");

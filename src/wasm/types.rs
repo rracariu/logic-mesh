@@ -6,19 +6,19 @@ use wasm_bindgen::prelude::wasm_bindgen;
 use crate::Engine;
 
 #[derive(Default, Serialize, Deserialize)]
-/// Block description
-pub struct Desc {
+/// Block properties
+pub struct BlockProperties {
     pub name: String,
     pub lib: String,
 }
 
 #[wasm_bindgen]
-pub struct EngineWrap {
+pub struct BlocksEngine {
     engine: Engine,
 }
 
 #[wasm_bindgen]
-impl EngineWrap {
+impl BlocksEngine {
     #[wasm_bindgen(constructor)]
     pub fn new() -> Self {
         Self {
