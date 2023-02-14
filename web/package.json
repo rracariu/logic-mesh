@@ -10,7 +10,13 @@
 	},
 	"dependencies": {
 		"@vue-flow/core": "^1.14.2",
+		"@vue-flow/minimap": "^1.0.2",
+		"@vue-flow/controls": "^1.0.2",
+		"@vue-flow/background": "^1.0.3",
 		"logic-mesh": "file:../pkg",
+		"primeflex": "^3.3.0",
+		"primeicons": "^6.0.1",
+		"primevue": "^3.23.0",
 		"vite-plugin-wasm": "^3.2.1",
 		"vue": "^3.2.45"
 	},
