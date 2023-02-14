@@ -34,6 +34,8 @@ pub struct BlockDesc {
     pub inputs: Vec<BlockMember>,
     /// The output of the block
     pub output: BlockMember,
+    /// Block documentation
+    pub doc: String,
 }
 
 ///

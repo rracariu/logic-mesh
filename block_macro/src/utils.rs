@@ -1,7 +1,6 @@
 // Copyright (c) 2022-2023, IntriSemantics Corp.
 
 use std::collections::BTreeMap;
-
 use syn::{Attribute, Lit, Meta, NestedMeta, TypePath};
 
 ///
@@ -50,8 +49,8 @@ pub(super) fn get_block_output_props(
 /// as a map of strings
 ///
 pub(super) fn get_block_attributes(ast: &syn::DeriveInput) -> BTreeMap<String, String> {
-    let attrs: BTreeMap<String, String> = ast
-        .attrs
+    let mut attrs: BTreeMap<String, String> = BTreeMap::new();
+    ast.attrs
         .iter()
         .filter_map(|attr| {
             if let Ok(Meta::NameValue(nv)) = attr.parse_meta() {
@@ -68,7 +67,15 @@ pub(super) fn get_block_attributes(ast: &syn::DeriveInput) -> BTreeMap<String, S
                 None
             }
         })
-        .collect();
+        .for_each(|(id, val)| {
+            let val = val.trim().to_string();
+
+            if let Some(prev_val) = attrs.get(&id) {
+                attrs.insert(id, (*prev_val).clone() + &val);
+            } else {
+                attrs.insert(id, val);
+            }
+        });
     attrs
 }
 

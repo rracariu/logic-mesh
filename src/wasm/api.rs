@@ -16,6 +16,7 @@ pub fn list_blocks() -> Array {
         let desc = BlockProperties {
             name: desc.name.clone(),
             lib: desc.library.clone(),
+            doc: desc.doc.clone(),
             inputs: desc
                 .inputs
                 .iter()

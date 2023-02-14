@@ -38,7 +38,11 @@ pub(super) fn block_props_impl(ast: &syn::DeriveInput) -> TokenStream {
     let out_ref = create_output_member_ref(&block_output_props);
 
     // Block description attributes
-    let block_props_attrs = get_block_attributes(ast);
+    let mut block_props_attrs = get_block_attributes(ast);
+    if !block_props_attrs.contains_key("doc") {
+        block_props_attrs.insert("doc".to_string(), "".to_string());
+    }
+
     let prop_names = block_props_attrs.keys().map(|name| format_ident!("{name}"));
     let prop_values = block_props_attrs.values();
     let block_desc = format_ident!("_{}_DESC", block_ident.to_string().to_uppercase());
@@ -55,12 +59,11 @@ pub(super) fn block_props_impl(ast: &syn::DeriveInput) -> TokenStream {
     // The code that gets generated for the blocks
     let tokens = quote! {
 
-        use lazy_static::lazy_static;
-        use crate::base::block::BlockMember;
-
         // Accessor for block static properties
-        lazy_static! {
+        lazy_static::lazy_static! {
             static ref #block_desc: BlockDesc = {
+                use crate::base::block::BlockMember;
+
                 let desc = BlockDesc {
                     #(#prop_names : #prop_values.to_string(),)*
                     #out_desc,

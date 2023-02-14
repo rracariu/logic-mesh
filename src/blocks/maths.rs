@@ -12,6 +12,10 @@ use libhaystack::val::{kind::HaystackKind, Number, Value};
 
 use super::{read_block_inputs, InputImpl, OutputImpl};
 
+/// Performs an addition of multiple numbers from the 16 inputs
+/// this block has.
+/// The addition would take into account the units of those input's values,
+/// if the units are not convertible, the block would be in an error state.
 #[block]
 #[derive(BlockProps, Debug)]
 #[name = "Add"]

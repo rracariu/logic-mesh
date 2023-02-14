@@ -2,7 +2,7 @@
 
 use crate::base::block::{BlockDesc, BlockProps};
 use crate::blocks::maths::Add;
-use crate::blocks::misc::SineWave;
+use crate::blocks::misc::{Random, SineWave};
 use lazy_static::lazy_static;
 use std::collections::BTreeMap;
 
@@ -11,6 +11,9 @@ lazy_static! {
         let mut reg = BTreeMap::new();
 
         let desc = Add::desc();
+        reg.insert(desc.name.clone(), desc);
+
+        let desc = Random::desc();
         reg.insert(desc.name.clone(), desc);
 
         let desc = SineWave::desc();
