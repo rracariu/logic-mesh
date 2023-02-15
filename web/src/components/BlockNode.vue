@@ -10,18 +10,28 @@ const props = defineProps({
 	},
 })
 
+const pos = (index: number) => `top: ${index + index / 2 + 1}em`
+
+const blockHeight = computed(() => {
+	return `height: ${props.data.inputs.length}em; padding-top: ${props.data.inputs.length - 1 + 0.3}em;`
+})
 
 </script>
 
 <template>
-	<div style="height: 5em; padding-top: 4em;">
+	<div :style="blockHeight">
 		{{ props.data.name }}
 
-		<Handle id="a" type="target" :position="Position.Left" style="top: 1em;" class="blockInput">a</Handle>
+		<span v-for="(input, index) in props.data.inputs" :key="input.name">
+			<Handle :id="input.name" type="target" :position="Position.Left" :style="pos(index)" class="blockInput">{{
+				input.name
+			}}
+			</Handle>
+		</span>
 
-		<Handle id="b" type="target" :position="Position.Left" style="top: 2.8em;" class="blockInput">b</Handle>
-
-		<Handle id="c" type="source" :position="Position.Right" class="blockOutput">out</Handle>
+		<Handle :id="props.data.output.name" type="source" :position="Position.Right" class="blockOutput">{{
+			props.data.output.name
+		}}</Handle>
 	</div>
 </template>
 

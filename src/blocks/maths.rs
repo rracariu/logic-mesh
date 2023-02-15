@@ -10,7 +10,11 @@ use crate::base::{
 
 use libhaystack::val::{kind::HaystackKind, Number, Value};
 
-use super::{read_block_inputs, InputImpl, OutputImpl};
+use super::{
+    read_block_inputs,
+    utils::{sleep_millis, DEFAULT_SLEEP_DUR},
+    InputImpl, OutputImpl,
+};
 
 /// Performs an addition of multiple numbers from the 16 inputs
 /// this block has.
@@ -28,7 +32,12 @@ pub struct Add {
 
 impl Block for Add {
     async fn execute(&mut self) {
-        read_block_inputs(self).await;
+        let input = read_block_inputs(self).await;
+
+        if input.is_none() {
+            sleep_millis(DEFAULT_SLEEP_DUR).await;
+            return;
+        }
 
         let mut has_err = false;
 

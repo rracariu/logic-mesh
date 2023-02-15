@@ -10,7 +10,11 @@ use tokio::{
     task::LocalSet,
 };
 
-use crate::base::block::{Block, BlockDesc};
+use crate::base::block::{Block, BlockDesc, BlockProps};
+use crate::blocks::{
+    maths::Add,
+    misc::{Random, SineWave},
+};
 
 /// Creates a multi-producer single-consumer
 /// channel that listen for Engine related messages that would control
@@ -120,22 +124,56 @@ impl Engine {
     /// an execute the blocks that where scheduled
     pub async fn run(&mut self) {
         loop {
-            self.local
+            let local_tasks = &self.local;
+            let mut engine_msg = None;
+
+            local_tasks
                 .run_until(async {
-                    let _ = self.engine_messaging.receiver.recv().await;
-
-                    let _ = self
-                        .block_messaging
-                        .notifications
-                        .send("Block Ping!".into());
-
-                    let _ = self.block_messaging.messaging.receiver.try_recv();
-
-                    for sender in self.notification_listeners.values() {
-                        let _ = sender.try_send("Pong!".into());
-                    }
+                    engine_msg = self.engine_messaging.receiver.recv().await;
                 })
-                .await
+                .await;
+
+            if let Some(block_name) = engine_msg {
+                let id: Option<String> = self.add_block(block_name);
+
+                if let Some(id) = id {
+                    for sender in self.notification_listeners.values() {
+                        let _ = sender.try_send(id.clone());
+                    }
+                }
+            }
+
+            let _ = self
+                .block_messaging
+                .notifications
+                .send("Block Ping!".into());
+
+            let _ = self.block_messaging.messaging.receiver.try_recv();
+        }
+    }
+
+    fn add_block(&mut self, block_name: String) -> Option<String> {
+        match block_name.as_str() {
+            "Add" => {
+                let block = Add::new(&block_name);
+                let id = block.id().to_string();
+                self.schedule(block);
+                Some(id)
+            }
+            "Random" => {
+                let block = Random::new(&block_name);
+                let id = block.id().to_string();
+                self.schedule(block);
+                Some(id)
+            }
+            "SineWave" => {
+                let block = SineWave::new(&block_name);
+                let id = block.id().to_string();
+                self.schedule(block);
+                Some(id)
+            }
+
+            _ => None,
         }
     }
 }

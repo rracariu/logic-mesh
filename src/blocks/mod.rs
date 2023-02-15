@@ -7,6 +7,7 @@
 pub mod maths;
 pub mod misc;
 pub mod registry;
+pub mod utils;
 
 // Re-export implementations working with inputs and outputs
 
