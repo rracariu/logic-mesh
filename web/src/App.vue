@@ -17,19 +17,20 @@ const blocks = logic.listBlocks()
 const engine = logic.initEngine()
 const command = engine.engineCommand()
 
-const elements = ref([])
+const elements = ref([] as any[])
 
 const addBlock = async (block: any) => {
-	const id: string = await command.addBlock(block.name)
+	const id = await command.addBlock(block.name)
 
 	if (id) {
-
-		console.log(block)
-
 		elements.value.push(
-			{ id: id, type: 'custom', label: block.name, position: { x: 250, y: 5 }, data: { ...block } }
+			{ id: id, type: 'custom', label: block.name, position: { x: 250, y: 5 }, data: { id, ...block } }
 		)
 	}
+}
+
+const onBlockOutClick = async (id: string) => {
+	console.log(await command.inspectBlock(id))
 }
 
 engine.run().then(() => console.log("Running here"))
@@ -52,15 +53,14 @@ engine.run().then(() => console.log("Running here"))
 				<Background pattern-color="#aaa" :gap="8" />
 
 				<template #node-custom="{ data }">
-					<BlockNode :data="data" />
+					<BlockNode :data="data" @out-click="onBlockOutClick" />
 				</template>
 
 				<Controls />
 				<MiniMap></MiniMap>
 			</VueFlow>
 		</SplitterPanel>
-	</Splitter>
-
+</Splitter>
 </template>
 
 <style>

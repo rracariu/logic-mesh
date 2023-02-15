@@ -16,6 +16,8 @@ pub trait OutputProps {
     fn is_connected(&self) -> bool;
 
     fn links(&self) -> Vec<&dyn Link>;
+
+    fn value(&self) -> &Value;
 }
 
 pub trait Output: OutputProps {
@@ -43,6 +45,10 @@ pub struct BaseOutput<L: Link> {
 impl<L: Link> OutputProps for BaseOutput<L> {
     fn desc(&self) -> &OutDesc {
         &self.desc
+    }
+
+    fn value(&self) -> &Value {
+        &self.value
     }
 
     fn is_connected(&self) -> bool {

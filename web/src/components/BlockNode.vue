@@ -3,6 +3,8 @@ import { Handle, Position } from '@vue-flow/core'
 import { computed } from 'vue'
 
 
+defineEmits(['outClick'])
+
 const props = defineProps({
 	data: {
 		type: Object,
@@ -16,10 +18,12 @@ const blockHeight = computed(() => {
 	return `height: ${props.data.inputs.length}em; padding-top: ${props.data.inputs.length - 1 + 0.3}em;`
 })
 
+
+
 </script>
 
 <template>
-	<div :style="blockHeight">
+	<div :style="blockHeight" @click="$emit('outClick', props.data.id)">
 		{{ props.data.name }}
 
 		<span v-for="(input, index) in props.data.inputs" :key="input.name">
@@ -29,10 +33,12 @@ const blockHeight = computed(() => {
 			</Handle>
 		</span>
 
-		<Handle :id="props.data.output.name" type="source" :position="Position.Right" class="blockOutput">{{
-			props.data.output.name
-		}}</Handle>
-	</div>
+		<Handle :id="props.data.output.name" type="source" :position="Position.Right" class="blockOutput">
+			{{
+				props.data.output.name
+			}}
+		</Handle>
+</div>
 </template>
 
 <style>

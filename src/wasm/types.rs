@@ -1,12 +1,15 @@
 // Copyright (c) 2022-2023, IntriSemantics Corp.
 
 use std::panic;
+use std::str::FromStr;
 
 use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc::{self, Receiver, Sender};
 use uuid::Uuid;
 use wasm_bindgen::prelude::wasm_bindgen;
+use wasm_bindgen::JsValue;
 
+use crate::base::engine_messages::EngineMessage;
 use crate::Engine;
 
 /// Block field properties, inputs or output
@@ -49,9 +52,12 @@ impl BlocksEngine {
     #[wasm_bindgen(js_name = "engineCommand")]
     pub fn engine_command(&mut self) -> EngineCommand {
         let (sender, receiver) = mpsc::channel(32);
-        let engine_sender = self.engine.message_handles(Uuid::new_v4(), sender);
+
+        let uuid = Uuid::new_v4();
+        let engine_sender = self.engine.message_handles(uuid, sender);
 
         EngineCommand {
+            uuid,
             sender: engine_sender,
             receiver,
         }
@@ -69,8 +75,9 @@ impl BlocksEngine {
 /// Commands a running instance of a Block Engine.
 #[wasm_bindgen]
 pub struct EngineCommand {
-    sender: Sender<String>,
-    receiver: Receiver<String>,
+    uuid: Uuid,
+    sender: Sender<EngineMessage>,
+    receiver: Receiver<EngineMessage>,
 }
 
 #[wasm_bindgen]
@@ -79,10 +86,49 @@ impl EngineCommand {
     /// to be immediately scheduled for execution
     #[wasm_bindgen(js_name = "addBlock")]
     pub async fn add_block(&mut self, block_name: String) -> Option<String> {
-        if self.sender.send(block_name).await.is_ok() {
-            self.receiver.recv().await
+        if self
+            .sender
+            .send(EngineMessage::AddBlock(self.uuid, block_name))
+            .await
+            .is_ok()
+        {
+            self.receiver.recv().await.and_then(|msg| {
+                if let EngineMessage::BlockAdded(id) = msg {
+                    Some(id.to_string())
+                } else {
+                    None
+                }
+            })
         } else {
             None
+        }
+    }
+
+    /// Inspects the current state of a block
+    #[wasm_bindgen(js_name = "inspectBlock")]
+    pub async fn inspect_block(&mut self, block_uuid: String) -> JsValue {
+        if self
+            .sender
+            .send(EngineMessage::InspectBlock(
+                self.uuid,
+                Uuid::from_str(&block_uuid).unwrap(),
+            ))
+            .await
+            .is_ok()
+        {
+            self.receiver
+                .recv()
+                .await
+                .and_then(|msg| {
+                    if let EngineMessage::BlockData(_, data) = msg {
+                        serde_wasm_bindgen::to_value(&data).ok()
+                    } else {
+                        None
+                    }
+                })
+                .unwrap_or(JsValue::UNDEFINED)
+        } else {
+            JsValue::UNDEFINED
         }
     }
 }
