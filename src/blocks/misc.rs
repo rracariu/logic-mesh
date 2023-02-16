@@ -117,7 +117,7 @@ impl Block for Random {
         let res = rng.gen_range(min..max);
 
         if index != 0 {
-            let _ = sleep_millis(millis).await;
+            sleep_millis(millis).await;
         }
 
         self.out.set(Value::make_int(res));

@@ -3,13 +3,15 @@
 use std::panic;
 use std::str::FromStr;
 
+use crate::blocks::registry::BLOCKS;
+use js_sys::Array;
 use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc::{self, Receiver, Sender};
 use uuid::Uuid;
 use wasm_bindgen::prelude::wasm_bindgen;
 use wasm_bindgen::JsValue;
 
-use crate::base::engine_messages::EngineMessage;
+use crate::base::engine_messages::{EngineMessage, LinkData};
 use crate::Engine;
 
 /// Block field properties, inputs or output
@@ -27,6 +29,14 @@ pub struct BlockProperties {
     pub doc: String,
     pub inputs: Vec<BlockFieldProp>,
     pub output: BlockFieldProp,
+}
+
+/// Block properties
+#[derive(Default, Serialize, Deserialize)]
+pub struct LinkProperties {
+    pub source_block_uuid: String,
+    pub target_block_uuid: String,
+    pub target_block_input_name: String,
 }
 
 /// Controls the execution or the blocks.
@@ -47,6 +57,38 @@ impl BlocksEngine {
         Self {
             engine: Engine::default(),
         }
+    }
+
+    /// Lists all available blocks
+    #[wasm_bindgen(js_name = "listBlocks")]
+    pub fn list_blocks(&self) -> Array {
+        let arr = Array::new();
+
+        BLOCKS.iter().for_each(|(_, desc)| {
+            let desc = BlockProperties {
+                name: desc.name.clone(),
+                lib: desc.library.clone(),
+                doc: desc.doc.clone(),
+                inputs: desc
+                    .inputs
+                    .iter()
+                    .map(|input| BlockFieldProp {
+                        name: input.name.clone(),
+                        kind: input.kind.to_string(),
+                    })
+                    .collect(),
+                output: BlockFieldProp {
+                    name: desc.output.name.clone(),
+                    kind: desc.output.kind.to_string(),
+                },
+            };
+
+            if let Ok(desc) = serde_wasm_bindgen::to_value(&desc) {
+                arr.push(&desc);
+            }
+        });
+
+        arr
     }
 
     #[wasm_bindgen(js_name = "engineCommand")]
@@ -105,6 +147,48 @@ impl EngineCommand {
     }
 
     /// Inspects the current state of a block
+    #[wasm_bindgen(js_name = "createLink")]
+    pub async fn crate_link(
+        &mut self,
+        source_block_uuid: String,
+        target_block_uuid: String,
+        target_block_input_name: String,
+    ) -> JsValue {
+        if self
+            .sender
+            .send(EngineMessage::ConnectBlocks(
+                self.uuid,
+                LinkData {
+                    source_block_uuid: Uuid::from_str(&source_block_uuid).unwrap(),
+                    target_block_uuid: Uuid::from_str(&target_block_uuid).unwrap(),
+                    target_block_input_name,
+                },
+            ))
+            .await
+            .is_ok()
+        {
+            self.receiver
+                .recv()
+                .await
+                .and_then(|msg| {
+                    if let EngineMessage::LinkCreated(_, Some(data)) = msg {
+                        serde_wasm_bindgen::to_value(&LinkProperties {
+                            source_block_uuid: data.source_block_uuid.to_string(),
+                            target_block_uuid: data.target_block_uuid.to_string(),
+                            target_block_input_name: data.target_block_input_name,
+                        })
+                        .ok()
+                    } else {
+                        None
+                    }
+                })
+                .unwrap_or(JsValue::UNDEFINED)
+        } else {
+            JsValue::UNDEFINED
+        }
+    }
+
+    /// Inspects the current state of a block
     #[wasm_bindgen(js_name = "inspectBlock")]
     pub async fn inspect_block(&mut self, block_uuid: String) -> JsValue {
         if self
@@ -120,7 +204,7 @@ impl EngineCommand {
                 .recv()
                 .await
                 .and_then(|msg| {
-                    if let EngineMessage::BlockData(_, data) = msg {
+                    if let EngineMessage::FoundBlockData(_, data) = msg {
                         serde_wasm_bindgen::to_value(&data).ok()
                     } else {
                         None

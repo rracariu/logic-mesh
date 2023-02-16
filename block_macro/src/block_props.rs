@@ -104,10 +104,6 @@ pub(super) fn block_props_impl(ast: &syn::DeriveInput) -> TokenStream {
                 &self.id
             }
 
-            fn desc() -> &'static BlockDesc {
-                &#block_desc
-            }
-
             fn state(&self) -> BlockState {
                 self.state
             }
@@ -131,6 +127,22 @@ pub(super) fn block_props_impl(ast: &syn::DeriveInput) -> TokenStream {
 
             fn output(&self) -> &dyn Output<Tx = Self::Tx> {
                 & #out_ref
+            }
+
+            fn links(&self) -> Vec<&dyn crate::base::link::Link> {
+                self.output().links()
+            }
+
+            fn remove_link(&mut self, link: &dyn crate::base::link::Link) {
+                self.output_mut().remove_link(link)
+            }
+        }
+
+        // Implementation of the BlockDesc trait
+        // using the attributes
+        impl crate::base::block::BlockDescAccess for #block_ident {
+            fn desc() -> &'static BlockDesc {
+                &#block_desc
             }
         }
     };

@@ -48,9 +48,6 @@ pub trait BlockProps {
     /// Access the blocks uuid
     fn id(&self) -> &Uuid;
 
-    /// Access the block description
-    fn desc() -> &'static BlockDesc;
-
     /// Blocks state
     fn state(&self) -> BlockState;
 
@@ -68,16 +65,24 @@ pub trait BlockProps {
 
     /// Mutable reference to the block's output
     fn output_mut(&mut self) -> &mut dyn Output<Tx = Self::Tx>;
-}
 
-/// Block connection functions
-pub trait BlockConnect: BlockProps {
     /// List all the links this block has
     fn links(&self) -> Vec<&dyn Link>;
 
     /// Remove a link from the link collection
     fn remove_link(&mut self, link: &dyn Link);
+}
 
+///
+/// Defines the the Block description
+///
+pub trait BlockDescAccess: BlockProps {
+    /// Static access to the block description
+    fn desc() -> &'static BlockDesc;
+}
+
+/// Block connection functions
+pub trait BlockConnect: BlockDescAccess {
     /// Connect this block to the given input
     ///
     /// # Arguments
@@ -92,7 +97,7 @@ pub trait BlockConnect: BlockProps {
     fn disconnect<I: InputProps<Tx = Self::Tx>>(&mut self, input: &mut I);
 }
 
-pub trait Block: BlockProps + BlockConnect {
+pub trait Block: BlockConnect {
     async fn execute(&mut self);
 }
 
@@ -101,14 +106,6 @@ pub trait Block: BlockProps + BlockConnect {
 /// that are `Block`s
 ///
 impl<T: Block> BlockConnect for T {
-    fn links(&self) -> Vec<&dyn Link> {
-        self.output().links()
-    }
-
-    fn remove_link(&mut self, link: &dyn Link) {
-        self.output_mut().remove_link(link)
-    }
-
     fn connect<I: InputProps<Tx = Self::Tx> + ?Sized>(&mut self, input: &mut I) {
         // Don't connect to itself
         if input.block_id() == self.id() {
@@ -149,7 +146,7 @@ impl<T: Block> BlockConnect for T {
 
         links.into_iter().for_each(|index| {
             self.links().remove(index);
-            input.increment_conn();
+            input.decrement_conn();
         });
     }
 }

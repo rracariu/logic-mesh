@@ -13,8 +13,9 @@ import Button from 'primevue/Button';
 
 import BlockNode from './components/BlockNode.vue'
 
-const blocks = logic.listBlocks()
 const engine = logic.initEngine()
+
+const blocks = engine.listBlocks()
 const command = engine.engineCommand()
 
 const elements = ref([] as any[])
@@ -29,7 +30,7 @@ const addBlock = async (block: any) => {
 	}
 }
 
-const onBlockOutClick = async (id: string) => {
+const onBlockClick = async (id: string) => {
 	console.log(await command.inspectBlock(id))
 }
 
@@ -53,7 +54,7 @@ engine.run().then(() => console.log("Running here"))
 				<Background pattern-color="#aaa" :gap="8" />
 
 				<template #node-custom="{ data }">
-					<BlockNode :data="data" @out-click="onBlockOutClick" />
+					<BlockNode :data="data" @out-click="onBlockClick" />
 				</template>
 
 				<Controls />

@@ -2,6 +2,7 @@
 
 use std::collections::BTreeMap;
 
+use libhaystack::val::Value;
 use tokio::{
     sync::{
         mpsc::{self, Receiver, Sender},
@@ -13,7 +14,8 @@ use uuid::Uuid;
 
 use crate::base::{
     block::{Block, BlockDesc, BlockProps},
-    engine_messages::{BlockData, BlockInputData, BlockMessage, BlockOutputData},
+    engine_messages::{BlockData, BlockInputData, BlockMessage, BlockOutputData, LinkData},
+    link::{BaseLink, LinkState},
 };
 use crate::blocks::{
     maths::Add,
@@ -25,9 +27,9 @@ use crate::base::engine_messages::EngineMessage;
 /// Creates a multi-producer single-consumer
 /// channel that listen for Engine related messages that would control
 /// the execution of the engine or will enable inspection of block states.
-pub struct EngineMessaging<T> {
-    sender: Sender<T>,
-    receiver: Receiver<T>,
+pub struct EngineMessaging {
+    sender: Sender<EngineMessage>,
+    receiver: Receiver<EngineMessage>,
 }
 
 /// Intra engine messaging channels.
@@ -49,10 +51,10 @@ pub struct Engine {
     /// Use to schedule task on the current thread
     local: LocalSet,
     /// Blocks registered with this engine, indexed by block id
-    blocks: BTreeMap<String, BlockDesc>,
+    blocks: BTreeMap<Uuid, &'static BlockDesc>,
     /// Messaging used by external users to control
     /// and inspect this engines execution
-    engine_messaging: EngineMessaging<EngineMessage>,
+    engine_messaging: EngineMessaging,
     /// External senders that would be interested in receiving messages from the engine
     notification_listeners: BTreeMap<uuid::Uuid, Sender<EngineMessage>>,
     /// Internal messaging for used to communicate
@@ -81,9 +83,11 @@ impl Engine {
     }
 
     /// Schedule a block to be executed by this engine
-    pub fn schedule<B: Block + 'static>(&mut self, mut block: B) {
-        self.blocks
-            .insert(block.id().to_string(), B::desc().clone());
+    pub fn schedule<B: Block<Tx = Sender<Value>, Rx = Receiver<Value>> + 'static>(
+        &mut self,
+        mut block: B,
+    ) {
+        self.blocks.insert(*block.id(), B::desc());
 
         let mut receiver = self.block_messaging.notifications.subscribe();
         let sender = self.engine_messaging.sender.clone();
@@ -100,7 +104,11 @@ impl Engine {
                     let msg = &*receiver.borrow();
 
                     match msg {
-                        BlockMessage::InspectBlock(sender_uuid, uuid) => {
+                        BlockMessage::InspectBlock(sender_uuid, block_uuid) => {
+                            if block_uuid != block.id() {
+                                continue;
+                            }
+
                             let data = BlockData {
                                 id: block.id().to_string(),
                                 name: B::desc().name.clone(),
@@ -116,8 +124,7 @@ impl Engine {
                                                     .get_value()
                                                     .as_ref()
                                                     .cloned()
-                                                    .unwrap_or_default()
-                                                    .clone(),
+                                                    .unwrap_or_default(),
                                             },
                                         )
                                     })
@@ -128,10 +135,69 @@ impl Engine {
                                 },
                             };
 
-                            if uuid == block.id() {
-                                let _ =
-                                    sender.try_send(EngineMessage::BlockData(*sender_uuid, data));
+                            let _ =
+                                sender.try_send(EngineMessage::FoundBlockData(*sender_uuid, data));
+                        }
+
+                        BlockMessage::GetInputWriter(sender_uuid, link_data) => {
+                            let LinkData {
+                                source_block_uuid: _,
+                                target_block_uuid,
+                                target_block_input_name,
+                            } = link_data;
+
+                            if target_block_uuid != block.id() {
+                                continue;
                             }
+
+                            let mut inputs = block.inputs_mut();
+                            let input = inputs
+                                .iter_mut()
+                                .find(|input| input.name() == target_block_input_name);
+
+                            if let Some(input) = input {
+                                input.increment_conn();
+                                let tx = input.writer().clone();
+                                let _ = sender.try_send(EngineMessage::FoundBlockInputWriter(
+                                    *sender_uuid,
+                                    link_data.clone(),
+                                    tx,
+                                ));
+                            }
+                        }
+
+                        BlockMessage::ConnectBlocks(sender_uuid, link_data, writer) => {
+                            let LinkData {
+                                source_block_uuid,
+                                target_block_uuid,
+                                target_block_input_name,
+                            } = link_data;
+
+                            if source_block_uuid != block.id() {
+                                continue;
+                            }
+
+                            // Ignore connections to the same block and the same input.
+                            if block.links().iter().any(|link| {
+                                link.target_block_id() == target_block_uuid
+                                    && link.target_input() == target_block_input_name
+                            }) {
+                                continue;
+                            }
+
+                            let mut link = BaseLink::<Sender<Value>>::new(
+                                *target_block_uuid,
+                                target_block_input_name.to_string(),
+                            );
+
+                            link.tx = Some(writer.clone());
+                            link.state = LinkState::Connected;
+                            block.output_mut().add_link(link);
+
+                            let _ = sender.try_send(EngineMessage::LinkCreated(
+                                *sender_uuid,
+                                Some(link_data.clone()),
+                            ));
                         }
                         _ => unreachable!("Invalid block message."),
                     };
@@ -185,7 +251,7 @@ impl Engine {
                 let id = self.add_block(block_name);
 
                 if let Some(id) = id {
-                    self.reply_to_sender(sender_uuid, EngineMessage::BlockAdded(id.clone()));
+                    self.reply_to_sender(sender_uuid, EngineMessage::BlockAdded(id));
                 }
             }
 
@@ -196,8 +262,53 @@ impl Engine {
                     .send(BlockMessage::InspectBlock(sender_uuid, block_uuid));
             }
 
-            EngineMessage::BlockData(sender_uuid, data) => {
-                self.reply_to_sender(sender_uuid, EngineMessage::BlockData(sender_uuid, data));
+            EngineMessage::FoundBlockData(sender_uuid, data) => {
+                self.reply_to_sender(
+                    sender_uuid,
+                    EngineMessage::FoundBlockData(sender_uuid, data),
+                );
+            }
+
+            EngineMessage::ConnectBlocks(sender_uuid, link_data) => {
+                if (!self.blocks.contains_key(&link_data.source_block_uuid)
+                    || !self.blocks.contains_key(&link_data.target_block_uuid))
+                    || (link_data.source_block_uuid == link_data.target_block_uuid)
+                {
+                    self.reply_to_sender(
+                        sender_uuid,
+                        EngineMessage::LinkCreated(sender_uuid, None),
+                    );
+                    return;
+                }
+
+                let _ = self
+                    .block_messaging
+                    .notifications
+                    .send(BlockMessage::GetInputWriter(sender_uuid, link_data));
+            }
+
+            EngineMessage::FoundBlockInputWriter(sender_uuid, link_data, writer) => {
+                if !self.blocks.contains_key(&link_data.source_block_uuid)
+                    || !self.blocks.contains_key(&link_data.target_block_uuid)
+                {
+                    self.reply_to_sender(
+                        sender_uuid,
+                        EngineMessage::LinkCreated(sender_uuid, None),
+                    );
+                    return;
+                }
+
+                let _ = self
+                    .block_messaging
+                    .notifications
+                    .send(BlockMessage::ConnectBlocks(sender_uuid, link_data, writer));
+            }
+
+            EngineMessage::LinkCreated(sender_uuid, link_data) => {
+                self.reply_to_sender(
+                    sender_uuid,
+                    EngineMessage::LinkCreated(sender_uuid, link_data),
+                );
             }
 
             _ => unreachable!("Invalid message"),

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Handle, Position } from '@vue-flow/core'
+import { Connection, Handle, Position, ValidConnectionFunc } from '@vue-flow/core'
 import { computed } from 'vue'
 
 
@@ -12,14 +12,13 @@ const props = defineProps({
 	},
 })
 
-const pos = (index: number) => `top: ${index + index / 2 + 1}em`
+const inputHandlePos = (index: number) => `top: ${index + index / 2 + 1}em`
 
 const blockHeight = computed(() => {
 	return `height: ${props.data.inputs.length}em; padding-top: ${props.data.inputs.length - 1 + 0.3}em;`
 })
 
-
-
+const validConnection = (conn: Connection) => conn.source !== conn.target
 </script>
 
 <template>
@@ -27,13 +26,15 @@ const blockHeight = computed(() => {
 		{{ props.data.name }}
 
 		<span v-for="(input, index) in props.data.inputs" :key="input.name">
-			<Handle :id="input.name" type="target" :position="Position.Left" :style="pos(index)" class="blockInput">{{
-				input.name
-			}}
+			<Handle :id="input.name" :is-valid-connection="validConnection" type="target" :position="Position.Left"
+				:style="inputHandlePos(index)" class="blockInput">{{
+					input.name
+				}}
 			</Handle>
 		</span>
 
-		<Handle :id="props.data.output.name" type="source" :position="Position.Right" class="blockOutput">
+		<Handle :id="props.data.output.name" :is-valid-connection="validConnection" type="source" :position="Position.Right"
+			class="blockOutput">
 			{{
 				props.data.output.name
 			}}
