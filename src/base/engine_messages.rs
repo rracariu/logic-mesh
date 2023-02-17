@@ -4,7 +4,6 @@ use std::collections::BTreeMap;
 
 use libhaystack::val::Value;
 use serde::{Deserialize, Serialize};
-use tokio::sync::mpsc::Sender;
 use uuid::Uuid;
 
 /// Block input properties
@@ -42,20 +41,9 @@ pub enum EngineMessage {
     AddBlock(Uuid, String),
     BlockAdded(Uuid),
 
-    InspectBlock(Uuid, Uuid),
-    FoundBlockData(Uuid, BlockData),
+    InspectBlockReq(Uuid, Uuid),
+    FoundBlockRes(Uuid, Option<BlockData>),
 
-    ConnectBlocks(Uuid, LinkData),
-    FoundBlockInputWriter(Uuid, LinkData, Sender<Value>),
-    LinkCreated(Uuid, Option<LinkData>),
-}
-
-/// Messages that blocks accepts
-#[derive(Debug, Default, Clone)]
-pub(crate) enum BlockMessage {
-    #[default]
-    Nop,
-    InspectBlock(Uuid, Uuid),
-    GetInputWriter(Uuid, LinkData),
-    ConnectBlocks(Uuid, LinkData, Sender<Value>),
+    ConnectBlocksReq(Uuid, LinkData),
+    ConnectBlocksRes(Uuid, Option<LinkData>),
 }

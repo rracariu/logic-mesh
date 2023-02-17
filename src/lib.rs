@@ -4,6 +4,7 @@
 #![feature(async_closure)]
 #![feature(async_fn_in_trait)]
 #![feature(trait_alias)]
+#![feature(once_cell)]
 
 #[macro_use]
 extern crate block_macro;
@@ -34,6 +35,7 @@ mod test {
         let mut add1 = Add::new("block1");
 
         let mut sine1 = SineWave::new("a");
+        let sine1_id = *sine1.id();
         sine1.amplitude.val = Some(3.into());
         sine1.freq.val = Some(200.into());
         sine1.connect(add1.inputs_mut()[0]);
@@ -55,7 +57,12 @@ mod test {
             let handle = rt.spawn(async move {
                 loop {
                     sleep(Duration::from_millis(500)).await;
-                    let _ = engine_sender.send("Engine Ping!".to_string()).await;
+                    let _ = engine_sender
+                        .send(base::engine_messages::EngineMessage::InspectBlockReq(
+                            Uuid::new_v4(),
+                            sine1_id,
+                        ))
+                        .await;
 
                     let _ = receiver.try_recv();
                 }

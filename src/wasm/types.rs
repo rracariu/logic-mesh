@@ -156,7 +156,7 @@ impl EngineCommand {
     ) -> JsValue {
         if self
             .sender
-            .send(EngineMessage::ConnectBlocks(
+            .send(EngineMessage::ConnectBlocksReq(
                 self.uuid,
                 LinkData {
                     source_block_uuid: Uuid::from_str(&source_block_uuid).unwrap(),
@@ -171,7 +171,7 @@ impl EngineCommand {
                 .recv()
                 .await
                 .and_then(|msg| {
-                    if let EngineMessage::LinkCreated(_, Some(data)) = msg {
+                    if let EngineMessage::ConnectBlocksRes(_, Some(data)) = msg {
                         serde_wasm_bindgen::to_value(&LinkProperties {
                             source_block_uuid: data.source_block_uuid.to_string(),
                             target_block_uuid: data.target_block_uuid.to_string(),
@@ -193,7 +193,7 @@ impl EngineCommand {
     pub async fn inspect_block(&mut self, block_uuid: String) -> JsValue {
         if self
             .sender
-            .send(EngineMessage::InspectBlock(
+            .send(EngineMessage::InspectBlockReq(
                 self.uuid,
                 Uuid::from_str(&block_uuid).unwrap(),
             ))
@@ -204,7 +204,7 @@ impl EngineCommand {
                 .recv()
                 .await
                 .and_then(|msg| {
-                    if let EngineMessage::FoundBlockData(_, data) = msg {
+                    if let EngineMessage::FoundBlockRes(_, data) = msg {
                         serde_wasm_bindgen::to_value(&data).ok()
                     } else {
                         None

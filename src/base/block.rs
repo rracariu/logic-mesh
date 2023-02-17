@@ -48,6 +48,9 @@ pub trait BlockProps {
     /// Access the blocks uuid
     fn id(&self) -> &Uuid;
 
+    /// Access to the block's static description
+    fn desc(&self) -> &'static BlockDesc;
+
     /// Blocks state
     fn state(&self) -> BlockState;
 

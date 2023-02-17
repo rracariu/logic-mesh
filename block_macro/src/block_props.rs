@@ -104,6 +104,10 @@ pub(super) fn block_props_impl(ast: &syn::DeriveInput) -> TokenStream {
                 &self.id
             }
 
+            fn desc(&self) -> &'static BlockDesc {
+                &#block_desc
+            }
+
             fn state(&self) -> BlockState {
                 self.state
             }
