@@ -1,6 +1,5 @@
 // Copyright (c) 2022-2023, IntriSemantics Corp.
 
-use std::cell::OnceCell;
 use std::{cell::Cell, collections::BTreeMap, rc::Rc};
 
 use libhaystack::val::Value;
@@ -80,7 +79,6 @@ impl Engine {
 
         self.local.spawn_local(async move {
             let block_props = &block as &dyn BlockPropsType;
-
             let block_props_ptr = block_props as *const (dyn BlockPropsType + 'static);
 
             unsafe {
@@ -137,11 +135,11 @@ impl Engine {
         &mut self,
         block_id: &Uuid,
     ) -> Option<&mut (dyn BlockPropsType + 'static)> {
-        self.block_props.get_mut(block_id).and_then(|ptr| unsafe {
+        self.block_props.get_mut(block_id).map(|ptr| unsafe {
             let fat_ptr = (**ptr).get();
             let block_props_ptr = recomp::<dyn BlockPropsType>(fat_ptr);
 
-            Some(&mut *block_props_ptr)
+            &mut *block_props_ptr
         })
     }
 
@@ -239,20 +237,26 @@ impl Engine {
                         link.target_block_id() == &link_data.target_block_uuid
                             && link.target_input() == link_data.target_block_input_name
                     }) {
-                        let mut link = BaseLink::<Sender<Value>>::new(
-                            link_data.target_block_uuid,
-                            link_data.target_block_input_name.to_string(),
-                        );
-
-                        link.tx = tx;
-                        link.state = LinkState::Connected;
-                        source_block.output_mut().add_link(link);
-
                         self.reply_to_sender(
                             sender_uuid,
-                            EngineMessage::ConnectBlocksRes(sender_uuid, Some(link_data)),
+                            EngineMessage::ConnectBlocksRes(sender_uuid, None),
                         );
+                        return;
                     }
+
+                    let mut link = BaseLink::<Sender<Value>>::new(
+                        link_data.target_block_uuid,
+                        link_data.target_block_input_name.to_string(),
+                    );
+
+                    link.tx = tx;
+                    link.state = LinkState::Connected;
+                    source_block.output_mut().add_link(link);
+
+                    self.reply_to_sender(
+                        sender_uuid,
+                        EngineMessage::ConnectBlocksRes(sender_uuid, Some(link_data)),
+                    );
                 }
             }
 

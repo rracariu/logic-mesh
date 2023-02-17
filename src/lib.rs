@@ -4,7 +4,6 @@
 #![feature(async_closure)]
 #![feature(async_fn_in_trait)]
 #![feature(trait_alias)]
-#![feature(once_cell)]
 
 #[macro_use]
 extern crate block_macro;
