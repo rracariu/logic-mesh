@@ -2,7 +2,7 @@
 import { ref } from 'vue';
 import * as logic from 'logic-mesh'
 
-import { VueFlow } from '@vue-flow/core'
+import { Connection, VueFlow } from '@vue-flow/core'
 import { MiniMap } from '@vue-flow/minimap'
 import { Controls } from '@vue-flow/controls'
 import { Background } from '@vue-flow/background'
@@ -31,11 +31,15 @@ const addBlock = async (block: any) => {
 }
 
 const onBlockClick = async (id: string) => {
-	console.log(await command.inspectBlock(id))
+	const data = await command.inspectBlock(id)
+	console.log(data.output.val)
+}
+
+const onConnect = async (conn: Connection) => {
+	await command.createLink(conn.source, conn.target, conn.targetHandle ?? '')
 }
 
 engine.run().then(() => console.log("Running here"))
-
 
 </script>
 
@@ -49,8 +53,8 @@ engine.run().then(() => console.log("Running here"))
 			</div>
 		</SplitterPanel>
 		<SplitterPanel :size="90">
-			<VueFlow v-model="elements" :default-edge-options="{ type: 'smoothstep' }" :min-zoom="1" :max-zoom="4"
-				:elevate-edges-on-select="true" :apply-default="true" auto-connect>
+			<VueFlow v-model="elements" @connect="onConnect" :default-edge-options="{ type: 'smoothstep' }" :min-zoom="1"
+				:max-zoom="4" :elevate-edges-on-select="true" :apply-default="true" auto-connect>
 				<Background pattern-color="#aaa" :gap="8" />
 
 				<template #node-custom="{ data }">

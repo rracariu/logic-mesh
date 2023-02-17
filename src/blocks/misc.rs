@@ -1,7 +1,5 @@
 // Copyright (c) 2022-2023, IntriSemantics Corp.
 
-use std::time::Instant;
-
 use futures::{future::select_all, FutureExt};
 use rand::Rng;
 
@@ -38,16 +36,6 @@ pub struct SineWave {
     #[output(kind = "Number")]
     pub out: OutputImpl,
     count: f64,
-}
-
-trait DefaultExt {
-    fn default() -> Self;
-}
-
-impl DefaultExt for Instant {
-    fn default() -> Self {
-        Self::now()
-    }
 }
 
 impl Block for SineWave {

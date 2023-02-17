@@ -1,6 +1,14 @@
 // Copyright (c) 2022-2023, IntriSemantics Corp.
 
-use std::collections::BTreeMap;
+use std::{
+    cell::{Cell, RefCell},
+    collections::BTreeMap,
+    rc::Rc,
+    sync::{
+        atomic::{AtomicIsize, AtomicPtr},
+        Arc,
+    },
+};
 
 use libhaystack::val::Value;
 use tokio::{
@@ -52,6 +60,10 @@ pub struct Engine {
     local: LocalSet,
     /// Blocks registered with this engine, indexed by block id
     blocks: BTreeMap<Uuid, &'static BlockDesc>,
+    bbs: BTreeMap<
+        Uuid,
+        Rc<AtomicPtr<*mut dyn BlockProps<Tx = Sender<Value>, Rx = Receiver<Value>>>>,
+    >,
     /// Messaging used by external users to control
     /// and inspect this engines execution
     engine_messaging: EngineMessaging,
@@ -79,6 +91,8 @@ impl Engine {
             block_messaging: BlockMessaging {
                 notifications: block_sender,
             },
+
+            bbs: BTreeMap::default(),
         }
     }
 
@@ -92,7 +106,27 @@ impl Engine {
         let mut receiver = self.block_messaging.notifications.subscribe();
         let sender = self.engine_messaging.sender.clone();
 
+        self.bbs.insert(*block.id(), Rc::default());
+        let props = self.bbs.get_mut(block.id()).unwrap().clone();
+
         self.local.spawn_local(async move {
+            let block_ptr = &block as *const B;
+
+            let block_props_ptr = block_ptr
+                as *const (dyn BlockProps<
+                    Rx = tokio::sync::mpsc::Receiver<Value>,
+                    Tx = tokio::sync::mpsc::Sender<Value>,
+                > + 'static);
+
+            props.store(
+                block_props_ptr
+                    as *mut *mut (dyn BlockProps<
+                        Rx = tokio::sync::mpsc::Receiver<Value>,
+                        Tx = tokio::sync::mpsc::Sender<Value>,
+                    > + 'static),
+                std::sync::atomic::Ordering::Relaxed,
+            );
+
             loop {
                 block.execute().await;
 
