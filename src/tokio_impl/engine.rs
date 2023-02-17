@@ -42,7 +42,7 @@ pub struct Engine {
     /// Blocks descriptions for the blocks registered with this engine, indexed by block id
     blocks_desc: BTreeMap<Uuid, &'static BlockDesc>,
     /// Blocks registered with this engine, indexed by block id
-    block_props: BTreeMap<Uuid, Rc<Cell<[usize; 2]>>>,
+    block_props: BTreeMap<Uuid, Rc<Cell<BlockPropsPointer>>>,
     /// Messaging used by external users to control
     /// and inspect this engines execution
     engine_messaging: EngineMessaging,
@@ -81,10 +81,7 @@ impl Engine {
             let block_props = &block as &dyn BlockPropsType;
             let block_props_ptr = block_props as *const (dyn BlockPropsType + 'static);
 
-            unsafe {
-                // Store trait fat pointer
-                props.set(decomp(block_props_ptr));
-            }
+            props.set(BlockPropsPointer::new(block_props_ptr));
 
             loop {
                 block.execute().await;
@@ -129,18 +126,6 @@ impl Engine {
                 self.dispatch_message(message).await;
             }
         }
-    }
-
-    fn get_block_props_mut(
-        &mut self,
-        block_id: &Uuid,
-    ) -> Option<&mut (dyn BlockPropsType + 'static)> {
-        self.block_props.get_mut(block_id).map(|ptr| unsafe {
-            let fat_ptr = (**ptr).get();
-            let block_props_ptr = recomp::<dyn BlockPropsType>(fat_ptr);
-
-            &mut *block_props_ptr
-        })
     }
 
     async fn dispatch_message(&mut self, msg: EngineMessage) {
@@ -274,6 +259,16 @@ impl Engine {
         }
     }
 
+    fn get_block_props_mut(
+        &mut self,
+        block_id: &Uuid,
+    ) -> Option<&mut (dyn BlockPropsType + 'static)> {
+        self.block_props.get_mut(block_id).and_then(|ptr| unsafe {
+            let fat_ptr = (**ptr).get();
+            fat_ptr.get().map(|ptr| &mut *ptr)
+        })
+    }
+
     fn add_block(&mut self, block_name: String) -> Option<Uuid> {
         match block_name.as_str() {
             "Add" => {
@@ -306,24 +301,40 @@ impl Default for Engine {
     }
 }
 
-/// Decompose a fat pointer into its constituent [pointer, extdata] pair
-///
-/// # Safety
-///
-/// Must only be called with the generic, `T`, being a trait object.
-unsafe fn decomp<T: ?Sized>(ptr: *const T) -> [usize; 2] {
-    let ptr_ref: *const *const T = &ptr;
-    let decomp_ref = ptr_ref as *const [usize; 2];
-    *decomp_ref
+/// Holds a fat pointer to a BlockProps
+/// trait object.
+#[derive(Default, Clone, Copy)]
+struct BlockPropsPointer {
+    fat_pointer: [usize; 2],
 }
 
-/// Recompose a fat pointer from its constituent [pointer, extdata] pair
-///
-/// # Safety
-///
-/// Must only be called with the generic, `T`, being a trait object.
-unsafe fn recomp<T: ?Sized>(components: [usize; 2]) -> *mut T {
-    let component_ref: *const [usize; 2] = &components;
-    let ptr_ref = component_ref as *const *mut T;
-    *ptr_ref
+impl BlockPropsPointer {
+    /// Constructs the BlockProps pointer from a raw pointer to the trait
+    /// object.
+    fn new(ptr: *const dyn BlockPropsType) -> Self {
+        let ptr_ref = &ptr as *const *const dyn BlockPropsType;
+        let pointer_parts = ptr_ref as *const [usize; 2];
+
+        let fat_pointer = unsafe { *pointer_parts };
+        Self { fat_pointer }
+    }
+
+    /// Tries to get the pointer to the trait object from the fat pointer
+    /// stored.
+    /// It returns None if there is no pointer store.
+    ///
+    /// # Safety
+    /// This would be unsafe if the pointer stored is no longer valid.
+    fn get(&self) -> Option<*mut dyn BlockPropsType> {
+        if self.fat_pointer == [0; 2] {
+            None
+        } else {
+            let ptr: *mut dyn BlockPropsType = unsafe {
+                let pointer_parts: *const [usize; 2] = &self.fat_pointer;
+                let ptr_ref = pointer_parts as *const *mut dyn BlockPropsType;
+                *ptr_ref
+            };
+            unsafe { Some(&mut *ptr) }
+        }
+    }
 }
