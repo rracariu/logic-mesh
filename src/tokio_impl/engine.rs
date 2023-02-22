@@ -263,9 +263,9 @@ impl Engine {
         &mut self,
         block_id: &Uuid,
     ) -> Option<&mut (dyn BlockPropsType + 'static)> {
-        self.block_props.get_mut(block_id).and_then(|ptr| unsafe {
+        self.block_props.get_mut(block_id).and_then(|ptr| {
             let fat_ptr = (**ptr).get();
-            fat_ptr.get().map(|ptr| &mut *ptr)
+            fat_ptr.get().map(|ptr| unsafe { &mut *ptr })
         })
     }
 
@@ -329,12 +329,13 @@ impl BlockPropsPointer {
         if self.fat_pointer == [0; 2] {
             None
         } else {
-            let ptr: *mut dyn BlockPropsType = unsafe {
+            let ptr = {
                 let pointer_parts: *const [usize; 2] = &self.fat_pointer;
                 let ptr_ref = pointer_parts as *const *mut dyn BlockPropsType;
-                *ptr_ref
+                unsafe { *ptr_ref }
             };
-            unsafe { Some(&mut *ptr) }
+
+            Some(ptr)
         }
     }
 }
