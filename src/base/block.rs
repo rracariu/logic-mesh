@@ -77,7 +77,10 @@ pub trait BlockProps {
 }
 
 ///
-/// Defines the the Block description
+/// Trait for providing static access to a block description.
+///
+/// This would complement the instance method access, as the instance
+/// one allows block to be trait objects.
 ///
 pub trait BlockDescAccess: BlockProps {
     /// Static access to the block description
