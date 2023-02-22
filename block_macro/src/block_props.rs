@@ -43,9 +43,8 @@ pub(super) fn block_props_impl(ast: &syn::DeriveInput) -> TokenStream {
         block_props_attrs.insert("doc".to_string(), "".to_string());
     }
 
-    let prop_names = block_props_attrs.keys().map(|name| format_ident!("{name}"));
-    let prop_values = block_props_attrs.values();
-    let block_desc = format_ident!("_{}_DESC", block_ident.to_string().to_uppercase());
+    let block_prop_names = block_props_attrs.keys().map(|name| format_ident!("{name}"));
+    let block_prop_values = block_props_attrs.values();
 
     // Init other block fields that are not the reserved fields (id, name, state) or inputs/output to their default value
     let block_fields = get_block_fields(ast);
@@ -58,21 +57,6 @@ pub(super) fn block_props_impl(ast: &syn::DeriveInput) -> TokenStream {
 
     // The code that gets generated for the blocks
     let tokens = quote! {
-
-        // Accessor for block static properties
-        lazy_static::lazy_static! {
-            static ref #block_desc: BlockDesc = {
-                use crate::base::block::BlockMember;
-
-                let desc = BlockDesc {
-                    #(#prop_names : #prop_values.to_string(),)*
-                    #out_desc,
-                    #input_desc
-                };
-
-                desc
-            };
-        }
 
         // Generated constructors
         impl #block_ident {
@@ -105,7 +89,7 @@ pub(super) fn block_props_impl(ast: &syn::DeriveInput) -> TokenStream {
             }
 
             fn desc(&self) -> &'static BlockDesc {
-                &#block_desc
+                <Self as crate::base::block::BlockDescAccess>::desc()
             }
 
             fn state(&self) -> BlockState {
@@ -146,7 +130,20 @@ pub(super) fn block_props_impl(ast: &syn::DeriveInput) -> TokenStream {
         // using the attributes
         impl crate::base::block::BlockDescAccess for #block_ident {
             fn desc() -> &'static BlockDesc {
-                &#block_desc
+                lazy_static::lazy_static! {
+                    static ref DESC: BlockDesc = {
+                        use crate::base::block::BlockMember;
+
+                        let desc = BlockDesc {
+                            #(#block_prop_names : #block_prop_values.to_string(),)*
+                            #out_desc,
+                            #input_desc
+                        };
+
+                        desc
+                    };
+                }
+                &*DESC
             }
         }
     };
