@@ -136,7 +136,8 @@ pub(super) fn block_props_impl(ast: &syn::DeriveInput) -> TokenStream {
             fn desc() -> &'static BlockDesc {
                 lazy_static::lazy_static! {
                     static ref DESC: BlockDesc = {
-                        use crate::base::block::BlockMember;
+                        use crate::base::block::BlockDesc;
+                        use crate::base::block::props::BlockPin;
 
                         let desc = BlockDesc {
                             #(#block_prop_names : #block_prop_values.to_string(),)*
@@ -368,8 +369,8 @@ fn create_input_desc(
     let block_defined_inputs = (0..count).map(|i| format!("{name}{i}"));
 
     quote! {
-        inputs: vec![#(BlockMember { name: #input_field_names.to_string(), kind: HaystackKind::#input_field_kinds },)*
-        #(BlockMember { name: #block_defined_inputs.to_string(), kind: HaystackKind::#kind },)*],
+        inputs: vec![#(BlockPin { name: #input_field_names.to_string(), kind: HaystackKind::#input_field_kinds },)*
+        #(BlockPin { name: #block_defined_inputs.to_string(), kind: HaystackKind::#kind },)*],
     }
 }
 
@@ -384,6 +385,6 @@ fn create_output_desc(
         .map(|(_, props)| format_ident!("{}", props.get("kind").cloned().unwrap_or("Null".into())));
 
     quote! {
-        outputs: vec![#(BlockMember { name: #output_names.to_string(), kind: HaystackKind::#output_kinds },)*]
+        outputs: vec![#(BlockPin { name: #output_names.to_string(), kind: HaystackKind::#output_kinds },)*]
     }
 }
