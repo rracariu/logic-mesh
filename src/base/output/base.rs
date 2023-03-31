@@ -6,6 +6,8 @@ use uuid::Uuid;
 use crate::base::link::Link;
 
 use super::{props::OutDesc, OutputProps};
+
+/// The base implementation of an output pin
 #[derive(Debug)]
 pub struct BaseOutput<L: Link> {
     desc: OutDesc,
@@ -14,6 +16,7 @@ pub struct BaseOutput<L: Link> {
     pub block_id: Uuid,
 }
 
+/// The implementation of the OutputProps trait
 impl<L: Link> OutputProps for BaseOutput<L> {
     fn desc(&self) -> &OutDesc {
         &self.desc
@@ -37,6 +40,15 @@ impl<L: Link> OutputProps for BaseOutput<L> {
 }
 
 impl<L: Link> BaseOutput<L> {
+    /// Creates a new output pin
+    ///
+    /// # Arguments
+    /// * `name` - The name of the output pin
+    /// * `kind` - The haystack kind of the output pin
+    /// * `block_id` - The block id of the block this output pin belongs to
+    ///
+    /// # Returns
+    /// A new output pin
     pub fn new_named(name: &str, kind: HaystackKind, block_id: Uuid) -> Self {
         Self {
             desc: OutDesc {
@@ -49,6 +61,12 @@ impl<L: Link> BaseOutput<L> {
         }
     }
 
+    /// Creates a new output pin with the name "out"
+    /// # Arguments
+    /// * `kind` - The haystack kind of the output pin
+    /// * `block_id` - The block id of the block this output pin belongs to
+    /// # Returns
+    /// A new output pin
     pub fn new(kind: HaystackKind, block_id: Uuid) -> Self {
         Self::new_named("out", kind, block_id)
     }
