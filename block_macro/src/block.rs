@@ -5,6 +5,10 @@ use syn::{parse::Parser, parse_macro_input, DeriveInput};
 
 use crate::utils::get_block_input_attribute;
 
+/// The `block` attribute macro
+/// This macro is used to derive the `Block` trait for a struct
+/// It will add the `id`, `name` and `state` members to the struct
+/// It will also add the `inputs` member if the struct has inputs
 pub(super) fn block_impl(input: TokenStream) -> TokenStream {
     let mut ast = parse_macro_input!(input as DeriveInput);
 

@@ -78,10 +78,7 @@ impl Engine {
         let props = self.block_props.get_mut(block.id()).unwrap().clone();
 
         self.local.spawn_local(async move {
-            let block_props = &block as &dyn BlockPropsType;
-            let block_props_ptr = block_props as *const (dyn BlockPropsType + 'static);
-
-            props.set(BlockPropsPointer::new(block_props_ptr));
+            props.set(BlockPropsPointer::new(&block as &dyn BlockPropsType));
 
             loop {
                 block.execute().await;
@@ -309,10 +306,12 @@ struct BlockPropsPointer {
 }
 
 impl BlockPropsPointer {
-    /// Constructs the BlockProps pointer from a raw pointer to the trait
+    /// Constructs the BlockProps pointer from a ref to the trait
     /// object.
-    fn new(ptr: *const dyn BlockPropsType) -> Self {
-        let ptr_ref = &ptr as *const *const dyn BlockPropsType;
+    fn new(block: &dyn BlockPropsType) -> Self {
+        let block_props_ptr = block as *const (dyn BlockPropsType);
+
+        let ptr_ref = &block_props_ptr as *const *const dyn BlockPropsType;
         let pointer_parts = ptr_ref as *const [usize; 2];
 
         let fat_pointer = unsafe { *pointer_parts };

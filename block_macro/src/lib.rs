@@ -14,6 +14,8 @@ use block::block_impl;
 use block_props::block_props_impl;
 use proc_macro::TokenStream;
 
+/// The `block` attribute macro
+/// This macro is used to derive the `Block` trait for a struct
 #[allow(clippy::let_and_return)]
 #[proc_macro_attribute]
 pub fn block(_args: TokenStream, input: TokenStream) -> TokenStream {
@@ -24,6 +26,8 @@ pub fn block(_args: TokenStream, input: TokenStream) -> TokenStream {
     gen
 }
 
+/// The `block_props` attribute macro
+/// This macro is used to derive the `BlockProps` trait for a struct
 #[allow(clippy::let_and_return)]
 #[proc_macro_derive(BlockProps, attributes(name, library, input, output))]
 pub fn block_props(input: TokenStream) -> TokenStream {

@@ -7,6 +7,7 @@ use lazy_static::lazy_static;
 use std::collections::BTreeMap;
 
 lazy_static! {
+    /// The list of all registered blocks
     pub static ref BLOCKS: BTreeMap<String, &'static BlockDesc> = {
         let mut reg = BTreeMap::new();
 
