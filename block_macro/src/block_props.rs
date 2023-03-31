@@ -262,7 +262,7 @@ fn create_block_outputs_field_init(
         });
 
         quote! {
-            #(#out_field: OutputImpl::new_named(#output_name, HaystackKind::#kind)),*
+            #(#out_field: OutputImpl::new_named(#output_name, HaystackKind::#kind, uuid)),*
         }
     }
 }

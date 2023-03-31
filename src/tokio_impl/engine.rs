@@ -75,7 +75,11 @@ impl Engine {
         self.blocks_desc.insert(*block.id(), block.desc());
         self.block_props.insert(*block.id(), Rc::default());
 
-        let props = self.block_props.get_mut(block.id()).unwrap().clone();
+        let props = self
+            .block_props
+            .get_mut(block.id())
+            .expect("Property should be present")
+            .clone();
 
         self.local.spawn_local(async move {
             props.set(BlockPropsPointer::new(&block as &dyn BlockPropsType));
