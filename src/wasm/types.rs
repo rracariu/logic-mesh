@@ -28,7 +28,7 @@ pub struct BlockProperties {
     pub lib: String,
     pub doc: String,
     pub inputs: Vec<BlockFieldProp>,
-    pub output: BlockFieldProp,
+    pub outputs: Vec<BlockFieldProp>,
 }
 
 /// Block properties
@@ -77,10 +77,14 @@ impl BlocksEngine {
                         kind: input.kind.to_string(),
                     })
                     .collect(),
-                output: BlockFieldProp {
-                    name: desc.output.name.clone(),
-                    kind: desc.output.kind.to_string(),
-                },
+                outputs: desc
+                    .outputs
+                    .iter()
+                    .map(|output| BlockFieldProp {
+                        name: output.name.clone(),
+                        kind: output.kind.to_string(),
+                    })
+                    .collect(),
             };
 
             if let Ok(desc) = serde_wasm_bindgen::to_value(&desc) {

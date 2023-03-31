@@ -25,7 +25,7 @@ pub struct BlockData {
     pub id: String,
     pub name: String,
     pub inputs: BTreeMap<String, BlockInputData>,
-    pub output: BlockOutputData,
+    pub outputs: BTreeMap<String, BlockOutputData>,
 }
 
 #[derive(Debug, Default, Clone)]

@@ -7,7 +7,7 @@ use proc_macro2::{Group, TokenTree};
 
 use crate::utils::{
     get_block_attributes, get_block_fields, get_block_input_attribute, get_block_inputs_props,
-    get_block_output_props,
+    get_block_outputs_props,
 };
 
 ///
@@ -20,22 +20,24 @@ use crate::utils::{
 pub(super) fn block_props_impl(ast: &syn::DeriveInput) -> TokenStream {
     let block_ident = &ast.ident;
 
-    // Block input attributes
+    // Block input attributes (defined by the inputs attribute of the block)
     let block_defined_inputs = get_block_input_attribute(ast);
     let block_defined_init = create_block_defined_input_init(&block_defined_inputs);
 
+    // Block inputs
     let block_input_props = get_block_inputs_props(ast);
     let input_fields_init = create_block_input_fields_init(&block_input_props);
-    let input_mut_refs =
+    let inputs_mut_refs =
         create_input_members_ref(!block_defined_inputs.is_empty(), &block_input_props, true);
 
-    let input_refs =
+    let inputs_refs =
         create_input_members_ref(!block_defined_inputs.is_empty(), &block_input_props, false);
 
-    // Block output
-    let block_output_props = get_block_output_props(ast);
-    let output_field_init = create_block_output_field_init(&block_output_props);
-    let out_ref = create_output_member_ref(&block_output_props);
+    // Block outputs
+    let block_outputs_props = get_block_outputs_props(ast);
+    let outputs_field_init = create_block_outputs_field_init(&block_outputs_props);
+    let outputs_mut_ref = create_outputs_member_ref(&block_outputs_props, true);
+    let outputs_ref = create_outputs_member_ref(&block_outputs_props, false);
 
     // Block description attributes
     let mut block_props_attrs = get_block_attributes(ast);
@@ -49,11 +51,11 @@ pub(super) fn block_props_impl(ast: &syn::DeriveInput) -> TokenStream {
     // Init other block fields that are not the reserved fields (id, name, state) or inputs/output to their default value
     let block_fields = get_block_fields(ast);
     let block_field_init =
-        create_block_fields_init(&block_fields, &block_input_props, &block_output_props);
+        create_block_fields_init(&block_fields, &block_input_props, &block_outputs_props);
 
     // Create the code for getting input and output description
     let input_desc = create_input_desc(&block_defined_inputs, &block_input_props);
-    let out_desc = create_output_desc(&block_output_props);
+    let out_desc = create_output_desc(&block_outputs_props);
 
     // The code that gets generated for the blocks
     let tokens = quote! {
@@ -71,7 +73,7 @@ pub(super) fn block_props_impl(ast: &syn::DeriveInput) -> TokenStream {
                     name: name.to_string(),
                     state: BlockState::Stopped,
                     #block_field_init
-                    #output_field_init,
+                    #outputs_field_init,
                     #block_defined_init
                     #input_fields_init
                 }
@@ -102,27 +104,29 @@ pub(super) fn block_props_impl(ast: &syn::DeriveInput) -> TokenStream {
             }
 
             fn inputs(&self) -> Vec<&dyn Input<Rx = Self::Rx, Tx = Self::Tx>> {
-                #input_refs
+                #inputs_refs
             }
 
             fn inputs_mut(&mut self) -> Vec<&mut dyn Input<Rx = Self::Rx, Tx = Self::Tx>> {
-                #input_mut_refs
+                #inputs_mut_refs
             }
 
-            fn output_mut(&mut self) -> &mut dyn Output<Tx = Self::Tx> {
-                &mut #out_ref
+            fn outputs_mut(&mut self) -> Vec<&mut dyn Output<Tx = Self::Tx>> {
+                #outputs_mut_ref
             }
 
-            fn output(&self) -> &dyn Output<Tx = Self::Tx> {
-                & #out_ref
+            fn outputs(&self) -> Vec<&dyn Output<Tx = Self::Tx>> {
+                #outputs_ref
             }
 
             fn links(&self) -> Vec<&dyn crate::base::link::Link> {
-                self.output().links()
+                let mut res = Vec::new();
+                self.outputs().iter().for_each(|out| res.append(&mut out.links()));
+                res
             }
 
             fn remove_link(&mut self, link: &dyn crate::base::link::Link) {
-                self.output_mut().remove_link(link)
+                self.outputs_mut().iter_mut().for_each(|out| out.remove_link(link))
             }
         }
 
@@ -239,32 +243,25 @@ fn create_block_defined_input_init(
     }
 }
 
-// Create the output filed init
-fn create_block_output_field_init(
+// Create the outputS fieLd init
+fn create_block_outputs_field_init(
     block_output_props: &BTreeMap<String, BTreeMap<String, String>>,
 ) -> proc_macro2::TokenStream {
     if block_output_props.is_empty() || block_output_props.len() > 1 {
         panic!("Block must have exactly one output field.")
     } else {
-        let out_field = block_output_props
-            .keys()
-            .map(|id| format_ident!("{id}"))
-            .next();
+        let out_field = block_output_props.keys().map(|id| format_ident!("{id}"));
 
         let output_name = block_output_props
             .iter()
-            .map(|(name, props)| props.get("name").cloned().unwrap_or(name.clone()))
-            .next();
+            .map(|(name, props)| props.get("name").cloned().unwrap_or(name.clone()));
 
-        let kind = block_output_props
-            .iter()
-            .map(|(_, props)| {
-                format_ident!("{}", props.get("kind").cloned().unwrap_or("Null".into()))
-            })
-            .next();
+        let kind = block_output_props.iter().map(|(_, props)| {
+            format_ident!("{}", props.get("kind").cloned().unwrap_or("Null".into()))
+        });
 
         quote! {
-            #out_field: OutputImpl::new_named(#output_name, HaystackKind::#kind)
+            #(#out_field: OutputImpl::new_named(#output_name, HaystackKind::#kind)),*
         }
     }
 }
@@ -313,19 +310,28 @@ fn create_input_members_ref(
 }
 
 // Create the reference for the output field of the block
-fn create_output_member_ref(
+fn create_outputs_member_ref(
     block_output_props: &BTreeMap<String, BTreeMap<String, String>>,
+    mutable: bool,
 ) -> proc_macro2::TokenStream {
-    if block_output_props.is_empty() || block_output_props.len() > 1 {
-        panic!("Block must have exactly one output field.")
+    if block_output_props.is_empty() {
+        quote! {
+            Vec::default()
+        }
     } else {
-        let out_field = block_output_props
-            .keys()
-            .map(|id| format_ident!("{id}"))
-            .next();
+        let output_fields = block_output_props.keys().map(|id| format_ident!("{id}"));
+
+        let borrow = if mutable {
+            TokenTree::from(format_ident!("mut"))
+        } else {
+            TokenTree::Group(Group::new(
+                proc_macro2::Delimiter::None,
+                TokenStream::default().into(),
+            ))
+        };
 
         quote! {
-            self.#out_field
+            vec![ #(&#borrow self.#output_fields),* ]
         }
     }
 }
@@ -367,24 +373,17 @@ fn create_input_desc(
     }
 }
 
-// Create the description of the output field
+// Create the description of the outputs field
 fn create_output_desc(
     block_output_props: &BTreeMap<String, BTreeMap<String, String>>,
 ) -> proc_macro2::TokenStream {
-    if block_output_props.is_empty() || block_output_props.len() > 1 {
-        panic!("Block must have exactly one output field.")
-    } else {
-        let name = block_output_props.keys().next();
+    let output_names = block_output_props.keys();
 
-        let kind = block_output_props
-            .iter()
-            .map(|(_, props)| {
-                format_ident!("{}", props.get("kind").cloned().unwrap_or("Null".into()))
-            })
-            .next();
+    let output_kinds = block_output_props
+        .iter()
+        .map(|(_, props)| format_ident!("{}", props.get("kind").cloned().unwrap_or("Null".into())));
 
-        quote! {
-            output: BlockMember {name: #name.to_string(), kind: HaystackKind::#kind}
-        }
+    quote! {
+        outputs: vec![#(BlockMember { name: #output_names.to_string(), kind: HaystackKind::#output_kinds },)*]
     }
 }

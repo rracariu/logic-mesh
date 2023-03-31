@@ -23,7 +23,6 @@ pub struct BlockMember {
 }
 
 /// Contains information about the block
-/// Determines the state a block is in
 #[derive(Default, Debug, Clone, PartialEq)]
 pub struct BlockDesc {
     /// The block name
@@ -32,8 +31,8 @@ pub struct BlockDesc {
     pub library: String,
     /// List of the inputs of the block
     pub inputs: Vec<BlockMember>,
-    /// The output of the block
-    pub output: BlockMember,
+    /// The outputs of the block
+    pub outputs: Vec<BlockMember>,
     /// Block documentation
     pub doc: String,
 }
@@ -64,10 +63,10 @@ pub trait BlockProps {
     fn inputs_mut(&mut self) -> Vec<&mut dyn Input<Rx = Self::Rx, Tx = Self::Tx>>;
 
     /// The block output
-    fn output(&self) -> &dyn Output<Tx = Self::Tx>;
+    fn outputs(&self) -> Vec<&dyn Output<Tx = Self::Tx>>;
 
     /// Mutable reference to the block's output
-    fn output_mut(&mut self) -> &mut dyn Output<Tx = Self::Tx>;
+    fn outputs_mut(&mut self) -> Vec<&mut dyn Output<Tx = Self::Tx>>;
 
     /// List all the links this block has
     fn links(&self) -> Vec<&dyn Link>;
@@ -131,7 +130,9 @@ impl<T: Block> BlockConnect for T {
 
         link.state = LinkState::Connected;
 
-        self.output_mut().add_link(link);
+        self.outputs_mut()
+            .iter_mut()
+            .for_each(|out| out.add_link(link.clone()));
         input.increment_conn();
     }
 

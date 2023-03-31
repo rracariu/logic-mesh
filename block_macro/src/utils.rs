@@ -38,7 +38,7 @@ pub(super) fn get_block_inputs_props(
 ///
 /// Get all the output fields and their attributes
 ///
-pub(super) fn get_block_output_props(
+pub(super) fn get_block_outputs_props(
     ast: &syn::DeriveInput,
 ) -> BTreeMap<String, BTreeMap<String, String>> {
     get_block_field_props(ast, "output")

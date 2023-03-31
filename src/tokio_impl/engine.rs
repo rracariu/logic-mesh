@@ -157,10 +157,23 @@ impl Engine {
                                 )
                             })
                             .collect(),
-                        output: BlockOutputData {
-                            kind: block.output().desc().kind.to_string(),
-                            val: block.output().value().clone(),
-                        },
+                        outputs: block
+                            .inputs()
+                            .iter()
+                            .map(|input| {
+                                (
+                                    input.name().to_string(),
+                                    BlockOutputData {
+                                        kind: input.kind().to_string(),
+                                        val: input
+                                            .get_value()
+                                            .as_ref()
+                                            .cloned()
+                                            .unwrap_or_default(),
+                                    },
+                                )
+                            })
+                            .collect(),
                     };
 
                     self.reply_to_sender(
@@ -233,7 +246,10 @@ impl Engine {
 
                     link.tx = tx;
                     link.state = LinkState::Connected;
-                    source_block.output_mut().add_link(link);
+                    source_block
+                        .outputs_mut()
+                        .iter_mut()
+                        .for_each(|l| l.add_link(link.clone()));
 
                     self.reply_to_sender(
                         sender_uuid,
