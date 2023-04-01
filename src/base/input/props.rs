@@ -3,6 +3,8 @@
 use libhaystack::val::{kind::HaystackKind, Value};
 use uuid::Uuid;
 
+use crate::base::link::Link;
+
 /// A default set of values for an `Input`
 #[derive(Debug, Default)]
 pub struct InputDefault {
@@ -28,9 +30,12 @@ pub trait InputProps {
     /// The block id of the block this input belongs to
     fn block_id(&self) -> &Uuid;
 
-    /// True if this input is connected to at least one output
+    /// True if this input is connected to at least one output or input
     /// of another block
     fn is_connected(&self) -> bool;
+
+    /// Get a list of links to this output
+    fn links(&self) -> Vec<&dyn Link>;
 
     /// This input's defaults
     fn default(&self) -> &InputDefault;

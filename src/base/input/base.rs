@@ -3,11 +3,13 @@
 use libhaystack::val::{kind::HaystackKind, Value};
 use uuid::Uuid;
 
+use crate::base::link::Link;
+
 use super::{props::InputDefault, InputProps};
 
 /// The base input type
 #[derive(Debug, Default)]
-pub struct BaseInput<Rx, Tx> {
+pub struct BaseInput<Rx, Tx, L: Link> {
     /// The input's name
     pub name: String,
     /// The kind of data this input can receive
@@ -24,10 +26,12 @@ pub struct BaseInput<Rx, Tx> {
     pub val: Option<Value>,
     /// The input default values
     pub default: InputDefault,
+    /// The links to other inputs
+    pub links: Vec<L>,
 }
 
 /// Implements the `InputProps` trait for `BaseInput`
-impl<Rx, Tx: Clone> InputProps for BaseInput<Rx, Tx> {
+impl<Rx, Tx: Clone, L: Link> InputProps for BaseInput<Rx, Tx, L> {
     type Rx = Rx;
     type Tx = Tx;
 
@@ -44,7 +48,11 @@ impl<Rx, Tx: Clone> InputProps for BaseInput<Rx, Tx> {
     }
 
     fn is_connected(&self) -> bool {
-        self.connection_count > 0
+        self.connection_count > 0 || !self.links.is_empty()
+    }
+
+    fn links(&self) -> Vec<&dyn Link> {
+        self.links.iter().map(|l| l as &dyn Link).collect()
     }
 
     fn default(&self) -> &InputDefault {

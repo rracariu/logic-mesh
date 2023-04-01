@@ -8,7 +8,9 @@ use super::{Link, LinkState};
 /// optional transmitter type `Tx`.
 ///
 /// Links connect a block output to another block's input.
+/// Or, a block input to another block's input.
 /// A block output can have multiple links to multiple block inputs.
+/// A block input can have multiple links to multiple block inputs.
 ///
 #[derive(Debug, Default, Clone, PartialEq)]
 pub struct BaseLink<Tx> {
