@@ -46,4 +46,6 @@ pub enum EngineMessage {
 
     ConnectBlocksReq(Uuid, LinkData),
     ConnectBlocksRes(Uuid, Option<LinkData>),
+
+    Shutdown,
 }

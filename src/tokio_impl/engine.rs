@@ -124,6 +124,10 @@ impl Engine {
                 .await;
 
             if let Some(message) = engine_msg {
+                if matches!(message, EngineMessage::Shutdown) {
+                    break;
+                }
+
                 self.dispatch_message(message).await;
             }
         }

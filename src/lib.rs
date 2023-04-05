@@ -34,7 +34,7 @@ mod test {
         let mut add1 = Add::new("block1");
 
         let mut sine1 = SineWave::new("a");
-        let sine1_id = *sine1.id();
+
         sine1.amplitude.val = Some(3.into());
         sine1.freq.val = Some(200.into());
         sine1.connect(add1.inputs_mut()[0]);
@@ -57,10 +57,7 @@ mod test {
                 loop {
                     sleep(Duration::from_millis(500)).await;
                     let _ = engine_sender
-                        .send(base::engine_messages::EngineMessage::InspectBlockReq(
-                            Uuid::new_v4(),
-                            sine1_id,
-                        ))
+                        .send(base::engine_messages::EngineMessage::Shutdown)
                         .await;
 
                     let _ = receiver.try_recv();

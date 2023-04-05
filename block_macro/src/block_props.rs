@@ -248,8 +248,8 @@ fn create_block_defined_input_init(
 fn create_block_outputs_field_init(
     block_output_props: &BTreeMap<String, BTreeMap<String, String>>,
 ) -> proc_macro2::TokenStream {
-    if block_output_props.is_empty() || block_output_props.len() > 1 {
-        panic!("Block must have exactly one output field.")
+    if block_output_props.is_empty() {
+        panic!("Block must have at least one output field.")
     } else {
         let out_field = block_output_props.keys().map(|id| format_ident!("{id}"));
 

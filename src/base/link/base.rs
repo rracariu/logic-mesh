@@ -11,7 +11,6 @@ use super::{Link, LinkState};
 /// Or, a block input to another block's input.
 /// A block output can have multiple links to multiple block inputs.
 /// A block input can have multiple links to multiple block inputs.
-///
 #[derive(Debug, Default, Clone, PartialEq)]
 pub struct BaseLink<Tx> {
     /// Unique link id

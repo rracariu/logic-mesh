@@ -6,7 +6,7 @@ use uuid::Uuid;
 use crate::base::link::Link;
 
 /// The description of an output pin
-#[derive(Debug)]
+#[derive(Debug, Default, Clone)]
 pub struct OutDesc {
     pub name: String,
     pub kind: HaystackKind,
