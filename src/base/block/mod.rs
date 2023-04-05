@@ -73,35 +73,47 @@ mod test {
         fn set(&mut self, _value: Value) {}
     }
 
+    #[block]
+    #[derive(BlockProps, Debug, Default)]
+    #[kind = "Test"]
+    #[library = "test"]
+    #[input(kind = "Number", count = 16)]
+    struct Test {
+        #[input(kind = "Number")]
+        user_defined: InputImpl,
+        #[output(kind = "Number")]
+        out: OutputImpl,
+    }
+
+    impl Block for Test {
+        async fn execute(&mut self) {
+            self.out.value = Value::make_int(42);
+        }
+    }
+
     #[test]
     fn test_block_props_declared_inputs() {
-        #[block]
-        #[derive(BlockProps, Debug, Default)]
-        #[kind = "Test"]
-        #[library = "test"]
-        #[input(kind = "Number", count = 16)]
-        struct Test {
-            #[output(kind = "Number")]
-            out: OutputImpl,
-        }
-
-        impl Block for Test {
-            async fn execute(&mut self) {
-                self.out.value = Value::make_int(42);
-            }
-        }
-
         let test_block = &Test::new("Test") as &dyn BlockProps<Rx = String, Tx = String>;
 
         assert_eq!(test_block.desc().kind, "Test");
         assert_eq!(test_block.desc().library, "test");
         assert_eq!(test_block.state(), BlockState::Stopped);
-        assert_eq!(test_block.inputs().len(), 16);
+        assert_eq!(test_block.inputs().len(), 17);
         assert_eq!(test_block.outputs().len(), 1);
+
+        assert_eq!(
+            test_block
+                .inputs()
+                .iter()
+                .filter(|input| input.name().starts_with("in"))
+                .count(),
+            16
+        );
 
         assert!(test_block
             .inputs()
             .iter()
+            .filter(|input| input.name().starts_with("in"))
             .enumerate()
             .all(|(i, input)| input.name() == format!("in{}", i)));
 
@@ -112,6 +124,16 @@ mod test {
 
         assert!(test_block.outputs()[0].desc().name == "out");
         assert!(test_block.outputs()[0].desc().kind == HaystackKind::Number);
+        assert!(!test_block.outputs()[0].is_connected());
+    }
+
+    #[test]
+    fn test_block_outputs() {
+        let test_block = &Test::new("Test") as &dyn BlockProps<Rx = String, Tx = String>;
+
+        assert_eq!(test_block.outputs().len(), 1);
+        assert_eq!(test_block.outputs()[0].desc().name, "out");
+        assert_eq!(test_block.outputs()[0].desc().kind, HaystackKind::Number);
         assert!(!test_block.outputs()[0].is_connected());
     }
 }

@@ -26,6 +26,7 @@ pub(super) fn block_props_impl(ast: &syn::DeriveInput) -> TokenStream {
 
     // Block inputs
     let block_input_props = get_block_inputs_props(ast);
+
     let input_fields_init = create_block_input_fields_init(&block_input_props);
     let inputs_mut_refs =
         create_input_members_ref(!block_defined_inputs.is_empty(), &block_input_props, true);
@@ -56,6 +57,7 @@ pub(super) fn block_props_impl(ast: &syn::DeriveInput) -> TokenStream {
     // Create the code for getting input and output description
     let input_desc = create_input_desc(&block_defined_inputs, &block_input_props);
     let out_desc = create_output_desc(&block_outputs_props);
+    ensure_unique_outputs(&block_defined_inputs, &block_outputs_props);
 
     // The code that gets generated for the blocks
     let tokens = quote! {
@@ -160,7 +162,7 @@ pub(super) fn block_props_impl(ast: &syn::DeriveInput) -> TokenStream {
     tokens.into()
 }
 
-// Init the input fields of a block
+/// Init the input fields of a block
 fn create_block_input_fields_init(
     block_input_props: &BTreeMap<String, BTreeMap<String, String>>,
 ) -> proc_macro2::TokenStream {
@@ -182,7 +184,7 @@ fn create_block_input_fields_init(
     }
 }
 
-// Init custom fields that a user my have on a block
+/// Init custom fields that a user my have on a block
 fn create_block_fields_init(
     block_fields: &BTreeMap<String, String>,
     block_input_props: &BTreeMap<String, BTreeMap<String, String>>,
@@ -215,7 +217,7 @@ fn create_block_fields_init(
     }
 }
 
-// Init automatic inputs defined on the block attribure
+/// Init automatic inputs defined on the block attribute
 fn create_block_defined_input_init(
     block_defined_input_props: &BTreeMap<String, String>,
 ) -> proc_macro2::TokenStream {
@@ -235,10 +237,7 @@ fn create_block_defined_input_init(
             .cloned()
             .unwrap_or("in".into());
 
-        let count = block_defined_input_props
-            .get("count")
-            .and_then(|e| e.parse::<usize>().ok())
-            .unwrap_or(0);
+        let count = get_block_defined_inputs_count(block_defined_input_props).unwrap_or(0);
 
         let names = (0..count).map(|i| format!("{name}{i}"));
 
@@ -248,7 +247,7 @@ fn create_block_defined_input_init(
     }
 }
 
-// Create the outputS fieLd init
+/// Create the outputS fieLd init
 fn create_block_outputs_field_init(
     block_output_props: &BTreeMap<String, BTreeMap<String, String>>,
 ) -> proc_macro2::TokenStream {
@@ -271,8 +270,8 @@ fn create_block_outputs_field_init(
     }
 }
 
-// Create the reference for input fields for all the types of inputs:
-// block defined automatic inputs or user defined block input fields
+/// Create the reference for input fields for all the types of inputs:
+/// block defined automatic inputs or user defined block input fields
 fn create_input_members_ref(
     has_block_defined_inputs: bool,
     block_input_props: &BTreeMap<String, BTreeMap<String, String>>,
@@ -314,7 +313,7 @@ fn create_input_members_ref(
     }
 }
 
-// Create the reference for the output field of the block
+/// Create the reference for the output field of the block
 fn create_outputs_member_ref(
     block_output_props: &BTreeMap<String, BTreeMap<String, String>>,
     mutable: bool,
@@ -341,11 +340,13 @@ fn create_outputs_member_ref(
     }
 }
 
-// Create the description of the input fields
+/// Create the description of the input fields
 fn create_input_desc(
     block_defined_input_props: &BTreeMap<String, String>,
     block_input_props: &BTreeMap<String, BTreeMap<String, String>>,
 ) -> proc_macro2::TokenStream {
+    ensure_unique_inputs(block_defined_input_props, block_input_props);
+
     let input_field_names = block_input_props.keys();
 
     let input_field_kinds = block_input_props
@@ -365,10 +366,7 @@ fn create_input_desc(
         .cloned()
         .unwrap_or("in".into());
 
-    let count = block_defined_input_props
-        .get("count")
-        .and_then(|e| e.parse::<usize>().ok())
-        .unwrap_or(0);
+    let count = get_block_defined_inputs_count(block_defined_input_props).unwrap_or(0);
 
     let block_defined_inputs = (0..count).map(|i| format!("{name}{i}"));
 
@@ -378,7 +376,7 @@ fn create_input_desc(
     }
 }
 
-// Create the description of the outputs field
+/// Create the description of the outputs field
 fn create_output_desc(
     block_output_props: &BTreeMap<String, BTreeMap<String, String>>,
 ) -> proc_macro2::TokenStream {
@@ -391,4 +389,49 @@ fn create_output_desc(
     quote! {
         outputs: vec![#(BlockPin { name: #output_names.to_string(), kind: HaystackKind::#output_kinds },)*]
     }
+}
+
+/// Ensure that the block defined inputs and user defined inputs have different names
+fn ensure_unique_inputs(
+    block_defined_inputs: &BTreeMap<String, String>,
+    block_input_props: &BTreeMap<String, BTreeMap<String, String>>,
+) {
+    if let Some(count) = get_block_defined_inputs_count(block_defined_inputs) {
+        (0..count).for_each(|i| {
+		if block_input_props
+			.keys()
+			.any(|input| input == &format!("in{}", i))
+		{
+			eprintln!("Block defined input: 'in{}' shadows the user defined input with the same name.", i);
+			panic!("Block defined inputs and user defined inputs must have different names.")
+		}
+	});
+    }
+}
+
+/// Ensure that the block defined outputs do not shadow the user defined inputs
+fn ensure_unique_outputs(
+    block_defined_inputs: &BTreeMap<String, String>,
+    block_output_props: &BTreeMap<String, BTreeMap<String, String>>,
+) {
+    if let Some(count) = get_block_defined_inputs_count(block_defined_inputs) {
+        (0..count).for_each(|i| {
+		if block_output_props
+			.keys()
+			.any(|output| output == &format!("in{}", i))
+		{
+			eprintln!("Block defined output: 'in{}' shadows the user defined input with the same name.", i);
+			panic!("Block defined inputs and user defined outputs must have different names.")
+		}
+	});
+    }
+}
+
+/// Get the count of block defined inputs
+fn get_block_defined_inputs_count(
+    block_defined_inputs: &BTreeMap<String, String>,
+) -> Option<usize> {
+    block_defined_inputs
+        .get("count")
+        .and_then(|e| e.parse::<usize>().ok())
 }
