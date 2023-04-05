@@ -147,7 +147,9 @@ impl Engine {
                 if let Some(block) = self.get_block_props_mut(&block_uuid) {
                     let data = BlockData {
                         id: block.id().to_string(),
-                        name: block.desc().name.clone(),
+                        name: block.name().to_string(),
+                        kind: block.desc().kind.to_string(),
+                        library: block.desc().library.clone(),
                         inputs: block
                             .inputs()
                             .iter()
@@ -166,18 +168,14 @@ impl Engine {
                             })
                             .collect(),
                         outputs: block
-                            .inputs()
+                            .outputs()
                             .iter()
-                            .map(|input| {
+                            .map(|output| {
                                 (
-                                    input.name().to_string(),
+                                    output.desc().name.to_string(),
                                     BlockOutputData {
-                                        kind: input.kind().to_string(),
-                                        val: input
-                                            .get_value()
-                                            .as_ref()
-                                            .cloned()
-                                            .unwrap_or_default(),
+                                        kind: output.desc().kind.to_string(),
+                                        val: output.value().clone(),
                                     },
                                 )
                             })
@@ -186,12 +184,12 @@ impl Engine {
 
                     self.reply_to_sender(
                         sender_uuid,
-                        EngineMessage::FoundBlockRes(sender_uuid, Some(data)),
+                        EngineMessage::InspectBlockRes(sender_uuid, Some(data)),
                     );
                 } else {
                     self.reply_to_sender(
                         sender_uuid,
-                        EngineMessage::FoundBlockRes(sender_uuid, None),
+                        EngineMessage::InspectBlockRes(sender_uuid, None),
                     );
                 }
             }

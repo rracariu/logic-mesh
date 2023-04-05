@@ -29,7 +29,7 @@ pub fn block(_args: TokenStream, input: TokenStream) -> TokenStream {
 /// The `block_props` attribute macro
 /// This macro is used to derive the `BlockProps` trait for a struct
 #[allow(clippy::let_and_return)]
-#[proc_macro_derive(BlockProps, attributes(name, library, input, output))]
+#[proc_macro_derive(BlockProps, attributes(kind, library, input, output))]
 pub fn block_props(input: TokenStream) -> TokenStream {
     let ast: syn::DeriveInput = syn::parse(input).unwrap();
 

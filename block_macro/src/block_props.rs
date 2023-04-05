@@ -90,6 +90,10 @@ pub(super) fn block_props_impl(ast: &syn::DeriveInput) -> TokenStream {
                 &self.id
             }
 
+            fn name(&self) -> &str {
+                &self.name
+            }
+
             fn desc(&self) -> &'static BlockDesc {
                 <Self as crate::base::block::BlockDescAccess>::desc()
             }

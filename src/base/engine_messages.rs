@@ -24,6 +24,8 @@ pub struct BlockOutputData {
 pub struct BlockData {
     pub id: String,
     pub name: String,
+    pub kind: String,
+    pub library: String,
     pub inputs: BTreeMap<String, BlockInputData>,
     pub outputs: BTreeMap<String, BlockOutputData>,
 }
@@ -42,7 +44,7 @@ pub enum EngineMessage {
     BlockAdded(Uuid),
 
     InspectBlockReq(Uuid, Uuid),
-    FoundBlockRes(Uuid, Option<BlockData>),
+    InspectBlockRes(Uuid, Option<BlockData>),
 
     ConnectBlocksReq(Uuid, LinkData),
     ConnectBlocksRes(Uuid, Option<LinkData>),

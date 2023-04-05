@@ -16,6 +16,9 @@ pub trait BlockProps {
     /// Blocks unique id
     fn id(&self) -> &Uuid;
 
+    /// Blocks instance name
+    fn name(&self) -> &str;
+
     /// Block's static description
     fn desc(&self) -> &'static BlockDesc;
 

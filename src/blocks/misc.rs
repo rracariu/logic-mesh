@@ -26,7 +26,7 @@ use super::{
 /// the frequency and the amplitude inputs.
 #[block]
 #[derive(BlockProps, Debug)]
-#[name = "SineWave"]
+#[kind = "SineWave"]
 #[library = "math"]
 pub struct SineWave {
     #[input(kind = "Number")]
@@ -69,7 +69,7 @@ impl Block for SineWave {
 /// The defaults are 0 and 100.
 #[block]
 #[derive(BlockProps, Debug)]
-#[name = "Random"]
+#[kind = "Random"]
 #[library = "math"]
 pub struct Random {
     #[input(kind = "Number")]

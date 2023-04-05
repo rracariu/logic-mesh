@@ -23,6 +23,7 @@ mod test {
     use crate::base;
     use crate::blocks::{maths::Add, misc::SineWave};
     use base::block::{BlockConnect, BlockProps};
+    use base::engine_messages::EngineMessage::{InspectBlockReq, InspectBlockRes, Shutdown};
 
     use crate::tokio_impl::engine::Engine;
     use tokio::{runtime::Runtime, sync::mpsc, time::sleep};
@@ -32,6 +33,7 @@ mod test {
     #[tokio::test(flavor = "current_thread")]
     async fn engine_test() {
         let mut add1 = Add::new("block1");
+        let add_uuid = *add1.id();
 
         let mut sine1 = SineWave::new("a");
 
@@ -48,19 +50,35 @@ mod test {
         let mut eng = Engine::new();
 
         let (sender, mut receiver) = mpsc::channel(32);
-        let engine_sender = eng.message_handles(Uuid::new_v4(), sender.clone());
+        let channel_id = Uuid::new_v4();
+        let engine_sender = eng.message_handles(channel_id, sender.clone());
 
         thread::spawn(move || {
             let rt = Runtime::new().expect("RT");
 
             let handle = rt.spawn(async move {
                 loop {
-                    sleep(Duration::from_millis(500)).await;
+                    sleep(Duration::from_millis(300)).await;
+
                     let _ = engine_sender
-                        .send(base::engine_messages::EngineMessage::Shutdown)
+                        .send(InspectBlockReq(channel_id, add_uuid))
                         .await;
 
-                    let _ = receiver.try_recv();
+                    let res = receiver.recv().await;
+
+                    if let Some(InspectBlockRes(id, Some(data))) = res {
+                        assert_eq!(id, channel_id);
+                        assert_eq!(data.id, add_uuid.to_string());
+                        assert_eq!(data.name, "block1");
+                        assert_eq!(data.kind, "Add");
+                        assert_eq!(data.inputs.len(), 16);
+                        assert_eq!(data.outputs.len(), 1);
+                    } else {
+                        assert!(false, "Failed to find block: {:?}", res)
+                    }
+
+                    let _ = engine_sender.send(Shutdown).await;
+                    break;
                 }
             });
 

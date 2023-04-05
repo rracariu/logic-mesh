@@ -77,7 +77,7 @@ mod test {
     fn test_block_props_declared_inputs() {
         #[block]
         #[derive(BlockProps, Debug, Default)]
-        #[name = "Test"]
+        #[kind = "Test"]
         #[library = "test"]
         #[input(kind = "Number", count = 16)]
         struct Test {
@@ -93,7 +93,7 @@ mod test {
 
         let test_block = &Test::new("Test") as &dyn BlockProps<Rx = String, Tx = String>;
 
-        assert_eq!(test_block.desc().name, "Test");
+        assert_eq!(test_block.desc().kind, "Test");
         assert_eq!(test_block.desc().library, "test");
         assert_eq!(test_block.state(), BlockState::Stopped);
         assert_eq!(test_block.inputs().len(), 16);

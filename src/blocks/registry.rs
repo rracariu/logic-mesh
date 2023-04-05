@@ -12,13 +12,13 @@ lazy_static! {
         let mut reg = BTreeMap::new();
 
         let desc = Add::desc();
-        reg.insert(desc.name.clone(), desc);
+        reg.insert(desc.kind.clone(), desc);
 
         let desc = Random::desc();
-        reg.insert(desc.name.clone(), desc);
+        reg.insert(desc.kind.clone(), desc);
 
         let desc = SineWave::desc();
-        reg.insert(desc.name.clone(), desc);
+        reg.insert(desc.kind.clone(), desc);
 
         reg
     };

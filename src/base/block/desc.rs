@@ -8,8 +8,8 @@ use super::props::BlockPin;
 /// inspect its inputs and outputs.
 #[derive(Default, Debug, Clone, PartialEq)]
 pub struct BlockDesc {
-    /// The block name
-    pub name: String,
+    /// The block kind
+    pub kind: String,
     /// The block library
     pub library: String,
     /// List of the inputs of the block
