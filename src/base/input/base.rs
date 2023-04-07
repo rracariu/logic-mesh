@@ -1,5 +1,9 @@
 // Copyright (c) 2022-2023, IntriSemantics Corp.
 
+//!
+//! Defines the base input type
+//!
+
 use libhaystack::val::{kind::HaystackKind, Value};
 use uuid::Uuid;
 

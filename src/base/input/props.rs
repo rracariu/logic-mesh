@@ -1,5 +1,9 @@
 // Copyright (c) 2022-2023, IntriSemantics Corp.
 
+//!
+//! Defines the block input properties trait
+//!
+
 use libhaystack::val::{kind::HaystackKind, Value};
 use uuid::Uuid;
 

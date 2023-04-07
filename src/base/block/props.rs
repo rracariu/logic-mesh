@@ -1,5 +1,9 @@
 // Copyright (c) 2022-2023, IntriSemantics Corp.
 
+//!
+//! Defines the block properties
+//!
+
 use libhaystack::val::kind::HaystackKind;
 use uuid::Uuid;
 

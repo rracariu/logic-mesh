@@ -1,5 +1,9 @@
 // Copyright (c) 2022-2023, IntriSemantics Corp.
 
+//!
+//! Defines the block connection trait
+//!
+
 use super::props::BlockDescAccess;
 use super::Block;
 use crate::base::input::InputProps;

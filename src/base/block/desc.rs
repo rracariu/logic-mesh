@@ -1,5 +1,9 @@
 // Copyright (c) 2022-2023, IntriSemantics Corp.
 
+//!
+//! Defines the block description
+//!
+
 use super::props::BlockPin;
 
 /// Description of a block.
