@@ -8,12 +8,9 @@ use tokio::sync::mpsc::{channel, Receiver, Sender};
 use libhaystack::val::{kind::HaystackKind, Value};
 use uuid::Uuid;
 
-use crate::base::{
-    input::{BaseInput, Input, InputDefault, InputReceiver},
-    link::BaseLink,
-};
+use crate::base::input::{BaseInput, Input, InputDefault, InputReceiver};
 
-pub type InputImpl = BaseInput<Receiver<Value>, Sender<Value>, BaseLink<Sender<Value>>>;
+pub type InputImpl = BaseInput<Receiver<Value>, Sender<Value>>;
 
 impl InputImpl {
     pub fn new(name: &str, kind: HaystackKind, block_id: Uuid) -> Self {

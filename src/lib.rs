@@ -32,20 +32,24 @@ mod test {
     #[cfg(not(target_arch = "wasm32"))]
     #[tokio::test(flavor = "current_thread")]
     async fn engine_test() {
+        use crate::base::block::connect::connect_output;
+
         let mut add1 = Add::new("block1");
         let add_uuid = *add1.id();
 
-        let mut sine1 = SineWave::new("a");
+        let mut sine1 = SineWave::new("sine1");
 
         sine1.amplitude.val = Some(3.into());
         sine1.freq.val = Some(200.into());
-        sine1.connect(add1.inputs_mut()[0]);
+        connect_output(&mut sine1.out, add1.inputs_mut()[0]).expect("Connected");
 
-        let mut sine2 = SineWave::new("b");
+        let mut sine2 = SineWave::new("sine2");
         sine2.amplitude.val = Some(7.into());
         sine2.freq.val = Some(400.into());
 
-        sine2.connect(add1.inputs_mut()[1]);
+        sine2
+            .connect_output("out", add1.inputs_mut()[1])
+            .expect("Connected");
 
         let mut eng = Engine::new();
 

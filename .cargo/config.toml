@@ -6,4 +6,7 @@
 #            "--cfg", 'feature="timezone-db"',
 #            "--cfg", 'feature="encoders"', 
 #            "--cfg", 'feature="zinc"', 
-#            "--cfg", 'feature="zinc-encoding"']
+#            "--cfg", 'feature="zinc-encoding"',
+#			"--cfg", 'feature="json"', 
+#            "--cfg", 'feature="json-encoding"',
+#			"--cfg", 'feature="json-decoding"']

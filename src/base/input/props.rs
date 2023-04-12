@@ -7,7 +7,7 @@
 use libhaystack::val::{kind::HaystackKind, Value};
 use uuid::Uuid;
 
-use crate::base::link::Link;
+use crate::base::link::{BaseLink, Link};
 
 /// A default set of values for an `Input`
 #[derive(Debug, Default)]
@@ -40,6 +40,21 @@ pub trait InputProps {
 
     /// Get a list of links to this output
     fn links(&self) -> Vec<&dyn Link>;
+
+    /// Adds a link to this output
+    fn add_link(&mut self, link: BaseLink<Self::Tx>);
+
+    /// Remove a link from this input
+    /// # Arguments
+    /// - link: The link to be removed
+    fn remove_link(&mut self, link: &dyn Link) {
+        self.remove_link_by_id(link.id())
+    }
+
+    /// Remove a link by id from this input
+    /// # Arguments
+    /// - link_id: The id of the link to be removed
+    fn remove_link_by_id(&mut self, link_id: &Uuid);
 
     /// This input's defaults
     fn default(&self) -> &InputDefault;

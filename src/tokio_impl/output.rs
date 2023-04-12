@@ -6,7 +6,7 @@ use libhaystack::val::Value;
 
 use crate::base::{
     input::InputProps,
-    link::{BaseLink, Link, LinkState},
+    link::{BaseLink, LinkState},
     output::{BaseOutput, Output},
 };
 
@@ -21,10 +21,8 @@ impl Output for OutputImpl {
         self.links.push(link);
     }
 
-    fn remove_link(&mut self, link: &dyn Link) {
-        if let Some(index) = self.links.iter().position(|l| l.id == *link.id()) {
-            self.links.remove(index);
-        }
+    fn remove_link_by_id(&mut self, link_id: &uuid::Uuid) {
+        self.links.retain(|l| l.id != *link_id);
     }
 
     fn set(&mut self, value: Value) {

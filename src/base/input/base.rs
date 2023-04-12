@@ -7,14 +7,14 @@
 use libhaystack::val::{kind::HaystackKind, Value};
 use uuid::Uuid;
 
-use crate::base::link::Link;
+use crate::base::link::{BaseLink, Link};
 
 use super::{props::InputDefault, InputProps};
 
 /// The base input type
 #[derive(Debug, Default)]
-pub struct BaseInput<Rx, Tx, L: Link> {
-    /// The input's name
+pub struct BaseInput<Rx, Tx> {
+    /// The block unique input's name
     pub name: String,
     /// The kind of data this input can receive
     pub kind: HaystackKind,
@@ -31,11 +31,11 @@ pub struct BaseInput<Rx, Tx, L: Link> {
     /// The input default values
     pub default: InputDefault,
     /// The links to other inputs
-    pub links: Vec<L>,
+    pub links: Vec<BaseLink<Tx>>,
 }
 
 /// Implements the `InputProps` trait for `BaseInput`
-impl<Rx, Tx: Clone, L: Link> InputProps for BaseInput<Rx, Tx, L> {
+impl<Rx, Tx: Clone> InputProps for BaseInput<Rx, Tx> {
     type Rx = Rx;
     type Tx = Tx;
 
@@ -57,6 +57,14 @@ impl<Rx, Tx: Clone, L: Link> InputProps for BaseInput<Rx, Tx, L> {
 
     fn links(&self) -> Vec<&dyn Link> {
         self.links.iter().map(|l| l as &dyn Link).collect()
+    }
+
+    fn add_link(&mut self, link: BaseLink<Self::Tx>) {
+        self.links.push(link)
+    }
+
+    fn remove_link_by_id(&mut self, link_id: &Uuid) {
+        self.links.retain(|l| l.id() != link_id)
     }
 
     fn default(&self) -> &InputDefault {

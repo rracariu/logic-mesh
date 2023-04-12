@@ -10,12 +10,12 @@ use uuid::Uuid;
 
 use crate::base::{
     input::{BaseInput, Input, InputProps, InputReceiver},
-    link::{BaseLink, Link},
+    link::BaseLink,
     output::{BaseOutput, Output},
 };
 use libhaystack::val::{kind::HaystackKind, Value};
 
-pub type InputImpl = BaseInput<String, String, BaseLink<String>>;
+pub type InputImpl = BaseInput<String, String>;
 
 impl InputImpl {
     pub fn new(name: &str, kind: HaystackKind, block_id: Uuid) -> Self {
@@ -46,7 +46,7 @@ impl Output for OutputImpl {
     type Tx = <InputImpl as InputProps>::Tx;
     fn add_link(&mut self, _link: BaseLink<Self::Tx>) {}
 
-    fn remove_link(&mut self, _link: &dyn Link) {}
+    fn remove_link_by_id(&mut self, _link_id: &Uuid) {}
 
     fn set(&mut self, _value: Value) {}
 }
