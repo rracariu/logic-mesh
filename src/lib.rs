@@ -23,9 +23,10 @@ mod test {
     use crate::base;
     use crate::blocks::{maths::Add, misc::SineWave};
     use base::block::{BlockConnect, BlockProps};
-    use base::engine_messages::EngineMessage::{InspectBlockReq, InspectBlockRes, Shutdown};
+    use base::engine::messages::EngineMessage::{InspectBlockReq, InspectBlockRes, Shutdown};
 
-    use crate::tokio_impl::engine::Engine;
+    use crate::tokio_impl::engine::single_threaded::LocalSetEngine;
+    use base::engine::Engine;
     use tokio::{runtime::Runtime, sync::mpsc, time::sleep};
     use uuid::Uuid;
 
@@ -51,7 +52,7 @@ mod test {
             .connect_output("out", add1.inputs_mut()[1])
             .expect("Connected");
 
-        let mut eng = Engine::new();
+        let mut eng = LocalSetEngine::new();
 
         let (sender, mut receiver) = mpsc::channel(32);
         let channel_id = Uuid::new_v4();

@@ -11,15 +11,16 @@ use uuid::Uuid;
 
 use crate::base::{
     block::{Block, BlockDesc, BlockProps},
-    engine_messages::{BlockData, BlockInputData, BlockOutputData},
+    engine::{
+        messages::{BlockData, BlockInputData, BlockOutputData, EngineMessage},
+        Engine,
+    },
     link::{BaseLink, LinkState},
 };
 use crate::blocks::{
     maths::Add,
     misc::{Random, SineWave},
 };
-
-use crate::base::engine_messages::EngineMessage;
 
 /// Creates a multi-producer single-consumer
 /// channel that listen for Engine related messages that would control
@@ -36,7 +37,7 @@ trait BlockPropsType = BlockProps<Tx = Sender<Value>, Rx = Receiver<Value>>;
 ///
 /// Each block would be executed inside a local task in the engine's local context.
 ///
-pub struct Engine {
+pub struct LocalSetEngine {
     /// Use to schedule task on the current thread
     local: LocalSet,
     /// Blocks descriptions for the blocks registered with this engine, indexed by block id
@@ -50,28 +51,13 @@ pub struct Engine {
     notification_listeners: BTreeMap<uuid::Uuid, Sender<EngineMessage>>,
 }
 
-impl Engine {
-    /// Construct
-    pub fn new() -> Self {
-        let (engine_sender, engine_receiver) = mpsc::channel(32);
+impl Engine for LocalSetEngine {
+    type Tx = Sender<Value>;
+    type Rx = Receiver<Value>;
 
-        Self {
-            local: LocalSet::new(),
-            blocks_desc: BTreeMap::default(),
-            block_props: BTreeMap::default(),
-            engine_messaging: EngineMessaging {
-                sender: engine_sender,
-                receiver: engine_receiver,
-            },
-            notification_listeners: BTreeMap::default(),
-        }
-    }
+    type Sender<M> = Sender<EngineMessage>;
 
-    /// Schedule a block to be executed by this engine
-    pub fn schedule<B: Block<Tx = Sender<Value>, Rx = Receiver<Value>> + 'static>(
-        &mut self,
-        mut block: B,
-    ) {
+    fn schedule<B: Block<Tx = Self::Tx, Rx = Self::Rx> + 'static>(&mut self, mut block: B) {
         self.blocks_desc.insert(*block.id(), block.desc());
         self.block_props.insert(*block.id(), Rc::default());
 
@@ -90,29 +76,7 @@ impl Engine {
         });
     }
 
-    /// Get a handle to this engines messaging system so external
-    /// systems can communicate with this engine.
-    ///
-    /// # Arguments
-    /// - sender_id The sender unique id.
-    /// - sender The chanel to send notifications from the engine.
-    ///
-    /// # Returns
-    /// A sender chanel that is used to send messages to the engine.
-    ///
-    pub fn message_handles(
-        &mut self,
-        sender_id: uuid::Uuid,
-        sender: Sender<EngineMessage>,
-    ) -> Sender<EngineMessage> {
-        self.notification_listeners.insert(sender_id, sender);
-
-        self.engine_messaging.sender.clone()
-    }
-
-    /// Runs the event loop of this engine
-    /// an execute the blocks that where scheduled
-    pub async fn run(&mut self) {
+    async fn run(&mut self) {
         loop {
             let local_tasks = &self.local;
             let mut engine_msg = None;
@@ -130,6 +94,34 @@ impl Engine {
 
                 self.dispatch_message(message).await;
             }
+        }
+    }
+
+    fn message_handles(
+        &mut self,
+        sender_id: uuid::Uuid,
+        sender: Self::Sender<EngineMessage>,
+    ) -> Self::Sender<EngineMessage> {
+        self.notification_listeners.insert(sender_id, sender);
+
+        self.engine_messaging.sender.clone()
+    }
+}
+
+impl LocalSetEngine {
+    /// Construct
+    pub fn new() -> Self {
+        let (engine_sender, engine_receiver) = mpsc::channel(32);
+
+        Self {
+            local: LocalSet::new(),
+            blocks_desc: BTreeMap::default(),
+            block_props: BTreeMap::default(),
+            engine_messaging: EngineMessaging {
+                sender: engine_sender,
+                receiver: engine_receiver,
+            },
+            notification_listeners: BTreeMap::default(),
         }
     }
 
@@ -314,7 +306,7 @@ impl Engine {
     }
 }
 
-impl Default for Engine {
+impl Default for LocalSetEngine {
     fn default() -> Self {
         Self::new()
     }
