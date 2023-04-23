@@ -1,13 +1,17 @@
 // Copyright (c) 2022-2023, IntriSemantics Corp.
 
 use crate::base::block::{Block, BlockDesc, BlockDescAccess, BlockProps};
+use crate::base::input::InputProps;
 use crate::blocks::maths::Add;
 use crate::blocks::misc::{Random, SineWave};
 use lazy_static::lazy_static;
 use std::collections::BTreeMap;
 use std::sync::Mutex;
 
-type DynBlock = dyn BlockProps<Rx = <Add as BlockProps>::Rx, Tx = <Add as BlockProps>::Tx>;
+use super::InputImpl;
+
+type DynBlock =
+    dyn BlockProps<Rx = <InputImpl as InputProps>::Rx, Tx = <InputImpl as InputProps>::Tx>;
 type MapType = BTreeMap<String, BlockData>;
 type BlockRegistry = Mutex<MapType>;
 
@@ -17,7 +21,9 @@ pub struct BlockData {
 }
 
 lazy_static! {
-    /// The list of all registered blocks
+    /// The block registry
+    /// This is a static variable that is initialized once and then
+    /// used throughout the lifetime of the program.
     pub static ref  BLOCKS: BlockRegistry = {
         let mut reg = BTreeMap::new();
         register_impl::<Add>(&mut reg);
@@ -27,31 +33,40 @@ lazy_static! {
         reg.into()
     };
 }
+/// Get a block from the registry
+/// # Arguments
+/// - name: The name of the block to get
+/// # Returns
+/// A boxed block
+pub fn make(name: &str) -> Option<Box<DynBlock>> {
+    let reg = BLOCKS.lock().expect("Block registry is locked");
 
-fn make(name: &str) -> Box<DynBlock> {
-    if let Ok(reg) = BLOCKS.lock() {
-        if let Some(data) = reg.get(name) {
-            (data.make)()
-        } else {
-            panic!("Failed to lock block registry");
-        }
+    if let Some(data) = reg.get(name) {
+        Some((data.make)())
     } else {
-        panic!("Failed to lock block registry");
+        None
     }
 }
 
+/// Register a block with the registry
+/// # Arguments
+/// - B: The block type to register
+/// # Panics
+/// Panics if the block registry is already locked
 pub fn register<
-    B: Block<Rx = <Add as BlockProps>::Rx, Tx = <Add as BlockProps>::Tx> + Default + 'static,
+    B: Block<Rx = <InputImpl as InputProps>::Rx, Tx = <InputImpl as InputProps>::Tx>
+        + Default
+        + 'static,
 >() {
-    let reg = BLOCKS.lock();
+    let mut reg = BLOCKS.lock().expect("Block registry is locked");
 
-    if let Ok(mut reg) = reg {
-        register_impl::<B>(&mut reg);
-    }
+    register_impl::<B>(&mut reg);
 }
 
 fn register_impl<
-    B: Block<Rx = <Add as BlockProps>::Rx, Tx = <Add as BlockProps>::Tx> + Default + 'static,
+    B: Block<Rx = <InputImpl as InputProps>::Rx, Tx = <InputImpl as InputProps>::Tx>
+        + Default
+        + 'static,
 >(
     reg: &mut MapType,
 ) {
