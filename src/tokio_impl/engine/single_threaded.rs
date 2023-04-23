@@ -97,7 +97,7 @@ impl Engine for LocalSetEngine {
         }
     }
 
-    fn message_handles(
+    fn create_message_channel(
         &mut self,
         sender_id: uuid::Uuid,
         sender: Self::Sender<EngineMessage>,
@@ -140,7 +140,6 @@ impl LocalSetEngine {
                     let data = BlockData {
                         id: block.id().to_string(),
                         name: block.name().to_string(),
-                        kind: block.desc().kind.to_string(),
                         library: block.desc().library.clone(),
                         inputs: block
                             .inputs()
@@ -283,19 +282,19 @@ impl LocalSetEngine {
     fn add_block(&mut self, block_name: String) -> Option<Uuid> {
         match block_name.as_str() {
             "Add" => {
-                let block = Add::new(&block_name);
+                let block = Add::new();
                 let id = *block.id();
                 self.schedule(block);
                 Some(id)
             }
             "Random" => {
-                let block = Random::new(&block_name);
+                let block = Random::new();
                 let id = *block.id();
                 self.schedule(block);
                 Some(id)
             }
             "SineWave" => {
-                let block = SineWave::new(&block_name);
+                let block = SineWave::new();
                 let id = *block.id();
                 self.schedule(block);
                 Some(id)

@@ -43,8 +43,8 @@ mod test {
     use libhaystack::val::{kind::HaystackKind, Value};
 
     #[block]
-    #[derive(BlockProps, Debug, Default)]
-    #[kind = "Test"]
+    #[derive(BlockProps, Debug)]
+    #[name = "Test"]
     #[library = "test"]
     #[input(kind = "Number", count = 16)]
     struct Test {
@@ -62,9 +62,9 @@ mod test {
 
     #[test]
     fn test_block_props_declared_inputs() {
-        let test_block = &Test::new("Test") as &dyn BlockProps<Rx = String, Tx = String>;
+        let test_block = &Test::new() as &dyn BlockProps<Rx = String, Tx = String>;
 
-        assert_eq!(test_block.desc().kind, "Test");
+        assert_eq!(test_block.desc().name, "Test");
         assert_eq!(test_block.desc().library, "test");
         assert_eq!(test_block.state(), BlockState::Stopped);
         assert_eq!(test_block.inputs().len(), 17);
@@ -98,7 +98,7 @@ mod test {
 
     #[test]
     fn test_block_outputs() {
-        let test_block = &Test::new("Test") as &dyn BlockProps<Rx = String, Tx = String>;
+        let test_block = &Test::new() as &dyn BlockProps<Rx = String, Tx = String>;
 
         assert_eq!(test_block.outputs().len(), 1);
         assert_eq!(test_block.outputs()[0].desc().name, "out");

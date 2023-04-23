@@ -33,12 +33,12 @@ pub trait Engine {
     ///
     /// # Arguments
     /// - sender_id The sender unique id.
-    /// - sender The chanel to send notifications from the engine.
+    /// - sender The sender chanel to send notifications from the engine.
     ///
     /// # Returns
     /// A sender chanel that is used to send messages to the engine.
     ///
-    fn message_handles(
+    fn create_message_channel(
         &mut self,
         sender_id: uuid::Uuid,
         sender: Self::Sender<EngineMessage>,

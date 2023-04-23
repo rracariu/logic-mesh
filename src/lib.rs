@@ -35,16 +35,16 @@ mod test {
     async fn engine_test() {
         use crate::base::block::connect::connect_output;
 
-        let mut add1 = Add::new("block1");
+        let mut add1 = Add::new();
         let add_uuid = *add1.id();
 
-        let mut sine1 = SineWave::new("sine1");
+        let mut sine1 = SineWave::new();
 
         sine1.amplitude.val = Some(3.into());
         sine1.freq.val = Some(200.into());
         connect_output(&mut sine1.out, add1.inputs_mut()[0]).expect("Connected");
 
-        let mut sine2 = SineWave::new("sine2");
+        let mut sine2 = SineWave::new();
         sine2.amplitude.val = Some(7.into());
         sine2.freq.val = Some(400.into());
 
@@ -56,7 +56,7 @@ mod test {
 
         let (sender, mut receiver) = mpsc::channel(32);
         let channel_id = Uuid::new_v4();
-        let engine_sender = eng.message_handles(channel_id, sender.clone());
+        let engine_sender = eng.create_message_channel(channel_id, sender.clone());
 
         thread::spawn(move || {
             let rt = Runtime::new().expect("RT");
@@ -74,8 +74,7 @@ mod test {
                     if let Some(InspectBlockRes(id, Some(data))) = res {
                         assert_eq!(id, channel_id);
                         assert_eq!(data.id, add_uuid.to_string());
-                        assert_eq!(data.name, "block1");
-                        assert_eq!(data.kind, "Add");
+                        assert_eq!(data.name, "Add");
                         assert_eq!(data.inputs.len(), 16);
                         assert_eq!(data.outputs.len(), 1);
                     } else {

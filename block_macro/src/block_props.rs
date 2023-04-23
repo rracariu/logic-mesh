@@ -64,15 +64,14 @@ pub(super) fn block_props_impl(ast: &syn::DeriveInput) -> TokenStream {
 
         // Generated constructors
         impl #block_ident {
-            pub fn new(name: &str) -> Self {
+            pub fn new() -> Self {
                 let uuid = Uuid::new_v4();
-                Self::new_uuid(name, uuid)
+                Self::new_uuid(uuid)
             }
 
-            pub fn new_uuid(name: &str, uuid: Uuid) -> Self {
+            pub fn new_uuid(uuid: Uuid) -> Self {
                 Self {
                     id: uuid,
-                    name: name.to_string(),
                     state: BlockState::Stopped,
                     #block_field_init
                     #outputs_field_init,
@@ -93,7 +92,7 @@ pub(super) fn block_props_impl(ast: &syn::DeriveInput) -> TokenStream {
             }
 
             fn name(&self) -> &str {
-                &self.name
+                &self.desc().name
             }
 
             fn desc(&self) -> &'static BlockDesc {
@@ -155,6 +154,12 @@ pub(super) fn block_props_impl(ast: &syn::DeriveInput) -> TokenStream {
                     };
                 }
                 &*DESC
+            }
+        }
+
+        impl Default for #block_ident {
+            fn default() -> Self {
+                Self::new()
             }
         }
     };

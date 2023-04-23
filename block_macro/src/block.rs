@@ -22,13 +22,6 @@ pub(super) fn block_impl(input: TokenStream) -> TokenStream {
                     .named
                     .push(syn::Field::parse_named.parse2(quote! { id: Uuid }).unwrap());
 
-                // Add the `name` member
-                fields.named.push(
-                    syn::Field::parse_named
-                        .parse2(quote! { name: String })
-                        .unwrap(),
-                );
-
                 // Add the `state` member
                 fields.named.push(
                     syn::Field::parse_named

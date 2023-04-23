@@ -24,7 +24,6 @@ pub struct BlockOutputData {
 pub struct BlockData {
     pub id: String,
     pub name: String,
-    pub kind: String,
     pub library: String,
     pub inputs: BTreeMap<String, BlockInputData>,
     pub outputs: BTreeMap<String, BlockOutputData>,
