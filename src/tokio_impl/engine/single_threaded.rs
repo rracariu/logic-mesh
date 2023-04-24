@@ -21,6 +21,8 @@ use crate::{
     blocks::registry::schedule_block,
 };
 
+use super::block_pointer::BlockPropsPointer;
+
 /// Creates a multi-producer single-consumer
 /// channel that listen for Engine related messages that would control
 /// the execution of the engine or will enable inspection of block states.
@@ -30,7 +32,7 @@ pub struct EngineMessaging {
 }
 
 // The concrete trait for the block properties
-trait BlockPropsType = BlockProps<Write = Sender<Value>, Read = Receiver<Value>>;
+pub(super) trait BlockPropsType = BlockProps<Write = Sender<Value>, Read = Receiver<Value>>;
 
 /// Creates an execution environment for Blocks to be run on.
 ///
@@ -324,46 +326,5 @@ impl LocalSetEngine {
 impl Default for LocalSetEngine {
     fn default() -> Self {
         Self::new()
-    }
-}
-
-/// Holds a fat pointer to a BlockProps
-/// trait object.
-#[derive(Default, Clone, Copy)]
-struct BlockPropsPointer {
-    fat_pointer: [usize; 2],
-}
-
-impl BlockPropsPointer {
-    /// Constructs the BlockProps pointer from a ref to the trait
-    /// object.
-    fn new(block: &mut dyn BlockPropsType) -> Self {
-        let block_props_ptr = block as *mut (dyn BlockPropsType);
-
-        let ptr_ref = &block_props_ptr as *const *mut dyn BlockPropsType;
-        let pointer_parts = ptr_ref as *const [usize; 2];
-
-        let fat_pointer = unsafe { *pointer_parts };
-        Self { fat_pointer }
-    }
-
-    /// Tries to get the pointer to the trait object from the fat pointer
-    /// stored.
-    /// It returns None if there is no pointer store.
-    ///
-    /// # Safety
-    /// This would be unsafe if the pointer stored is no longer valid.
-    fn get(&self) -> Option<*mut dyn BlockPropsType> {
-        if self.fat_pointer == [0; 2] {
-            None
-        } else {
-            let ptr = {
-                let pointer_parts: *const [usize; 2] = &self.fat_pointer;
-                let ptr_ref = pointer_parts as *const *mut dyn BlockPropsType;
-                unsafe { *ptr_ref }
-            };
-
-            Some(ptr)
-        }
     }
 }
