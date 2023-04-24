@@ -126,11 +126,14 @@ pub(super) fn block_props_impl(ast: &syn::DeriveInput) -> TokenStream {
 
             fn links(&self) -> Vec<&dyn crate::base::link::Link> {
                 let mut res = Vec::new();
+
+                self.inputs().iter().for_each(|input| res.append(&mut input.links()));
                 self.outputs().iter().for_each(|out| res.append(&mut out.links()));
                 res
             }
 
             fn remove_link(&mut self, link: &dyn crate::base::link::Link) {
+                self.inputs_mut().iter_mut().for_each(|input| input.remove_link(link));
                 self.outputs_mut().iter_mut().for_each(|out| out.remove_link(link))
             }
         }

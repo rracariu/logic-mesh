@@ -80,3 +80,34 @@ fn register_impl<
         BlockData { desc, make }
     });
 }
+
+#[cfg(test)]
+mod test {
+
+    use crate::base::block::connect::connect_output;
+
+    use super::*;
+
+    #[test]
+    fn test_registry() {
+        register::<Add>();
+        register::<Random>();
+        register::<SineWave>();
+
+        let mut add = make("Add").expect("Add block not found");
+        let mut random = make("Random").expect("Random block not found");
+        let sine = make("SineWave").expect("SineWave block not found");
+
+        assert_eq!(add.desc().name, "Add");
+        assert_eq!(random.desc().name, "Random");
+        assert_eq!(sine.desc().name, "SineWave");
+
+        let mut outs = random.outputs_mut();
+        let mut ins = add.inputs_mut();
+
+        let out = outs.first_mut().unwrap();
+        let input = ins.first_mut().unwrap();
+
+        connect_output(*out, *input).unwrap();
+    }
+}
