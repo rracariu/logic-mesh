@@ -52,15 +52,16 @@ macro_rules! register_blocks{
 		/// - eng: The engine to schedule the block on
 		/// # Returns
 		/// A result indicating success or failure
-		pub fn schedule_block<E>(name: &str, eng: &mut E) -> Result<(), &'static str>
+		pub fn schedule_block<E>(name: &str, eng: &mut E) -> Result<uuid::Uuid, &'static str>
 		where E : crate::base::engine::Engine<Rx = <InputImpl as InputProps>::Rx,Tx = <InputImpl as InputProps>::Tx> {
 
 			match name {
 				$(
 					stringify!($x) => {
 						let block = <$x>::new();
+						let uuid = *block.id();
 						eng.schedule(block);
-						Ok(())
+						Ok(uuid)
 					}
 				)*
 				_ => {
@@ -72,7 +73,7 @@ macro_rules! register_blocks{
 
 		/// Schedule a block by name and UUID.
 		/// See [`schedule_block`] for more details.
-		pub fn schedule_block_with_uuid<E>(name: &str, uuid: uuid::Uuid, eng: &mut E) -> Result<(), &'static str>
+		pub fn schedule_block_with_uuid<E>(name: &str, uuid: uuid::Uuid, eng: &mut E) -> Result<uuid::Uuid, &'static str>
 		where E : crate::base::engine::Engine<Rx = <InputImpl as InputProps>::Rx,Tx = <InputImpl as InputProps>::Tx> {
 
 			match name {
@@ -80,7 +81,7 @@ macro_rules! register_blocks{
 					stringify!($x) => {
 						let block = <$x>::new_uuid(uuid);
 						eng.schedule(block);
-						Ok(())
+						Ok(uuid)
 					}
 				)*
 				_ => {

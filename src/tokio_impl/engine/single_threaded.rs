@@ -9,17 +9,16 @@ use tokio::{
 };
 use uuid::Uuid;
 
-use crate::base::{
-    block::{Block, BlockProps},
-    engine::{
-        messages::{BlockData, BlockInputData, BlockOutputData, EngineMessage},
-        Engine,
+use crate::{
+    base::{
+        block::{Block, BlockProps, BlockState},
+        engine::{
+            messages::{BlockData, BlockInputData, BlockOutputData, EngineMessage},
+            Engine,
+        },
+        link::{BaseLink, LinkState},
     },
-    link::{BaseLink, LinkState},
-};
-use crate::blocks::{
-    maths::Add,
-    misc::{Random, SineWave},
+    blocks::registry::schedule_block,
 };
 
 /// Creates a multi-producer single-consumer
@@ -85,6 +84,10 @@ impl Engine for LocalSetEngine {
 
             loop {
                 block.execute().await;
+
+                if block.state() == BlockState::Terminate {
+                    break;
+                }
             }
         });
     }
@@ -139,11 +142,19 @@ impl LocalSetEngine {
 
     async fn dispatch_message(&mut self, msg: EngineMessage) {
         match msg {
-            EngineMessage::AddBlock(sender_uuid, block_name) => {
+            EngineMessage::AddBlockReq(sender_uuid, block_name) => {
                 let id = self.add_block(block_name);
 
                 if let Some(id) = id {
-                    self.reply_to_sender(sender_uuid, EngineMessage::BlockAdded(id));
+                    self.reply_to_sender(sender_uuid, EngineMessage::AddBlockRes(id));
+                }
+            }
+
+            EngineMessage::RemoveBlockReq(sender_uuid, block_id) => {
+                let id = self.remove_block(&block_id);
+
+                if let Some(id) = id {
+                    self.reply_to_sender(sender_uuid, EngineMessage::RemoveBlockRes(id));
                 }
             }
 
@@ -292,28 +303,16 @@ impl LocalSetEngine {
     }
 
     fn add_block(&mut self, block_name: String) -> Option<Uuid> {
-        match block_name.as_str() {
-            "Add" => {
-                let block = Add::new();
-                let id = *block.id();
-                self.schedule(block);
-                Some(id)
-            }
-            "Random" => {
-                let block = Random::new();
-                let id = *block.id();
-                self.schedule(block);
-                Some(id)
-            }
-            "SineWave" => {
-                let block = SineWave::new();
-                let id = *block.id();
-                self.schedule(block);
-                Some(id)
-            }
+        schedule_block(&block_name, self).ok()
+    }
 
-            _ => None,
-        }
+    fn remove_block(&mut self, block_id: &Uuid) -> Option<Uuid> {
+        let res = self.get_block_props_mut(block_id).map(|block| {
+            block.set_state(BlockState::Terminate);
+            block.id().clone()
+        });
+        self.block_props.remove(&block_id);
+        res
     }
 }
 

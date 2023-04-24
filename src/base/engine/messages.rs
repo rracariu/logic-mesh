@@ -39,8 +39,11 @@ pub struct LinkData {
 /// Messages that engine accepts
 #[derive(Debug, Clone)]
 pub enum EngineMessage {
-    AddBlock(Uuid, String),
-    BlockAdded(Uuid),
+    AddBlockReq(Uuid, String),
+    AddBlockRes(Uuid),
+
+    RemoveBlockReq(Uuid, Uuid),
+    RemoveBlockRes(Uuid),
 
     InspectBlockReq(Uuid, Uuid),
     InspectBlockRes(Uuid, Option<BlockData>),
