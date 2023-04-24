@@ -2,8 +2,10 @@
 
 use crate::base::block::{Block, BlockDesc, BlockDescAccess, BlockProps};
 use crate::base::input::InputProps;
+
 use crate::blocks::maths::Add;
 use crate::blocks::misc::{Random, SineWave};
+
 use lazy_static::lazy_static;
 use std::collections::BTreeMap;
 use std::sync::Mutex;
@@ -143,7 +145,7 @@ fn register_impl<
 #[cfg(test)]
 mod test {
 
-    use crate::base::block::connect::connect_output;
+    use crate::base::{block::connect::connect_output, engine::Engine};
 
     use super::*;
 
@@ -168,5 +170,7 @@ mod test {
         let mut eng = crate::single_threaded::LocalSetEngine::new();
 
         schedule_block("Add", &mut eng).expect("Block");
+
+        assert!(eng.blocks().iter().any(|b| b.desc().name == "Add"));
     }
 }

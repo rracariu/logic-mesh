@@ -4,7 +4,7 @@
 //! Defines the block execution engine
 //!
 
-use super::block::Block;
+use super::block::{Block, BlockProps};
 
 pub mod messages;
 
@@ -18,6 +18,10 @@ pub trait Engine {
 
     /// The type of the sender used by this engine.
     type Sender: Send + Sync + Clone;
+
+    /// Get a list of all the blocks that are currently
+    /// scheduled on this engine.
+    fn blocks(&self) -> Vec<&dyn BlockProps<Tx = Self::Tx, Rx = Self::Rx>>;
 
     /// Schedule a block to be executed by this engine
     fn schedule<B: Block<Tx = Self::Tx, Rx = Self::Rx> + 'static>(&mut self, block: B);

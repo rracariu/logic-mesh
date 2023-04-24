@@ -10,7 +10,7 @@ use tokio::{
 use uuid::Uuid;
 
 use crate::base::{
-    block::{Block, BlockDesc, BlockProps},
+    block::{Block, BlockProps},
     engine::{
         messages::{BlockData, BlockInputData, BlockOutputData, EngineMessage},
         Engine,
@@ -40,8 +40,6 @@ trait BlockPropsType = BlockProps<Tx = Sender<Value>, Rx = Receiver<Value>>;
 pub struct LocalSetEngine {
     /// Use to schedule task on the current thread
     local: LocalSet,
-    /// Blocks descriptions for the blocks registered with this engine, indexed by block id
-    blocks_desc: BTreeMap<Uuid, &'static BlockDesc>,
     /// Blocks registered with this engine, indexed by block id
     block_props: BTreeMap<Uuid, Rc<Cell<BlockPropsPointer>>>,
     /// Messaging used by external users to control
@@ -57,9 +55,24 @@ impl Engine for LocalSetEngine {
 
     type Sender = Sender<EngineMessage>;
 
+    fn blocks(&self) -> Vec<&dyn BlockProps<Tx = Self::Tx, Rx = Self::Rx>> {
+        self.block_props
+            .values()
+            .filter_map(|props| {
+                let props = props.get();
+                props.get()
+            })
+            .map(|prop| unsafe { &*prop })
+            .collect()
+    }
+
     fn schedule<B: Block<Tx = Self::Tx, Rx = Self::Rx> + 'static>(&mut self, mut block: B) {
-        self.blocks_desc.insert(*block.id(), block.desc());
-        self.block_props.insert(*block.id(), Rc::default());
+        self.block_props.insert(
+            *block.id(),
+            Rc::new(Cell::new(BlockPropsPointer::new(
+                &block as &dyn BlockPropsType,
+            ))),
+        );
 
         let props = self
             .block_props
@@ -115,7 +128,6 @@ impl LocalSetEngine {
 
         Self {
             local: LocalSet::new(),
-            blocks_desc: BTreeMap::default(),
             block_props: BTreeMap::default(),
             engine_messaging: EngineMessaging {
                 sender: engine_sender,
