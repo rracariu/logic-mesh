@@ -69,7 +69,7 @@ impl Engine for LocalSetEngine {
         self.block_props.insert(
             *block.id(),
             Rc::new(Cell::new(BlockPropsPointer::new(
-                &block as &dyn BlockPropsType,
+                &mut block as &mut dyn BlockPropsType,
             ))),
         );
 
@@ -80,7 +80,9 @@ impl Engine for LocalSetEngine {
             .clone();
 
         self.local.spawn_local(async move {
-            props.set(BlockPropsPointer::new(&block as &dyn BlockPropsType));
+            props.set(BlockPropsPointer::new(
+                &mut block as &mut dyn BlockPropsType,
+            ));
 
             loop {
                 block.execute().await;
@@ -332,10 +334,10 @@ struct BlockPropsPointer {
 impl BlockPropsPointer {
     /// Constructs the BlockProps pointer from a ref to the trait
     /// object.
-    fn new(block: &dyn BlockPropsType) -> Self {
-        let block_props_ptr = block as *const (dyn BlockPropsType);
+    fn new(block: &mut dyn BlockPropsType) -> Self {
+        let block_props_ptr = block as *mut (dyn BlockPropsType);
 
-        let ptr_ref = &block_props_ptr as *const *const dyn BlockPropsType;
+        let ptr_ref = &block_props_ptr as *const *mut dyn BlockPropsType;
         let pointer_parts = ptr_ref as *const [usize; 2];
 
         let fat_pointer = unsafe { *pointer_parts };
