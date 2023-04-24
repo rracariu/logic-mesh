@@ -20,7 +20,7 @@ pub trait BlockConnect: BlockDescAccess {
     /// - output_name: The name of the output to be connected
     /// - input: The block input to be connected
     ///
-    fn connect_output<I: InputProps<Tx = Self::Tx> + ?Sized>(
+    fn connect_output<I: InputProps<Write = Self::Write> + ?Sized>(
         &mut self,
         output_name: &str,
         target_input: &mut I,
@@ -32,7 +32,7 @@ pub trait BlockConnect: BlockDescAccess {
     /// - output_name: The name of the output to be connected
     /// - input: The block input to be connected
     ///
-    fn connect_input<I: InputProps<Tx = Self::Tx> + ?Sized>(
+    fn connect_input<I: InputProps<Write = Self::Write> + ?Sized>(
         &mut self,
         source_input: &mut I,
         target_input: &mut I,
@@ -42,7 +42,7 @@ pub trait BlockConnect: BlockDescAccess {
     /// # Arguments
     /// - input: The block input to be disconnected
     ///
-    fn disconnect_output<I: InputProps<Tx = Self::Tx>>(
+    fn disconnect_output<I: InputProps<Write = Self::Write>>(
         &mut self,
         output_name: &str,
         input: &mut I,
@@ -64,7 +64,7 @@ pub trait BlockConnect: BlockDescAccess {
 /// that are `Block`s
 ///
 impl<T: Block> BlockConnect for T {
-    fn connect_output<I: InputProps<Tx = Self::Tx> + ?Sized>(
+    fn connect_output<I: InputProps<Write = Self::Write> + ?Sized>(
         &mut self,
         output_name: &str,
         target_input: &mut I,
@@ -82,7 +82,7 @@ impl<T: Block> BlockConnect for T {
         connect_output(*source_output, target_input)
     }
 
-    fn connect_input<I: InputProps<Tx = Self::Tx> + ?Sized>(
+    fn connect_input<I: InputProps<Write = Self::Write> + ?Sized>(
         &mut self,
         source_input: &mut I,
         target_input: &mut I,
@@ -90,7 +90,7 @@ impl<T: Block> BlockConnect for T {
         connect_input(source_input, target_input)
     }
 
-    fn disconnect_output<I: InputProps<Tx = Self::Tx>>(
+    fn disconnect_output<I: InputProps<Write = Self::Write>>(
         &mut self,
         output_name: &str,
         input: &mut I,
@@ -137,7 +137,11 @@ impl<T: Block> BlockConnect for T {
 /// # Arguments
 /// - source_output: The output to be connected
 /// - target_input: The block input to be connected
-pub fn connect_output<Tx: Clone, O: Output<Tx = Tx> + ?Sized, I: InputProps<Tx = Tx> + ?Sized>(
+pub fn connect_output<
+    Tx: Clone,
+    O: Output<Write = Tx> + ?Sized,
+    I: InputProps<Write = Tx> + ?Sized,
+>(
     source_output: &mut O,
     target_input: &mut I,
 ) -> Result<(), &'static str> {
@@ -170,8 +174,8 @@ pub fn connect_output<Tx: Clone, O: Output<Tx = Tx> + ?Sized, I: InputProps<Tx =
 /// - `Ok(())` if the disconnection was successful, `Err` otherwise
 pub fn disconnect_output<
     Tx: Clone,
-    O: Output<Tx = Tx> + ?Sized,
-    I: InputProps<Tx = Tx> + ?Sized,
+    O: Output<Write = Tx> + ?Sized,
+    I: InputProps<Write = Tx> + ?Sized,
 >(
     source_output: &mut O,
     target_input: &mut I,

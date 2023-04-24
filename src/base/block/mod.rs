@@ -63,7 +63,7 @@ mod test {
 
     #[test]
     fn test_block_props_declared_inputs() {
-        let test_block = &Test::new() as &dyn BlockProps<Rx = String, Tx = String>;
+        let test_block = &Test::new() as &dyn BlockProps<Read = String, Write = String>;
 
         assert_eq!(test_block.desc().name, "Test");
         assert_eq!(test_block.desc().library, "test");
@@ -99,7 +99,7 @@ mod test {
 
     #[test]
     fn test_block_outputs() {
-        let test_block = &Test::new() as &dyn BlockProps<Rx = String, Tx = String>;
+        let test_block = &Test::new() as &dyn BlockProps<Read = String, Write = String>;
 
         assert_eq!(test_block.outputs().len(), 1);
         assert_eq!(test_block.outputs()[0].desc().name, "out");

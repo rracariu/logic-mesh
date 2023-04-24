@@ -12,8 +12,10 @@ use std::sync::Mutex;
 
 use super::InputImpl;
 
-type DynBlockProps =
-    dyn BlockProps<Rx = <InputImpl as InputProps>::Rx, Tx = <InputImpl as InputProps>::Tx>;
+type DynBlockProps = dyn BlockProps<
+    Read = <InputImpl as InputProps>::Read,
+    Write = <InputImpl as InputProps>::Write,
+>;
 type MapType = BTreeMap<String, BlockData>;
 type BlockRegistry = Mutex<MapType>;
 
@@ -53,7 +55,7 @@ macro_rules! register_blocks{
 		/// # Returns
 		/// A result indicating success or failure
 		pub fn schedule_block<E>(name: &str, eng: &mut E) -> Result<uuid::Uuid, &'static str>
-		where E : crate::base::engine::Engine<Rx = <InputImpl as InputProps>::Rx,Tx = <InputImpl as InputProps>::Tx> {
+		where E : $crate::base::engine::Engine<Read = <InputImpl as InputProps>::Read, Write = <InputImpl as InputProps>::Write> {
 
 			match name {
 				$(
@@ -74,7 +76,7 @@ macro_rules! register_blocks{
 		/// Schedule a block by name and UUID.
 		/// See [`schedule_block`] for more details.
 		pub fn schedule_block_with_uuid<E>(name: &str, uuid: uuid::Uuid, eng: &mut E) -> Result<uuid::Uuid, &'static str>
-		where E : crate::base::engine::Engine<Rx = <InputImpl as InputProps>::Rx,Tx = <InputImpl as InputProps>::Tx> {
+		where E : $crate::base::engine::Engine<Read = <InputImpl as InputProps>::Read, Write = <InputImpl as InputProps>::Write> {
 
 			match name {
 				$(
@@ -116,7 +118,7 @@ pub fn make(name: &str) -> Option<Box<DynBlockProps>> {
 /// # Panics
 /// Panics if the block registry is already locked
 pub fn register<
-    B: Block<Rx = <InputImpl as InputProps>::Rx, Tx = <InputImpl as InputProps>::Tx>
+    B: Block<Read = <InputImpl as InputProps>::Read, Write = <InputImpl as InputProps>::Write>
         + Default
         + 'static,
 >() {
@@ -126,7 +128,7 @@ pub fn register<
 }
 
 fn register_impl<
-    B: Block<Rx = <InputImpl as InputProps>::Rx, Tx = <InputImpl as InputProps>::Tx>
+    B: Block<Read = <InputImpl as InputProps>::Read, Write = <InputImpl as InputProps>::Write>
         + Default
         + 'static,
 >(

@@ -43,8 +43,8 @@ impl Default for OutputImpl {
 }
 
 impl Output for OutputImpl {
-    type Tx = <InputImpl as InputProps>::Tx;
-    fn add_link(&mut self, _link: BaseLink<Self::Tx>) {}
+    type Write = <InputImpl as InputProps>::Write;
+    fn add_link(&mut self, _link: BaseLink<Self::Write>) {}
 
     fn remove_link_by_id(&mut self, _link_id: &Uuid) {}
 

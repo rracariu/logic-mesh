@@ -14,8 +14,12 @@ use super::{desc::BlockDesc, BlockState};
 /// Defines the the Block properties
 /// that are common to all blocks.
 pub trait BlockProps {
-    type Rx;
-    type Tx: Clone;
+    /// The block's read type
+    /// This is the type used to read from the block's inputs
+    type Read;
+    /// The block's write type
+    /// This is the type used to write to the block's outputs
+    type Write: Clone;
 
     /// Blocks unique id
     fn id(&self) -> &Uuid;
@@ -33,16 +37,16 @@ pub trait BlockProps {
     fn set_state(&mut self, state: BlockState) -> BlockState;
 
     /// List all the block inputs
-    fn inputs(&self) -> Vec<&dyn Input<Rx = Self::Rx, Tx = Self::Tx>>;
+    fn inputs(&self) -> Vec<&dyn Input<Read = Self::Read, Write = Self::Write>>;
 
     /// List all the block inputs
-    fn inputs_mut(&mut self) -> Vec<&mut dyn Input<Rx = Self::Rx, Tx = Self::Tx>>;
+    fn inputs_mut(&mut self) -> Vec<&mut dyn Input<Read = Self::Read, Write = Self::Write>>;
 
     /// The block output
-    fn outputs(&self) -> Vec<&dyn Output<Tx = Self::Tx>>;
+    fn outputs(&self) -> Vec<&dyn Output<Write = Self::Write>>;
 
     /// Mutable reference to the block's output
-    fn outputs_mut(&mut self) -> Vec<&mut dyn Output<Tx = Self::Tx>>;
+    fn outputs_mut(&mut self) -> Vec<&mut dyn Output<Write = Self::Write>>;
 
     /// List all the links this block has
     fn links(&self) -> Vec<&dyn Link>;

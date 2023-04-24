@@ -30,7 +30,7 @@ pub struct EngineMessaging {
 }
 
 // The concrete trait for the block properties
-trait BlockPropsType = BlockProps<Tx = Sender<Value>, Rx = Receiver<Value>>;
+trait BlockPropsType = BlockProps<Write = Sender<Value>, Read = Receiver<Value>>;
 
 /// Creates an execution environment for Blocks to be run on.
 ///
@@ -49,12 +49,12 @@ pub struct LocalSetEngine {
 }
 
 impl Engine for LocalSetEngine {
-    type Tx = Sender<Value>;
-    type Rx = Receiver<Value>;
+    type Write = Sender<Value>;
+    type Read = Receiver<Value>;
 
     type Sender = Sender<EngineMessage>;
 
-    fn blocks(&self) -> Vec<&dyn BlockProps<Tx = Self::Tx, Rx = Self::Rx>> {
+    fn blocks(&self) -> Vec<&dyn BlockProps<Write = Self::Write, Read = Self::Read>> {
         self.block_props
             .values()
             .filter_map(|props| {
@@ -65,7 +65,10 @@ impl Engine for LocalSetEngine {
             .collect()
     }
 
-    fn schedule<B: Block<Tx = Self::Tx, Rx = Self::Rx> + 'static>(&mut self, mut block: B) {
+    fn schedule<B: Block<Write = Self::Write, Read = Self::Read> + 'static>(
+        &mut self,
+        mut block: B,
+    ) {
         self.block_props.insert(
             *block.id(),
             Rc::new(Cell::new(BlockPropsPointer::new(
@@ -311,9 +314,9 @@ impl LocalSetEngine {
     fn remove_block(&mut self, block_id: &Uuid) -> Option<Uuid> {
         let res = self.get_block_props_mut(block_id).map(|block| {
             block.set_state(BlockState::Terminate);
-            block.id().clone()
+            *block.id()
         });
-        self.block_props.remove(&block_id);
+        self.block_props.remove(block_id);
         res
     }
 }
