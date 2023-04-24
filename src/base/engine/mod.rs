@@ -4,8 +4,6 @@
 //! Defines the block execution engine
 //!
 
-use self::messages::EngineMessage;
-
 use super::block::Block;
 
 pub mod messages;
@@ -19,7 +17,7 @@ pub trait Engine {
     type Rx;
 
     /// The type of the sender used by this engine.
-    type Sender<M>: Send + Sync + Clone;
+    type Sender: Send + Sync + Clone;
 
     /// Schedule a block to be executed by this engine
     fn schedule<B: Block<Tx = Self::Tx, Rx = Self::Rx> + 'static>(&mut self, block: B);
@@ -41,6 +39,6 @@ pub trait Engine {
     fn create_message_channel(
         &mut self,
         sender_id: uuid::Uuid,
-        sender: Self::Sender<EngineMessage>,
-    ) -> Self::Sender<EngineMessage>;
+        sender: Self::Sender,
+    ) -> Self::Sender;
 }

@@ -55,7 +55,7 @@ impl Engine for LocalSetEngine {
     type Tx = Sender<Value>;
     type Rx = Receiver<Value>;
 
-    type Sender<M> = Sender<EngineMessage>;
+    type Sender = Sender<EngineMessage>;
 
     fn schedule<B: Block<Tx = Self::Tx, Rx = Self::Rx> + 'static>(&mut self, mut block: B) {
         self.blocks_desc.insert(*block.id(), block.desc());
@@ -100,8 +100,8 @@ impl Engine for LocalSetEngine {
     fn create_message_channel(
         &mut self,
         sender_id: uuid::Uuid,
-        sender: Self::Sender<EngineMessage>,
-    ) -> Self::Sender<EngineMessage> {
+        sender: Self::Sender,
+    ) -> Self::Sender {
         self.notification_listeners.insert(sender_id, sender);
 
         self.engine_messaging.sender.clone()
