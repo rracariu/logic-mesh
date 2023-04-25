@@ -4,7 +4,9 @@
 //! Defines the block description
 //!
 
-use super::props::BlockPin;
+use libhaystack::val::kind::HaystackKind;
+
+use super::BlockProps;
 
 /// Description of a block.
 /// This is a static description of a block,
@@ -26,4 +28,21 @@ pub struct BlockDesc {
     pub outputs: Vec<BlockPin>,
     /// Block documentation
     pub doc: String,
+}
+
+/// Trait for providing static access to a block description.
+///
+/// This would complement the instance method access, as the instance
+/// one allows block to be trait objects.
+pub trait BlockStaticDesc: BlockProps {
+    /// Static access to the block description
+    fn desc() -> &'static BlockDesc;
+}
+
+/// Defines a block pin
+/// A block pin is either an input or an output
+#[derive(Default, Debug, Clone, PartialEq)]
+pub struct BlockPin {
+    pub name: String,
+    pub kind: HaystackKind,
 }

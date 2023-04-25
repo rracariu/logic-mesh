@@ -9,8 +9,7 @@ pub mod desc;
 pub mod props;
 
 pub use connect::BlockConnect;
-pub use desc::BlockDesc;
-pub use props::BlockDescAccess;
+pub use desc::{BlockDesc, BlockPin, BlockStaticDesc};
 pub use props::BlockProps;
 
 /// Determines the state a block is in

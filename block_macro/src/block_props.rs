@@ -104,7 +104,7 @@ pub(super) fn block_props_impl(ast: &syn::DeriveInput) -> TokenStream {
             }
 
             fn desc(&self) -> &'static BlockDesc {
-                <Self as crate::base::block::BlockDescAccess>::desc()
+                <Self as crate::base::block::BlockStaticDesc>::desc()
             }
 
             fn state(&self) -> BlockState {
@@ -148,12 +148,12 @@ pub(super) fn block_props_impl(ast: &syn::DeriveInput) -> TokenStream {
 
         // Implementation of the BlockDesc trait
         // using the attributes
-        impl crate::base::block::BlockDescAccess for #block_ident {
+        impl crate::base::block::BlockStaticDesc for #block_ident {
             fn desc() -> &'static BlockDesc {
                 lazy_static::lazy_static! {
                     static ref DESC: BlockDesc = {
-                        use crate::base::block::BlockDesc;
-                        use crate::base::block::props::BlockPin;
+                        use crate::base::block::desc::BlockDesc;
+                        use crate::base::block::desc::BlockPin;
 
                         let desc = BlockDesc {
                             #(#block_prop_names : #block_prop_values.to_string(),)*

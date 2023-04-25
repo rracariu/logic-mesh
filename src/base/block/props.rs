@@ -4,7 +4,6 @@
 //! Defines the block properties
 //!
 
-use libhaystack::val::kind::HaystackKind;
 use uuid::Uuid;
 
 use crate::base::{input::Input, link::Link, output::Output};
@@ -66,21 +65,4 @@ pub trait BlockProps {
 
     /// Remove a link from the link collection
     fn remove_link(&mut self, link: &dyn Link);
-}
-
-/// Trait for providing static access to a block description.
-///
-/// This would complement the instance method access, as the instance
-/// one allows block to be trait objects.
-pub trait BlockDescAccess: BlockProps {
-    /// Static access to the block description
-    fn desc() -> &'static BlockDesc;
-}
-
-/// Defines a block pin
-/// A block pin is either an input or an output
-#[derive(Default, Debug, Clone, PartialEq)]
-pub struct BlockPin {
-    pub name: String,
-    pub kind: HaystackKind,
 }

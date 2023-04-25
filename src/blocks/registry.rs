@@ -1,6 +1,6 @@
 // Copyright (c) 2022-2023, IntriSemantics Corp.
 
-use crate::base::block::{Block, BlockDesc, BlockDescAccess, BlockProps};
+use crate::base::block::{Block, BlockDesc, BlockProps, BlockStaticDesc};
 use crate::base::input::InputProps;
 
 use crate::blocks::maths::Add;
@@ -138,8 +138,8 @@ fn register_impl<
 >(
     reg: &mut MapType,
 ) {
-    reg.insert(<B as BlockDescAccess>::desc().name.clone(), {
-        let desc = <B as BlockDescAccess>::desc();
+    reg.insert(<B as BlockStaticDesc>::desc().name.clone(), {
+        let desc = <B as BlockStaticDesc>::desc();
         let make = || -> Box<DynBlockProps> {
             let block = B::default();
             Box::new(block)

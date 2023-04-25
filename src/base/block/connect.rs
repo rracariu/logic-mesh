@@ -6,14 +6,14 @@
 
 use uuid::Uuid;
 
-use super::props::BlockDescAccess;
+use super::desc::BlockStaticDesc;
 use super::Block;
 use crate::base::input::InputProps;
 use crate::base::link::{BaseLink, Link, LinkState};
 use crate::base::output::Output;
 
 /// Block connection functions
-pub trait BlockConnect: BlockDescAccess {
+pub trait BlockConnect: BlockStaticDesc {
     /// Connect a block output to the given input
     ///
     /// # Arguments
