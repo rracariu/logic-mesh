@@ -13,8 +13,8 @@ use std::sync::Mutex;
 use super::InputImpl;
 
 type DynBlockProps = dyn BlockProps<
-    Read = <InputImpl as InputProps>::Read,
-    Write = <InputImpl as InputProps>::Write,
+    Reader = <InputImpl as InputProps>::Reader,
+    Writer = <InputImpl as InputProps>::Writer,
 >;
 type MapType = BTreeMap<String, BlockData>;
 type BlockRegistry = Mutex<MapType>;
@@ -55,7 +55,7 @@ macro_rules! register_blocks{
 		/// # Returns
 		/// A result indicating success or failure
 		pub fn schedule_block<E>(name: &str, eng: &mut E) -> Result<uuid::Uuid, &'static str>
-		where E : $crate::base::engine::Engine<Read = <InputImpl as InputProps>::Read, Write = <InputImpl as InputProps>::Write> {
+		where E : $crate::base::engine::Engine<Reader = <InputImpl as InputProps>::Reader, Writer = <InputImpl as InputProps>::Writer> {
 
 			match name {
 				$(
@@ -76,7 +76,7 @@ macro_rules! register_blocks{
 		/// Schedule a block by name and UUID.
 		/// See [`schedule_block`] for more details.
 		pub fn schedule_block_with_uuid<E>(name: &str, uuid: uuid::Uuid, eng: &mut E) -> Result<uuid::Uuid, &'static str>
-		where E : $crate::base::engine::Engine<Read = <InputImpl as InputProps>::Read, Write = <InputImpl as InputProps>::Write> {
+		where E : $crate::base::engine::Engine<Reader = <InputImpl as InputProps>::Reader, Writer = <InputImpl as InputProps>::Writer> {
 
 			match name {
 				$(
@@ -118,8 +118,10 @@ pub fn make(name: &str) -> Option<Box<DynBlockProps>> {
 /// # Panics
 /// Panics if the block registry is already locked
 pub fn register<
-    B: Block<Read = <InputImpl as InputProps>::Read, Write = <InputImpl as InputProps>::Write>
-        + Default
+    B: Block<
+            Reader = <InputImpl as InputProps>::Reader,
+            Writer = <InputImpl as InputProps>::Writer,
+        > + Default
         + 'static,
 >() {
     let mut reg = BLOCKS.lock().expect("Block registry is locked");
@@ -128,8 +130,10 @@ pub fn register<
 }
 
 fn register_impl<
-    B: Block<Read = <InputImpl as InputProps>::Read, Write = <InputImpl as InputProps>::Write>
-        + Default
+    B: Block<
+            Reader = <InputImpl as InputProps>::Reader,
+            Writer = <InputImpl as InputProps>::Writer,
+        > + Default
         + 'static,
 >(
     reg: &mut MapType,

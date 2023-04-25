@@ -12,10 +12,10 @@ pub use base::BaseOutput;
 pub use props::OutputProps;
 
 pub trait Output: OutputProps {
-    type Write: Clone;
+    type Writer: Clone;
 
     /// Adds a link to this output
-    fn add_link(&mut self, link: BaseLink<Self::Write>);
+    fn add_link(&mut self, link: BaseLink<Self::Writer>);
 
     /// Remove a link from this output
     /// # Arguments

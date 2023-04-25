@@ -16,10 +16,10 @@ use super::{desc::BlockDesc, BlockState};
 pub trait BlockProps {
     /// The block's read type
     /// This is the type used to read from the block's inputs
-    type Read;
+    type Reader;
     /// The block's write type
     /// This is the type used to write to the block's outputs
-    type Write: Clone;
+    type Writer: Clone;
 
     /// Blocks unique id
     fn id(&self) -> &Uuid;
@@ -37,26 +37,29 @@ pub trait BlockProps {
     fn set_state(&mut self, state: BlockState) -> BlockState;
 
     /// List all the block inputs
-    fn inputs(&self) -> Vec<&dyn Input<Read = Self::Read, Write = Self::Write>>;
+    fn inputs(&self) -> Vec<&dyn Input<Reader = Self::Reader, Writer = Self::Writer>>;
 
     /// Get block input by name
-    fn get_input(&self, name: &str) -> Option<&dyn Input<Read = Self::Read, Write = Self::Write>> {
+    fn get_input(
+        &self,
+        name: &str,
+    ) -> Option<&dyn Input<Reader = Self::Reader, Writer = Self::Writer>> {
         self.inputs().iter().find(|i| i.name() == name).cloned()
     }
 
     /// List all the block inputs
-    fn inputs_mut(&mut self) -> Vec<&mut dyn Input<Read = Self::Read, Write = Self::Write>>;
+    fn inputs_mut(&mut self) -> Vec<&mut dyn Input<Reader = Self::Reader, Writer = Self::Writer>>;
 
     /// The block outputs
-    fn outputs(&self) -> Vec<&dyn Output<Write = Self::Write>>;
+    fn outputs(&self) -> Vec<&dyn Output<Writer = Self::Writer>>;
 
     /// Get block output by name
-    fn get_output(&self, name: &str) -> Option<&dyn Output<Write = Self::Write>> {
+    fn get_output(&self, name: &str) -> Option<&dyn Output<Writer = Self::Writer>> {
         self.outputs().iter().find(|i| i.name() == name).cloned()
     }
 
     /// Mutable reference to the block's output
-    fn outputs_mut(&mut self) -> Vec<&mut dyn Output<Write = Self::Write>>;
+    fn outputs_mut(&mut self) -> Vec<&mut dyn Output<Writer = Self::Writer>>;
 
     /// List all the links this block has
     fn links(&self) -> Vec<&dyn Link>;

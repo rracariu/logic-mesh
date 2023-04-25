@@ -36,8 +36,8 @@ pub struct BaseInput<Reader, Writer> {
 
 /// Implements the `InputProps` trait for `BaseInput`
 impl<Reader, Writer: Clone> InputProps for BaseInput<Reader, Writer> {
-    type Read = Reader;
-    type Write = Writer;
+    type Reader = Reader;
+    type Writer = Writer;
 
     fn name(&self) -> &str {
         &self.name
@@ -59,7 +59,7 @@ impl<Reader, Writer: Clone> InputProps for BaseInput<Reader, Writer> {
         self.links.iter().map(|l| l as &dyn Link).collect()
     }
 
-    fn add_link(&mut self, link: BaseLink<Self::Write>) {
+    fn add_link(&mut self, link: BaseLink<Self::Writer>) {
         self.links.push(link)
     }
 
@@ -71,11 +71,11 @@ impl<Reader, Writer: Clone> InputProps for BaseInput<Reader, Writer> {
         &self.default
     }
 
-    fn reader(&mut self) -> &mut Self::Read {
+    fn reader(&mut self) -> &mut Self::Reader {
         &mut self.reader
     }
 
-    fn writer(&mut self) -> &mut Self::Write {
+    fn writer(&mut self) -> &mut Self::Writer {
         &mut self.writer
     }
 

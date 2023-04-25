@@ -12,19 +12,22 @@ pub mod messages;
 /// that implements the block execution logic.
 pub trait Engine {
     /// The transmission type of the blocks
-    type Write;
+    type Writer;
     /// The reception type of the blocks
-    type Read;
+    type Reader;
 
     /// The type of the sender used by this engine.
     type Sender: Send + Sync + Clone;
 
     /// Get a list of all the blocks that are currently
     /// scheduled on this engine.
-    fn blocks(&self) -> Vec<&dyn BlockProps<Write = Self::Write, Read = Self::Read>>;
+    fn blocks(&self) -> Vec<&dyn BlockProps<Writer = Self::Writer, Reader = Self::Reader>>;
 
     /// Schedule a block to be executed by this engine
-    fn schedule<B: Block<Write = Self::Write, Read = Self::Read> + 'static>(&mut self, block: B);
+    fn schedule<B: Block<Writer = Self::Writer, Reader = Self::Reader> + 'static>(
+        &mut self,
+        block: B,
+    );
 
     /// Runs the event loop of this engine
     /// an execute the blocks that where scheduled

@@ -23,9 +23,9 @@ pub struct InputDefault {
 /// Defines the basic properties of a Block Input
 pub trait InputProps {
     /// The input's read type
-    type Read;
+    type Reader;
     /// The input's write type
-    type Write: Clone;
+    type Writer: Clone;
 
     /// The input's name
     fn name(&self) -> &str;
@@ -44,7 +44,7 @@ pub trait InputProps {
     fn links(&self) -> Vec<&dyn Link>;
 
     /// Adds a link to this output
-    fn add_link(&mut self, link: BaseLink<Self::Write>);
+    fn add_link(&mut self, link: BaseLink<Self::Writer>);
 
     /// Remove a link from this input
     /// # Arguments
@@ -62,10 +62,10 @@ pub trait InputProps {
     fn default(&self) -> &InputDefault;
 
     /// Get a reference to this input reader type
-    fn reader(&mut self) -> &mut Self::Read;
+    fn reader(&mut self) -> &mut Self::Reader;
 
     /// Get a reference to this input writer type
-    fn writer(&mut self) -> &mut Self::Write;
+    fn writer(&mut self) -> &mut Self::Writer;
 
     /// Gets this input value
     fn get_value(&self) -> &Option<Value>;

@@ -15,9 +15,9 @@ use super::input::InputImpl;
 pub type OutputImpl = BaseOutput<BaseLink<Sender<Value>>>;
 
 impl Output for OutputImpl {
-    type Write = <InputImpl as InputProps>::Write;
+    type Writer = <InputImpl as InputProps>::Writer;
 
-    fn add_link(&mut self, link: BaseLink<Self::Write>) {
+    fn add_link(&mut self, link: BaseLink<Self::Writer>) {
         self.links.push(link);
     }
 

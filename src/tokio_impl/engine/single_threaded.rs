@@ -37,7 +37,7 @@ struct WatchSet {
 }
 
 // The concrete trait for the block properties
-pub(super) trait BlockPropsType = BlockProps<Write = Sender<Value>, Read = Receiver<Value>>;
+pub(super) trait BlockPropsType = BlockProps<Writer = Sender<Value>, Reader = Receiver<Value>>;
 
 type Messages = EngineMessage<Sender<WatchMessage>>;
 
@@ -64,12 +64,12 @@ pub struct LocalSetEngine {
 }
 
 impl Engine for LocalSetEngine {
-    type Write = Sender<Value>;
-    type Read = Receiver<Value>;
+    type Writer = Sender<Value>;
+    type Reader = Receiver<Value>;
 
     type Sender = Sender<Messages>;
 
-    fn blocks(&self) -> Vec<&dyn BlockProps<Write = Self::Write, Read = Self::Read>> {
+    fn blocks(&self) -> Vec<&dyn BlockProps<Writer = Self::Writer, Reader = Self::Reader>> {
         self.block_props
             .values()
             .filter_map(|props| {
@@ -80,7 +80,7 @@ impl Engine for LocalSetEngine {
             .collect()
     }
 
-    fn schedule<B: Block<Write = Self::Write, Read = Self::Read> + 'static>(
+    fn schedule<B: Block<Writer = Self::Writer, Reader = Self::Reader> + 'static>(
         &mut self,
         mut block: B,
     ) {

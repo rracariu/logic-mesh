@@ -84,8 +84,8 @@ pub(super) fn block_props_impl(ast: &syn::DeriveInput) -> TokenStream {
         // Implementation of the BlockProps trait
         // using the attributes
         impl BlockProps for #block_ident {
-            type Read = <InputImpl as InputProps>::Read;
-            type Write = <InputImpl as InputProps>::Write;
+            type Reader = <InputImpl as InputProps>::Reader;
+            type Writer = <InputImpl as InputProps>::Writer;
 
             fn id(&self) -> &Uuid {
                 &self.id
@@ -108,19 +108,19 @@ pub(super) fn block_props_impl(ast: &syn::DeriveInput) -> TokenStream {
                 self.state
             }
 
-            fn inputs(&self) -> Vec<&dyn Input<Read = Self::Read, Write = Self::Write>> {
+            fn inputs(&self) -> Vec<&dyn Input<Reader = Self::Reader, Writer = Self::Writer>> {
                 #inputs_refs
             }
 
-            fn inputs_mut(&mut self) -> Vec<&mut dyn Input<Read = Self::Read, Write = Self::Write>> {
+            fn inputs_mut(&mut self) -> Vec<&mut dyn Input<Reader = Self::Reader, Writer = Self::Writer>> {
                 #inputs_mut_refs
             }
 
-            fn outputs_mut(&mut self) -> Vec<&mut dyn Output<Write = Self::Write>> {
+            fn outputs_mut(&mut self) -> Vec<&mut dyn Output<Writer = Self::Writer>> {
                 #outputs_mut_ref
             }
 
-            fn outputs(&self) -> Vec<&dyn Output<Write = Self::Write>> {
+            fn outputs(&self) -> Vec<&dyn Output<Writer = Self::Writer>> {
                 #outputs_ref
             }
 
@@ -308,8 +308,8 @@ fn create_input_members_ref(
 
         if has_block_defined_inputs {
             quote! {
-                let mut inputs = vec![ #(&#borrow self.#input_field as &#borrow dyn Input<Read = Self::Read, Write = Self::Write>),* ];
-                inputs.extend(self._inputs.#iter().map(|input| input as &#borrow dyn Input<Read = Self::Read, Write = Self::Write>));
+                let mut inputs = vec![ #(&#borrow self.#input_field as &#borrow dyn Input<Reader = Self::Reader, Writer = Self::Writer>),* ];
+                inputs.extend(self._inputs.#iter().map(|input| input as &#borrow dyn Input<Reader = Self::Reader, Writer = Self::Writer>));
 
                 inputs
             }
