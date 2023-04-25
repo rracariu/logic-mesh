@@ -69,17 +69,6 @@ impl Engine for LocalSetEngine {
 
     type Sender = Sender<Messages>;
 
-    fn blocks(&self) -> Vec<&dyn BlockProps<Writer = Self::Writer, Reader = Self::Reader>> {
-        self.block_props
-            .values()
-            .filter_map(|props| {
-                let props = props.get();
-                props.get()
-            })
-            .map(|prop| unsafe { &*prop })
-            .collect()
-    }
-
     fn schedule<B: Block<Writer = Self::Writer, Reader = Self::Reader> + 'static>(
         &mut self,
         mut block: B,
@@ -160,6 +149,22 @@ impl LocalSetEngine {
             reply_senders: BTreeMap::new(),
             watches: BTreeMap::new(),
         }
+    }
+
+    /// Get a list of all the blocks that are currently
+    /// scheduled on this engine.
+    pub fn blocks(
+        &self,
+    ) -> Vec<&dyn BlockProps<Writer = <Self as Engine>::Writer, Reader = <Self as Engine>::Reader>>
+    {
+        self.block_props
+            .values()
+            .filter_map(|props| {
+                let props = props.get();
+                props.get()
+            })
+            .map(|prop| unsafe { &*prop })
+            .collect()
     }
 
     async fn dispatch_message(&mut self, msg: Messages) {

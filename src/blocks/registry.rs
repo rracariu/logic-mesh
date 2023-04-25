@@ -152,7 +152,7 @@ fn register_impl<
 #[cfg(test)]
 mod test {
 
-    use crate::base::{block::connect::connect_output, engine::Engine};
+    use crate::base::block::connect::connect_output;
 
     use super::*;
 
