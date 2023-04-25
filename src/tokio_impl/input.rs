@@ -32,8 +32,8 @@ impl InputImpl {
             block_id,
             connection_count: 0,
 
-            rx,
-            tx,
+            reader: rx,
+            writer: tx,
 
             val: Default::default(),
             default,
@@ -44,7 +44,7 @@ impl InputImpl {
 
 impl Input for InputImpl {
     fn receiver(&mut self) -> Pin<Box<dyn InputReceiver + '_>> {
-        self.rx.recv().boxed()
+        self.reader.recv().boxed()
     }
 }
 

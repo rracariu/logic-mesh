@@ -39,11 +39,21 @@ pub trait BlockProps {
     /// List all the block inputs
     fn inputs(&self) -> Vec<&dyn Input<Read = Self::Read, Write = Self::Write>>;
 
+    /// Get block input by name
+    fn get_input(&self, name: &str) -> Option<&dyn Input<Read = Self::Read, Write = Self::Write>> {
+        self.inputs().iter().find(|i| i.name() == name).cloned()
+    }
+
     /// List all the block inputs
     fn inputs_mut(&mut self) -> Vec<&mut dyn Input<Read = Self::Read, Write = Self::Write>>;
 
-    /// The block output
+    /// The block outputs
     fn outputs(&self) -> Vec<&dyn Output<Write = Self::Write>>;
+
+    /// Get block output by name
+    fn get_output(&self, name: &str) -> Option<&dyn Output<Write = Self::Write>> {
+        self.outputs().iter().find(|i| i.name() == name).cloned()
+    }
 
     /// Mutable reference to the block's output
     fn outputs_mut(&mut self) -> Vec<&mut dyn Output<Write = Self::Write>>;

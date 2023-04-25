@@ -17,6 +17,11 @@ pub trait OutputProps {
     /// The output's description
     fn desc(&self) -> &OutDesc;
 
+    /// The output's name
+    fn name(&self) -> &str {
+        &self.desc().name
+    }
+
     /// The block id of the block this output belongs to
     fn block_id(&self) -> &Uuid;
 

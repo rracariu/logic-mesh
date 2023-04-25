@@ -13,7 +13,7 @@ use super::{props::InputDefault, InputProps};
 
 /// The base input type
 #[derive(Debug, Default)]
-pub struct BaseInput<Rx, Tx> {
+pub struct BaseInput<Reader, Writer> {
     /// The block unique input's name
     pub name: String,
     /// The kind of data this input can receive
@@ -23,21 +23,21 @@ pub struct BaseInput<Rx, Tx> {
     /// The number of connections this input has
     pub connection_count: usize,
     /// The input reader
-    pub rx: Rx,
+    pub reader: Reader,
     /// The input writer
-    pub tx: Tx,
+    pub writer: Writer,
     /// The input value
     pub val: Option<Value>,
     /// The input default values
     pub default: InputDefault,
     /// The links to other inputs
-    pub links: Vec<BaseLink<Tx>>,
+    pub links: Vec<BaseLink<Writer>>,
 }
 
 /// Implements the `InputProps` trait for `BaseInput`
-impl<Rx, Tx: Clone> InputProps for BaseInput<Rx, Tx> {
-    type Read = Rx;
-    type Write = Tx;
+impl<Reader, Writer: Clone> InputProps for BaseInput<Reader, Writer> {
+    type Read = Reader;
+    type Write = Writer;
 
     fn name(&self) -> &str {
         &self.name
@@ -72,11 +72,11 @@ impl<Rx, Tx: Clone> InputProps for BaseInput<Rx, Tx> {
     }
 
     fn reader(&mut self) -> &mut Self::Read {
-        &mut self.rx
+        &mut self.reader
     }
 
     fn writer(&mut self) -> &mut Self::Write {
-        &mut self.tx
+        &mut self.writer
     }
 
     fn get_value(&self) -> &Option<Value> {
