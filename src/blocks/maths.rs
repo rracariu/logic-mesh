@@ -23,7 +23,7 @@ use super::{
 #[block]
 #[derive(BlockProps, Debug)]
 #[name = "Add"]
-#[library = "math"]
+#[category = "math"]
 #[input(kind = "Number", count = 16)]
 pub struct Add {
     #[output(kind = "Number")]

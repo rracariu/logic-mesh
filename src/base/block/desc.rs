@@ -16,6 +16,10 @@ pub struct BlockDesc {
     pub name: String,
     /// The block library
     pub library: String,
+    /// The block category
+    pub category: String,
+    /// The block version
+    pub ver: String,
     /// List of the inputs of the block
     pub inputs: Vec<BlockPin>,
     /// The outputs of the block

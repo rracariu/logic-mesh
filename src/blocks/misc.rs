@@ -27,7 +27,7 @@ use super::{
 #[block]
 #[derive(BlockProps, Debug)]
 #[name = "SineWave"]
-#[library = "math"]
+#[category = "math"]
 pub struct SineWave {
     #[input(kind = "Number")]
     pub freq: InputImpl,
@@ -70,7 +70,7 @@ impl Block for SineWave {
 #[block]
 #[derive(BlockProps, Debug)]
 #[name = "Random"]
-#[library = "math"]
+#[category = "math"]
 pub struct Random {
     #[input(kind = "Number")]
     pub freq: InputImpl,

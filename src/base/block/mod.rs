@@ -47,6 +47,7 @@ mod test {
     #[derive(BlockProps, Debug)]
     #[name = "Test"]
     #[library = "test"]
+    #[category = "test"]
     #[input(kind = "Number", count = 16)]
     struct Test {
         #[input(kind = "Number")]

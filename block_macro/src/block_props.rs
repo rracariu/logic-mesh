@@ -46,6 +46,14 @@ pub(super) fn block_props_impl(ast: &syn::DeriveInput) -> TokenStream {
         block_props_attrs.insert("doc".to_string(), "".to_string());
     }
 
+    if !block_props_attrs.contains_key("ver") {
+        block_props_attrs.insert("ver".to_string(), "1.0.0".to_string());
+    }
+
+    if !block_props_attrs.contains_key("library") {
+        block_props_attrs.insert("library".to_string(), "core".to_string());
+    }
+
     let block_prop_names = block_props_attrs.keys().map(|name| format_ident!("{name}"));
     let block_prop_values = block_props_attrs.values();
 
