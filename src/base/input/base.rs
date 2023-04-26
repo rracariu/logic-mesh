@@ -52,7 +52,7 @@ impl<Reader, Writer: Clone> InputProps for BaseInput<Reader, Writer> {
     }
 
     fn is_connected(&self) -> bool {
-        self.connection_count > 0 || !self.links.is_empty()
+        self.connection_count > 0
     }
 
     fn links(&self) -> Vec<&dyn Link> {

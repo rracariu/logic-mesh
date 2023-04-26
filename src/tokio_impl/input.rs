@@ -23,7 +23,7 @@ impl InputImpl {
         block_id: Uuid,
         default: InputDefault,
     ) -> Self {
-        let (tx, rx) = channel::<Value>(32);
+        let (writer, reader) = channel::<Value>(32);
 
         Self {
             name: name.to_string(),
@@ -32,8 +32,8 @@ impl InputImpl {
             block_id,
             connection_count: 0,
 
-            reader: rx,
-            writer: tx,
+            reader,
+            writer,
 
             val: Default::default(),
             default,

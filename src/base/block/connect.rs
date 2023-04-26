@@ -332,7 +332,7 @@ mod test {
 
         block1.connect_input("input1", *input2).unwrap();
 
-        assert!(block1.input1.is_connected());
+        assert!(block1.input1.has_output());
         assert!(input2.is_connected());
         assert_eq!(block1.input1.links().len(), 1);
         assert_eq!(input2.links().len(), 0);

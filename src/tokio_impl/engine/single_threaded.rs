@@ -311,12 +311,6 @@ impl LocalSetEngine {
     }
 }
 
-impl Default for LocalSetEngine {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 /// Implements the logic for checking if the watched block pins
 /// have changed, and if so, dispatches a message to the watch sender.
 fn change_of_value_check<B: Block + 'static>(

@@ -43,6 +43,11 @@ pub trait InputProps {
     /// Get a list of links to this output
     fn links(&self) -> Vec<&dyn Link>;
 
+    /// True if this input has at least one output
+    fn has_output(&self) -> bool {
+        !self.links().is_empty()
+    }
+
     /// Adds a link to this output
     fn add_link(&mut self, link: BaseLink<Self::Writer>);
 
