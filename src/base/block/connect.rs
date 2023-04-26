@@ -312,12 +312,26 @@ mod test {
         assert_eq!(block2.name(), "Block2");
 
         let input = &mut block2.inputs_mut()[0];
-        block1.connect_output("out", *input).unwrap();
+        block1
+            .connect_output("out", *input)
+            .expect("Could not connect");
 
         assert!(input.is_connected());
         assert_eq!(block1.outputs()[0].links().len(), 1);
 
-        block1.disconnect_output("out", *input).unwrap();
+        assert!(
+            block1.connect_output("out", *input).is_err(),
+            "Should not be able to connect twice"
+        );
+
+        assert!(
+            block1.connect_output("invalid out", *input).is_err(),
+            "Should not be able to connect to invalid output"
+        );
+
+        block1
+            .disconnect_output("out", *input)
+            .expect("Could not disconnect");
 
         assert!(!input.is_connected());
         assert_eq!(block1.outputs()[0].links().len(), 0);
@@ -330,14 +344,27 @@ mod test {
 
         let input2 = &mut block2.inputs_mut()[0];
 
-        block1.connect_input("input1", *input2).unwrap();
+        block1
+            .connect_input("input1", *input2)
+            .expect("Could not connect");
+
+        assert!(
+            block1.connect_input("input1", *input2).is_err(),
+            "Should not be able to connect twice"
+        );
+        assert!(
+            block1.connect_input("invalid input", *input2).is_err(),
+            "Should not be able to connect to invalid input"
+        );
 
         assert!(block1.input1.has_output());
         assert!(input2.is_connected());
         assert_eq!(block1.input1.links().len(), 1);
         assert_eq!(input2.links().len(), 0);
 
-        block1.disconnect_input("input1", *input2).unwrap();
+        block1
+            .disconnect_input("input1", *input2)
+            .expect("Could not disconnect");
 
         assert!(!block1.input1.is_connected());
         assert_eq!(block1.outputs()[0].links().len(), 0);
