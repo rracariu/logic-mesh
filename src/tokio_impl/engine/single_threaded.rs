@@ -65,6 +65,12 @@ pub struct LocalSetEngine {
     watches: BTreeMap<Uuid, Rc<WatchSet>>,
 }
 
+impl Default for LocalSetEngine {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Engine for LocalSetEngine {
     type Writer = Sender<Value>;
     type Reader = Receiver<Value>;
