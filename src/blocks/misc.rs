@@ -113,14 +113,7 @@ impl Block for Random {
 }
 
 fn input_as_float_or_default(input: &InputImpl) -> f64 {
-    input
-        .get_value()
-        .as_ref()
-        .and_then(|v| match v {
-            Value::Number(v) => Some(v.value),
-            _ => None,
-        })
-        .unwrap_or_default()
+    input_as_number(input).map(|v| v.value).unwrap_or(0.0)
 }
 
 fn input_as_number(input: &InputImpl) -> Option<Number> {
