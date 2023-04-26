@@ -32,30 +32,30 @@ pub trait BlockConnect: BlockStaticDesc {
     /// - input_name: The name of the output to be connected
     /// - input: The block input to be connected
     ///
-    fn connect_input<I: InputProps<Reader = Self::Reader, Writer = Self::Writer> + ?Sized>(
+    fn connect_input(
         &mut self,
         input_name: &str,
-        target_input: &mut I,
+        target_input: &mut dyn InputProps<Reader = Self::Reader, Writer = Self::Writer>,
     ) -> Result<(), &'static str>;
 
     /// Disconnect a block output from the given input
     /// # Arguments
     /// - input: The block input to be disconnected
     ///
-    fn disconnect_output<I: InputProps<Writer = Self::Writer> + ?Sized>(
+    fn disconnect_output(
         &mut self,
         output_name: &str,
-        input: &mut I,
+        input: &mut dyn InputProps<Reader = Self::Reader, Writer = Self::Writer>,
     ) -> Result<(), &'static str>;
 
     /// Disconnect a block input from the given output
     /// # Arguments
     /// - input_name: The name of the input to be disconnected
     /// - input: The block input to be disconnected
-    fn disconnect_input<I: InputProps + ?Sized>(
+    fn disconnect_input(
         &mut self,
         input_name: &str,
-        input: &mut I,
+        input: &mut dyn InputProps<Reader = Self::Reader, Writer = Self::Writer>,
     ) -> Result<(), &'static str>;
 }
 
@@ -82,10 +82,10 @@ impl<T: Block + ?Sized> BlockConnect for T {
         connect_output(*source_output, target_input)
     }
 
-    fn connect_input<I: InputProps<Reader = Self::Reader, Writer = Self::Writer> + ?Sized>(
+    fn connect_input(
         &mut self,
         input_name: &str,
-        target_input: &mut I,
+        target_input: &mut dyn InputProps<Reader = Self::Reader, Writer = Self::Writer>,
     ) -> Result<(), &'static str> {
         let mut inputs = self.inputs_mut();
         let source_input =
@@ -97,10 +97,10 @@ impl<T: Block + ?Sized> BlockConnect for T {
         connect_input(source_input, target_input)
     }
 
-    fn disconnect_output<I: InputProps<Writer = Self::Writer> + ?Sized>(
+    fn disconnect_output(
         &mut self,
         output_name: &str,
-        input: &mut I,
+        input: &mut dyn InputProps<Reader = Self::Reader, Writer = Self::Writer>,
     ) -> Result<(), &'static str> {
         let mut outputs = self.outputs_mut();
         let source_output = if let Some(out) = outputs
@@ -115,10 +115,10 @@ impl<T: Block + ?Sized> BlockConnect for T {
         disconnect_output(*source_output, input)
     }
 
-    fn disconnect_input<I: InputProps + ?Sized>(
+    fn disconnect_input(
         &mut self,
         input_name: &str,
-        input: &mut I,
+        input: &mut dyn InputProps<Reader = Self::Reader, Writer = Self::Writer>,
     ) -> Result<(), &'static str> {
         let mut inputs = self.inputs_mut();
         let source_input =
@@ -175,13 +175,9 @@ pub fn connect_output<Reader, Writer: Clone>(
 ///
 /// # Returns
 /// - `Ok(())` if the disconnection was successful, `Err` otherwise
-pub fn disconnect_output<
-    Tx: Clone,
-    O: Output<Writer = Tx> + ?Sized,
-    I: InputProps<Writer = Tx> + ?Sized,
->(
-    source_output: &mut O,
-    target_input: &mut I,
+pub fn disconnect_output<Reader, Writer: Clone>(
+    source_output: &mut dyn Output<Writer = Writer>,
+    target_input: &mut dyn InputProps<Reader = Reader, Writer = Writer>,
 ) -> Result<(), &'static str> {
     let link_id = link_id_for_input(source_output.links(), target_input);
 
@@ -198,14 +194,9 @@ pub fn disconnect_output<
 /// # Arguments
 /// - source_input: The input to be connected to
 /// - target_input: The block input to be connected
-pub fn connect_input<
-    Reader,
-    Writer: Clone,
-    IS: InputProps<Reader = Reader, Writer = Writer> + ?Sized,
-    IT: InputProps<Reader = Reader, Writer = Writer> + ?Sized,
->(
-    source_input: &mut IS,
-    target_input: &mut IT,
+pub fn connect_input<Reader, Writer: Clone>(
+    source_input: &mut dyn InputProps<Reader = Reader, Writer = Writer>,
+    target_input: &mut dyn InputProps<Reader = Reader, Writer = Writer>,
 ) -> Result<(), &'static str> {
     if source_input.block_id() == target_input.block_id() {
         return Err("Cannot connect to the same block");
