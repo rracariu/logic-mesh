@@ -46,6 +46,14 @@ pub trait BlockProps {
         self.inputs().iter().find(|i| i.name() == name).cloned()
     }
 
+    /// Get block mutable input by name
+    fn get_input_mut(
+        &mut self,
+        name: &str,
+    ) -> Option<&mut dyn Input<Reader = Self::Reader, Writer = Self::Writer>> {
+        self.inputs_mut().into_iter().find(|i| i.name() == name)
+    }
+
     /// List all the block inputs
     fn inputs_mut(&mut self) -> Vec<&mut dyn Input<Reader = Self::Reader, Writer = Self::Writer>>;
 
@@ -55,6 +63,11 @@ pub trait BlockProps {
     /// Get block output by name
     fn get_output(&self, name: &str) -> Option<&dyn Output<Writer = Self::Writer>> {
         self.outputs().iter().find(|i| i.name() == name).cloned()
+    }
+
+    /// Get block mutable output by name
+    fn get_output_mut(&mut self, name: &str) -> Option<&mut dyn Output<Writer = Self::Writer>> {
+        self.outputs_mut().into_iter().find(|i| i.name() == name)
     }
 
     /// Mutable reference to the block's output

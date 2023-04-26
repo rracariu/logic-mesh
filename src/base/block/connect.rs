@@ -20,10 +20,10 @@ pub trait BlockConnect: BlockStaticDesc {
     /// - output_name: The name of the output to be connected
     /// - input: The block input to be connected
     ///
-    fn connect_output<I: InputProps<Writer = Self::Writer> + ?Sized>(
+    fn connect_output(
         &mut self,
         output_name: &str,
-        target_input: &mut I,
+        target_input: &mut dyn InputProps<Reader = Self::Reader, Writer = Self::Writer>,
     ) -> Result<(), &'static str>;
 
     /// Connect a block input to another's block input
@@ -63,11 +63,11 @@ pub trait BlockConnect: BlockStaticDesc {
 /// Implements the `BlockConnect` trait for all types
 /// that are `Block`s
 ///
-impl<T: Block> BlockConnect for T {
-    fn connect_output<I: InputProps<Writer = Self::Writer> + ?Sized>(
+impl<T: Block + ?Sized> BlockConnect for T {
+    fn connect_output(
         &mut self,
         output_name: &str,
-        target_input: &mut I,
+        target_input: &mut dyn InputProps<Reader = Self::Reader, Writer = Self::Writer>,
     ) -> Result<(), &'static str> {
         let mut outputs = self.outputs_mut();
         let source_output = if let Some(out) = outputs
@@ -144,13 +144,9 @@ impl<T: Block> BlockConnect for T {
 /// # Arguments
 /// - source_output: The output to be connected
 /// - target_input: The block input to be connected
-pub fn connect_output<
-    Writer: Clone,
-    O: Output<Writer = Writer> + ?Sized,
-    I: InputProps<Writer = Writer> + ?Sized,
->(
-    source_output: &mut O,
-    target_input: &mut I,
+pub fn connect_output<Reader, Writer: Clone>(
+    source_output: &mut dyn Output<Writer = Writer>,
+    target_input: &mut dyn InputProps<Reader = Reader, Writer = Writer>,
 ) -> Result<(), &'static str> {
     // Connections to the same block and the same input are not allowed.
     if source_output.links().iter().any(|link| {

@@ -15,15 +15,17 @@ use uuid::Uuid;
 
 use crate::{
     base::{
-        block::{Block, BlockProps, BlockState},
+        block::{
+            connect::{connect_input, connect_output},
+            Block, BlockProps, BlockState,
+        },
         engine::{
             messages::{
-                BlockData, BlockInputData, BlockOutputData, ChangeSource, EngineMessage,
+                BlockData, BlockInputData, BlockOutputData, ChangeSource, EngineMessage, LinkData,
                 WatchMessage,
             },
             Engine,
         },
-        link::{BaseLink, LinkState},
     },
     blocks::registry::schedule_block,
 };
@@ -236,73 +238,11 @@ impl LocalSetEngine {
             }
 
             EngineMessage::ConnectBlocksReq(sender_uuid, link_data) => {
-                if (!self.block_props.contains_key(&link_data.source_block_uuid)
-                    || !self.block_props.contains_key(&link_data.target_block_uuid))
-                    || (link_data.source_block_uuid == link_data.target_block_uuid)
-                {
-                    self.reply_to_sender(
-                        sender_uuid,
-                        EngineMessage::ConnectBlocksRes(sender_uuid, None),
-                    );
-                    return;
-                }
-
-                let tx = if let Some(target_block) =
-                    self.get_block_props_mut(&link_data.target_block_uuid)
-                {
-                    let mut inputs = target_block.inputs_mut();
-                    let input = inputs
-                        .iter_mut()
-                        .find(|input| input.name() == link_data.target_block_input_name);
-
-                    if let Some(input) = input {
-                        input.increment_conn();
-                        Some(input.writer().clone())
-                    } else {
-                        None
-                    }
-                } else {
-                    None
-                };
-
-                if tx.is_none() {
-                    self.reply_to_sender(
-                        sender_uuid,
-                        EngineMessage::ConnectBlocksRes(sender_uuid, None),
-                    );
-                    return;
-                }
-
-                if let Some(source_block) = self.get_block_props_mut(&link_data.source_block_uuid) {
-                    // Ignore connections to the same block and the same input.
-                    if source_block.links().iter().any(|link| {
-                        link.target_block_id() == &link_data.target_block_uuid
-                            && link.target_input() == link_data.target_block_input_name
-                    }) {
-                        self.reply_to_sender(
-                            sender_uuid,
-                            EngineMessage::ConnectBlocksRes(sender_uuid, None),
-                        );
-                        return;
-                    }
-
-                    let mut link = BaseLink::<Sender<Value>>::new(
-                        link_data.target_block_uuid,
-                        link_data.target_block_input_name.to_string(),
-                    );
-
-                    link.tx = tx;
-                    link.state = LinkState::Connected;
-                    source_block
-                        .outputs_mut()
-                        .iter_mut()
-                        .for_each(|l| l.add_link(link.clone()));
-
-                    self.reply_to_sender(
-                        sender_uuid,
-                        EngineMessage::ConnectBlocksRes(sender_uuid, Some(link_data)),
-                    );
-                }
+                let res = self.connect_blocks(&link_data);
+                self.reply_to_sender(
+                    sender_uuid,
+                    EngineMessage::ConnectBlocksRes(sender_uuid, res),
+                );
             }
 
             _ => unreachable!("Invalid message"),
@@ -319,11 +259,8 @@ impl LocalSetEngine {
         }
     }
 
-    fn get_block_props_mut(
-        &mut self,
-        block_id: &Uuid,
-    ) -> Option<&mut (dyn BlockPropsType + 'static)> {
-        self.block_props.get_mut(block_id).and_then(|ptr| {
+    fn get_block_props_mut(&self, block_id: &Uuid) -> Option<&mut (dyn BlockPropsType + 'static)> {
+        self.block_props.get(block_id).and_then(|ptr| {
             let fat_ptr = (**ptr).get();
             fat_ptr.get().map(|ptr| unsafe { &mut *ptr })
         })
@@ -342,6 +279,35 @@ impl LocalSetEngine {
         self.block_props.remove(block_id);
         self.watches.remove(block_id);
         res
+    }
+
+    fn connect_blocks(&mut self, link_data: &LinkData) -> Option<LinkData> {
+        if let (Some(source_block), Some(target_block)) = (
+            self.get_block_props_mut(&link_data.source_block_uuid),
+            self.get_block_props_mut(&link_data.target_block_uuid),
+        ) {
+            if let Some(target_input) =
+                target_block.get_input_mut(&link_data.target_block_input_name)
+            {
+                if let Some(source_input) =
+                    source_block.get_input_mut(&link_data.source_block_pin_name)
+                {
+                    let _ = connect_input(source_input, target_input);
+                } else if let Some(source_output) =
+                    source_block.get_output_mut(&link_data.source_block_pin_name)
+                {
+                    let _ = connect_output(source_output, target_input);
+                } else {
+                    return None;
+                }
+
+                Some(link_data.clone())
+            } else {
+                None
+            }
+        } else {
+            None
+        }
     }
 }
 
