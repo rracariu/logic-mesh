@@ -42,6 +42,11 @@ pub(super) fn block_props_impl(ast: &syn::DeriveInput) -> TokenStream {
 
     // Block description attributes
     let mut block_props_attrs = get_block_attributes(ast);
+
+    if !block_props_attrs.contains_key("name") {
+        block_props_attrs.insert("name".to_string(), format!("{}", block_ident));
+    }
+
     if !block_props_attrs.contains_key("doc") {
         block_props_attrs.insert("doc".to_string(), "".to_string());
     }

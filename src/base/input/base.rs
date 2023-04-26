@@ -93,7 +93,7 @@ impl<Reader, Writer: Clone> InputProps for BaseInput<Reader, Writer> {
     }
 
     fn decrement_conn(&mut self) -> usize {
-        if self.connection_count > 1 {
+        if self.connection_count > 0 {
             self.connection_count -= 1;
         }
         self.connection_count

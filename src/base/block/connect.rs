@@ -29,12 +29,12 @@ pub trait BlockConnect: BlockStaticDesc {
     /// Connect a block input to another's block input
     ///
     /// # Arguments
-    /// - output_name: The name of the output to be connected
+    /// - input_name: The name of the output to be connected
     /// - input: The block input to be connected
     ///
-    fn connect_input<I: InputProps<Writer = Self::Writer> + ?Sized>(
+    fn connect_input<I: InputProps<Reader = Self::Reader, Writer = Self::Writer> + ?Sized>(
         &mut self,
-        source_input: &mut I,
+        input_name: &str,
         target_input: &mut I,
     ) -> Result<(), &'static str>;
 
@@ -42,7 +42,7 @@ pub trait BlockConnect: BlockStaticDesc {
     /// # Arguments
     /// - input: The block input to be disconnected
     ///
-    fn disconnect_output<I: InputProps<Writer = Self::Writer>>(
+    fn disconnect_output<I: InputProps<Writer = Self::Writer> + ?Sized>(
         &mut self,
         output_name: &str,
         input: &mut I,
@@ -52,7 +52,7 @@ pub trait BlockConnect: BlockStaticDesc {
     /// # Arguments
     /// - input_name: The name of the input to be disconnected
     /// - input: The block input to be disconnected
-    fn disconnect_input<I: InputProps>(
+    fn disconnect_input<I: InputProps + ?Sized>(
         &mut self,
         input_name: &str,
         input: &mut I,
@@ -82,15 +82,22 @@ impl<T: Block> BlockConnect for T {
         connect_output(*source_output, target_input)
     }
 
-    fn connect_input<I: InputProps<Writer = Self::Writer> + ?Sized>(
+    fn connect_input<I: InputProps<Reader = Self::Reader, Writer = Self::Writer> + ?Sized>(
         &mut self,
-        source_input: &mut I,
+        input_name: &str,
         target_input: &mut I,
     ) -> Result<(), &'static str> {
+        let mut inputs = self.inputs_mut();
+        let source_input =
+            if let Some(input) = inputs.iter_mut().find(|input| input.name() == input_name) {
+                *input as &mut dyn InputProps<Reader = Self::Reader, Writer = Self::Writer>
+            } else {
+                return Err("Input not found");
+            };
         connect_input(source_input, target_input)
     }
 
-    fn disconnect_output<I: InputProps<Writer = Self::Writer>>(
+    fn disconnect_output<I: InputProps<Writer = Self::Writer> + ?Sized>(
         &mut self,
         output_name: &str,
         input: &mut I,
@@ -108,7 +115,7 @@ impl<T: Block> BlockConnect for T {
         disconnect_output(*source_output, input)
     }
 
-    fn disconnect_input<I: InputProps>(
+    fn disconnect_input<I: InputProps + ?Sized>(
         &mut self,
         input_name: &str,
         input: &mut I,
@@ -195,9 +202,14 @@ pub fn disconnect_output<
 /// # Arguments
 /// - source_input: The input to be connected to
 /// - target_input: The block input to be connected
-pub fn connect_input<I: InputProps + ?Sized>(
-    source_input: &mut I,
-    target_input: &mut I,
+pub fn connect_input<
+    Reader,
+    Writer: Clone,
+    IS: InputProps<Reader = Reader, Writer = Writer> + ?Sized,
+    IT: InputProps<Reader = Reader, Writer = Writer> + ?Sized,
+>(
+    source_input: &mut IS,
+    target_input: &mut IT,
 ) -> Result<(), &'static str> {
     if source_input.block_id() == target_input.block_id() {
         return Err("Cannot connect to the same block");
@@ -255,4 +267,92 @@ fn link_id_for_input<I: InputProps + ?Sized>(
         })
         .map(|link| *link.id());
     link_id
+}
+
+#[cfg(test)]
+mod test {
+
+    use uuid::Uuid;
+
+    use crate::base::{
+        block::{Block, BlockDesc, BlockProps, BlockState},
+        input::{Input, InputProps},
+        output::Output,
+    };
+
+    use super::BlockConnect;
+
+    use super::super::mock::{InputImpl, OutputImpl};
+
+    use libhaystack::val::kind::HaystackKind;
+
+    #[block]
+    #[derive(BlockProps, Debug)]
+    #[category = "test"]
+    struct Block1 {
+        #[input(kind = "Number")]
+        input1: InputImpl,
+        #[output(kind = "Number")]
+        out: OutputImpl,
+    }
+    impl Block for Block1 {
+        async fn execute(&mut self) {
+            todo!()
+        }
+    }
+
+    #[block]
+    #[derive(BlockProps, Debug)]
+    #[category = "test"]
+    struct Block2 {
+        #[input(kind = "Number")]
+        input1: InputImpl,
+        #[output(kind = "Number")]
+        out: OutputImpl,
+    }
+    impl Block for Block2 {
+        async fn execute(&mut self) {
+            todo!()
+        }
+    }
+
+    #[test]
+    fn test_block_out_links() {
+        let mut block1 = Block1::new();
+        let mut block2 = Block2::new();
+
+        assert_eq!(block1.name(), "Block1");
+        assert_eq!(block2.name(), "Block2");
+
+        let input = &mut block2.inputs_mut()[0];
+        block1.connect_output("out", *input).unwrap();
+
+        assert!(input.is_connected());
+        assert_eq!(block1.outputs()[0].links().len(), 1);
+
+        block1.disconnect_output("out", *input).unwrap();
+
+        assert!(!input.is_connected());
+        assert_eq!(block1.outputs()[0].links().len(), 0);
+    }
+
+    #[test]
+    fn test_block_input_links() {
+        let mut block1 = Block1::new();
+        let mut block2 = Block2::new();
+
+        let input2 = &mut block2.inputs_mut()[0];
+
+        block1.connect_input("input1", *input2).unwrap();
+
+        assert!(block1.input1.is_connected());
+        assert!(input2.is_connected());
+        assert_eq!(block1.input1.links().len(), 1);
+        assert_eq!(input2.links().len(), 0);
+
+        block1.disconnect_input("input1", *input2).unwrap();
+
+        assert!(!block1.input1.is_connected());
+        assert_eq!(block1.outputs()[0].links().len(), 0);
+    }
 }

@@ -44,9 +44,16 @@ impl Default for OutputImpl {
 
 impl Output for OutputImpl {
     type Writer = <InputImpl as InputProps>::Writer;
-    fn add_link(&mut self, _link: BaseLink<Self::Writer>) {}
 
-    fn remove_link_by_id(&mut self, _link_id: &Uuid) {}
+    fn add_link(&mut self, _link: BaseLink<Self::Writer>) {
+        self.links.push(_link);
+    }
 
-    fn set(&mut self, _value: Value) {}
+    fn remove_link_by_id(&mut self, _link_id: &Uuid) {
+        self.links.retain(|link| link.id != *_link_id);
+    }
+
+    fn set(&mut self, _value: Value) {
+        self.value = _value;
+    }
 }
