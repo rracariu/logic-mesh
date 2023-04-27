@@ -2,9 +2,12 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
+use anyhow::Result;
 use libhaystack::val::Value;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
+
+use crate::base::program::data::LinkData;
 
 /// Block input properties
 #[derive(Default, Debug, Serialize, Deserialize, Clone)]
@@ -21,20 +24,12 @@ pub struct BlockOutputData {
 }
 
 #[derive(Debug, Default, Serialize, Deserialize, Clone)]
-pub struct BlockData {
+pub struct BlockParam {
     pub id: String,
     pub name: String,
     pub library: String,
     pub inputs: BTreeMap<String, BlockInputData>,
     pub outputs: BTreeMap<String, BlockOutputData>,
-}
-
-#[derive(Debug, Default, Clone)]
-pub struct LinkData {
-    pub source_block_uuid: Uuid,
-    pub target_block_uuid: Uuid,
-    pub source_block_pin_name: String,
-    pub target_block_input_name: String,
 }
 
 #[derive(Debug, Clone)]
@@ -64,10 +59,10 @@ pub enum EngineMessage<Sender: Clone> {
     WatchBlockUnsubRes(Result<Uuid, &'static str>),
 
     InspectBlockReq(Uuid, Uuid),
-    InspectBlockRes(Uuid, Option<BlockData>),
+    InspectBlockRes(Uuid, Option<BlockParam>),
 
     ConnectBlocksReq(Uuid, LinkData),
-    ConnectBlocksRes(Uuid, Option<LinkData>),
+    ConnectBlocksRes(Uuid, Result<LinkData, String>),
 
     Shutdown,
 }

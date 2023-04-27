@@ -3,9 +3,11 @@
 use crate::base::block::{Block, BlockDesc, BlockProps, BlockStaticDesc};
 use crate::base::input::InputProps;
 
+use crate::base::engine::Engine;
 use crate::blocks::maths::Add;
 use crate::blocks::misc::{Random, SineWave};
 
+use anyhow::{anyhow, Result};
 use lazy_static::lazy_static;
 use std::collections::BTreeMap;
 use std::sync::Mutex;
@@ -54,8 +56,8 @@ macro_rules! register_blocks{
 		/// - eng: The engine to schedule the block on
 		/// # Returns
 		/// A result indicating success or failure
-		pub fn schedule_block<E>(name: &str, eng: &mut E) -> Result<uuid::Uuid, &'static str>
-		where E : $crate::base::engine::Engine<Reader = <InputImpl as InputProps>::Reader, Writer = <InputImpl as InputProps>::Writer> {
+		pub fn schedule_block<E>(name: &str, eng: &mut E) -> Result<uuid::Uuid>
+		where E : Engine<Reader = <InputImpl as InputProps>::Reader, Writer = <InputImpl as InputProps>::Writer> {
 
 			match name {
 				$(
@@ -67,7 +69,7 @@ macro_rules! register_blocks{
 					}
 				)*
 				_ => {
-					return Err("Block not found");
+					return Err(anyhow!("Block not found"));
 				}
 			}
 
@@ -75,8 +77,8 @@ macro_rules! register_blocks{
 
 		/// Schedule a block by name and UUID.
 		/// See [`schedule_block`] for more details.
-		pub fn schedule_block_with_uuid<E>(name: &str, uuid: uuid::Uuid, eng: &mut E) -> Result<uuid::Uuid, &'static str>
-		where E : $crate::base::engine::Engine<Reader = <InputImpl as InputProps>::Reader, Writer = <InputImpl as InputProps>::Writer> {
+		pub fn schedule_block_with_uuid<E>(name: &str, uuid: uuid::Uuid, eng: &mut E) -> Result<uuid::Uuid>
+		where E : Engine<Reader = <InputImpl as InputProps>::Reader, Writer = <InputImpl as InputProps>::Writer> {
 
 			match name {
 				$(
@@ -87,7 +89,7 @@ macro_rules! register_blocks{
 					}
 				)*
 				_ => {
-					return Err("Block not found");
+					return Err(anyhow!("Block not found"));
 				}
 			}
 
