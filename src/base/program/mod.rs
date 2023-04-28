@@ -7,12 +7,8 @@ pub mod data;
 
 use anyhow::{anyhow, Result};
 use serde::{Deserialize, Serialize};
-use uuid::Uuid;
 
-use crate::blocks::{
-    registry::{schedule_block_with_uuid, BLOCKS},
-    InputImpl,
-};
+use crate::blocks::{registry::BLOCKS, InputImpl};
 
 use self::data::{BlockData, LinkData, ProgramMeta};
 
@@ -53,15 +49,7 @@ impl<E: EngineType> Program<E> {
             return Err(anyhow!("Block registry is locked"));
         }
 
-        self.blocks.iter().try_for_each(|block| -> Result<()> {
-            let id = Uuid::try_from(block.id.as_str())?;
-            schedule_block_with_uuid(&block.name, id, &mut self.engine)?;
-            Ok(())
-        })?;
-
-        self.links
-            .iter()
-            .try_for_each(|link| self.engine.connect_blocks(link).map(|_| ()))
+        self.engine.load_blocks_and_links(&self.blocks, &self.links)
     }
 
     pub async fn run(&mut self) {

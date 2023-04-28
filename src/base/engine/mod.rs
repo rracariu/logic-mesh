@@ -6,7 +6,10 @@
 
 use anyhow::Result;
 
-use super::{block::Block, program::data::LinkData};
+use super::{
+    block::Block,
+    program::data::{BlockData, LinkData},
+};
 
 pub mod messages;
 
@@ -28,9 +31,9 @@ pub trait Engine {
         block: B,
     );
 
-    /// Connects a block input or output to another
-    /// block's input
-    fn connect_blocks(&mut self, link_data: &LinkData) -> Result<LinkData>;
+    /// Load the blocks and links into the engine.
+    /// This operation should be performed before the engine is run.
+    fn load_blocks_and_links(&mut self, blocks: &[BlockData], links: &[LinkData]) -> Result<()>;
 
     /// Runs the event loop of this engine
     /// an execute the blocks that where scheduled

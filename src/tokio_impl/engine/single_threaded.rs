@@ -27,9 +27,9 @@ use crate::{
             },
             Engine,
         },
-        program::data::LinkData,
+        program::data::{BlockData, LinkData},
     },
-    blocks::registry::schedule_block,
+    blocks::registry::{schedule_block, schedule_block_with_uuid},
 };
 
 use super::block_pointer::BlockPropsPointer;
@@ -113,37 +113,16 @@ impl Engine for LocalSetEngine {
         });
     }
 
-    fn connect_blocks(&mut self, link_data: &LinkData) -> Result<LinkData> {
-        let (source_block_uuid, target_block_uuid) = (
-            Uuid::try_from(link_data.source_block_uuid.as_str())?,
-            Uuid::try_from(link_data.target_block_uuid.as_str())?,
-        );
+    fn load_blocks_and_links(&mut self, blocks: &[BlockData], links: &[LinkData]) -> Result<()> {
+        blocks.iter().try_for_each(|block| -> Result<()> {
+            let id = Uuid::try_from(block.id.as_str())?;
+            schedule_block_with_uuid(&block.name, id, self)?;
+            Ok(())
+        })?;
 
-        if let (Some(source_block), Some(target_block)) = (
-            self.get_block_props_mut(&source_block_uuid),
-            self.get_block_props_mut(&target_block_uuid),
-        ) {
-            if let Some(target_input) =
-                target_block.get_input_mut(&link_data.target_block_input_name)
-            {
-                if let Some(source_input) =
-                    source_block.get_input_mut(&link_data.source_block_pin_name)
-                {
-                    let _ = connect_input(source_input, target_input);
-                } else if let Some(source_output) =
-                    source_block.get_output_mut(&link_data.source_block_pin_name)
-                {
-                    let _ = connect_output(source_output, target_input);
-                } else {
-                    return Err(anyhow!("Source Pin not found"));
-                }
-                Ok(link_data.clone())
-            } else {
-                Err(anyhow!("Target Input not found"))
-            }
-        } else {
-            Err(anyhow!("Block not found"))
-        }
+        links
+            .iter()
+            .try_for_each(|link| self.connect_blocks(link).map(|_| ()))
     }
 
     async fn run(&mut self) {
@@ -208,6 +187,85 @@ impl LocalSetEngine {
             })
             .map(|prop| unsafe { &*prop })
             .collect()
+    }
+
+    /// Get a list of all the blocks that are currently
+    /// scheduled on this engine.
+    pub fn blocks_mut(
+        &self,
+    ) -> Vec<
+        &mut dyn BlockProps<Writer = <Self as Engine>::Writer, Reader = <Self as Engine>::Reader>,
+    > {
+        self.block_props
+            .values()
+            .filter_map(|props| {
+                let props = props.get();
+                props.get()
+            })
+            .map(|prop| unsafe { &mut *prop })
+            .collect()
+    }
+
+    fn connect_blocks(&mut self, link_data: &LinkData) -> Result<LinkData> {
+        let (source_block_uuid, target_block_uuid) = (
+            Uuid::try_from(link_data.source_block_uuid.as_str())?,
+            Uuid::try_from(link_data.target_block_uuid.as_str())?,
+        );
+
+        if let (Some(source_block), Some(target_block)) = (
+            self.get_block_props_mut(&source_block_uuid),
+            self.get_block_props_mut(&target_block_uuid),
+        ) {
+            if let Some(target_input) =
+                target_block.get_input_mut(&link_data.target_block_input_name)
+            {
+                if let Some(source_input) =
+                    source_block.get_input_mut(&link_data.source_block_pin_name)
+                {
+                    let _ = connect_input(source_input, target_input);
+                } else if let Some(source_output) =
+                    source_block.get_output_mut(&link_data.source_block_pin_name)
+                {
+                    let _ = connect_output(source_output, target_input);
+                } else {
+                    return Err(anyhow!("Source Pin not found"));
+                }
+                Ok(link_data.clone())
+            } else {
+                Err(anyhow!("Target Input not found"))
+            }
+        } else {
+            Err(anyhow!("Block not found"))
+        }
+    }
+
+    fn save_blocks_and_links(&mut self) -> Result<(Vec<BlockData>, Vec<LinkData>)> {
+        let blocks = self
+            .blocks()
+            .iter()
+            .map(|bloc| BlockData {
+                id: bloc.id().to_string(),
+                name: bloc.name().to_string(),
+                lib: bloc.desc().library.clone(),
+                ver: bloc.desc().ver.clone(),
+            })
+            .collect();
+
+        let mut links: Vec<LinkData> = Vec::new();
+        for block in self.blocks() {
+            for (pin_name, pin_links) in block.links() {
+                for link in pin_links {
+                    links.push(LinkData {
+                        source_block_pin_name: pin_name.to_string(),
+                        source_block_uuid: block.id().to_string(),
+                        target_block_input_name: link.target_input().to_string(),
+                        target_block_uuid: link.target_block_id().to_string(),
+                    });
+                }
+            }
+        }
+
+        Ok((blocks, links))
     }
 
     async fn dispatch_message(&mut self, msg: Messages) {
@@ -315,11 +373,30 @@ impl LocalSetEngine {
     }
 
     fn remove_block(&mut self, block_id: &Uuid) -> Option<Uuid> {
+        // Terminate the block
         let res = self.get_block_props_mut(block_id).map(|block| {
             block.set_state(BlockState::Terminate);
             *block.id()
         });
 
+        // Remove the block from any links
+        self.blocks_mut().iter_mut().for_each(|block| {
+            let mut outs = block.outputs_mut();
+            outs.iter_mut().for_each(|output| {
+                output
+                    .links()
+                    .retain(|link| link.target_block_id() != block_id);
+            });
+
+            let mut ins = block.inputs_mut();
+            ins.iter_mut().for_each(|input| {
+                input
+                    .links()
+                    .retain(|link| link.target_block_id() != block_id);
+            });
+        });
+
+        // Remove the block from the block props and watches
         self.block_props.remove(block_id);
         self.watches.remove(block_id);
         res

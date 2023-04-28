@@ -74,7 +74,7 @@ pub trait BlockProps {
     fn outputs_mut(&mut self) -> Vec<&mut dyn Output<Writer = Self::Writer>>;
 
     /// List all the links this block has
-    fn links(&self) -> Vec<&dyn Link>;
+    fn links(&self) -> Vec<(&str, Vec<&dyn crate::base::link::Link>)>;
 
     /// Remove a link from the link collection
     fn remove_link(&mut self, link: &dyn Link);
