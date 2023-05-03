@@ -27,7 +27,7 @@ pub trait Block: BlockConnect {
 }
 
 #[cfg(test)]
-mod mock;
+mod test_utils;
 #[cfg(test)]
 mod test {
     use uuid::Uuid;
@@ -38,7 +38,7 @@ mod test {
         output::Output,
     };
 
-    use super::mock::{InputImpl, OutputImpl};
+    use super::test_utils::mock::{InputImpl, OutputImpl};
 
     use libhaystack::val::{kind::HaystackKind, Value};
 

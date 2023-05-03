@@ -269,7 +269,7 @@ mod test {
 
     use super::BlockConnect;
 
-    use super::super::mock::{InputImpl, OutputImpl};
+    use crate::base::block::test_utils::mock::{InputImpl, OutputImpl};
 
     use libhaystack::val::kind::HaystackKind;
 
