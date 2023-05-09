@@ -3,7 +3,17 @@
 use futures::future::select_all;
 use libhaystack::val::kind::HaystackKind;
 
-use crate::base::block::Block;
+use crate::base::{block::Block, input::input_reader::InputReader};
+
+impl<B: Block> InputReader for B {
+    async fn read_inputs(&mut self) -> Option<usize> {
+        read_block_inputs(self).await
+    }
+
+    async fn wait_on_inputs(&mut self) {
+        read_block_inputs_no_index(self).await;
+    }
+}
 
 ///
 /// Reads all inputs and awaits for any of them to have data

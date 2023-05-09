@@ -4,14 +4,13 @@ use uuid::Uuid;
 
 use crate::base::{
     block::{Block, BlockDesc, BlockProps, BlockState},
-    input::{Input, InputProps},
+    input::{input_reader::InputReader, Input, InputProps},
     output::Output,
 };
 
 use libhaystack::val::{kind::HaystackKind, Number, Value};
 
 use super::{
-    read_block_inputs,
     utils::{sleep_millis, DEFAULT_SLEEP_DUR},
     InputImpl, OutputImpl,
 };
@@ -32,7 +31,7 @@ pub struct Add {
 
 impl Block for Add {
     async fn execute(&mut self) {
-        let input = read_block_inputs(self).await;
+        let input = self.read_inputs().await;
 
         if input.is_none() {
             sleep_millis(DEFAULT_SLEEP_DUR).await;

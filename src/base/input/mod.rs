@@ -10,6 +10,7 @@ use futures::Future;
 use libhaystack::val::Value;
 
 pub mod base;
+pub mod input_reader;
 pub mod props;
 
 pub use base::BaseInput;

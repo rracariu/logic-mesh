@@ -5,13 +5,10 @@ use rand::Rng;
 
 use uuid::Uuid;
 
-use crate::{
-    base::{
-        block::{Block, BlockDesc, BlockProps, BlockState},
-        input::{Input, InputProps},
-        output::Output,
-    },
-    tokio_impl::block::read_block_inputs_no_index,
+use crate::base::{
+    block::{Block, BlockDesc, BlockProps, BlockState},
+    input::{input_reader::InputReader, Input, InputProps},
+    output::Output,
 };
 
 use libhaystack::val::{kind::HaystackKind, Value};
@@ -44,7 +41,7 @@ impl Block for SineWave {
 
         let (_, index, _) = select_all([
             sleep_millis(millis).boxed_local(),
-            read_block_inputs_no_index(self).boxed_local(),
+            self.wait_on_inputs().boxed_local(),
         ])
         .await;
 
@@ -88,7 +85,7 @@ impl Block for Random {
 
         let (_, index, _) = select_all([
             sleep_millis(millis).boxed_local(),
-            read_block_inputs_no_index(self).boxed_local(),
+            self.wait_on_inputs().boxed_local(),
         ])
         .await;
 
