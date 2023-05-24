@@ -175,27 +175,17 @@ impl LocalSetEngine {
 
     /// Get a list of all the blocks that are currently
     /// scheduled on this engine.
-    pub fn blocks(
-        &self,
-    ) -> Vec<&dyn BlockProps<Writer = <Self as Engine>::Writer, Reader = <Self as Engine>::Reader>>
-    {
-        self.block_props
-            .values()
-            .filter_map(|props| {
-                let props = props.get();
-                props.get()
-            })
-            .map(|prop| unsafe { &*prop })
-            .collect()
+    pub fn blocks(&self) -> Vec<&dyn BlockPropsType> {
+        self.blocks_iter_mut().map(|prop| &*prop).collect()
     }
 
     /// Get a list of all the blocks that are currently
     /// scheduled on this engine.
-    pub fn blocks_mut(
-        &self,
-    ) -> Vec<
-        &mut dyn BlockProps<Writer = <Self as Engine>::Writer, Reader = <Self as Engine>::Reader>,
-    > {
+    pub fn blocks_mut(&self) -> Vec<&mut dyn BlockPropsType> {
+        self.blocks_iter_mut().collect()
+    }
+
+    fn blocks_iter_mut(&self) -> impl Iterator<Item = &mut dyn BlockPropsType> {
         self.block_props
             .values()
             .filter_map(|props| {
@@ -203,7 +193,6 @@ impl LocalSetEngine {
                 props.get()
             })
             .map(|prop| unsafe { &mut *prop })
-            .collect()
     }
 
     fn connect_blocks(&mut self, link_data: &LinkData) -> Result<LinkData> {
@@ -241,8 +230,7 @@ impl LocalSetEngine {
 
     fn save_blocks_and_links(&mut self) -> Result<(Vec<BlockData>, Vec<LinkData>)> {
         let blocks = self
-            .blocks()
-            .iter()
+            .blocks_iter_mut()
             .map(|bloc| BlockData {
                 id: bloc.id().to_string(),
                 name: bloc.name().to_string(),
@@ -252,7 +240,7 @@ impl LocalSetEngine {
             .collect();
 
         let mut links: Vec<LinkData> = Vec::new();
-        for block in self.blocks() {
+        for block in self.blocks_iter_mut() {
             for (pin_name, pin_links) in block.links() {
                 for link in pin_links {
                     links.push(LinkData {
@@ -380,7 +368,7 @@ impl LocalSetEngine {
         });
 
         // Remove the block from any links
-        self.blocks_mut().iter_mut().for_each(|block| {
+        self.blocks_iter_mut().for_each(|block| {
             let mut outs = block.outputs_mut();
             outs.iter_mut().for_each(|output| {
                 output
