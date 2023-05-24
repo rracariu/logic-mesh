@@ -43,13 +43,14 @@ struct WatchSet {
 // The concrete trait for the block properties
 pub(super) trait BlockPropsType = BlockProps<Writer = Sender<Value>, Reader = Receiver<Value>>;
 
-type Messages = EngineMessage<Sender<WatchMessage>>;
+/// The concrete type for the engine messages
+pub type Messages = EngineMessage<Sender<WatchMessage>>;
 
-/// Creates an execution environment for Blocks to be run on.
+/// Creates single threaded execution environment for Blocks to be run on.
 ///
 /// Each block would be executed inside a local task in the engine's local context.
 ///
-pub struct LocalSetEngine {
+pub struct SingleThreadedEngine {
     /// Use to schedule task on the current thread
     local: LocalSet,
     /// Blocks registered with this engine, indexed by block id
@@ -67,13 +68,13 @@ pub struct LocalSetEngine {
     watches: BTreeMap<Uuid, Rc<WatchSet>>,
 }
 
-impl Default for LocalSetEngine {
+impl Default for SingleThreadedEngine {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl Engine for LocalSetEngine {
+impl Engine for SingleThreadedEngine {
     type Writer = Sender<Value>;
     type Reader = Receiver<Value>;
 
@@ -157,7 +158,7 @@ impl Engine for LocalSetEngine {
     }
 }
 
-impl LocalSetEngine {
+impl SingleThreadedEngine {
     /// Construct
     pub fn new() -> Self {
         // Create a multi-producer single-consumer channel with a buffer of 32 messages
@@ -443,7 +444,7 @@ mod test {
     use base::block::{BlockConnect, BlockProps};
     use base::engine::messages::EngineMessage::{InspectBlockReq, InspectBlockRes, Shutdown};
 
-    use crate::tokio_impl::engine::single_threaded::LocalSetEngine;
+    use crate::tokio_impl::engine::single_threaded::SingleThreadedEngine;
     use base::engine::Engine;
     use tokio::{runtime::Runtime, sync::mpsc, time::sleep};
     use uuid::Uuid;
@@ -470,7 +471,7 @@ mod test {
             .connect_output("out", add1.inputs_mut()[1])
             .expect("Connected");
 
-        let mut eng = LocalSetEngine::new();
+        let mut eng = SingleThreadedEngine::new();
 
         let (sender, mut receiver) = mpsc::channel(32);
         let channel_id = Uuid::new_v4();

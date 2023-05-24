@@ -59,7 +59,7 @@ impl<E: EngineType> Program<E> {
 
 #[cfg(test)]
 mod test {
-    use crate::single_threaded::LocalSetEngine;
+    use crate::single_threaded::SingleThreadedEngine;
 
     use super::{
         data::{BlockData, LinkData},
@@ -68,7 +68,7 @@ mod test {
 
     #[test]
     fn test_program_load() {
-        let mut program = Program::<LocalSetEngine>::new(
+        let mut program = Program::<SingleThreadedEngine>::new(
             "test",
             vec![
                 BlockData {
@@ -123,7 +123,7 @@ mod test {
 
     #[test]
     fn test_program_load_invalid_block() {
-        let mut program = Program::<LocalSetEngine>::new(
+        let mut program = Program::<SingleThreadedEngine>::new(
             "test",
             vec![BlockData {
                 id: "00000000-0000-0000-0000-000000000000".to_string(),
@@ -155,7 +155,7 @@ mod test {
         ];
 
         // Invalid source block
-        let mut program = Program::<LocalSetEngine>::new(
+        let mut program = Program::<SingleThreadedEngine>::new(
             "test",
             blocks.clone(),
             vec![LinkData {
@@ -169,7 +169,7 @@ mod test {
         assert!(program.load().is_err());
 
         // Invalid source block pin
-        let mut program = Program::<LocalSetEngine>::new(
+        let mut program = Program::<SingleThreadedEngine>::new(
             "test",
             blocks.clone(),
             vec![LinkData {
@@ -183,7 +183,7 @@ mod test {
         assert!(program.load().is_err());
 
         // Invalid target input
-        let mut program = Program::<LocalSetEngine>::new(
+        let mut program = Program::<SingleThreadedEngine>::new(
             "test",
             blocks.clone(),
             vec![LinkData {

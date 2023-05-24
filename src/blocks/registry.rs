@@ -176,7 +176,7 @@ mod test {
 
         connect_output(*out, *input).unwrap();
 
-        let mut eng = crate::single_threaded::LocalSetEngine::new();
+        let mut eng = crate::single_threaded::SingleThreadedEngine::new();
 
         schedule_block("Add", &mut eng).expect("Block");
 

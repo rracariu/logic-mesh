@@ -45,14 +45,14 @@ pub struct WatchMessage {
 
 /// Messages that engine accepts
 #[derive(Debug, Clone)]
-pub enum EngineMessage<Sender: Clone> {
+pub enum EngineMessage<WatchEventSender: Clone> {
     AddBlockReq(Uuid, String),
     AddBlockRes(Uuid),
 
     RemoveBlockReq(Uuid, Uuid),
     RemoveBlockRes(Uuid),
 
-    WatchBlockSubReq(Uuid, BTreeSet<String>, Sender),
+    WatchBlockSubReq(Uuid, BTreeSet<String>, WatchEventSender),
     WatchBlockSubRes(Result<Uuid, &'static str>),
 
     WatchBlockUnsub(Uuid, BTreeSet<String>),

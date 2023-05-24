@@ -3,7 +3,9 @@
 use std::panic;
 use std::str::FromStr;
 
+use crate::base::program::data::LinkData;
 use crate::blocks::registry::BLOCKS;
+use crate::single_threaded::{Messages, SingleThreadedEngine};
 use js_sys::Array;
 use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc::{self, Receiver, Sender};
@@ -11,8 +13,8 @@ use uuid::Uuid;
 use wasm_bindgen::prelude::wasm_bindgen;
 use wasm_bindgen::JsValue;
 
-use crate::base::engine_messages::{EngineMessage, LinkData};
-use crate::Engine;
+use crate::base::engine::messages::EngineMessage;
+use crate::base::engine::Engine;
 
 /// Block field properties, inputs or output
 #[derive(Default, Serialize, Deserialize)]
@@ -44,7 +46,7 @@ pub struct LinkProperties {
 /// of the blocks and their inputs and outputs.
 #[wasm_bindgen]
 pub struct BlocksEngine {
-    engine: Engine,
+    engine: SingleThreadedEngine,
 }
 
 #[wasm_bindgen]
@@ -55,7 +57,7 @@ impl BlocksEngine {
         panic::set_hook(Box::new(console_error_panic_hook::hook));
 
         Self {
-            engine: Engine::default(),
+            engine: SingleThreadedEngine::default(),
         }
     }
 
@@ -64,12 +66,14 @@ impl BlocksEngine {
     pub fn list_blocks(&self) -> Array {
         let arr = Array::new();
 
-        BLOCKS.iter().for_each(|(_, desc)| {
+        let blocks = BLOCKS.lock().expect("Failed to lock blocks registry");
+        blocks.iter().for_each(|(_, data)| {
             let desc = BlockProperties {
-                name: desc.name.clone(),
-                lib: desc.library.clone(),
-                doc: desc.doc.clone(),
-                inputs: desc
+                name: data.desc.name.clone(),
+                lib: data.desc.library.clone(),
+                doc: data.desc.doc.clone(),
+                inputs: data
+                    .desc
                     .inputs
                     .iter()
                     .map(|input| BlockFieldProp {
@@ -77,7 +81,8 @@ impl BlocksEngine {
                         kind: input.kind.to_string(),
                     })
                     .collect(),
-                outputs: desc
+                outputs: data
+                    .desc
                     .outputs
                     .iter()
                     .map(|output| BlockFieldProp {
@@ -100,7 +105,7 @@ impl BlocksEngine {
         let (sender, receiver) = mpsc::channel(32);
 
         let uuid = Uuid::new_v4();
-        let engine_sender = self.engine.message_handles(uuid, sender);
+        let engine_sender = self.engine.create_message_channel(uuid, sender);
 
         EngineCommand {
             uuid,
@@ -122,8 +127,8 @@ impl BlocksEngine {
 #[wasm_bindgen]
 pub struct EngineCommand {
     uuid: Uuid,
-    sender: Sender<EngineMessage>,
-    receiver: Receiver<EngineMessage>,
+    sender: Sender<Messages>,
+    receiver: Receiver<Messages>,
 }
 
 #[wasm_bindgen]
@@ -134,12 +139,12 @@ impl EngineCommand {
     pub async fn add_block(&mut self, block_name: String) -> Option<String> {
         if self
             .sender
-            .send(EngineMessage::AddBlock(self.uuid, block_name))
+            .send(EngineMessage::AddBlockReq(self.uuid, block_name))
             .await
             .is_ok()
         {
             self.receiver.recv().await.and_then(|msg| {
-                if let EngineMessage::BlockAdded(id) = msg {
+                if let EngineMessage::AddBlockRes(id) = msg {
                     Some(id.to_string())
                 } else {
                     None
@@ -156,6 +161,7 @@ impl EngineCommand {
         &mut self,
         source_block_uuid: String,
         target_block_uuid: String,
+        source_block_pin_name: String,
         target_block_input_name: String,
     ) -> JsValue {
         if self
@@ -163,8 +169,9 @@ impl EngineCommand {
             .send(EngineMessage::ConnectBlocksReq(
                 self.uuid,
                 LinkData {
-                    source_block_uuid: Uuid::from_str(&source_block_uuid).unwrap(),
-                    target_block_uuid: Uuid::from_str(&target_block_uuid).unwrap(),
+                    source_block_uuid,
+                    target_block_uuid,
+                    source_block_pin_name,
                     target_block_input_name,
                 },
             ))
@@ -175,7 +182,7 @@ impl EngineCommand {
                 .recv()
                 .await
                 .and_then(|msg| {
-                    if let EngineMessage::ConnectBlocksRes(_, Some(data)) = msg {
+                    if let EngineMessage::ConnectBlocksRes(_, Ok(data)) = msg {
                         serde_wasm_bindgen::to_value(&LinkProperties {
                             source_block_uuid: data.source_block_uuid.to_string(),
                             target_block_uuid: data.target_block_uuid.to_string(),
@@ -208,7 +215,7 @@ impl EngineCommand {
                 .recv()
                 .await
                 .and_then(|msg| {
-                    if let EngineMessage::FoundBlockRes(_, data) = msg {
+                    if let EngineMessage::InspectBlockRes(_, data) = msg {
                         serde_wasm_bindgen::to_value(&data).ok()
                     } else {
                         None
