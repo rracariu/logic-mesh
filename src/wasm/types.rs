@@ -18,19 +18,20 @@ use crate::base::engine::Engine;
 
 /// Block field properties, inputs or output
 #[derive(Default, Serialize, Deserialize)]
-pub struct BlockFieldProp {
+pub struct BlockPinProps {
     pub name: String,
     pub kind: String,
 }
 
 /// Block properties
 #[derive(Default, Serialize, Deserialize)]
-pub struct BlockProperties {
+pub struct BlockDescProps {
     pub name: String,
     pub lib: String,
+    pub category: String,
     pub doc: String,
-    pub inputs: Vec<BlockFieldProp>,
-    pub outputs: Vec<BlockFieldProp>,
+    pub inputs: Vec<BlockPinProps>,
+    pub outputs: Vec<BlockPinProps>,
 }
 
 /// Block properties
@@ -67,25 +68,26 @@ impl BlocksEngine {
         let arr = Array::new();
 
         let blocks = BLOCKS.lock().expect("Failed to lock blocks registry");
-        blocks.iter().for_each(|(_, data)| {
-            let desc = BlockProperties {
-                name: data.desc.name.clone(),
-                lib: data.desc.library.clone(),
-                doc: data.desc.doc.clone(),
-                inputs: data
+        blocks.iter().for_each(|(_, block)| {
+            let desc = BlockDescProps {
+                name: block.desc.name.clone(),
+                lib: block.desc.library.clone(),
+                category: block.desc.category.clone(),
+                doc: block.desc.doc.clone(),
+                inputs: block
                     .desc
                     .inputs
                     .iter()
-                    .map(|input| BlockFieldProp {
+                    .map(|input| BlockPinProps {
                         name: input.name.clone(),
                         kind: input.kind.to_string(),
                     })
                     .collect(),
-                outputs: data
+                outputs: block
                     .desc
                     .outputs
                     .iter()
-                    .map(|output| BlockFieldProp {
+                    .map(|output| BlockPinProps {
                         name: output.name.clone(),
                         kind: output.kind.to_string(),
                     })

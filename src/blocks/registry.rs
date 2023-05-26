@@ -18,10 +18,11 @@ type DynBlockProps = dyn BlockProps<
     Reader = <InputImpl as InputProps>::Reader,
     Writer = <InputImpl as InputProps>::Writer,
 >;
-type MapType = BTreeMap<String, BlockData>;
+type MapType = BTreeMap<String, BlockEntry>;
 type BlockRegistry = Mutex<MapType>;
 
-pub struct BlockData {
+/// Register a block in the registry
+pub struct BlockEntry {
     pub desc: &'static BlockDesc,
     pub make: fn() -> Box<DynBlockProps>,
 }
@@ -147,7 +148,7 @@ fn register_impl<
             Box::new(block)
         };
 
-        BlockData { desc, make }
+        BlockEntry { desc, make }
     });
 }
 

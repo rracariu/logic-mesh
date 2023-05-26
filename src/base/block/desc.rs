@@ -30,6 +30,13 @@ pub struct BlockDesc {
     pub doc: String,
 }
 
+impl BlockDesc {
+    /// Returns the qualified name of the block
+    pub fn qname(&self) -> String {
+        format!("{}::{}", self.library, self.name)
+    }
+}
+
 /// Trait for providing static access to a block description.
 ///
 /// This would complement the instance method access, as the instance

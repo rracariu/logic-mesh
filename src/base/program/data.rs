@@ -25,5 +25,6 @@ pub struct BlockData {
     pub id: String,
     pub name: String,
     pub lib: String,
+    pub category: String,
     pub ver: String,
 }

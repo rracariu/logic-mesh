@@ -232,11 +232,12 @@ impl SingleThreadedEngine {
     fn save_blocks_and_links(&mut self) -> Result<(Vec<BlockData>, Vec<LinkData>)> {
         let blocks = self
             .blocks_iter_mut()
-            .map(|bloc| BlockData {
-                id: bloc.id().to_string(),
-                name: bloc.name().to_string(),
-                lib: bloc.desc().library.clone(),
-                ver: bloc.desc().ver.clone(),
+            .map(|block| BlockData {
+                id: block.id().to_string(),
+                name: block.name().to_string(),
+                lib: block.desc().library.clone(),
+                category: block.desc().category.clone(),
+                ver: block.desc().ver.clone(),
             })
             .collect();
 
