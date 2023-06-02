@@ -32,14 +32,15 @@ const addBlock = async (block: any) => {
 
 const onBlockClick = async (id: string) => {
 	const data = await command.inspectBlock(id)
-	console.log(data.output.val)
+	console.table([...(data.outputs as Map<string, unknown>).values()])
 }
 
 const onConnect = async (conn: Connection) => {
-	await command.createLink(conn.source, conn.target, conn.targetHandle ?? '')
+	await command.createLink(conn.source, conn.target, conn.sourceHandle ?? '', conn.targetHandle ?? '')
 }
 
-engine.run().then(() => console.log("Running here"))
+// Start the engine
+engine.run()
 
 </script>
 
@@ -65,7 +66,7 @@ engine.run().then(() => console.log("Running here"))
 				<MiniMap></MiniMap>
 			</VueFlow>
 		</SplitterPanel>
-</Splitter>
+	</Splitter>
 </template>
 
 <style>
@@ -81,15 +82,17 @@ engine.run().then(() => console.log("Running here"))
 
 
 .vue-flow__node-custom {
+	font-size: medium;
 	border: 1px solid #777;
-	padding: 10px;
-	border-radius: 7px;
+	padding: 3px;
+	border-radius: 3px;
 	background: whitesmoke;
 	display: flex;
 	flex-direction: column;
 	justify-content: space-between;
 	align-items: center;
-	gap: 10px;
-	max-width: 250px
+	gap: 3px;
+	max-width: 250px;
+	min-width: 6em;
 }
 </style>

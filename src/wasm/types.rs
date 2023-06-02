@@ -7,6 +7,7 @@ use crate::base::program::data::LinkData;
 use crate::blocks::registry::BLOCKS;
 use crate::single_threaded::{Messages, SingleThreadedEngine};
 use js_sys::Array;
+
 use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc::{self, Receiver, Sender};
 use uuid::Uuid;
@@ -18,28 +19,20 @@ use crate::base::engine::Engine;
 
 /// Block field properties, inputs or output
 #[derive(Default, Serialize, Deserialize)]
-pub struct BlockPinProps {
+pub struct JsBlockPin {
     pub name: String,
     pub kind: String,
 }
 
-/// Block properties
+/// Block description as a simple struct
 #[derive(Default, Serialize, Deserialize)]
-pub struct BlockDescProps {
+pub struct JsBlockDesc {
     pub name: String,
     pub lib: String,
     pub category: String,
     pub doc: String,
-    pub inputs: Vec<BlockPinProps>,
-    pub outputs: Vec<BlockPinProps>,
-}
-
-/// Block properties
-#[derive(Default, Serialize, Deserialize)]
-pub struct LinkProperties {
-    pub source_block_uuid: String,
-    pub target_block_uuid: String,
-    pub target_block_input_name: String,
+    pub inputs: Vec<JsBlockPin>,
+    pub outputs: Vec<JsBlockPin>,
 }
 
 /// Controls the execution or the blocks.
@@ -69,7 +62,7 @@ impl BlocksEngine {
 
         let blocks = BLOCKS.lock().expect("Failed to lock blocks registry");
         blocks.iter().for_each(|(_, block)| {
-            let desc = BlockDescProps {
+            let desc = JsBlockDesc {
                 name: block.desc.name.clone(),
                 lib: block.desc.library.clone(),
                 category: block.desc.category.clone(),
@@ -78,7 +71,7 @@ impl BlocksEngine {
                     .desc
                     .inputs
                     .iter()
-                    .map(|input| BlockPinProps {
+                    .map(|input| JsBlockPin {
                         name: input.name.clone(),
                         kind: input.kind.to_string(),
                     })
@@ -87,7 +80,7 @@ impl BlocksEngine {
                     .desc
                     .outputs
                     .iter()
-                    .map(|output| BlockPinProps {
+                    .map(|output| JsBlockPin {
                         name: output.name.clone(),
                         kind: output.kind.to_string(),
                     })
@@ -157,9 +150,23 @@ impl EngineCommand {
         }
     }
 
-    /// Inspects the current state of a block
+    /// Creates a link between two blocks
+    ///
+    /// # Arguments
+    /// * `source_block_uuid` - The UUID of the source block
+    /// * `target_block_uuid` - The UUID of the target block
+    /// * `source_block_pin_name` - The name of the output pin of the source block
+    /// * `target_block_input_name` - The name of the input pin of the target block
+    ///
+    /// # Returns
+    /// A `LinkData` object with the following properties:
+    /// * `source_block_uuid` - The UUID of the source block
+    /// * `target_block_uuid` - The UUID of the target block
+    /// * `source_block_pin_name` - The name of the output pin of the source block
+    /// * `target_block_input_name` - The name of the input pin of the target block
+    ///
     #[wasm_bindgen(js_name = "createLink")]
-    pub async fn crate_link(
+    pub async fn create_link(
         &mut self,
         source_block_uuid: String,
         target_block_uuid: String,
@@ -185,12 +192,7 @@ impl EngineCommand {
                 .await
                 .and_then(|msg| {
                     if let EngineMessage::ConnectBlocksRes(_, Ok(data)) = msg {
-                        serde_wasm_bindgen::to_value(&LinkProperties {
-                            source_block_uuid: data.source_block_uuid.to_string(),
-                            target_block_uuid: data.target_block_uuid.to_string(),
-                            target_block_input_name: data.target_block_input_name,
-                        })
-                        .ok()
+                        serde_wasm_bindgen::to_value(&data).ok()
                     } else {
                         None
                     }

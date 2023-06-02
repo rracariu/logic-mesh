@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { Connection, Handle, Position, ValidConnectionFunc } from '@vue-flow/core'
-import { computed } from 'vue'
+import { Connection, Handle, Position, } from '@vue-flow/core';
+import { computed } from 'vue';
 
 
 defineEmits(['outClick'])
@@ -12,51 +12,52 @@ const props = defineProps({
 	},
 })
 
-const inputHandlePos = (index: number) => `top: ${index + index / 2 + 1}em`
+const handlePos = (index: number) => `top: ${index + index / 2 + 3.5}em`
 
 const blockHeight = computed(() => {
-	return `height: ${props.data.inputs.length}em; padding-top: ${props.data.inputs.length - 1 + 0.3}em;`
+	return `height: ${props.data.inputs.length + 2}em; `
 })
 
 const validConnection = (conn: Connection) => conn.source !== conn.target
 </script>
 
 <template>
-	<div :style="blockHeight" @click="$emit('outClick', props.data.id)">
-		{{ props.data.name }}
+	<div :style="blockHeight" @click="$emit('outClick', data.id)">
+		{{ data.name }}
 
-		<span v-for="(input, index) in props.data.inputs" :key="input.name">
-			<Handle :id="input.name" :is-valid-connection="validConnection" type="target" :position="Position.Left"
-				:style="inputHandlePos(index)" class="blockInput">{{
-					input.name
-				}}
-			</Handle>
-		</span>
-
-		<Handle :id="props.data.output.name" :is-valid-connection="validConnection" type="source" :position="Position.Right"
-			class="blockOutput">
-			{{
-				props.data.output.name
-			}}
+		<Handle v-for="(input, index) in data.inputs" :key="input.name" :id="input.name"
+			:is-valid-connection="validConnection" type="target" :position="Position.Left" :style="handlePos(index)"
+			class="blockInput">
+			{{ input.name }}
 		</Handle>
-</div>
+
+
+		<Handle v-for="(output, index) in data.outputs" :key="output.name" :id="output.name"
+			:is-valid-connection="validConnection" type="source" :position="Position.Right" class="blockOutput"
+			:style="handlePos(index)">
+			{{ output.name }}
+		</Handle>
+	</div>
 </template>
 
 <style>
 .blockInput {
 	font-size: x-small;
 	padding: 1px;
+	margin-left: -1em;
 	display: inline-table;
-	background: burlywood !important;
+	text-align: left;
+	background: #a9a5d6 !important;
 	border-radius: 10% !important;
+	min-width: 5em !important;
 }
 
 .blockOutput {
 	font-size: x-small;
-	margin-right: -14px;
+	margin-right: -1em;
 	padding: 1px;
 	display: inline-table;
-	background: greenyellow !important;
+	background: rgb(230, 217, 134) !important;
 	border-radius: 10% !important;
 }
 </style>

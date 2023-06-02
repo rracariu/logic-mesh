@@ -436,6 +436,7 @@ fn change_of_value_check<B: Block + 'static>(
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 #[cfg(test)]
 mod test {
     use std::{thread, time::Duration};
@@ -450,7 +451,6 @@ mod test {
     use tokio::{runtime::Runtime, sync::mpsc, time::sleep};
     use uuid::Uuid;
 
-    #[cfg(not(target_arch = "wasm32"))]
     #[tokio::test(flavor = "current_thread")]
     async fn engine_test() {
         use crate::base::block::connect::connect_output;
