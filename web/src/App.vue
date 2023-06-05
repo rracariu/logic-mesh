@@ -47,11 +47,10 @@ engine.run()
 <template>
 	<Splitter style="height: 97vh">
 		<SplitterPanel :size="10">
-			<div v-for="block of blocks" :key="block.name">
-				<Button :label="block.name" :title="block.doc" @click="addBlock(block)" size="small" class="m-1"
-					style="width: 10em">
-				</Button>
-			</div>
+			<Button v-for="block of blocks" :key="block.name" :label="block.name" :title="block.doc"
+				@click="addBlock(block)" size="small" class="m-1" style="width: 10em">
+			</Button>
+
 		</SplitterPanel>
 		<SplitterPanel :size="90">
 			<VueFlow v-model="elements" @connect="onConnect" :default-edge-options="{ type: 'smoothstep' }" :min-zoom="1"
@@ -86,7 +85,7 @@ engine.run()
 	border: 1px solid #777;
 	padding: 3px;
 	border-radius: 3px;
-	background: whitesmoke;
+	background: linear-gradient(180deg, var(--surface-50) 0%, var(--surface-100) 100%);
 	display: flex;
 	flex-direction: column;
 	justify-content: space-between;

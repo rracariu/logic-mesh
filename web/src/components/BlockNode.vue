@@ -47,7 +47,7 @@ const validConnection = (conn: Connection) => conn.source !== conn.target
 	margin-left: -1em;
 	display: inline-table;
 	text-align: left;
-	background: #a9a5d6 !important;
+	background: var(--blue-200) !important;
 	border-radius: 10% !important;
 	min-width: 5em !important;
 }
@@ -57,7 +57,7 @@ const validConnection = (conn: Connection) => conn.source !== conn.target
 	margin-right: -1em;
 	padding: 1px;
 	display: inline-table;
-	background: rgb(230, 217, 134) !important;
+	background: var(--green-200) !important;
 	border-radius: 10% !important;
 }
 </style>
