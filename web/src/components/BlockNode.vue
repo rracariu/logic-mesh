@@ -1,14 +1,9 @@
 <script setup lang="ts">
 import { Connection, Handle, Position, } from '@vue-flow/core';
 import { computed } from 'vue';
+import { Block } from '../lib/Block';
 
-
-const props = defineProps({
-	data: {
-		type: Object,
-		required: true,
-	},
-})
+const props = defineProps<{ data: Block }>()
 
 const handlePos = (index: number) => `top: ${index + index / 2 + 3.5}em`
 
@@ -16,8 +11,9 @@ const blockHeight = computed(() => {
 	return `height: ${props.data.inputs.length + 2}em; `
 })
 
-
-const validConnection = (conn: Connection) => conn.source !== conn.target
+const validConnection = (conn: Connection) => {
+	return conn.source !== conn.target
+}
 
 </script>
 

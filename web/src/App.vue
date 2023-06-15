@@ -1,8 +1,7 @@
 <script setup lang="ts">
-import { ref } from 'vue';
 import * as logic from 'logic-mesh'
 
-import { Connection, VueFlow, useVueFlow } from '@vue-flow/core'
+import { Connection, VueFlow } from '@vue-flow/core'
 import { MiniMap } from '@vue-flow/minimap'
 import { Controls } from '@vue-flow/controls'
 import { Background } from '@vue-flow/background'
@@ -12,21 +11,20 @@ import SplitterPanel from 'primevue/splitterpanel';
 
 import BlockNode from './components/BlockNode.vue'
 import BlockList from './components/BlockList.vue';
+import { Block } from './lib/Block';
+import { BlockNodesModel } from './model/BlockNodesModel';
 
 const engine = logic.initEngine()
 
 const blocks = engine.listBlocks()
 const command = engine.engineCommand()
 
-const { getEdges } = useVueFlow()
-const elements = ref([] as any[])
-
-const addBlock = async (block: any) => {
+const addBlock = async (block: Block) => {
 	const id = await command.addBlock(block.name)
 
 	if (id) {
-		elements.value.push(
-			{ id: id, type: 'custom', label: block.name, position: { x: 250, y: 5 }, data: { id, ...block } }
+		BlockNodesModel.value.push(
+			{ id, type: 'custom', label: block.name, position: { x: 250, y: 5 }, data: { ...block, id } }
 		)
 	}
 }
@@ -37,9 +35,7 @@ const onBlockClick = async (id: string) => {
 }
 
 const onConnect = async (conn: Connection) => {
-	await command.createLink(conn.source, conn.target, conn.sourceHandle ?? '', conn.targetHandle ?? '')
-	const e = getEdges.value.at(0)
-	if (e) e.label = 'test'
+	const id = await command.createLink(conn.source, conn.target, conn.sourceHandle ?? '', conn.targetHandle ?? '')
 }
 
 // Start the engine
@@ -54,8 +50,8 @@ engine.run()
 
 		</SplitterPanel>
 		<SplitterPanel :size="82">
-			<VueFlow v-model="elements" @connect="onConnect" :default-edge-options="{ type: 'smoothstep' }" :min-zoom="1"
-				:max-zoom="4" :elevate-edges-on-select="true" :apply-default="true" auto-connect>
+			<VueFlow v-model="BlockNodesModel" @connect="onConnect" :default-edge-options="{ type: 'smoothstep' }"
+				:min-zoom="1" :max-zoom="4" :elevate-edges-on-select="true" :apply-default="true" auto-connect>
 				<Background pattern-color="#aaa" :gap="8" />
 
 				<template #node-custom="{ data }">
