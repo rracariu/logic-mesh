@@ -3,8 +3,6 @@ import { Connection, Handle, Position, } from '@vue-flow/core';
 import { computed } from 'vue';
 
 
-defineEmits(['outClick'])
-
 const props = defineProps({
 	data: {
 		type: Object,
@@ -18,11 +16,13 @@ const blockHeight = computed(() => {
 	return `height: ${props.data.inputs.length + 2}em; `
 })
 
+
 const validConnection = (conn: Connection) => conn.source !== conn.target
+
 </script>
 
 <template>
-	<div :style="blockHeight" @click="$emit('outClick', data.id)">
+	<div :style="blockHeight">
 		{{ data.name }}
 
 		<Handle v-for="(input, index) in data.inputs" :key="input.name" :id="input.name"

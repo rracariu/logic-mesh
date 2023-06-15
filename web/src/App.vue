@@ -2,22 +2,23 @@
 import { ref } from 'vue';
 import * as logic from 'logic-mesh'
 
-import { Connection, VueFlow } from '@vue-flow/core'
+import { Connection, VueFlow, useVueFlow } from '@vue-flow/core'
 import { MiniMap } from '@vue-flow/minimap'
 import { Controls } from '@vue-flow/controls'
 import { Background } from '@vue-flow/background'
 
 import Splitter from 'primevue/splitter';
 import SplitterPanel from 'primevue/splitterpanel';
-import Button from 'primevue/Button';
 
 import BlockNode from './components/BlockNode.vue'
+import BlockList from './components/BlockList.vue';
 
 const engine = logic.initEngine()
 
 const blocks = engine.listBlocks()
 const command = engine.engineCommand()
 
+const { getEdges } = useVueFlow()
 const elements = ref([] as any[])
 
 const addBlock = async (block: any) => {
@@ -37,6 +38,8 @@ const onBlockClick = async (id: string) => {
 
 const onConnect = async (conn: Connection) => {
 	await command.createLink(conn.source, conn.target, conn.sourceHandle ?? '', conn.targetHandle ?? '')
+	const e = getEdges.value.at(0)
+	if (e) e.label = 'test'
 }
 
 // Start the engine
@@ -46,19 +49,17 @@ engine.run()
 
 <template>
 	<Splitter style="height: 97vh">
-		<SplitterPanel :size="10">
-			<Button v-for="block of blocks" :key="block.name" :label="block.name" :title="block.doc"
-				@click="addBlock(block)" size="small" class="m-1" style="width: 10em">
-			</Button>
+		<SplitterPanel :size="18">
+			<BlockList :blocks="blocks" @add-block="addBlock" />
 
 		</SplitterPanel>
-		<SplitterPanel :size="90">
+		<SplitterPanel :size="82">
 			<VueFlow v-model="elements" @connect="onConnect" :default-edge-options="{ type: 'smoothstep' }" :min-zoom="1"
 				:max-zoom="4" :elevate-edges-on-select="true" :apply-default="true" auto-connect>
 				<Background pattern-color="#aaa" :gap="8" />
 
 				<template #node-custom="{ data }">
-					<BlockNode :data="data" @out-click="onBlockClick" />
+					<BlockNode :data="data" @click="onBlockClick(data.id)" />
 				</template>
 
 				<Controls />
