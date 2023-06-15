@@ -27,36 +27,37 @@ const validConnection = (conn: Connection) => conn.source !== conn.target
 
 		<Handle v-for="(input, index) in data.inputs" :key="input.name" :id="input.name"
 			:is-valid-connection="validConnection" type="target" :position="Position.Left" :style="handlePos(index)"
-			class="blockInput">
+			class="block-input">
 			{{ input.name }}
 		</Handle>
 
 
 		<Handle v-for="(output, index) in data.outputs" :key="output.name" :id="output.name"
-			:is-valid-connection="validConnection" type="source" :position="Position.Right" class="blockOutput"
+			:is-valid-connection="validConnection" type="source" :position="Position.Right" class="block-output"
 			:style="handlePos(index)">
 			{{ output.name }}
 		</Handle>
 	</div>
 </template>
 
-<style>
-.blockInput {
+<style scoped>
+[class*="block-"] {
 	font-size: x-small;
 	padding: 1px;
-	margin-left: -1em;
 	display: inline-table;
-	text-align: left;
-	background: var(--blue-200) !important;
 	border-radius: 10% !important;
 	min-width: 5em !important;
 }
 
-.blockOutput {
-	font-size: x-small;
+.block-input {
+	margin-left: -1em;
+	text-align: left;
+	background: var(--blue-200) !important;
+}
+
+.block-output {
 	margin-right: -1em;
-	padding: 1px;
-	display: inline-table;
+	text-align: right;
 	background: var(--green-200) !important;
 	border-radius: 10% !important;
 }
