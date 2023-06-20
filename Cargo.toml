@@ -11,9 +11,6 @@ members = ["block_macro"]
 [lib]
 crate-type = ["cdylib", "rlib"]
 
-[features]
-default = ["console_error_panic_hook"]
-
 [dependencies]
 block_macro = { path = "block_macro"}
 serde = { version = "^1.0", features = ["derive"] }
@@ -23,9 +20,13 @@ lazy_static = "^1.4.0"
 futures = "^0.3.25"
 rand = "^0.8.5"
 anyhow = "^1.0.70"
+log = "0.4.19"
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 tokio = {version = "^1.28.1", features = ["rt-multi-thread", "sync", "time", "macros"]}
+
+[features]
+default = ["console_error_panic_hook"]
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 tokio = {version = "^1.28.1", features = ["rt", "sync", "time", "macros"]}
@@ -34,6 +35,7 @@ serde-wasm-bindgen = "^0.5.0"
 js-sys = "0.3.63"
 web-sys = {version = "0.3.63", features = ["Window"]}
 wasm-bindgen-futures = "^0.4.36"
+wasm-bindgen-console-logger = "0.1.1"
 # The `console_error_panic_hook` crate provides better debugging of panics by
 # logging them with `console.error`. This is great for development, but requires
 # all the `std::fmt` and `std::panicking` infrastructure, so isn't great for

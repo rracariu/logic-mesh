@@ -1,7 +1,5 @@
 // Copyright (c) 2022-2023, IntriSemantics Corp.
 
-use std::panic;
-
 use crate::blocks::registry::BLOCKS;
 use crate::single_threaded::SingleThreadedEngine;
 use crate::wasm::engine_command::EngineCommand;
@@ -27,8 +25,6 @@ impl BlocksEngine {
     /// Create a new instance of an engine
     #[wasm_bindgen(constructor)]
     pub fn new() -> Self {
-        panic::set_hook(Box::new(console_error_panic_hook::hook));
-
         Self {
             engine: SingleThreadedEngine::default(),
         }

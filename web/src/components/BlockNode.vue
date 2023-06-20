@@ -57,7 +57,7 @@ const format = (value: unknown) => {
 
 .block-output {
 	margin-right: -1em;
-	text-align: right;
+	text-align: center;
 	background: var(--green-200) !important;
 	border-radius: 10% !important;
 }
