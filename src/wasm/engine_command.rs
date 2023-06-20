@@ -73,7 +73,7 @@ impl EngineCommand {
         source_block_uuid: String,
         target_block_uuid: String,
         source_block_pin_name: String,
-        target_block_input_name: String,
+        target_block_pin_name: String,
     ) -> JsValue {
         if self
             .sender
@@ -83,7 +83,7 @@ impl EngineCommand {
                     source_block_uuid,
                     target_block_uuid,
                     source_block_pin_name,
-                    target_block_input_name,
+                    target_block_pin_name,
                 },
             ))
             .await

@@ -90,7 +90,7 @@ mod test {
                 source_block_uuid: "00000000-0000-0000-0000-000000000000".to_string(),
                 target_block_uuid: "00000000-0000-0000-0000-000000000001".to_string(),
                 source_block_pin_name: "out".to_string(),
-                target_block_input_name: "in1".to_string(),
+                target_block_pin_name: "in1".to_string(),
             }],
         );
 
@@ -167,7 +167,7 @@ mod test {
                 source_block_uuid: "00000000-0000-0000-0000-000000000009".to_string(),
                 target_block_uuid: "00000000-0000-0000-0000-000000000001".to_string(),
                 source_block_pin_name: "out".to_string(),
-                target_block_input_name: "in1".to_string(),
+                target_block_pin_name: "in1".to_string(),
             }],
         );
 
@@ -181,7 +181,7 @@ mod test {
                 source_block_uuid: "00000000-0000-0000-0000-000000000000".to_string(),
                 target_block_uuid: "00000000-0000-0000-0000-000000000001".to_string(),
                 source_block_pin_name: "missing".to_string(),
-                target_block_input_name: "in1".to_string(),
+                target_block_pin_name: "in1".to_string(),
             }],
         );
 
@@ -195,7 +195,7 @@ mod test {
                 source_block_uuid: "00000000-0000-0000-0000-000000000000".to_string(),
                 target_block_uuid: "00000000-0000-0000-0000-000000000001".to_string(),
                 source_block_pin_name: "out".to_string(),
-                target_block_input_name: "missing".to_string(),
+                target_block_pin_name: "missing".to_string(),
             }],
         );
 

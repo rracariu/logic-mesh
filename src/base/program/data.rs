@@ -17,7 +17,7 @@ pub struct LinkData {
     pub source_block_uuid: String,
     pub target_block_uuid: String,
     pub source_block_pin_name: String,
-    pub target_block_input_name: String,
+    pub target_block_pin_name: String,
 }
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]

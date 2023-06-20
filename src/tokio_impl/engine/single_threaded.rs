@@ -195,8 +195,7 @@ impl SingleThreadedEngine {
             self.get_block_props_mut(&source_block_uuid),
             self.get_block_props_mut(&target_block_uuid),
         ) {
-            if let Some(target_input) =
-                target_block.get_input_mut(&link_data.target_block_input_name)
+            if let Some(target_input) = target_block.get_input_mut(&link_data.target_block_pin_name)
             {
                 if let Some(source_input) =
                     source_block.get_input_mut(&link_data.source_block_pin_name)
@@ -237,7 +236,7 @@ impl SingleThreadedEngine {
                     links.push(LinkData {
                         source_block_pin_name: pin_name.to_string(),
                         source_block_uuid: block.id().to_string(),
-                        target_block_input_name: link.target_input().to_string(),
+                        target_block_pin_name: link.target_input().to_string(),
                         target_block_uuid: link.target_block_id().to_string(),
                     });
                 }
