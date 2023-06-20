@@ -15,6 +15,10 @@ const validConnection = (conn: Connection) => {
 	return conn.source !== conn.target
 }
 
+const format = (value: unknown) => {
+	return typeof value === 'number' ? Intl.NumberFormat().format(value) : value
+}
+
 </script>
 
 <template>
@@ -24,14 +28,14 @@ const validConnection = (conn: Connection) => {
 		<Handle v-for="(input, index) in data.inputs" :key="input.name" :id="input.name"
 			:is-valid-connection="validConnection" type="target" :position="Position.Left" :style="handlePos(index)"
 			class="block-input">
-			{{ input.name }}
+			{{ input.name }} {{ input.value ? `${format(input.value)}` : '' }}
 		</Handle>
 
 
 		<Handle v-for="(output, index) in data.outputs" :key="output.name" :id="output.name"
 			:is-valid-connection="validConnection" type="source" :position="Position.Right" class="block-output"
 			:style="handlePos(index)">
-			{{ output.name }}
+			{{ output.name }} {{ output.value ? `${format(output.value)}` : '' }}
 		</Handle>
 	</div>
 </template>

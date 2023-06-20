@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import * as logic from 'logic-mesh'
 
-import { Connection, VueFlow } from '@vue-flow/core'
+import { Connection, VueFlow, useVueFlow } from '@vue-flow/core'
 import { MiniMap } from '@vue-flow/minimap'
 import { Controls } from '@vue-flow/controls'
 import { Background } from '@vue-flow/background'
@@ -19,8 +19,35 @@ const engine = logic.initEngine()
 const blocks = engine.listBlocks()
 const command = engine.engineCommand()
 
+
+const command2 = engine.engineCommand()
+
+
+command2.createWatch((notification: { id: string, changes: { name: string, source: string, value: {} }[] }) => {
+
+	const data = useVueFlow().nodes
+
+	BlockNodesModel.value.forEach((block) => {
+		if (block.id === notification.id) {
+			notification.changes.forEach((change) => {
+
+				const pins = change.source === 'input' ? block.data?.inputs : block.data?.outputs
+
+				pins?.forEach((input) => {
+					if (input.name === change.name) {
+						input.value = change.value
+					}
+				})
+
+			})
+		}
+	})
+})
+
 const addBlock = async (block: Block) => {
 	const id = await command.addBlock(block.name)
+
+	block = JSON.parse(JSON.stringify(block))
 
 	if (id) {
 		BlockNodesModel.value.push(
@@ -37,6 +64,7 @@ const onBlockClick = async (id: string) => {
 const onConnect = async (conn: Connection) => {
 	const id = await command.createLink(conn.source, conn.target, conn.sourceHandle ?? '', conn.targetHandle ?? '')
 }
+
 
 // Start the engine
 engine.run()

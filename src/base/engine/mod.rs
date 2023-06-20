@@ -21,8 +21,8 @@ pub trait Engine {
     /// The reception type of the blocks
     type Reader;
 
-    /// The type of the sender used by this engine.
-    type Sender: Send + Sync + Clone;
+    /// The type used to send messages to/from this engine.
+    type Channel: Send + Sync + Clone;
 
     /// Schedule a block to be executed by this engine.
     /// This operation can be performed while the engine is running.
@@ -44,7 +44,7 @@ pub trait Engine {
     ///
     /// # Arguments
     /// - sender_id The sender unique id.
-    /// - sender The sender chanel to send notifications from the engine.
+    /// - sender_channel The sender chanel to send notifications from the engine.
     ///
     /// # Returns
     /// A sender chanel that is used to send messages to the engine.
@@ -52,6 +52,6 @@ pub trait Engine {
     fn create_message_channel(
         &mut self,
         sender_id: uuid::Uuid,
-        sender: Self::Sender,
-    ) -> Self::Sender;
+        sender_channel: Self::Channel,
+    ) -> Self::Channel;
 }

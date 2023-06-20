@@ -1,10 +1,6 @@
 // Copyright (c) 2022-2023, IntriSemantics Corp.
 
-use std::{
-    cell::Cell,
-    collections::{BTreeMap, BTreeSet},
-    rc::Rc,
-};
+use std::{cell::Cell, cell::RefCell, collections::BTreeMap, rc::Rc};
 
 use anyhow::{anyhow, Result};
 use libhaystack::val::Value;
@@ -34,12 +30,6 @@ use crate::{
 
 use super::block_pointer::BlockPropsPointer;
 
-#[derive(Default)]
-struct WatchSet {
-    sender: Option<Sender<WatchMessage>>,
-    subjects: BTreeSet<String>,
-}
-
 // The concrete trait for the block properties
 pub(super) trait BlockPropsType = BlockProps<Writer = Sender<Value>, Reader = Receiver<Value>>;
 
@@ -64,8 +54,8 @@ pub struct SingleThreadedEngine {
     /// Each sender would be associated to an external process
     /// issuing commands to the engine.
     reply_senders: BTreeMap<uuid::Uuid, Sender<Messages>>,
-    /// Watches for changes in block pins
-    watches: BTreeMap<Uuid, Rc<WatchSet>>,
+    /// Watchers for changes in block pins
+    watchers: Rc<RefCell<BTreeMap<Uuid, Sender<WatchMessage>>>>,
 }
 
 impl Default for SingleThreadedEngine {
@@ -78,7 +68,7 @@ impl Engine for SingleThreadedEngine {
     type Writer = Sender<Value>;
     type Reader = Receiver<Value>;
 
-    type Sender = Sender<Messages>;
+    type Channel = Sender<Messages>;
 
     fn schedule<B: Block<Writer = Self::Writer, Reader = Self::Reader> + 'static>(
         &mut self,
@@ -89,8 +79,7 @@ impl Engine for SingleThreadedEngine {
         )));
         self.block_props.insert(*block.id(), props.clone());
 
-        let watch_set = Rc::new(WatchSet::default());
-        self.watches.insert(*block.id(), watch_set.clone());
+        let watchers = self.watchers.clone();
 
         self.local.spawn_local(async move {
             // Must do here also so we get the correct address
@@ -105,7 +94,7 @@ impl Engine for SingleThreadedEngine {
             loop {
                 block.execute().await;
 
-                change_of_value_check(&watch_set, &block, &mut last_pin_values);
+                change_of_value_check(&watchers, &block, &mut last_pin_values);
 
                 if block.state() == BlockState::Terminate {
                     break;
@@ -150,9 +139,9 @@ impl Engine for SingleThreadedEngine {
     fn create_message_channel(
         &mut self,
         sender_id: uuid::Uuid,
-        sender: Self::Sender,
-    ) -> Self::Sender {
-        self.reply_senders.insert(sender_id, sender);
+        sender_channel: Self::Channel,
+    ) -> Self::Channel {
+        self.reply_senders.insert(sender_id, sender_channel);
 
         self.sender.clone()
     }
@@ -170,7 +159,7 @@ impl SingleThreadedEngine {
             receiver,
             block_props: BTreeMap::new(),
             reply_senders: BTreeMap::new(),
-            watches: BTreeMap::new(),
+            watchers: Rc::default(),
         }
     }
 
@@ -271,9 +260,7 @@ impl SingleThreadedEngine {
             EngineMessage::RemoveBlockReq(sender_uuid, block_id) => {
                 let id = self.remove_block(&block_id);
 
-                if let Some(id) = id {
-                    self.reply_to_sender(sender_uuid, EngineMessage::RemoveBlockRes(id));
-                }
+                self.reply_to_sender(sender_uuid, EngineMessage::RemoveBlockRes(id));
             }
 
             EngineMessage::InspectBlockReq(sender_uuid, block_uuid) => {
@@ -326,6 +313,24 @@ impl SingleThreadedEngine {
                 }
             }
 
+            EngineMessage::WatchBlockSubReq(sender_uuid, sender) => {
+                self.watchers.borrow_mut().insert(sender_uuid, sender);
+
+                self.reply_to_sender(
+                    sender_uuid,
+                    EngineMessage::WatchBlockSubRes(Ok(sender_uuid)),
+                );
+            }
+
+            EngineMessage::WatchBlockUnsubReq(sender_uuid) => {
+                self.watchers.borrow_mut().remove(&sender_uuid);
+
+                self.reply_to_sender(
+                    sender_uuid,
+                    EngineMessage::WatchBlockUnsubRes(Ok(sender_uuid)),
+                );
+            }
+
             EngineMessage::ConnectBlocksReq(sender_uuid, link_data) => {
                 let res = self.connect_blocks(&link_data);
                 self.reply_to_sender(
@@ -364,13 +369,17 @@ impl SingleThreadedEngine {
 
     fn remove_block(&mut self, block_id: &Uuid) -> Option<Uuid> {
         // Terminate the block
-        let res = self.get_block_props_mut(block_id).map(|block| {
+        let id = self.get_block_props_mut(block_id).map(|block| {
             block.set_state(BlockState::Terminate);
             *block.id()
         });
 
         // Remove the block from any links
         self.blocks_iter_mut().for_each(|block| {
+            if block.id() == block_id {
+                return;
+            }
+
             let mut outs = block.outputs_mut();
             outs.iter_mut().for_each(|output| {
                 output
@@ -386,52 +395,55 @@ impl SingleThreadedEngine {
             });
         });
 
-        // Remove the block from the block props and watches
+        // Remove the block from the block props
         self.block_props.remove(block_id);
-        self.watches.remove(block_id);
-        res
+
+        id
     }
 }
 
 /// Implements the logic for checking if the watched block pins
 /// have changed, and if so, dispatches a message to the watch sender.
 fn change_of_value_check<B: Block + 'static>(
-    watch_set: &Rc<WatchSet>,
+    notification_channels: &Rc<RefCell<BTreeMap<Uuid, Sender<WatchMessage>>>>,
     block: &B,
     last_pin_values: &mut BTreeMap<String, Value>,
 ) {
-    // Nothing to do if there are no subjects.
-    if watch_set.subjects.is_empty() {
-        // Clear the last value if there are no more subjects.
+    if notification_channels.borrow().is_empty() {
         if !last_pin_values.is_empty() {
             last_pin_values.clear();
         }
-
         return;
     }
 
-    if let Some(sender) = &watch_set.sender {
-        let mut changes = BTreeMap::<String, ChangeSource>::new();
+    let mut changes = BTreeMap::<String, ChangeSource>::new();
 
-        watch_set.subjects.iter().for_each(|pin| {
-            if let Some(out) = block.get_output(pin) {
-                let val = out.value();
-                if last_pin_values.get(pin) != Some(val) {
-                    changes.insert(pin.clone(), ChangeSource::Output(pin.clone(), val.clone()));
-                    last_pin_values.insert(pin.clone(), val.clone());
-                }
-            } else if let Some(input) = block.get_input(pin) {
-                if let Some(val) = input.get_value() {
-                    if last_pin_values.get(pin) != Some(val) {
-                        changes.insert(pin.clone(), ChangeSource::Input(pin.clone(), val.clone()));
-                        last_pin_values.insert(pin.clone(), val.clone());
-                    }
-                }
+    block.outputs().iter().for_each(|output| {
+        let pin = output.desc().name.to_string();
+        let val = output.value();
+        if last_pin_values.get(&pin) != Some(val) {
+            changes.insert(pin.clone(), ChangeSource::Output(pin.clone(), val.clone()));
+            last_pin_values.insert(pin, val.clone());
+        }
+    });
+
+    block.inputs().iter().for_each(|input| {
+        let val = input.get_value();
+        if let Some(val) = val {
+            let pin = input.name().to_string();
+            if last_pin_values.get(&pin) != Some(val) {
+                changes.insert(pin.clone(), ChangeSource::Input(pin.clone(), val.clone()));
+                last_pin_values.insert(pin, val.clone());
             }
-        });
+        }
+    });
 
-        if !changes.is_empty() {
-            let _ = sender.try_send(WatchMessage { changes });
+    if !changes.is_empty() {
+        for sender in notification_channels.borrow().values() {
+            let _ = sender.try_send(WatchMessage {
+                block_id: *block.id(),
+                changes: changes.clone(),
+            });
         }
     }
 }

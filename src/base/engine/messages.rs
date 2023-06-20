@@ -1,6 +1,6 @@
 // Copyright (c) 2022-2023, IntriSemantics Corp.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 
 use anyhow::Result;
 use libhaystack::val::Value;
@@ -40,6 +40,7 @@ pub enum ChangeSource {
 
 #[derive(Debug, Clone)]
 pub struct WatchMessage {
+    pub block_id: Uuid,
     pub changes: BTreeMap<String, ChangeSource>,
 }
 
@@ -50,12 +51,12 @@ pub enum EngineMessage<WatchEventSender: Clone> {
     AddBlockRes(Uuid),
 
     RemoveBlockReq(Uuid, Uuid),
-    RemoveBlockRes(Uuid),
+    RemoveBlockRes(Option<Uuid>),
 
-    WatchBlockSubReq(Uuid, BTreeSet<String>, WatchEventSender),
+    WatchBlockSubReq(Uuid, WatchEventSender),
     WatchBlockSubRes(Result<Uuid, &'static str>),
 
-    WatchBlockUnsub(Uuid, BTreeSet<String>),
+    WatchBlockUnsubReq(Uuid),
     WatchBlockUnsubRes(Result<Uuid, &'static str>),
 
     InspectBlockReq(Uuid, Uuid),

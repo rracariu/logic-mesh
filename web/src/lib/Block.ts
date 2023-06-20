@@ -12,4 +12,5 @@ export interface Block {
 export interface BlockPin {
 	name: string;
 	kind: string;
+	value: unknown
 }
