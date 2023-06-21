@@ -12,16 +12,25 @@ import BlockNode from './components/BlockNode.vue';
 import { BlockDesc, blockInstance } from './lib/Block';
 import { Notification, command, blocks, startWatch } from './lib/Engine';
 
-const { nodes, addNodes } = useVueFlow()
+const { nodes, edges, addNodes, addEdges, findNode } = useVueFlow()
 
 startWatch((notification: Notification) => {
-	nodes.value.forEach((block) => {
-		if (block.id === notification.id) {
-			notification.changes.forEach((change) => {
-				const pins = change.source === 'input' ? block.data?.inputs : block.data?.outputs
-				pins[change.name].value = change.value
-			})
+	const block = findNode(notification.id)
+
+	if (!block || !notification.changes.length) {
+		return
+	}
+
+	notification.changes.forEach((change) => {
+		if (change.source === 'input') {
+			edges.value.filter((edge) => edge.target === block.id && edge.targetHandle === change.name)
+				.forEach((edge) => {
+					edge.animated = true
+				})
 		}
+
+		const pins = change.source === 'input' ? block.data?.inputs : block.data?.outputs
+		pins[change.name].value = change.value
 	})
 })
 
@@ -41,6 +50,9 @@ const onBlockClick = async (id: string) => {
 
 const onConnect = async (conn: Connection) => {
 	const id = await command.createLink(conn.source, conn.target, conn.sourceHandle ?? '', conn.targetHandle ?? '')
+	if (id) {
+		addEdges({ ...conn, id })
+	}
 }
 
 </script>
