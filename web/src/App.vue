@@ -1,57 +1,35 @@
 <script setup lang="ts">
-import * as logic from 'logic-mesh'
-
-import { Connection, VueFlow, useVueFlow } from '@vue-flow/core'
-import { MiniMap } from '@vue-flow/minimap'
-import { Controls } from '@vue-flow/controls'
-import { Background } from '@vue-flow/background'
+import { Background } from '@vue-flow/background';
+import { Controls } from '@vue-flow/controls';
+import { Connection, VueFlow, useVueFlow } from '@vue-flow/core';
+import { MiniMap } from '@vue-flow/minimap';
 
 import Splitter from 'primevue/splitter';
 import SplitterPanel from 'primevue/splitterpanel';
 
-import BlockNode from './components/BlockNode.vue'
 import BlockList from './components/BlockList.vue';
-import { Block } from './lib/Block';
-import { BlockNodesModel } from './model/BlockNodesModel';
+import BlockNode from './components/BlockNode.vue';
+import { BlockDesc, blockInstance } from './lib/Block';
+import { Notification, command, blocks, startWatch } from './lib/Engine';
 
-const engine = logic.initEngine()
+const { nodes, addNodes } = useVueFlow()
 
-const blocks = engine.listBlocks()
-const command = engine.engineCommand()
-
-
-const command2 = engine.engineCommand()
-
-
-command2.createWatch((notification: { id: string, changes: { name: string, source: string, value: {} }[] }) => {
-
-	const data = useVueFlow().nodes
-
-	BlockNodesModel.value.forEach((block) => {
+startWatch((notification: Notification) => {
+	nodes.value.forEach((block) => {
 		if (block.id === notification.id) {
 			notification.changes.forEach((change) => {
-
 				const pins = change.source === 'input' ? block.data?.inputs : block.data?.outputs
-
-				pins?.forEach((input) => {
-					if (input.name === change.name) {
-						input.value = change.value
-					}
-				})
-
+				pins[change.name].value = change.value
 			})
 		}
 	})
 })
 
-const addBlock = async (block: Block) => {
-	const id = await command.addBlock(block.name)
-
-	block = JSON.parse(JSON.stringify(block))
-
+const addBlock = async (desc: BlockDesc) => {
+	const id = await command.addBlock(desc.name)
 	if (id) {
-		BlockNodesModel.value.push(
-			{ id, type: 'custom', label: block.name, position: { x: 250, y: 5 }, data: { ...block, id } }
+		addNodes(
+			{ id, type: 'custom', label: desc.name, position: { x: 250, y: 5 }, data: blockInstance(id, desc) }
 		)
 	}
 }
@@ -65,10 +43,6 @@ const onConnect = async (conn: Connection) => {
 	const id = await command.createLink(conn.source, conn.target, conn.sourceHandle ?? '', conn.targetHandle ?? '')
 }
 
-
-// Start the engine
-engine.run()
-
 </script>
 
 <template>
@@ -78,8 +52,8 @@ engine.run()
 
 		</SplitterPanel>
 		<SplitterPanel :size="82">
-			<VueFlow v-model="BlockNodesModel" @connect="onConnect" :default-edge-options="{ type: 'smoothstep' }"
-				:min-zoom="1" :max-zoom="4" :elevate-edges-on-select="true" :apply-default="true" auto-connect>
+			<VueFlow @connect="onConnect" :default-edge-options="{ type: 'smoothstep' }" :min-zoom="1" :max-zoom="4"
+				:elevate-edges-on-select="true" :apply-default="true" auto-connect>
 				<Background pattern-color="#aaa" :gap="8" />
 
 				<template #node-custom="{ data }">

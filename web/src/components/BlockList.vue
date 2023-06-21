@@ -4,15 +4,15 @@ import AccordionTab from 'primevue/accordiontab';
 import Button from 'primevue/Button';
 import InputText from 'primevue/InputText';
 
-import { Block } from '../lib/Block'
+import { BlockDesc } from '../lib/Block'
 import { capitalize, computed, ref } from 'vue';
 
 const props = defineProps<{
-	blocks: Block[]
+	blocks: BlockDesc[]
 }>()
 
 defineEmits<{
-	(event: 'addBlock', block: Block): void
+	(event: 'addBlock', block: BlockDesc): void
 }>()
 
 const blockSearch = ref('')

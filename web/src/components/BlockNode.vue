@@ -8,7 +8,7 @@ const props = defineProps<{ data: Block }>()
 const handlePos = (index: number) => `top: ${index + index / 2 + 3.5}em`
 
 const blockHeight = computed(() => {
-	return `height: ${props.data.inputs.length + 2}em; `
+	return `height: ${Object.keys(props.data.inputs).length + 2}em; `
 })
 
 const validConnection = (conn: Connection) => {
@@ -23,19 +23,19 @@ const format = (value: unknown) => {
 
 <template>
 	<div :style="blockHeight">
-		{{ data.name }}
+		{{ data.desc.name }}
 
-		<Handle v-for="(input, index) in data.inputs" :key="input.name" :id="input.name"
+		<Handle v-for="(input, name, index) in data.inputs" :key="name" :id="input.name"
 			:is-valid-connection="validConnection" type="target" :position="Position.Left" :style="handlePos(index)"
 			class="block-input">
-			{{ input.name }} {{ input.value ? `${format(input.value)}` : '' }}
+			{{ name }} {{ input.value ? `${format(input.value)}` : '' }}
 		</Handle>
 
 
-		<Handle v-for="(output, index) in data.outputs" :key="output.name" :id="output.name"
+		<Handle v-for="(output, name, index) in data.outputs" :key="name" :id="output.name"
 			:is-valid-connection="validConnection" type="source" :position="Position.Right" class="block-output"
 			:style="handlePos(index)">
-			{{ output.name }} {{ output.value ? `${format(output.value)}` : '' }}
+			{{ name }} {{ output.value ? `${format(output.value)}` : '' }}
 		</Handle>
 	</div>
 </template>
