@@ -31,6 +31,11 @@ pub trait OutputProps {
     /// Get a list of links to this output
     fn links(&self) -> Vec<&dyn Link>;
 
+    fn remove_target_block(&mut self, block_id: &Uuid);
+
+    /// Remove all links from this output
+    fn remove_all_links(&mut self);
+
     /// Get this output's value
     fn value(&self) -> &Value;
 }

@@ -7,7 +7,7 @@
 use uuid::Uuid;
 
 use super::desc::BlockStaticDesc;
-use super::Block;
+use super::{Block, BlockProps};
 use crate::base::input::InputProps;
 use crate::base::link::{BaseLink, Link, LinkState};
 use crate::base::output::Output;
@@ -40,22 +40,23 @@ pub trait BlockConnect: BlockStaticDesc {
 
     /// Disconnect a block output from the given input
     /// # Arguments
-    /// - input: The block input to be disconnected
+    /// - source_output_name: The name of the source output to be disconnected
+    /// - target_input: The target input to be disconnected
     ///
     fn disconnect_output(
         &mut self,
-        output_name: &str,
-        input: &mut dyn InputProps<Reader = Self::Reader, Writer = Self::Writer>,
+        source_output_name: &str,
+        target_input: &mut dyn InputProps<Reader = Self::Reader, Writer = Self::Writer>,
     ) -> Result<(), &'static str>;
 
     /// Disconnect a block input from the given output
     /// # Arguments
-    /// - input_name: The name of the input to be disconnected
-    /// - input: The block input to be disconnected
+    /// - source_input_name: The name of the source input to be disconnected
+    /// - target_input: The target input to be disconnected
     fn disconnect_input(
         &mut self,
-        input_name: &str,
-        input: &mut dyn InputProps<Reader = Self::Reader, Writer = Self::Writer>,
+        source_input_name: &str,
+        target_input: &mut dyn InputProps<Reader = Self::Reader, Writer = Self::Writer>,
     ) -> Result<(), &'static str>;
 }
 
@@ -66,13 +67,13 @@ pub trait BlockConnect: BlockStaticDesc {
 impl<T: Block + ?Sized> BlockConnect for T {
     fn connect_output(
         &mut self,
-        output_name: &str,
+        source_output_name: &str,
         target_input: &mut dyn InputProps<Reader = Self::Reader, Writer = Self::Writer>,
     ) -> Result<(), &'static str> {
         let mut outputs = self.outputs_mut();
         let source_output = if let Some(out) = outputs
             .iter_mut()
-            .find(|output| output.desc().name == output_name)
+            .find(|output| output.desc().name == source_output_name)
         {
             out
         } else {
@@ -84,55 +85,59 @@ impl<T: Block + ?Sized> BlockConnect for T {
 
     fn connect_input(
         &mut self,
-        input_name: &str,
+        source_input_name: &str,
         target_input: &mut dyn InputProps<Reader = Self::Reader, Writer = Self::Writer>,
     ) -> Result<(), &'static str> {
         let mut inputs = self.inputs_mut();
-        let source_input =
-            if let Some(input) = inputs.iter_mut().find(|input| input.name() == input_name) {
-                *input as &mut dyn InputProps<Reader = Self::Reader, Writer = Self::Writer>
-            } else {
-                return Err("Input not found");
-            };
+        let source_input = if let Some(input) = inputs
+            .iter_mut()
+            .find(|input| input.name() == source_input_name)
+        {
+            *input as &mut dyn InputProps<Reader = Self::Reader, Writer = Self::Writer>
+        } else {
+            return Err("Input not found");
+        };
         connect_input(source_input, target_input)
     }
 
     fn disconnect_output(
         &mut self,
-        output_name: &str,
-        input: &mut dyn InputProps<Reader = Self::Reader, Writer = Self::Writer>,
+        source_output_name: &str,
+        target_input: &mut dyn InputProps<Reader = Self::Reader, Writer = Self::Writer>,
     ) -> Result<(), &'static str> {
         let mut outputs = self.outputs_mut();
         let source_output = if let Some(out) = outputs
             .iter_mut()
-            .find(|output| output.desc().name == output_name)
+            .find(|output| output.desc().name == source_output_name)
         {
             out
         } else {
             return Err("Output not found");
         };
 
-        disconnect_output(*source_output, input)
+        disconnect_output(*source_output, target_input)
     }
 
     fn disconnect_input(
         &mut self,
-        input_name: &str,
-        input: &mut dyn InputProps<Reader = Self::Reader, Writer = Self::Writer>,
+        source_input_name: &str,
+        target_input: &mut dyn InputProps<Reader = Self::Reader, Writer = Self::Writer>,
     ) -> Result<(), &'static str> {
         let mut inputs = self.inputs_mut();
-        let source_input =
-            if let Some(in_) = inputs.iter_mut().find(|input| input.name() == input_name) {
-                in_
-            } else {
-                return Err("Input not found");
-            };
+        let source_input = if let Some(in_) = inputs
+            .iter_mut()
+            .find(|input| input.name() == source_input_name)
+        {
+            in_
+        } else {
+            return Err("Input not found");
+        };
 
-        let link_id = link_id_for_input(source_input.links(), input);
+        let link_id = link_id_for_input(source_input.links(), target_input);
 
         if let Some(id) = link_id {
             source_input.remove_link_by_id(&id);
-            input.decrement_conn();
+            target_input.decrement_conn();
             Ok(())
         } else {
             Err("No connection found")
@@ -242,6 +247,37 @@ pub fn disconnect_input<I: InputProps + ?Sized>(
     }
 }
 
+/**
+ * Disconnect all the inputs and outputs of a block
+ */
+pub fn disconnect_block<B, F>(block: &mut B, mut decrement_target_input: F)
+where
+    B: BlockProps + ?Sized,
+    F: FnMut(&Uuid, &str) -> Option<usize>,
+{
+    block
+        .outputs_mut()
+        .iter()
+        .filter(|output| output.is_connected())
+        .for_each(|out| {
+            out.links().iter_mut().for_each(|link| {
+                decrement_target_input(link.target_block_id(), link.target_input());
+            });
+        });
+
+    block
+        .inputs_mut()
+        .iter()
+        .filter(|input| input.has_output())
+        .for_each(|src_input| {
+            src_input.links().iter_mut().for_each(|link| {
+                decrement_target_input(link.target_block_id(), link.target_input());
+            });
+        });
+
+    block.remove_all_links();
+}
+
 fn link_id_for_input<I: InputProps + ?Sized>(
     links: Vec<&dyn Link>,
     target_input: &I,
@@ -262,7 +298,7 @@ mod test {
     use uuid::Uuid;
 
     use crate::base::{
-        block::{Block, BlockDesc, BlockProps, BlockState},
+        block::{connect::disconnect_block, Block, BlockDesc, BlockProps, BlockState},
         input::{Input, InputProps},
         output::Output,
     };
@@ -368,5 +404,42 @@ mod test {
 
         assert!(!block1.input1.is_connected());
         assert_eq!(block1.outputs()[0].links().len(), 0);
+    }
+
+    #[test]
+    fn test_block_disconnect() {
+        let mut block1 = Block1::new();
+        let mut block2 = Block2::new();
+        {
+            let input2 = &mut block2.inputs_mut()[0];
+
+            block1
+                .connect_input("input1", *input2)
+                .expect("Could not connect");
+
+            assert!(
+                block1.connect_input("input1", *input2).is_err(),
+                "Should not be able to connect twice"
+            );
+            assert!(
+                block1.connect_input("invalid input", *input2).is_err(),
+                "Should not be able to connect to invalid input"
+            );
+
+            assert!(input2.is_connected());
+            assert!(block1.input1.links().len() == 1);
+        }
+
+        let gid = block2.id().clone();
+        let input1 = &mut block2.input1;
+
+        disconnect_block(&mut block1, |id, name| {
+            assert!(*id == gid);
+            assert!(name == "input1");
+            Some(input1.decrement_conn())
+        });
+
+        assert!(!input1.is_connected());
+        assert!(block1.input1.links().len() == 0);
     }
 }

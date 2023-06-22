@@ -37,6 +37,14 @@ impl<L: Link> OutputProps for BaseOutput<L> {
     fn links(&self) -> Vec<&dyn Link> {
         self.links.iter().map(|l| l as &dyn Link).collect()
     }
+
+    fn remove_target_block(&mut self, block_id: &Uuid) {
+        self.links.retain(|link| link.target_block_id() != block_id);
+    }
+
+    fn remove_all_links(&mut self) {
+        self.links.clear();
+    }
 }
 
 impl<L: Link> BaseOutput<L> {

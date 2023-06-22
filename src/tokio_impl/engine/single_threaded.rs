@@ -13,7 +13,7 @@ use uuid::Uuid;
 use crate::{
     base::{
         block::{
-            connect::{connect_input, connect_output},
+            connect::{connect_input, connect_output, disconnect_block},
             Block, BlockProps, BlockState,
         },
         engine::{
@@ -370,8 +370,20 @@ impl SingleThreadedEngine {
         // Terminate the block
         let id = self.get_block_props_mut(block_id).map(|block| {
             block.set_state(BlockState::Terminate);
+
+            disconnect_block(block, |id, name| {
+                let target_block = self.get_block_props_mut(id);
+                target_block.and_then(|target_block| {
+                    target_block
+                        .get_input_mut(name)
+                        .map(|input| input.decrement_conn())
+                })
+            });
+
             *block.id()
         });
+
+        id?;
 
         // Remove the block from any links
         self.blocks_iter_mut().for_each(|block| {
@@ -381,16 +393,12 @@ impl SingleThreadedEngine {
 
             let mut outs = block.outputs_mut();
             outs.iter_mut().for_each(|output| {
-                output
-                    .links()
-                    .retain(|link| link.target_block_id() != block_id);
+                output.remove_target_block(block_id);
             });
 
             let mut ins = block.inputs_mut();
             ins.iter_mut().for_each(|input| {
-                input
-                    .links()
-                    .retain(|link| link.target_block_id() != block_id);
+                input.remove_target_block(block_id);
             });
         });
 

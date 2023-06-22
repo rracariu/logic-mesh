@@ -78,4 +78,7 @@ pub trait BlockProps {
 
     /// Remove a link from the link collection
     fn remove_link(&mut self, link: &dyn Link);
+
+    /// Remove all links from this block
+    fn remove_all_links(&mut self);
 }

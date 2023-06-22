@@ -149,6 +149,11 @@ pub(super) fn block_props_impl(ast: &syn::DeriveInput) -> TokenStream {
                 self.inputs_mut().iter_mut().for_each(|input| input.remove_link(link));
                 self.outputs_mut().iter_mut().for_each(|out| out.remove_link(link))
             }
+
+            fn remove_all_links(&mut self) {
+                self.inputs_mut().iter_mut().for_each(|input| input.remove_all_links());
+                self.outputs_mut().iter_mut().for_each(|out| out.remove_all_links())
+            }
         }
 
         // Implementation of the BlockDesc trait
