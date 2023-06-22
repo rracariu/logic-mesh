@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { Connection, Handle, Position, } from '@vue-flow/core';
+
 import { computed } from 'vue';
 import { Block } from '../lib/Block';
 
@@ -8,7 +9,7 @@ const props = defineProps<{ data: Block }>()
 const handlePos = (index: number) => `top: ${index + index / 2 + 3.5}em`
 
 const blockHeight = computed(() => {
-	return `height: ${Object.keys(props.data.inputs).length + 2}em; `
+	return `width: 100%; height: ${Object.keys(props.data.inputs).length + 4.5}em; `
 })
 
 const validConnection = (conn: Connection) => {
@@ -23,8 +24,9 @@ const format = (value: unknown) => {
 
 <template>
 	<div :style="blockHeight">
-		{{ data.desc.name }}
-
+		<div class="header">
+			{{ data.desc.name }}
+		</div>
 		<Handle v-for="(input, name, index) in data.inputs" :key="name" :id="input.name"
 			:is-valid-connection="validConnection" type="target" :position="Position.Left" :style="handlePos(index)"
 			class="block-input">
@@ -41,6 +43,13 @@ const format = (value: unknown) => {
 </template>
 
 <style scoped>
+.header {
+	border-bottom: 1px solid var(--surface-200);
+	border-radius: 0px !important;
+	width: 100%;
+	text-align: center;
+}
+
 [class*="block-"] {
 	font-size: x-small;
 	padding: 1px;

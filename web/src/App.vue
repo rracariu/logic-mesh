@@ -50,9 +50,7 @@ const onBlockClick = async (id: string) => {
 
 const onConnect = async (conn: Connection) => {
 	const id = await command.createLink(conn.source, conn.target, conn.sourceHandle ?? '', conn.targetHandle ?? '')
-	if (id) {
-		addEdges({ ...conn, id })
-	}
+
 }
 
 </script>
@@ -92,10 +90,10 @@ const onConnect = async (conn: Connection) => {
 
 
 .vue-flow__node-custom {
-	font-size: medium;
-	border: 1px solid #777;
-	padding: 3px;
-	border-radius: 3px;
+	font-size: smaller;
+	border: 1px solid var(--surface-300);
+	padding: 0px;
+	border-radius: 5px;
 	background: linear-gradient(180deg, var(--surface-50) 0%, var(--surface-100) 100%);
 	display: flex;
 	flex-direction: column;
@@ -103,6 +101,6 @@ const onConnect = async (conn: Connection) => {
 	align-items: center;
 	gap: 3px;
 	max-width: 250px;
-	min-width: 6em;
+	min-width: 8em;
 }
 </style>
