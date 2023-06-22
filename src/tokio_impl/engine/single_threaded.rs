@@ -393,12 +393,12 @@ impl SingleThreadedEngine {
 
             let mut outs = block.outputs_mut();
             outs.iter_mut().for_each(|output| {
-                output.remove_target_block(block_id);
+                output.remove_target_block_links(block_id);
             });
 
             let mut ins = block.inputs_mut();
             ins.iter_mut().for_each(|input| {
-                input.remove_target_block(block_id);
+                input.remove_target_block_links(block_id);
             });
         });
 

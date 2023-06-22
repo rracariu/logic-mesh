@@ -67,7 +67,7 @@ impl<Reader, Writer: Clone> InputProps for BaseInput<Reader, Writer> {
         self.links.retain(|l| l.id() != link_id)
     }
 
-    fn remove_target_block(&mut self, block_id: &Uuid) {
+    fn remove_target_block_links(&mut self, block_id: &Uuid) {
         self.links.retain(|l| l.target_block_id() != block_id)
     }
 

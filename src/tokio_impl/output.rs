@@ -21,10 +21,6 @@ impl Output for OutputImpl {
         self.links.push(link);
     }
 
-    fn remove_link_by_id(&mut self, link_id: &uuid::Uuid) {
-        self.links.retain(|l| l.id != *link_id);
-    }
-
     fn set(&mut self, value: Value) {
         for link in &mut self.links {
             if let Some(tx) = &link.tx {

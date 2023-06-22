@@ -63,8 +63,8 @@ pub trait InputProps {
     /// - link_id: The id of the link to be removed
     fn remove_link_by_id(&mut self, link_id: &Uuid);
 
-    /// Remove a link by block id from this input
-    fn remove_target_block(&mut self, block_id: &Uuid);
+    /// Remove all links to a specific block from this input
+    fn remove_target_block_links(&mut self, block_id: &Uuid);
 
     /// Remove all links from this input
     fn remove_all_links(&mut self);

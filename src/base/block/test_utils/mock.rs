@@ -49,10 +49,6 @@ impl Output for OutputImpl {
         self.links.push(_link);
     }
 
-    fn remove_link_by_id(&mut self, _link_id: &Uuid) {
-        self.links.retain(|link| link.id != *_link_id);
-    }
-
     fn set(&mut self, _value: Value) {
         self.value = _value;
     }

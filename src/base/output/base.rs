@@ -38,7 +38,14 @@ impl<L: Link> OutputProps for BaseOutput<L> {
         self.links.iter().map(|l| l as &dyn Link).collect()
     }
 
-    fn remove_target_block(&mut self, block_id: &Uuid) {
+    /// Remove a link by id from this output
+    /// # Arguments
+    /// - link_id: The id of the link to be removed
+    fn remove_link_by_id(&mut self, link_id: &Uuid) {
+        self.links.retain(|link| link.id() != link_id);
+    }
+
+    fn remove_target_block_links(&mut self, block_id: &Uuid) {
         self.links.retain(|link| link.target_block_id() != block_id);
     }
 
