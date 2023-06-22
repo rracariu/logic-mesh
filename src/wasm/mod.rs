@@ -22,7 +22,7 @@ pub fn init_engine() -> BlocksEngine {
 pub fn start() {
     panic::set_hook(Box::new(console_error_panic_hook::hook));
     log::set_logger(&DEFAULT_LOGGER).unwrap();
-    log::set_max_level(log::LevelFilter::Info);
+    log::set_max_level(log::LevelFilter::Trace);
 
     info!("Blocks module loaded.");
 }

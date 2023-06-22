@@ -4,6 +4,7 @@ use std::{cell::Cell, cell::RefCell, collections::BTreeMap, rc::Rc};
 
 use anyhow::{anyhow, Result};
 use libhaystack::val::Value;
+use log::debug;
 use tokio::{
     sync::mpsc::{self, Receiver, Sender},
     task::LocalSet,
@@ -331,6 +332,8 @@ impl SingleThreadedEngine {
             }
 
             EngineMessage::ConnectBlocksReq(sender_uuid, link_data) => {
+                debug!("ConnectBlocksReq: {:?}", link_data);
+
                 let res = self.connect_blocks(&link_data);
                 self.reply_to_sender(
                     sender_uuid,

@@ -81,9 +81,6 @@ pub trait InputProps {
     /// Gets this input value
     fn get_value(&self) -> &Option<Value>;
 
-    /// Sets this input value
-    fn set_value(&mut self, value: Value);
-
     /// Increment the connection count when this input
     /// is linked to another block's output.
     fn increment_conn(&mut self) -> usize;

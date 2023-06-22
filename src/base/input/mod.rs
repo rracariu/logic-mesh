@@ -23,4 +23,7 @@ pub trait InputReceiver = Future<Output = Option<Value>> + Send;
 pub trait Input: InputProps {
     /// Gets this input receiver which can be polled for data.
     fn receiver(&mut self) -> Pin<Box<dyn InputReceiver + '_>>;
+
+    /// Sets this input value
+    fn set_value(&mut self, value: Value);
 }

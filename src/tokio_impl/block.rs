@@ -11,7 +11,7 @@ impl<B: Block> InputReader for B {
     }
 
     async fn wait_on_inputs(&mut self) {
-        read_block_inputs_ignore_result(self).await;
+        read_block_inputs(self).await;
     }
 }
 
@@ -59,8 +59,4 @@ pub(crate) async fn read_block_inputs<B: Block>(block: &mut B) -> Option<usize> 
     } else {
         None
     }
-}
-
-pub(crate) async fn read_block_inputs_ignore_result<B: Block>(block: &mut B) {
-    read_block_inputs(block).await;
 }

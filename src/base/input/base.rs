@@ -91,10 +91,6 @@ impl<Reader, Writer: Clone> InputProps for BaseInput<Reader, Writer> {
         &self.val
     }
 
-    fn set_value(&mut self, value: Value) {
-        self.val = Some(value)
-    }
-
     fn increment_conn(&mut self) -> usize {
         self.connection_count += 1;
         self.connection_count

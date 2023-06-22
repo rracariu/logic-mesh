@@ -32,6 +32,8 @@ impl Input for InputImpl {
     fn receiver(&mut self) -> Pin<Box<dyn InputReceiver + '_>> {
         Box::pin(async { None })
     }
+
+    fn set_value(&mut self, _value: Value) {}
 }
 
 pub type OutputImpl = BaseOutput<BaseLink<String>>;

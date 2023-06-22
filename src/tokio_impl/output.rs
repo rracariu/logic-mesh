@@ -31,6 +31,6 @@ impl Output for OutputImpl {
                 }
             }
         }
-        self.value = value
+        self.value = value;
     }
 }

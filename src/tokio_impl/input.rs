@@ -8,7 +8,10 @@ use tokio::sync::mpsc::{channel, Receiver, Sender};
 use libhaystack::val::{kind::HaystackKind, Value};
 use uuid::Uuid;
 
-use crate::base::input::{BaseInput, Input, InputDefault, InputReceiver};
+use crate::base::{
+    input::{BaseInput, Input, InputDefault, InputReceiver},
+    link::LinkState,
+};
 
 pub type InputImpl = BaseInput<Receiver<Value>, Sender<Value>>;
 
@@ -45,6 +48,19 @@ impl InputImpl {
 impl Input for InputImpl {
     fn receiver(&mut self) -> Pin<Box<dyn InputReceiver + '_>> {
         self.reader.recv().boxed()
+    }
+
+    fn set_value(&mut self, value: Value) {
+        for link in &mut self.links {
+            if let Some(tx) = &link.tx {
+                if let Err(__) = tx.try_send(value.clone()) {
+                    link.state = LinkState::Error;
+                } else {
+                    link.state = LinkState::Connected;
+                }
+            }
+        }
+        self.val = Some(value);
     }
 }
 
