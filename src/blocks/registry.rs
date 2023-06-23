@@ -4,7 +4,7 @@ use crate::base::block::{Block, BlockDesc, BlockProps, BlockStaticDesc};
 use crate::base::input::InputProps;
 
 use crate::base::engine::Engine;
-use crate::blocks::maths::Add;
+use crate::blocks::math::{Add, Sub};
 use crate::blocks::misc::{Random, SineWave};
 
 use anyhow::{anyhow, Result};
@@ -12,6 +12,7 @@ use lazy_static::lazy_static;
 use std::collections::BTreeMap;
 use std::sync::Mutex;
 
+use super::math::{Div, Mul};
 use super::InputImpl;
 
 type DynBlockProps = dyn BlockProps<
@@ -98,7 +99,7 @@ macro_rules! register_blocks{
     };
 }
 
-register_blocks!(Add, Random, SineWave);
+register_blocks!(Add, Sub, Mul, Div, Random, SineWave);
 
 /// Construct a block properties from the registry
 /// # Arguments

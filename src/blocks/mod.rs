@@ -4,7 +4,7 @@
 //! Block implementations
 //!
 
-pub mod maths;
+pub mod math;
 pub mod misc;
 pub mod registry;
 pub mod utils;

@@ -4,7 +4,6 @@
 //! Defines the block connection trait
 //!
 
-use log::debug;
 use uuid::Uuid;
 
 use super::desc::BlockStaticDesc;
