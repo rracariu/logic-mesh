@@ -19,16 +19,18 @@ impl<B: Block> InputReader for B {
 
     async fn wait_on_inputs(&mut self, timeout: Duration) {
         let millis = timeout.as_millis() as u64;
-        let _ = select_all([
+        let (_, index, _) = select_all([
             sleep_millis(millis).boxed_local(),
             async {
-                if self.read_inputs().await.is_none() {
-                    sleep_millis(millis).await;
-                };
+                self.read_inputs().await;
             }
             .boxed_local(),
         ])
         .await;
+
+        if index != 0 {
+            sleep_millis(millis).await;
+        }
     }
 }
 
