@@ -1,4 +1,4 @@
-// Copyright (c) 2022-2023, IntriSemantics Corp.
+// Copyright (c) 2022-2023, Radu Racariu.
 
 use crate::base::block::{Block, BlockDesc, BlockProps, BlockStaticDesc};
 use crate::base::input::InputProps;

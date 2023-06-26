@@ -1,4 +1,4 @@
-// Copyright (c) 2022-2023, IntriSemantics Corp.
+// Copyright (c) 2022-2023, Radu Racariu.
 
 //! Module for defining the program
 //! that would be executed by the engine.
