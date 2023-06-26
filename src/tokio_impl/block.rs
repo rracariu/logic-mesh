@@ -1,17 +1,31 @@
 // Copyright (c) 2022-2023, IntriSemantics Corp.
 
+use std::time::Duration;
+
 use futures::future::select_all;
+use futures::FutureExt;
 use libhaystack::val::kind::HaystackKind;
 
 use crate::base::{block::Block, input::input_reader::InputReader};
+use crate::blocks::utils::sleep_millis;
 
 impl<B: Block> InputReader for B {
     async fn read_inputs(&mut self) -> Option<usize> {
         read_block_inputs(self).await
     }
 
-    async fn wait_on_inputs(&mut self) {
-        read_block_inputs(self).await;
+    async fn wait_on_inputs(&mut self, timeout: Duration) {
+        let millis = timeout.as_millis() as u64;
+        let _ = select_all([
+            sleep_millis(millis).boxed_local(),
+            (async move || {
+                if self.read_inputs().await.is_none() {
+                    sleep_millis(millis).await;
+                };
+            })()
+            .boxed_local(),
+        ])
+        .await;
     }
 }
 

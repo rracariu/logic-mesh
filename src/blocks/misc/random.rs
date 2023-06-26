@@ -1,10 +1,12 @@
 // Copyright (c) 2022-2023, IntriSemantics Corp.
 
-use futures::{future::select_all, FutureExt};
+use std::time::Duration;
+
 use rand::Rng;
 
 use uuid::Uuid;
 
+use crate::base::output::props::OutputProps;
 use crate::{
     base::{
         block::{Block, BlockDesc, BlockProps, BlockState},
@@ -17,7 +19,7 @@ use crate::{
 use libhaystack::val::{kind::HaystackKind, Value};
 
 use crate::{
-    blocks::utils::{sleep_millis, DEFAULT_SLEEP_DUR},
+    blocks::utils::DEFAULT_SLEEP_DUR,
     blocks::{InputImpl, OutputImpl},
 };
 
@@ -27,7 +29,7 @@ use crate::{
 #[block]
 #[derive(BlockProps, Debug)]
 #[name = "Random"]
-#[category = "math"]
+#[category = "misc"]
 pub struct Random {
     #[input(kind = "Number")]
     pub freq: InputImpl,
@@ -43,13 +45,12 @@ impl Block for Random {
     async fn execute(&mut self) {
         let millis = to_millis(&self.freq.val).unwrap_or(DEFAULT_SLEEP_DUR);
 
-        let (_, index, _) = select_all([
-            sleep_millis(millis).boxed_local(),
-            self.wait_on_inputs().boxed_local(),
-        ])
-        .await;
+        self.wait_on_inputs(Duration::from_millis(millis)).await;
 
-        let millis = to_millis(&self.freq.val).unwrap_or(DEFAULT_SLEEP_DUR);
+        if !self.out.is_connected() {
+            return;
+        }
+
         let mut rng = rand::thread_rng();
 
         let min = input_as_number(&self.min)
@@ -60,10 +61,6 @@ impl Block for Random {
             .unwrap_or(100);
 
         let res = rng.gen_range(min..max);
-
-        if index != 0 {
-            sleep_millis(millis).await;
-        }
 
         self.out.set(Value::make_int(res));
     }

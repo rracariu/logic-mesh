@@ -1,5 +1,7 @@
 // Copyright (c) 2022-2023, IntriSemantics Corp.
 
+use std::time::Duration;
+
 use crate::base::block::Block;
 
 /// Specifies the protocol for reading
@@ -12,5 +14,5 @@ pub trait InputReader: Block {
     async fn read_inputs(&mut self) -> Option<usize>;
 
     /// Waits for any input to have data.
-    async fn wait_on_inputs(&mut self);
+    async fn wait_on_inputs(&mut self, timeout: Duration);
 }
