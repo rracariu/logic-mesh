@@ -60,6 +60,12 @@ impl Block for Random {
             .map(|v| v.value as i64)
             .unwrap_or(100);
 
+        if min > max {
+            self.set_state(BlockState::Fault);
+        } else if self.state() == BlockState::Fault {
+            self.set_state(BlockState::Running);
+        }
+
         let res = rng.gen_range(min..max);
 
         self.out.set(Value::make_int(res));
