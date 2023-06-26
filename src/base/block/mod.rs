@@ -27,7 +27,7 @@ pub trait Block: BlockConnect {
 }
 
 #[cfg(test)]
-mod test_utils;
+pub(crate) mod test_utils;
 #[cfg(test)]
 mod test {
     use uuid::Uuid;

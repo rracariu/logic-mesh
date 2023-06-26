@@ -373,7 +373,9 @@ fn create_input_desc(
 ) -> proc_macro2::TokenStream {
     ensure_unique_inputs(block_defined_input_props, block_input_props);
 
-    let input_field_names = block_input_props.keys();
+    let input_field_names = block_input_props
+        .iter()
+        .map(|(name, props)| props.get("name").unwrap_or(name));
 
     let input_field_kinds = block_input_props
         .iter()
@@ -406,7 +408,9 @@ fn create_input_desc(
 fn create_output_desc(
     block_output_props: &BTreeMap<String, BTreeMap<String, String>>,
 ) -> proc_macro2::TokenStream {
-    let output_names = block_output_props.keys();
+    let output_names = block_output_props
+        .iter()
+        .map(|(name, props)| props.get("name").unwrap_or(name));
 
     let output_kinds = block_output_props
         .iter()

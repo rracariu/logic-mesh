@@ -464,7 +464,7 @@ mod test {
     use std::{thread, time::Duration};
 
     use crate::base;
-    use crate::blocks::{maths::Add, misc::SineWave};
+    use crate::blocks::{math::Add, misc::SineWave};
     use base::block::{BlockConnect, BlockProps};
     use base::engine::messages::EngineMessage::{InspectBlockReq, InspectBlockRes, Shutdown};
 
