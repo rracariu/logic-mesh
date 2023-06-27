@@ -6,6 +6,7 @@ import wasm from "vite-plugin-wasm";
 export default defineConfig({
 	plugins: [wasm(), vue()],
 	build: {
-		target: 'esnext'
-	}
+		target: 'esnext',
+	},
+	base: process.env.NODE_ENV === 'production' ? '/logic-mesh/' : undefined,
 })
