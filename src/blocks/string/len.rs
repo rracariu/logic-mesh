@@ -16,21 +16,19 @@ use crate::{
     blocks::OutputImpl,
 };
 
-/// Returns the power root value of the input.
+/// Returns the length of the input string.
 #[block]
 #[derive(BlockProps, Debug)]
-#[dis = "Power"]
-#[category = "math"]
-pub struct Pow {
-    #[input(name = "base", kind = "Number")]
-    pub base: InputImpl,
-    #[input(name = "exponent", kind = "Number")]
-    pub exponent: InputImpl,
+#[dis = "StringLen"]
+#[category = "string"]
+pub struct StrLen {
+    #[input(name = "in", kind = "Str")]
+    pub input: InputImpl,
     #[output(kind = "Number")]
     pub out: OutputImpl,
 }
 
-impl Block for Pow {
+impl Block for StrLen {
     async fn execute(&mut self) {
         let input = self.read_inputs().await;
 
@@ -39,13 +37,11 @@ impl Block for Pow {
             return;
         }
 
-        if let (Some(Value::Number(base)), Some(Value::Number(exponent))) =
-            (self.base.get_value(), self.exponent.get_value())
-        {
+        if let Some(Value::Str(a)) = self.input.get_value() {
             self.out.set(
                 Number {
-                    value: base.value.powf(exponent.value),
-                    unit: base.unit,
+                    value: a.value.len() as f64,
+                    unit: None,
                 }
                 .into(),
             );
@@ -63,17 +59,14 @@ mod test {
     use crate::{
         base::block::test_utils::write_block_inputs,
         base::{block::Block, input::input_reader::InputReader},
-        blocks::math::Pow,
+        blocks::string::StrLen,
     };
 
     #[tokio::test]
     async fn test_sub() {
-        let mut block = Pow::new();
+        let mut block = StrLen::new();
 
-        for _ in
-            write_block_inputs(&mut [(&mut block.base, 4.into()), (&mut block.exponent, 4.into())])
-                .await
-        {
+        for _ in write_block_inputs(&mut [(&mut block.input, "ana are mere".into())]).await {
             block.read_inputs().await;
         }
 
@@ -81,7 +74,7 @@ mod test {
 
         assert_matches!(
             block.out.value,
-            Value::Number(Number { value, .. }) if value == 256.0
+            Value::Number(Number { value, .. }) if value == 12.0
         );
     }
 }

@@ -7,6 +7,7 @@ use crate::base::engine::Engine;
 use crate::blocks::math::{Abs, Add, ArcTan, Cos, Sub};
 use crate::blocks::math::{ArcCos, ArcSin, Div, Exp, Log10, Logn, Mul, Pow, Sin, Sqrt};
 use crate::blocks::misc::{Random, SineWave};
+use crate::blocks::string::StrLen;
 
 use anyhow::{anyhow, Result};
 use lazy_static::lazy_static;
@@ -100,8 +101,11 @@ macro_rules! register_blocks{
 }
 
 register_blocks!(
-    Abs, Add, Sub, Mul, Div, Exp, ArcCos, ArcTan, Cos, ArcSin, Sin, Log10, Logn, Sqrt, Pow, Random,
-    SineWave
+    // Math blocks
+    Abs, Add, Sub, Mul, Div, Exp, ArcCos, ArcTan, Cos, ArcSin, Sin, Log10, Logn, Sqrt, Pow,
+    // String blocks
+    StrLen, // Misc blocks
+    Random, SineWave
 );
 
 /// Construct a block properties from the registry

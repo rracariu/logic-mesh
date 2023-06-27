@@ -1,3 +1,9 @@
+// Copyright (c) 2022-2023, Radu Racariu.
+
+//!
+//! Math Blocks
+//!
+
 pub mod abs;
 pub mod add;
 pub mod arccos;

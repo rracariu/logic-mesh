@@ -62,6 +62,9 @@ const format = (value: unknown) => {
 	display: inline-table;
 	border-radius: 10% !important;
 	min-width: 5em !important;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
 }
 
 .block-input {
