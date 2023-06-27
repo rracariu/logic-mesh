@@ -6,6 +6,7 @@ authors = ["Radu Racariu <radu.racariu@gmail.com>"]
 description = "Control logic engine using event based and reactive blocks written in Rust."
 repository = "https://github.com/rracariu/logic-mesh"
 keywords = ["logic", "control", "engine", "event", "reactive", "block", "rust", "wasm", "low-code"]
+categories = ["asynchronous", "wasm"]
 license = "BSD-3-Clause"
 
 [workspace]
