@@ -1,4 +1,4 @@
-[![GitHub CI](https://github.com/rracariu/logic-mesh/actions/workflows/main.yaml/badge.svg)](https://github.com/rracariu/logic-mesh/actions/workflows/master-push.yaml)
+[![GitHub CI](https://github.com/rracariu/logic-mesh/actions/workflows/main.yaml/badge.svg)](https://github.com/rracariu/logic-mesh/actions/workflows/main.yaml)
 [![License](https://img.shields.io/badge/License-BSD_3--Clause-blue.svg)](https://github.com/rracariu/logic-mesh/blob/master/LICENSE)
 
 # Logic Mesh
