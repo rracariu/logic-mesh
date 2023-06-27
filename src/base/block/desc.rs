@@ -18,6 +18,8 @@ pub struct BlockDesc {
     pub name: String,
     /// The block library
     pub library: String,
+    /// The block friendly name
+    pub dis: String,
     /// The block category
     pub category: String,
     /// The block version

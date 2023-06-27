@@ -51,6 +51,8 @@ impl Block for Sin {
 #[cfg(test)]
 mod test {
 
+    use std::assert_matches::assert_matches;
+
     use libhaystack::val::{Number, Value};
 
     use crate::{
@@ -69,9 +71,9 @@ mod test {
 
         block.execute().await;
 
-        assert!(matches!(
+        assert_matches!(
             block.out.value,
             Value::Number(Number { value, .. }) if value.round() == 1.0
-        ));
+        );
     }
 }

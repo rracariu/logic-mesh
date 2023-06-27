@@ -4,6 +4,7 @@
  */
 export interface BlockDesc {
 	name: string;
+	dis: string;
 	lib: string;
 	category: string;
 	doc: string;

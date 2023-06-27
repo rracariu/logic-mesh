@@ -44,7 +44,7 @@ mod test {
 
     #[block]
     #[derive(BlockProps, Debug)]
-    #[name = "Test"]
+    #[dis = "Test long name"]
     #[library = "test"]
     #[category = "test"]
     #[input(kind = "Number", count = 16)]
@@ -66,6 +66,7 @@ mod test {
         let test_block = &Test::new() as &dyn BlockProps<Reader = String, Writer = String>;
 
         assert_eq!(test_block.desc().name, "Test");
+        assert_eq!(test_block.desc().dis, "Test long name");
         assert_eq!(test_block.desc().library, "test");
         assert_eq!(test_block.state(), BlockState::Stopped);
         assert_eq!(test_block.inputs().len(), 17);

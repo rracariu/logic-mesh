@@ -21,7 +21,7 @@ use crate::{
 /// if the units are not convertible, the block would be in an error state.
 #[block]
 #[derive(BlockProps, Debug)]
-#[name = "Divide"]
+#[dis = "Divide"]
 #[category = "math"]
 pub struct Div {
     #[input(kind = "Number")]

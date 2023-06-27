@@ -42,7 +42,7 @@ impl EngineCommand {
         {
             self.receiver.recv().await.and_then(|msg| {
                 if let EngineMessage::AddBlockRes(id) = msg {
-                    Some(id.to_string())
+                    id.map(|id| id.to_string())
                 } else {
                     None
                 }

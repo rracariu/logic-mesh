@@ -251,10 +251,7 @@ impl SingleThreadedEngine {
         match msg {
             EngineMessage::AddBlockReq(sender_uuid, block_name) => {
                 let id = self.add_block(block_name);
-
-                if let Some(id) = id {
-                    self.reply_to_sender(sender_uuid, EngineMessage::AddBlockRes(id));
-                }
+                self.reply_to_sender(sender_uuid, EngineMessage::AddBlockRes(id));
             }
 
             EngineMessage::RemoveBlockReq(sender_uuid, block_id) => {

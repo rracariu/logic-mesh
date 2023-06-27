@@ -92,9 +92,9 @@ pub(crate) async fn read_block_inputs<B: Block>(block: &mut B) -> Option<usize> 
 /// Converts a value from one kind to another.
 ///
 /// # Arguments
-///	- `val` - The value to convert
-/// - `expected` - The expected kind of the value
-/// - `actual` - The actual kind of the value
+/// - `val` The value to convert
+/// - `expected` The expected kind of the value
+/// - `actual` The actual kind of the value
 ///
 /// # Returns
 /// The converted value if the conversion was successful.

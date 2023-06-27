@@ -16,18 +16,19 @@ use crate::{
     blocks::OutputImpl,
 };
 
-/// Returns the cosinus value of the input.
+/// Returns the natural logarithm value of the input.
 #[block]
 #[derive(BlockProps, Debug)]
+#[dis = "LogNatural"]
 #[category = "math"]
-pub struct Cos {
+pub struct Logn {
     #[input(name = "in", kind = "Number")]
-    pub a: InputImpl,
+    pub input: InputImpl,
     #[output(kind = "Number")]
     pub out: OutputImpl,
 }
 
-impl Block for Cos {
+impl Block for Logn {
     async fn execute(&mut self) {
         let input = self.read_inputs().await;
 
@@ -36,10 +37,10 @@ impl Block for Cos {
             return;
         }
 
-        if let Some(Value::Number(a)) = self.a.get_value() {
+        if let Some(Value::Number(a)) = self.input.get_value() {
             self.out.set(
                 Number {
-                    value: a.value.cos(),
+                    value: a.value.log2(),
                     unit: a.unit,
                 }
                 .into(),
@@ -58,14 +59,14 @@ mod test {
     use crate::{
         base::block::test_utils::write_block_inputs,
         base::{block::Block, input::input_reader::InputReader},
-        blocks::math::Cos,
+        blocks::math::Logn,
     };
 
     #[tokio::test]
     async fn test_sub() {
-        let mut block = Cos::new();
+        let mut block = Logn::new();
 
-        for _ in write_block_inputs(&mut [(&mut block.a, 0.into())]).await {
+        for _ in write_block_inputs(&mut [(&mut block.input, 2.into())]).await {
             block.read_inputs().await;
         }
 
@@ -73,7 +74,7 @@ mod test {
 
         assert_matches!(
             block.out.value,
-            Value::Number(Number { value, .. }) if value.round() == 1.0
+            Value::Number(Number { value, .. }) if value == 1.0
         );
     }
 }

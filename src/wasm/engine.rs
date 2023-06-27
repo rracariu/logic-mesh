@@ -39,6 +39,7 @@ impl BlocksEngine {
         blocks.iter().for_each(|(_, block)| {
             let desc = JsBlockDesc {
                 name: block.desc.name.clone(),
+                dis: block.desc.dis.clone(),
                 lib: block.desc.library.clone(),
                 category: block.desc.category.clone(),
                 doc: block.desc.doc.clone(),

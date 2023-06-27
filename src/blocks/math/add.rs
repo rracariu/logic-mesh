@@ -22,7 +22,7 @@ use crate::{
 /// if the units are not convertible, the block would be in an error state.
 #[block]
 #[derive(BlockProps, Debug)]
-#[name = "Add"]
+#[dis = "Add"]
 #[category = "math"]
 #[input(kind = "Number", count = 16)]
 pub struct Add {

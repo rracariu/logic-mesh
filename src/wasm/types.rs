@@ -16,6 +16,7 @@ pub struct JsBlockPin {
 #[derive(Default, Serialize, Deserialize)]
 pub struct JsBlockDesc {
     pub name: String,
+    pub dis: String,
     pub lib: String,
     pub category: String,
     pub doc: String,

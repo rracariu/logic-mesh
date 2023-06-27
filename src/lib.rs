@@ -5,6 +5,7 @@
 #![feature(async_fn_in_trait)]
 #![feature(trait_alias)]
 #![feature(trait_upcasting)]
+#![feature(assert_matches)]
 
 #[macro_use]
 extern crate block_macro;

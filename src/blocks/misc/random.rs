@@ -28,7 +28,7 @@ use crate::{
 /// The defaults are 0 and 100.
 #[block]
 #[derive(BlockProps, Debug)]
-#[name = "Random"]
+#[dis = "Random"]
 #[category = "misc"]
 pub struct Random {
     #[input(kind = "Number")]
