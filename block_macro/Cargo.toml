@@ -2,6 +2,8 @@
 name = "block_macro"
 version = "0.1.0"
 edition = "2021"
+description = "Macros for easy defining of block."
+license = "BSD-3-Clause"
 
 [lib]
 proc-macro = true
