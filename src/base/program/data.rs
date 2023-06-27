@@ -24,6 +24,7 @@ pub struct LinkData {
 pub struct BlockData {
     pub id: String,
     pub name: String,
+    pub dis: String,
     pub lib: String,
     pub category: String,
     pub ver: String,

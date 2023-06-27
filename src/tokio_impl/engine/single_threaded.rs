@@ -223,6 +223,7 @@ impl SingleThreadedEngine {
             .map(|block| BlockData {
                 id: block.id().to_string(),
                 name: block.name().to_string(),
+                dis: block.desc().dis.to_string(),
                 lib: block.desc().library.clone(),
                 category: block.desc().category.clone(),
                 ver: block.desc().ver.clone(),
@@ -328,6 +329,20 @@ impl SingleThreadedEngine {
                 self.reply_to_sender(
                     sender_uuid,
                     EngineMessage::WatchBlockUnsubRes(Ok(sender_uuid)),
+                );
+            }
+
+            EngineMessage::GetCurrentProgramReq(sender_uuid) => {
+                log::debug!("GetCurrentProgramReq");
+
+                let program = self.save_blocks_and_links();
+
+                self.reply_to_sender(
+                    sender_uuid,
+                    EngineMessage::GetCurrentProgramRes(
+                        sender_uuid,
+                        program.map_err(|err| err.to_string()),
+                    ),
                 );
             }
 

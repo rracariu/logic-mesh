@@ -137,6 +137,32 @@ impl EngineCommand {
         }
     }
 
+    /// Get the current running engine program.
+    /// The program contains the scheduled blocks, their properties, and their links.
+    #[wasm_bindgen(js_name = "getProgram")]
+    pub async fn get_program(&mut self) -> JsValue {
+        if self
+            .sender
+            .send(EngineMessage::GetCurrentProgramReq(self.uuid))
+            .await
+            .is_ok()
+        {
+            self.receiver
+                .recv()
+                .await
+                .and_then(|msg| {
+                    if let EngineMessage::GetCurrentProgramRes(_, data) = msg {
+                        serde_wasm_bindgen::to_value(&data).ok()
+                    } else {
+                        None
+                    }
+                })
+                .unwrap_or(JsValue::UNDEFINED)
+        } else {
+            JsValue::UNDEFINED
+        }
+    }
+
     /// Inspects the current state of a block
     #[wasm_bindgen(js_name = "inspectBlock")]
     pub async fn inspect_block(&mut self, block_uuid: String) -> JsValue {

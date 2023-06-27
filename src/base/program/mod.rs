@@ -74,6 +74,7 @@ mod test {
                 BlockData {
                     id: "00000000-0000-0000-0000-000000000000".to_string(),
                     name: "Add".to_string(),
+                    dis: "Add".to_string(),
                     lib: "test".to_string(),
                     category: "maths".to_string(),
                     ver: "0.1.0".to_string(),
@@ -81,6 +82,7 @@ mod test {
                 BlockData {
                     id: "00000000-0000-0000-0000-000000000001".to_string(),
                     name: "Add".to_string(),
+                    dis: "Add".to_string(),
                     lib: "test".to_string(),
                     category: "maths".to_string(),
                     ver: "0.1.0".to_string(),
@@ -130,6 +132,7 @@ mod test {
             vec![BlockData {
                 id: "00000000-0000-0000-0000-000000000000".to_string(),
                 name: "Missing".to_string(),
+                dis: "Missing".to_string(),
                 lib: "test".to_string(),
                 category: "maths".to_string(),
                 ver: "0.1.0".to_string(),
@@ -146,6 +149,7 @@ mod test {
             BlockData {
                 id: "00000000-0000-0000-0000-000000000000".to_string(),
                 name: "Add".to_string(),
+                dis: "Add".to_string(),
                 lib: "test".to_string(),
                 category: "maths".to_string(),
                 ver: "0.1.0".to_string(),
@@ -153,6 +157,7 @@ mod test {
             BlockData {
                 id: "00000000-0000-0000-0000-000000000001".to_string(),
                 name: "Add".to_string(),
+                dis: "Add".to_string(),
                 lib: "test".to_string(),
                 category: "maths".to_string(),
                 ver: "0.1.0".to_string(),

@@ -7,7 +7,7 @@ use libhaystack::val::Value;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::base::program::data::LinkData;
+use crate::base::program::data::{BlockData, LinkData};
 
 /// Block input properties
 #[derive(Default, Debug, Serialize, Deserialize, Clone)]
@@ -58,6 +58,9 @@ pub enum EngineMessage<WatchEventSender: Clone> {
 
     WatchBlockUnsubReq(Uuid),
     WatchBlockUnsubRes(Result<Uuid, &'static str>),
+
+    GetCurrentProgramReq(Uuid),
+    GetCurrentProgramRes(Uuid, Result<(Vec<BlockData>, Vec<LinkData>), String>),
 
     InspectBlockReq(Uuid, Uuid),
     InspectBlockRes(Uuid, Option<BlockParam>),
