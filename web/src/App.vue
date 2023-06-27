@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { Background } from '@vue-flow/background';
 import { Controls } from '@vue-flow/controls';
-import { Connection, OnConnectStartParams, VueFlow, useVueFlow } from '@vue-flow/core';
+import { Connection, EdgeMouseEvent, NodeMouseEvent, OnConnectStartParams, VueFlow, useVueFlow } from '@vue-flow/core';
 import { MiniMap } from '@vue-flow/minimap';
 
 import Splitter from 'primevue/splitter';
@@ -11,9 +11,21 @@ import BlockList from './components/BlockList.vue';
 import BlockNode from './components/BlockNode.vue';
 import { Block, BlockDesc, blockInstance } from './lib/Block';
 import { Notification, command, blocks, startWatch } from './lib/Engine';
-import { Ref, ref } from 'vue';
+import { Ref, onMounted, ref } from 'vue';
+import { currentBlock } from './lib/Model'
 
-const { edges, addNodes, } = useVueFlow()
+const { edges, addNodes, findNode, removeNodes } = useVueFlow()
+
+onMounted(() => {
+	onkeydown = (event: KeyboardEvent) => {
+		if (event.key === 'Delete' && currentBlock.value) {
+			removeNodes([currentBlock.value.data.id])
+			command.removeBlock(currentBlock.value.data.id)
+
+			currentBlock.value = undefined
+		}
+	}
+})
 
 startWatch((notification: Notification) => {
 	const block = blockMap.get(notification.id)
@@ -36,26 +48,36 @@ startWatch((notification: Notification) => {
 })
 
 const blockMap = new Map<string, Ref<Block>>()
+
 const addBlock = async (desc: BlockDesc) => {
 	const id = await command.addBlock(desc.name)
 	if (id) {
 		const data = ref(blockInstance(id, desc))
+
+		let position = { x: 250, y: 5 }
+
+		if (currentBlock.value) {
+			const x = currentBlock.value.position.x
+			const y = currentBlock.value.position.y
+
+			position = { x: x ? x + 200 : 250, y: y ? y + 10 : 5 }
+		}
+
 		addNodes(
-			{ id, type: 'custom', label: desc.name, position: { x: 250, y: 5 }, data }
+			{ id, type: 'custom', label: desc.name, position, data }
 		)
 		blockMap.set(id, data)
+		currentBlock.value = findNode(id)
 	}
 }
 
-const onBlockClick = async (id: string) => {
-	const data = await command.inspectBlock(id)
-	console.table([...(data.outputs as Map<string, unknown>).values()])
+const onBlockClick = (event: NodeMouseEvent) => {
+	currentBlock.value = event.node
 }
 
 let connSource: OnConnectStartParams | undefined
 
 const onConnect = (conn: Connection) => {
-
 	if (!connSource) {
 		return
 	}
@@ -72,6 +94,10 @@ const onConnectStart = (conn: OnConnectStartParams) => {
 	connSource = conn
 }
 
+const onEdgeClick = (event: EdgeMouseEvent) => {
+	currentBlock.value = undefined
+}
+
 </script>
 
 <template>
@@ -81,12 +107,13 @@ const onConnectStart = (conn: OnConnectStartParams) => {
 
 		</SplitterPanel>
 		<SplitterPanel :size="82">
-			<VueFlow @connect="onConnect" @connect-start="onConnectStart" :default-edge-options="{ type: 'smoothstep' }"
-				:min-zoom="1" :max-zoom="4" :elevate-edges-on-select="true" :apply-default="true" auto-connect>
+			<VueFlow @connect="onConnect" @connect-start="onConnectStart" @node-click="onBlockClick"
+				@edge-click="onEdgeClick" :default-edge-options="{ type: 'smoothstep' }" :min-zoom="1" :max-zoom="4"
+				:elevate-edges-on-select="true" :apply-default="true" auto-connect>
 				<Background pattern-color="#aaa" :gap="8" />
 
 				<template #node-custom="{ data }">
-					<BlockNode :data="data" @click="onBlockClick(data.id)" />
+					<BlockNode :data="data" />
 				</template>
 
 				<Controls />

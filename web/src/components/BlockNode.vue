@@ -3,13 +3,20 @@ import { Connection, Handle, Position, } from '@vue-flow/core';
 
 import { computed } from 'vue';
 import { Block } from '../lib/Block';
+import { currentBlock } from '../lib/Model'
 
 const props = defineProps<{ data: Block }>()
 
 const handlePos = (index: number) => `top: ${index + index / 2 + 3.5}em`
 
-const blockHeight = computed(() => {
-	return `width: 100%; height: ${Object.keys(props.data.inputs).length + 4.5}em; `
+const blockStyle = computed(() => {
+	let css = `width: 100%; height: ${Object.keys(props.data.inputs).length + 4.5}em; `
+
+	if (currentBlock.value?.data.id === props.data.id) {
+		css += 'box-shadow: 2px 2px 7px 3px var(--surface-200);'
+	}
+
+	return css
 })
 
 const validConnection = (conn: Connection) => {
@@ -19,11 +26,10 @@ const validConnection = (conn: Connection) => {
 const format = (value: unknown) => {
 	return typeof value === 'number' ? Intl.NumberFormat().format(value) : value
 }
-
 </script>
 
 <template>
-	<div :style="blockHeight">
+	<div :style="blockStyle">
 		<div class="header">
 			{{ data.desc.name }}
 		</div>

@@ -52,6 +52,38 @@ impl EngineCommand {
         }
     }
 
+    /// Removes a block instance from the engine
+    /// to be immediately unscheduled for execution
+    /// and removed from the engine together with all its links.
+    ///
+    /// # Arguments
+    /// * `block_uuid` - The UUID of the block to be removed
+    ///
+    /// # Returns
+    /// The UUID of the removed block
+    #[wasm_bindgen(js_name = "removeBlock")]
+    pub async fn remove_block(&mut self, block_uuid: String) -> Option<String> {
+        if self
+            .sender
+            .send(EngineMessage::RemoveBlockReq(
+                self.uuid,
+                Uuid::from_str(&block_uuid).unwrap(),
+            ))
+            .await
+            .is_ok()
+        {
+            self.receiver.recv().await.and_then(|msg| {
+                if let EngineMessage::RemoveBlockRes(id) = msg {
+                    id.map(|id| id.to_string())
+                } else {
+                    None
+                }
+            })
+        } else {
+            None
+        }
+    }
+
     /// Creates a link between two blocks
     ///
     /// # Arguments

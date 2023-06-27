@@ -4,7 +4,6 @@ use std::{cell::Cell, cell::RefCell, collections::BTreeMap, rc::Rc};
 
 use anyhow::{anyhow, Result};
 use libhaystack::val::Value;
-use log::debug;
 use tokio::{
     sync::mpsc::{self, Receiver, Sender},
     task::LocalSet,
@@ -250,11 +249,15 @@ impl SingleThreadedEngine {
     async fn dispatch_message(&mut self, msg: Messages) {
         match msg {
             EngineMessage::AddBlockReq(sender_uuid, block_name) => {
+                log::debug!("Adding block: {:?}", block_name);
+
                 let id = self.add_block(block_name);
                 self.reply_to_sender(sender_uuid, EngineMessage::AddBlockRes(id));
             }
 
             EngineMessage::RemoveBlockReq(sender_uuid, block_id) => {
+                log::debug!("Removing block: {:?}", block_id);
+
                 let id = self.remove_block(&block_id);
 
                 self.reply_to_sender(sender_uuid, EngineMessage::RemoveBlockRes(id));
@@ -329,7 +332,7 @@ impl SingleThreadedEngine {
             }
 
             EngineMessage::ConnectBlocksReq(sender_uuid, link_data) => {
-                debug!("ConnectBlocksReq: {:?}", link_data);
+                log::debug!("ConnectBlocksReq: {:?}", link_data);
 
                 let res = self.connect_blocks(&link_data);
                 self.reply_to_sender(
