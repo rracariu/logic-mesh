@@ -8,7 +8,7 @@
 #![feature(assert_matches)]
 
 #[macro_use]
-extern crate block_macro;
+extern crate logic_mesh_block_macro;
 
 pub mod base;
 pub mod blocks;

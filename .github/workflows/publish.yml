@@ -5,18 +5,37 @@ on:
     types: [published]
 
 jobs:
-  publish:
-    name: Publish
+  publishMacro:
+    name: Publish block macro lib
     runs-on: ubuntu-latest
     steps:
       - name: Checkout sources
         uses: actions/checkout@v2
 
-      - name: Install nightly toolchain
+      - name: Install stable toolchain
         uses: actions-rs/toolchain@v1
         with:
           profile: minimal
-          toolchain: nightly
+          toolchain: stable
+          override: true
+
+      - run: cargo publish --token ${CRATES_TOKEN}
+        working-directory: ./block_macro
+        env:
+          CRATES_TOKEN: ${{ secrets.CRATES_TOKEN }}
+
+  publish:
+    name: Publish main crate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v2
+
+      - name: Install stable toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
           override: true
 
       - run: cargo publish --token ${CRATES_TOKEN}

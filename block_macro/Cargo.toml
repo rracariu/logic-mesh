@@ -1,14 +1,14 @@
 [package]
-name = "block_macro"
+name = "logic_mesh_block_macro"
 version = "0.1.0"
 edition = "2021"
+authors = ["Radu Racariu <radu.racariu@gmail.com>"]
+repository = "https://github.com/rracariu/logic-mesh"
 description = "Macros for easy defining of block."
 license = "BSD-3-Clause"
 
 [lib]
 proc-macro = true
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
 syn = "1.0.107"

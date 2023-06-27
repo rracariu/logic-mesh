@@ -36,16 +36,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bef38d45163c2f1dde094a7dfd33ccf595c92905c8f8f4fdc18d06fb1037718a"
 
 [[package]]
-name = "block_macro"
-version = "0.1.0"
-dependencies = [
- "litrs",
- "proc-macro2",
- "quote",
- "syn 1.0.109",
-]
-
-[[package]]
 name = "bumpalo"
 version = "3.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -344,13 +334,13 @@ name = "logic-mesh"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "block_macro",
  "console_error_panic_hook",
  "futures",
  "js-sys",
  "lazy_static",
  "libhaystack",
  "log",
+ "logic_mesh_block_macro",
  "rand",
  "serde",
  "serde-wasm-bindgen",
@@ -361,6 +351,16 @@ dependencies = [
  "wasm-bindgen-futures",
  "wasm-bindgen-test",
  "web-sys",
+]
+
+[[package]]
+name = "logic_mesh_block_macro"
+version = "0.1.0"
+dependencies = [
+ "litrs",
+ "proc-macro2",
+ "quote",
+ "syn 1.0.109",
 ]
 
 [[package]]
