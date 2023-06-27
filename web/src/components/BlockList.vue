@@ -2,7 +2,7 @@
 import Accordion from 'primevue/accordion';
 import AccordionTab from 'primevue/accordiontab';
 import Button from 'primevue/button';
-import InputText from 'primevue/inputText';
+import InputText from 'primevue/inputtext';
 
 import { BlockDesc } from '../lib/Block'
 import { capitalize, computed, ref } from 'vue';
