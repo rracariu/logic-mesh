@@ -1,0 +1,42 @@
+on: [push, pull_request]
+
+name: DemoSite
+
+jobs:
+  site:
+    name: Build demo site
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-node@v3
+        with:
+            node-version: latest
+    
+      - name: wasm-build
+        run: npm install -g wasm-pack && wasm-pack build
+      - name: build
+        run: npm ci && npm run build
+        working-directory: ./web
+      - name: upload
+        uses: actions/upload-pages-artifact@v1.0.4
+        with:
+            path: './web/dist/'
+  deploy:
+      needs: site
+
+      # Grant GITHUB_TOKEN the permissions required to make a Pages deployment
+      permissions:
+          pages: write # to deploy to Pages
+          id-token: write # to verify the deployment originates from an appropriate source
+
+      # Deploy to the github-pages environment
+      environment:
+          name: github-pages
+          url: ${{ steps.deployment.outputs.page_url }}
+
+      # Specify runner + deployment step
+      runs-on: ubuntu-latest
+      steps:
+          - name: Deploy to GitHub Pages
+            id: deployment
+            uses: actions/deploy-pages@v1
