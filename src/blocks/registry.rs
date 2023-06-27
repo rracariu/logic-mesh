@@ -5,7 +5,7 @@ use crate::base::input::InputProps;
 
 use crate::base::engine::Engine;
 use crate::blocks::math::{Abs, Add, ArcTan, Cos, Sub};
-use crate::blocks::math::{ArcCos, ArcSin, Div, Exp, Log10, Logn, Mul, Sin, Sqrt};
+use crate::blocks::math::{ArcCos, ArcSin, Div, Exp, Log10, Logn, Mul, Pow, Sin, Sqrt};
 use crate::blocks::misc::{Random, SineWave};
 
 use anyhow::{anyhow, Result};
@@ -100,7 +100,7 @@ macro_rules! register_blocks{
 }
 
 register_blocks!(
-    Abs, Add, Sub, Mul, Div, Exp, ArcCos, ArcTan, Cos, ArcSin, Sin, Log10, Logn, Sqrt, Random,
+    Abs, Add, Sub, Mul, Div, Exp, ArcCos, ArcTan, Cos, ArcSin, Sin, Log10, Logn, Sqrt, Pow, Random,
     SineWave
 );
 
