@@ -108,12 +108,14 @@ jobs:
       - uses: actions/setup-node@v3
         with:
             node-version: latest
-
-      - name: install
+    
+      - name: wasm-build
+        run: wasm-pack build
+      - name: npm install
         run: npm ci
         working-directory: ./web
       - name: build
-        run: npm run build
+        run: echo $PWD && npm run build
         working-directory: ./web
       - name: upload
         uses: actions/upload-pages-artifact@v1.0.4
