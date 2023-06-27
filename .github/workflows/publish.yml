@@ -27,6 +27,7 @@ jobs:
   publish:
     name: Publish main crate
     runs-on: ubuntu-latest
+    if: always()
     needs: publishMacro
     steps:
       - name: Checkout sources
