@@ -1,8 +1,8 @@
 <script lang="ts" setup>
 import Accordion from 'primevue/accordion';
 import AccordionTab from 'primevue/accordiontab';
-import Button from 'primevue/Button';
-import InputText from 'primevue/InputText';
+import Button from 'primevue/button';
+import InputText from 'primevue/inputText';
 
 import { BlockDesc } from '../lib/Block'
 import { capitalize, computed, ref } from 'vue';
