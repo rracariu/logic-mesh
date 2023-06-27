@@ -8,6 +8,7 @@ jobs:
   publishMacro:
     name: Publish block macro lib
     runs-on: ubuntu-latest
+    continue-on-error: true
     steps:
       - name: Checkout sources
         uses: actions/checkout@v2

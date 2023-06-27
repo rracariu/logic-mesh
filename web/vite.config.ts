@@ -4,5 +4,8 @@ import wasm from "vite-plugin-wasm";
 
 // https://vitejs.dev/config/
 export default defineConfig({
-  plugins: [wasm(), vue()],
+	plugins: [wasm(), vue()],
+	build: {
+		target: 'esnext'
+	}
 })
