@@ -1,3 +1,6 @@
+[![GitHub CI](https://github.com/rracariu/logic-mesh/actions/workflows/main.yaml/badge.svg)](https://github.com/rracariu/logic-mesh/actions/workflows/master-push.yaml)
+[![License](https://img.shields.io/badge/License-BSD_3--Clause-blue.svg)](https://github.com/rracariu/logic-mesh/blob/master/LICENSE)
+
 # Logic Mesh
 A logic engine that is fully async, dynamic, and reactive written in Rust.
 
