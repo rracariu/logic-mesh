@@ -77,7 +77,12 @@ pub trait BlockProps {
     fn links(&self) -> Vec<(&str, Vec<&dyn crate::base::link::Link>)>;
 
     /// Remove a link from the link collection
-    fn remove_link(&mut self, link: &dyn Link);
+    fn remove_link(&mut self, link: &dyn Link) {
+        self.remove_link_by_id(link.id())
+    }
+
+    /// Remove a link by its id from the link collection
+    fn remove_link_by_id(&mut self, link_id: &Uuid);
 
     /// Remove all links from this block
     fn remove_all_links(&mut self);

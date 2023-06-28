@@ -67,7 +67,7 @@ impl EngineCommand {
             .sender
             .send(EngineMessage::RemoveBlockReq(
                 self.uuid,
-                Uuid::from_str(&block_uuid).unwrap(),
+                Uuid::from_str(&block_uuid).unwrap_or_default(),
             ))
             .await
             .is_ok()
@@ -112,6 +112,7 @@ impl EngineCommand {
             .send(EngineMessage::ConnectBlocksReq(
                 self.uuid,
                 LinkData {
+                    id: None,
                     source_block_uuid,
                     target_block_uuid,
                     source_block_pin_name,
@@ -134,6 +135,34 @@ impl EngineCommand {
                 .unwrap_or(JsValue::UNDEFINED)
         } else {
             JsValue::UNDEFINED
+        }
+    }
+
+    /// Removes a link between two blocks
+    ///
+    /// # Arguments
+    /// * `link_uuid` - The UUID of the link to be removed
+    ///
+    /// # Returns
+    /// True if the link was removed, false otherwise
+    #[wasm_bindgen(js_name = "removeLink")]
+    pub async fn remove_link(&mut self, link_uuid: String) -> bool {
+        if self
+            .sender
+            .send(EngineMessage::RemoveLinkReq(
+                self.uuid,
+                Uuid::from_str(&link_uuid).unwrap_or_default(),
+            ))
+            .await
+            .is_ok()
+        {
+            self.receiver
+                .recv()
+                .await
+                .map(|msg| matches!(msg, EngineMessage::RemoveLinkRes(_, true)))
+                .unwrap_or_default()
+        } else {
+            false
         }
     }
 
@@ -170,7 +199,7 @@ impl EngineCommand {
             .sender
             .send(EngineMessage::InspectBlockReq(
                 self.uuid,
-                Uuid::from_str(&block_uuid).unwrap(),
+                Uuid::from_str(&block_uuid).unwrap_or_default(),
             ))
             .await
             .is_ok()

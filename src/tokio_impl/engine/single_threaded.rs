@@ -13,7 +13,7 @@ use uuid::Uuid;
 use crate::{
     base::{
         block::{
-            connect::{connect_input, connect_output, disconnect_block},
+            connect::{connect_input, connect_output, disconnect_block, disconnect_link},
             Block, BlockProps, BlockState,
         },
         engine::{
@@ -197,18 +197,22 @@ impl SingleThreadedEngine {
         ) {
             if let Some(target_input) = target_block.get_input_mut(&link_data.target_block_pin_name)
             {
+                let id;
                 if let Some(source_input) =
                     source_block.get_input_mut(&link_data.source_block_pin_name)
                 {
-                    let _ = connect_input(source_input, target_input);
+                    id = connect_input(source_input, target_input).map_err(|err| anyhow!(err))?;
                 } else if let Some(source_output) =
                     source_block.get_output_mut(&link_data.source_block_pin_name)
                 {
-                    let _ = connect_output(source_output, target_input);
+                    id = connect_output(source_output, target_input).map_err(|err| anyhow!(err))?;
                 } else {
                     return Err(anyhow!("Source Pin not found"));
                 }
-                Ok(link_data.clone())
+                Ok(LinkData {
+                    id: Some(id.to_string()),
+                    ..link_data.clone()
+                })
             } else {
                 Err(anyhow!("Target Input not found"))
             }
@@ -235,6 +239,7 @@ impl SingleThreadedEngine {
             for (pin_name, pin_links) in block.links() {
                 for link in pin_links {
                     links.push(LinkData {
+                        id: Some(link.id().to_string()),
                         source_block_pin_name: pin_name.to_string(),
                         source_block_uuid: block.id().to_string(),
                         target_block_pin_name: link.target_input().to_string(),
@@ -357,6 +362,22 @@ impl SingleThreadedEngine {
                         res.map_err(|err| err.to_string()),
                     ),
                 );
+            }
+
+            EngineMessage::RemoveLinkReq(sender_uuid, link_id) => {
+                log::debug!("RemoveLinkReq: {:?}", link_id);
+                let res = self.blocks_iter_mut().any(|block| {
+                    disconnect_link(block, &link_id, |id, name| {
+                        let target_block = self.get_block_props_mut(id);
+                        target_block.and_then(|target_block| {
+                            target_block
+                                .get_input_mut(name)
+                                .map(|input| input.decrement_conn())
+                        })
+                    })
+                });
+
+                self.reply_to_sender(sender_uuid, EngineMessage::RemoveLinkRes(sender_uuid, res));
             }
 
             _ => unreachable!("Invalid message"),

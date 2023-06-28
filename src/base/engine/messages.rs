@@ -68,5 +68,8 @@ pub enum EngineMessage<WatchEventSender: Clone> {
     ConnectBlocksReq(Uuid, LinkData),
     ConnectBlocksRes(Uuid, Result<LinkData, String>),
 
+    RemoveLinkReq(Uuid, Uuid),
+    RemoveLinkRes(Uuid, bool),
+
     Shutdown,
 }

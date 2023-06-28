@@ -1,5 +1,6 @@
 [![GitHub CI](https://github.com/rracariu/logic-mesh/actions/workflows/main.yml/badge.svg)](https://github.com/rracariu/logic-mesh/actions/workflows/main.yml)
 [![License](https://img.shields.io/badge/License-BSD_3--Clause-blue.svg)](https://github.com/rracariu/logic-mesh/blob/master/LICENSE)
+[![crates.io](https://img.shields.io/crates/v/logic-mesh.svg)](https://crates.io/crates/logic-mesh)
 
 # Logic Mesh
 A logic engine that is fully async, dynamic, and reactive written in Rust.
@@ -10,9 +11,6 @@ It is designed to be used in a variety of applications, from hardware controls, 
 
 The included WASM support allows it to be used in web applications, with the option to use the same codebase for both the frontend and backend.
 
-There is a sample low code editor that is built on top of Logic Mesh, which can be found [here](link). It serves as an example of how Logic Mesh can be used, and as
-a simple way to experiment with the Logic Mesh engine.
-
 ## Features
 - Fully async and reactive
 - WASM support
@@ -21,6 +19,10 @@ a simple way to experiment with the Logic Mesh engine.
 - A low code editor is included as an example of how Logic Mesh can be used
 - A growing library of built-in blocks
 - Extensible with custom blocks, either in Rust or JavaScript when running in a WASM environment
+
+## UI Editor
+There is a sample low code editor that is built on top of Logic Mesh, which can be found [here]([link](https://rracariu.github.io/logic-mesh/)). It serves as an example of how Logic Mesh can be used, and as
+a simple way to experiment with the Logic Mesh engine.
 
 ## Examples
 

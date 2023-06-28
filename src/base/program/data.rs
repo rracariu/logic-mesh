@@ -14,6 +14,7 @@ pub struct ProgramMeta {
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct LinkData {
+    pub id: Option<String>,
     pub source_block_uuid: String,
     pub target_block_uuid: String,
     pub source_block_pin_name: String,

@@ -24,7 +24,7 @@ pub trait BlockConnect: BlockStaticDesc {
         &mut self,
         output_name: &str,
         target_input: &mut dyn InputProps<Reader = Self::Reader, Writer = Self::Writer>,
-    ) -> Result<(), &'static str>;
+    ) -> Result<Uuid, &'static str>;
 
     /// Connect a block input to another's block input
     ///
@@ -36,7 +36,7 @@ pub trait BlockConnect: BlockStaticDesc {
         &mut self,
         input_name: &str,
         target_input: &mut dyn InputProps<Reader = Self::Reader, Writer = Self::Writer>,
-    ) -> Result<(), &'static str>;
+    ) -> Result<Uuid, &'static str>;
 
     /// Disconnect a block output from the given input
     /// # Arguments
@@ -69,7 +69,7 @@ impl<T: Block + ?Sized> BlockConnect for T {
         &mut self,
         source_output_name: &str,
         target_input: &mut dyn InputProps<Reader = Self::Reader, Writer = Self::Writer>,
-    ) -> Result<(), &'static str> {
+    ) -> Result<Uuid, &'static str> {
         let mut outputs = self.outputs_mut();
         let source_output = if let Some(out) = outputs
             .iter_mut()
@@ -87,7 +87,7 @@ impl<T: Block + ?Sized> BlockConnect for T {
         &mut self,
         source_input_name: &str,
         target_input: &mut dyn InputProps<Reader = Self::Reader, Writer = Self::Writer>,
-    ) -> Result<(), &'static str> {
+    ) -> Result<Uuid, &'static str> {
         let mut inputs = self.inputs_mut();
         let source_input = if let Some(input) = inputs
             .iter_mut()
@@ -152,7 +152,7 @@ impl<T: Block + ?Sized> BlockConnect for T {
 pub fn connect_output<Reader, Writer: Clone>(
     source_output: &mut dyn Output<Writer = Writer>,
     target_input: &mut dyn InputProps<Reader = Reader, Writer = Writer>,
-) -> Result<(), &'static str> {
+) -> Result<Uuid, &'static str> {
     // Connections to the same block and the same input are not allowed.
     if source_output.links().iter().any(|link| {
         link.target_block_id() == target_input.block_id()
@@ -162,6 +162,7 @@ pub fn connect_output<Reader, Writer: Clone>(
     }
 
     let mut link = BaseLink::new(*target_input.block_id(), target_input.name().to_string());
+    let id = link.id;
 
     link.tx = Some(target_input.writer().clone());
 
@@ -170,7 +171,7 @@ pub fn connect_output<Reader, Writer: Clone>(
     source_output.add_link(link);
     target_input.increment_conn();
 
-    Ok(())
+    Ok(id)
 }
 
 /// Disconnect a block output from the given input
@@ -202,7 +203,7 @@ pub fn disconnect_output<Reader, Writer: Clone>(
 pub fn connect_input<Reader, Writer: Clone>(
     source_input: &mut dyn InputProps<Reader = Reader, Writer = Writer>,
     target_input: &mut dyn InputProps<Reader = Reader, Writer = Writer>,
-) -> Result<(), &'static str> {
+) -> Result<Uuid, &'static str> {
     if source_input.block_id() == target_input.block_id() {
         return Err("Cannot connect to the same block");
     }
@@ -215,6 +216,7 @@ pub fn connect_input<Reader, Writer: Clone>(
     }
 
     let mut link = BaseLink::new(*target_input.block_id(), target_input.name().to_string());
+    let id = link.id;
 
     link.tx = Some(target_input.writer().clone());
 
@@ -223,7 +225,7 @@ pub fn connect_input<Reader, Writer: Clone>(
     source_input.add_link(link);
     target_input.increment_conn();
 
-    Ok(())
+    Ok(id)
 }
 
 /// Disconnect a block input from another's block input
@@ -247,9 +249,10 @@ pub fn disconnect_input<I: InputProps + ?Sized>(
     }
 }
 
-/**
- * Disconnect all the inputs and outputs of a block
- */
+/// Disconnect all the inputs and outputs of a block
+/// # Arguments
+/// - block: The block to be disconnected
+/// - decrement_target_input: A function that decrements the number of connections of a block input
 pub fn disconnect_block<B, F>(block: &mut B, mut decrement_target_input: F)
 where
     B: BlockProps + ?Sized,
@@ -276,6 +279,52 @@ where
         });
 
     block.remove_all_links();
+}
+
+/// Disconnect a link from a block
+/// # Arguments
+/// - block: The block to be disconnected
+/// - link_id: The id of the link to be disconnected
+/// - decrement_target_input: A function that decrements the number of connections of a block input
+pub fn disconnect_link<B, F>(block: &mut B, link_id: &Uuid, mut decrement_target_input: F) -> bool
+where
+    B: BlockProps + ?Sized,
+    F: FnMut(&Uuid, &str) -> Option<usize>,
+{
+    if !block
+        .outputs_mut()
+        .iter()
+        .filter(|output| output.is_connected())
+        .any(|out| {
+            out.links().iter_mut().any(|link| {
+                if link.id() == link_id {
+                    decrement_target_input(link.target_block_id(), link.target_input());
+                    true
+                } else {
+                    false
+                }
+            })
+        })
+        && !block
+            .inputs_mut()
+            .iter()
+            .filter(|input| input.has_output())
+            .any(|src_input| {
+                src_input.links().iter_mut().any(|link| {
+                    if link.id() == link_id {
+                        decrement_target_input(link.target_block_id(), link.target_input());
+                        true
+                    } else {
+                        false
+                    }
+                })
+            })
+    {
+        return false;
+    }
+
+    block.remove_link_by_id(link_id);
+    true
 }
 
 fn link_id_for_input<I: InputProps + ?Sized>(

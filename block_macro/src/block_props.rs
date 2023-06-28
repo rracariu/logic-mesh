@@ -147,9 +147,9 @@ pub(super) fn block_props_impl(ast: &syn::DeriveInput) -> TokenStream {
                 res
             }
 
-            fn remove_link(&mut self, link: &dyn crate::base::link::Link) {
-                self.inputs_mut().iter_mut().for_each(|input| input.remove_link(link));
-                self.outputs_mut().iter_mut().for_each(|out| out.remove_link(link))
+            fn remove_link_by_id(&mut self, link_uuid: &Uuid) {
+                self.inputs_mut().iter_mut().for_each(|input| input.remove_link_by_id(link_uuid));
+                self.outputs_mut().iter_mut().for_each(|out| out.remove_link_by_id(link_uuid))
             }
 
             fn remove_all_links(&mut self) {

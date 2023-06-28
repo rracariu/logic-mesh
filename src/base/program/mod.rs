@@ -89,6 +89,7 @@ mod test {
                 },
             ],
             vec![LinkData {
+                id: None,
                 source_block_uuid: "00000000-0000-0000-0000-000000000000".to_string(),
                 target_block_uuid: "00000000-0000-0000-0000-000000000001".to_string(),
                 source_block_pin_name: "out".to_string(),
@@ -169,6 +170,7 @@ mod test {
             "test",
             blocks.clone(),
             vec![LinkData {
+                id: None,
                 source_block_uuid: "00000000-0000-0000-0000-000000000009".to_string(),
                 target_block_uuid: "00000000-0000-0000-0000-000000000001".to_string(),
                 source_block_pin_name: "out".to_string(),
@@ -183,6 +185,7 @@ mod test {
             "test",
             blocks.clone(),
             vec![LinkData {
+                id: None,
                 source_block_uuid: "00000000-0000-0000-0000-000000000000".to_string(),
                 target_block_uuid: "00000000-0000-0000-0000-000000000001".to_string(),
                 source_block_pin_name: "missing".to_string(),
@@ -197,6 +200,7 @@ mod test {
             "test",
             blocks.clone(),
             vec![LinkData {
+                id: None,
                 source_block_uuid: "00000000-0000-0000-0000-000000000000".to_string(),
                 target_block_uuid: "00000000-0000-0000-0000-000000000001".to_string(),
                 source_block_pin_name: "out".to_string(),

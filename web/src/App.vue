@@ -12,17 +12,24 @@ import BlockNode from './components/BlockNode.vue';
 import { Block, BlockDesc, blockInstance } from './lib/Block';
 import { Notification, command, blocks, startWatch } from './lib/Engine';
 import { Ref, onMounted, ref } from 'vue';
-import { currentBlock } from './lib/Model'
+import { currentBlock, currentLink } from './lib/Model'
 
-const { edges, addNodes, findNode, removeNodes } = useVueFlow()
+const { edges, addNodes, findEdge, findNode, removeNodes } = useVueFlow()
+const blockMap = new Map<string, Ref<Block>>()
 
 onMounted(() => {
 	onkeydown = (event: KeyboardEvent) => {
-		if (event.key === 'Delete' && currentBlock.value) {
-			removeNodes([currentBlock.value.data.id])
-			command.removeBlock(currentBlock.value.data.id)
+		if (event.key === 'Delete') {
+			if (currentBlock.value) {
+				removeNodes([currentBlock.value.data.id])
+				command.removeBlock(currentBlock.value.data.id)
+				blockMap.delete(currentBlock.value.data.id)
 
-			currentBlock.value = undefined
+				currentBlock.value = undefined
+			} else if (currentLink.value) {
+				command.removeLink(currentLink.value.id)
+				currentLink.value = undefined
+			}
 		}
 	}
 })
@@ -47,8 +54,6 @@ startWatch((notification: Notification) => {
 	})
 })
 
-const blockMap = new Map<string, Ref<Block>>()
-
 const addBlock = async (desc: BlockDesc) => {
 	const id = await command.addBlock(desc.name)
 	if (id) {
@@ -71,10 +76,6 @@ const addBlock = async (desc: BlockDesc) => {
 	}
 }
 
-const onBlockClick = (event: NodeMouseEvent) => {
-	currentBlock.value = event.node
-}
-
 let connSource: OnConnectStartParams | undefined
 
 const onConnect = (conn: Connection) => {
@@ -84,18 +85,29 @@ const onConnect = (conn: Connection) => {
 
 	if (connSource.handleType === 'target') {
 		conn = { source: conn.target, target: conn.source, sourceHandle: conn.targetHandle, targetHandle: conn.sourceHandle }
-		connSource = undefined
 	}
 
-	command.createLink(conn.source, conn.target, conn.sourceHandle ?? '', conn.targetHandle ?? '')
+	connSource = undefined
+
+	return command.createLink(conn.source, conn.target, conn.sourceHandle ?? '', conn.targetHandle ?? '').then((data) => {
+		if (data) {
+			data
+		}
+	})
 }
 
 const onConnectStart = (conn: OnConnectStartParams) => {
 	connSource = conn
 }
 
+const onBlockClick = (event: NodeMouseEvent) => {
+	currentLink.value = undefined
+	currentBlock.value = event.node
+}
+
 const onEdgeClick = (event: EdgeMouseEvent) => {
 	currentBlock.value = undefined
+	currentLink.value = event.edge
 }
 
 </script>
