@@ -49,5 +49,5 @@ wasm-bindgen-test = "^0.3.37"
 [profile.release]
 #debug = true
 opt-level = "s"
-lto = "on"
+lto = "fat"
 strip = "symbols"
