@@ -31,8 +31,6 @@ The following examples are written in Rust.
 ```rust
 // Init a Add block
 let mut add1 = Add::new();
-let add_uuid = *add1.id();
-
 // Init a SineWave block
 let mut sine1 = SineWave::new();
 
@@ -53,14 +51,14 @@ sine2
 	.expect("Connected");
 
 // Init a single threaded engine
-let mut eng = SingleThreadedEngine::new();
+let mut engine = SingleThreadedEngine::new();
 
 // Schedule the blocks to be run
-eng.schedule(add1);
-eng.schedule(sine1);
-eng.schedule(sine2);
+engine.schedule(add1);
+engine.schedule(sine1);
+engine.schedule(sine2);
 
 // Run the engine
-eng.run().await;
+engine.run().await;
 ```
 

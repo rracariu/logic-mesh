@@ -36,14 +36,14 @@ const format = (value: unknown) => {
 		<Handle v-for="(input, name, index) in data.inputs" :key="name" :id="input.name"
 			:is-valid-connection="validConnection" type="target" :position="Position.Left" :style="handlePos(index)"
 			class="block-input">
-			{{ name }} {{ input.value ? `${format(input.value)}` : '' }}
+			{{ name }} {{ input.value != null ? `${format(input.value)}` : '' }}
 		</Handle>
 
 
 		<Handle v-for="(output, name, index) in data.outputs" :key="name" :id="output.name"
 			:is-valid-connection="validConnection" type="source" :position="Position.Right" class="block-output"
 			:style="handlePos(index)">
-			{{ name }} {{ output.value ? `${format(output.value)}` : '' }}
+			{{ name }} {{ output.value != null ? `${format(output.value)}` : '' }}
 		</Handle>
 	</div>
 </template>

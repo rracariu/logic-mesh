@@ -8,8 +8,13 @@ pub mod connect;
 pub mod desc;
 pub mod props;
 
+use anyhow::Result;
 pub use connect::BlockConnect;
 pub use desc::{BlockDesc, BlockPin, BlockStaticDesc};
+use libhaystack::{
+    encoding::zinc,
+    val::{kind::HaystackKind, Bool, Number, Str, Value},
+};
 pub use props::BlockProps;
 
 /// Determines the state a block is in
@@ -24,6 +29,68 @@ pub enum BlockState {
 
 pub trait Block: BlockConnect {
     async fn execute(&mut self);
+}
+
+/// Converts a value from one kind to another.
+///
+/// # Arguments
+/// - `val` The value to convert
+/// - `expected` The expected kind of the value
+/// - `actual` The actual kind of the value
+///
+/// # Returns
+/// The converted value if the conversion was successful.
+pub fn convert_value(val: Value, expected: HaystackKind, actual: HaystackKind) -> Result<Value> {
+    match (expected, actual) {
+        (HaystackKind::Bool, HaystackKind::Bool) => Ok(val),
+        (HaystackKind::Bool, HaystackKind::Number) => {
+            let val = Number::try_from(&val).map_err(|err| anyhow::anyhow!(err))?;
+
+            Ok((val.value != 0.0).into())
+        }
+        (HaystackKind::Bool, HaystackKind::Str) => {
+            let val = Str::try_from(&val).map_err(|err| anyhow::anyhow!(err))?;
+
+            let num = zinc::decode::from_str(&val.value)?;
+            if num.is_bool() {
+                Ok(num)
+            } else {
+                Err(anyhow::anyhow!("Expected a bool value, but got {:?}", val))
+            }
+        }
+
+        (HaystackKind::Number, HaystackKind::Number) => Ok(val),
+        (HaystackKind::Number, HaystackKind::Bool) => {
+            let val = Bool::try_from(&val).map_err(|err| anyhow::anyhow!(err))?;
+
+            Ok((if val.value { 1 } else { 0 }).into())
+        }
+        (HaystackKind::Number, HaystackKind::Str) => {
+            let val = Str::try_from(&val).map_err(|err| anyhow::anyhow!(err))?;
+
+            let num = zinc::decode::from_str(&val.value)?;
+            if num.is_number() {
+                Ok(num)
+            } else {
+                Err(anyhow::anyhow!(
+                    "Expected a number value, but got {:?}",
+                    val
+                ))
+            }
+        }
+
+        (HaystackKind::Str, HaystackKind::Str) => Ok(val),
+        (HaystackKind::Str, HaystackKind::Bool) => Ok(val.to_string().as_str().into()),
+        (HaystackKind::Str, HaystackKind::Number) => {
+            let str = zinc::encode::to_zinc_string(&val)?;
+            Ok(str.as_str().into())
+        }
+        _ => Err(anyhow::anyhow!(
+            "Cannot convert {:?} to {:?}",
+            actual,
+            expected
+        )),
+    }
 }
 
 #[cfg(test)]

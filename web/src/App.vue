@@ -155,6 +155,9 @@ const onEdgeClick = (event: EdgeMouseEvent) => {
 @import '@vue-flow/minimap/dist/style.css';
 @import '@vue-flow/controls/dist/style.css';
 
+html {
+	font-size: 14px;
+}
 
 .vue-flow__node-custom {
 	font-size: smaller;

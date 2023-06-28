@@ -4,6 +4,7 @@
 //! Block implementations
 //!
 
+pub mod logic;
 pub mod math;
 pub mod misc;
 pub mod registry;
