@@ -14,8 +14,9 @@ import { Notification, command, blocks, startWatch } from './lib/Engine';
 import { Ref, onMounted, ref } from 'vue';
 import { currentBlock, currentLink } from './lib/Model'
 
-const { edges, addNodes, findEdge, findNode, removeNodes } = useVueFlow()
+const { edges, removeEdges, addNodes, findNode, removeNodes, deleteKeyCode } = useVueFlow()
 const blockMap = new Map<string, Ref<Block>>()
+deleteKeyCode.value = null
 
 onMounted(() => {
 	onkeydown = (event: KeyboardEvent) => {
@@ -27,7 +28,8 @@ onMounted(() => {
 
 				currentBlock.value = undefined
 			} else if (currentLink.value) {
-				command.removeLink(currentLink.value.id)
+				removeEdges([currentLink.value.id])
+				command.removeLink(currentLink.value.data.id)
 				currentLink.value = undefined
 			}
 		}
@@ -91,7 +93,14 @@ const onConnect = (conn: Connection) => {
 
 	return command.createLink(conn.source, conn.target, conn.sourceHandle ?? '', conn.targetHandle ?? '').then((data) => {
 		if (data) {
-			data
+			const link = edges.value.find((edge) => edge.target === conn.target
+				&& edge.source === conn.source
+				&& edge.sourceHandle === conn.sourceHandle
+				&& edge.targetHandle === conn.targetHandle)
+
+			if (link) {
+				link.data = data
+			}
 		}
 	})
 }
