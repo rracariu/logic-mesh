@@ -1,0 +1,23 @@
+name: NPM Publish
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  publish:
+    name: Publish package
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-node@v3
+        with:
+            node-version: latest
+    
+      - name: wasm-build
+        run: npm install -g wasm-pack && wasm-pack build
+      - name: publish
+        run: npm publish
+        working-directory: ./pkg
+        env:
+          NODE_AUTH_TOKEN:: ${{ secrets.NPM_TOKEN }}

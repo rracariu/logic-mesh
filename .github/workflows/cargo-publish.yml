@@ -1,4 +1,4 @@
-name: Publish
+name: Cargo Publish
 
 on:
   release:
@@ -20,7 +20,7 @@ jobs:
           toolchain: stable
           override: true
 
-      - run: cargo publish --token ${CRATES_TOKEN}
+      - run: cargo publish --token ${CRATES_TOKEN} || true
         working-directory: ./block_macro
         env:
           CRATES_TOKEN: ${{ secrets.CRATES_TOKEN }}
