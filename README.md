@@ -21,7 +21,7 @@ The included WASM support allows it to be used in web applications, with the opt
 - Extensible with custom blocks, either in Rust or JavaScript when running in a WASM environment
 
 ## UI Editor
-There is a sample low code editor that is built on top of Logic Mesh, which can be found [here]([link](https://rracariu.github.io/logic-mesh/)). It serves as an example of how Logic Mesh can be used, and as
+There is a sample low code editor that is built on top of Logic Mesh, which can be found [here](https://rracariu.github.io/logic-mesh/). It serves as an example of how Logic Mesh can be used, and as
 a simple way to experiment with the Logic Mesh engine.
 
 ## Examples
