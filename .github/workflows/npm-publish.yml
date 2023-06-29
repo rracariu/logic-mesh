@@ -13,9 +13,12 @@ jobs:
       - uses: actions/setup-node@v3
         with:
             node-version: latest
-    
+
       - name: wasm-build
         run: npm install -g wasm-pack && wasm-pack build
+
+      - run: echo "//registry.npmjs.org/:_authToken=${{secrets.NPM_TOKEN}}" > ./pkg/.npmrc
+
       - name: publish
         run: npm publish --access public
         working-directory: ./pkg
