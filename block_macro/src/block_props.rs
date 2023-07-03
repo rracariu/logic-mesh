@@ -166,8 +166,10 @@ pub(super) fn block_props_impl(ast: &syn::DeriveInput) -> TokenStream {
                     static ref DESC: BlockDesc = {
                         use crate::base::block::desc::BlockDesc;
                         use crate::base::block::desc::BlockPin;
+                        use crate::base::block::desc::BlockImplementation;
 
                         let desc = BlockDesc {
+                            implementation: BlockImplementation::Native,
                             #(#block_prop_names : #block_prop_values.to_string(),)*
                             #out_desc,
                             #input_desc

@@ -8,7 +8,7 @@ use libhaystack::{
 use super::InputImpl;
 
 /// Default value for sleep intervals
-pub(super) const DEFAULT_SLEEP_DUR: u64 = 200;
+pub(crate) const DEFAULT_SLEEP_DUR: u64 = 200;
 
 /// Sleep for a given number of milliseconds
 /// This function is used to wait for a given amount of time

@@ -17,7 +17,7 @@ use std::sync::Mutex;
 
 use super::InputImpl;
 
-type DynBlockProps = dyn BlockProps<
+pub(crate) type DynBlockProps = dyn BlockProps<
     Reader = <InputImpl as InputProps>::Reader,
     Writer = <InputImpl as InputProps>::Writer,
 >;
@@ -26,8 +26,8 @@ type BlockRegistry = Mutex<MapType>;
 
 /// Register a block in the registry
 pub struct BlockEntry {
-    pub desc: &'static BlockDesc,
-    pub make: fn() -> Box<DynBlockProps>,
+    pub desc: BlockDesc,
+    pub make: Option<fn() -> Box<DynBlockProps>>,
 }
 
 /// Macro for statically registering all the blocks that are
@@ -119,7 +119,7 @@ pub fn make(name: &str) -> Option<Box<DynBlockProps>> {
     let reg = BLOCKS.lock().expect("Block registry is locked");
 
     if let Some(data) = reg.get(name) {
-        Some((data.make)())
+        data.make.map(|make| make())
     } else {
         None
     }
@@ -158,7 +158,10 @@ fn register_impl<
             Box::new(block)
         };
 
-        BlockEntry { desc, make }
+        BlockEntry {
+            desc: desc.clone(),
+            make: Some(make),
+        }
     });
 }
 

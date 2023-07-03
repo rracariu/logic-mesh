@@ -1,16 +1,17 @@
-
 /**
  * Describe a block that is available in block library.
  */
 export interface BlockDesc {
-	name: string;
-	dis: string;
-	lib: string;
-	category: string;
-	doc: string;
+	name: string
+	dis: string
+	lib: string
+	ver: string
+	category: string
+	doc: string
+	variant: string
 
-	inputs: BlockPin[];
-	outputs: BlockPin[];
+	inputs: BlockPin[]
+	outputs: BlockPin[]
 }
 
 /**
@@ -21,12 +22,15 @@ export interface BlockDesc {
  */
 export function blockInstance(id: string, desc: BlockDesc): Block {
 	function toObj(pins: BlockPin[]) {
-		return pins.reduce((acc, pin) => {
-			acc[pin.name] = {...pin, value: undefined}
-			return acc
-		 }, {} as {
-			[key: string]: BlockPin
-		})
+		return pins.reduce(
+			(acc, pin) => {
+				acc[pin.name] = { ...pin, value: undefined }
+				return acc
+			},
+			{} as {
+				[key: string]: BlockPin
+			}
+		)
 	}
 
 	return {
@@ -40,7 +44,7 @@ export function blockInstance(id: string, desc: BlockDesc): Block {
 /**
  * A block instance.
  **/
-export interface Block { 
+export interface Block {
 	id: string
 
 	desc: BlockDesc
@@ -58,7 +62,7 @@ export interface Block {
  * A block pin.
  */
 export interface BlockPin {
-	name: string;
-	kind: string;
-	value: unknown
+	name: string
+	kind: string
+	value?: unknown
 }

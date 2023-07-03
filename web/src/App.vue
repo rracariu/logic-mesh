@@ -10,7 +10,7 @@ import SplitterPanel from 'primevue/splitterpanel';
 import BlockList from './components/BlockList.vue';
 import BlockNode from './components/BlockNode.vue';
 import { Block, BlockDesc, blockInstance } from './lib/Block';
-import { Notification, command, blocks, startWatch } from './lib/Engine';
+import { Notification, command, blocks, startWatch, engine } from './lib/Engine';
 import { Ref, onMounted, ref } from 'vue';
 import { currentBlock, currentLink } from './lib/Model'
 
@@ -56,26 +56,27 @@ startWatch((notification: Notification) => {
 	})
 })
 
-const addBlock = async (desc: BlockDesc) => {
-	const id = await command.addBlock(desc.name)
-	if (id) {
-		const data = ref(blockInstance(id, desc))
+const addBlock = (desc: BlockDesc) => {
+	command.addBlock(desc.name).then(id => {
+		if (id) {
+			const data = ref(blockInstance(id, desc))
 
-		let position = { x: 250, y: 5 }
+			let position = { x: 250, y: 5 }
 
-		if (currentBlock.value) {
-			const x = currentBlock.value.position.x
-			const y = currentBlock.value.position.y
+			if (currentBlock.value) {
+				const x = currentBlock.value.position.x
+				const y = currentBlock.value.position.y
 
-			position = { x: x ? x + 200 : 250, y: y ? y + 10 : 5 }
+				position = { x: x ? x + 200 : 250, y: y ? y + 10 : 5 }
+			}
+
+			addNodes(
+				{ id, type: 'custom', label: desc.name, position, data }
+			)
+			blockMap.set(id, data)
+			currentBlock.value = findNode(id)
 		}
-
-		addNodes(
-			{ id, type: 'custom', label: desc.name, position, data }
-		)
-		blockMap.set(id, data)
-		currentBlock.value = findNode(id)
-	}
+	})
 }
 
 let connSource: OnConnectStartParams | undefined

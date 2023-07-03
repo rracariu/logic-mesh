@@ -3,25 +3,94 @@
 use libhaystack::val::Value;
 use serde::{Deserialize, Serialize};
 
-use crate::base::engine::messages::{ChangeSource, WatchMessage};
+use crate::base::{
+    block::{desc::BlockImplementation, BlockDesc, BlockPin},
+    engine::messages::{ChangeSource, WatchMessage},
+};
 
 /// Block field properties, inputs or output
-#[derive(Default, Serialize, Deserialize)]
+#[derive(Default, Clone, Serialize, Deserialize)]
 pub struct JsBlockPin {
     pub name: String,
     pub kind: String,
 }
 
 /// Block description as a simple struct
-#[derive(Default, Serialize, Deserialize)]
+#[derive(Default, Clone, Serialize, Deserialize)]
 pub struct JsBlockDesc {
     pub name: String,
     pub dis: String,
     pub lib: String,
+    pub ver: String,
     pub category: String,
     pub doc: String,
+    pub variant: String,
     pub inputs: Vec<JsBlockPin>,
     pub outputs: Vec<JsBlockPin>,
+}
+
+impl From<JsBlockDesc> for BlockDesc {
+    fn from(desc: JsBlockDesc) -> Self {
+        Self {
+            name: desc.name,
+            dis: desc.dis,
+            library: desc.lib,
+            ver: desc.ver,
+            category: desc.category,
+            doc: desc.doc,
+            implementation: BlockImplementation::External,
+
+            inputs: desc
+                .inputs
+                .into_iter()
+                .map(|pin| BlockPin {
+                    name: pin.name,
+                    kind: pin.kind.as_str().try_into().unwrap_or_default(),
+                })
+                .collect(),
+
+            outputs: desc
+                .outputs
+                .into_iter()
+                .map(|pin| BlockPin {
+                    name: pin.name,
+                    kind: pin.kind.as_str().try_into().unwrap_or_default(),
+                })
+                .collect(),
+        }
+    }
+}
+
+impl From<BlockDesc> for JsBlockDesc {
+    fn from(desc: BlockDesc) -> Self {
+        Self {
+            name: desc.name,
+            dis: desc.dis,
+            lib: desc.library,
+            ver: desc.ver,
+            category: desc.category,
+            doc: desc.doc,
+            variant: desc.implementation.to_string(),
+
+            inputs: desc
+                .inputs
+                .into_iter()
+                .map(|pin| JsBlockPin {
+                    name: pin.name,
+                    kind: pin.kind.to_string(),
+                })
+                .collect(),
+
+            outputs: desc
+                .outputs
+                .into_iter()
+                .map(|pin| JsBlockPin {
+                    name: pin.name,
+                    kind: pin.kind.to_string(),
+                })
+                .collect(),
+        }
+    }
 }
 
 #[derive(Default, Serialize, Deserialize)]

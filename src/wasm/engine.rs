@@ -1,14 +1,16 @@
 // Copyright (c) 2022-2023, Radu Racariu.
 
-use crate::blocks::registry::BLOCKS;
+use crate::blocks::registry::{BlockEntry, BLOCKS};
 use crate::single_threaded::SingleThreadedEngine;
 use crate::wasm::engine_command::EngineCommand;
+use crate::wasm::js_block::JS_FNS;
 use crate::wasm::types::{JsBlockDesc, JsBlockPin};
 use js_sys::Array;
 
 use tokio::sync::mpsc;
 use uuid::Uuid;
 use wasm_bindgen::prelude::wasm_bindgen;
+use wasm_bindgen::JsValue;
 
 use crate::base::engine::Engine;
 
@@ -41,8 +43,11 @@ impl BlocksEngine {
                 name: block.desc.name.clone(),
                 dis: block.desc.dis.clone(),
                 lib: block.desc.library.clone(),
+                ver: block.desc.ver.clone(),
                 category: block.desc.category.clone(),
                 doc: block.desc.doc.clone(),
+                variant: block.desc.implementation.to_string(),
+
                 inputs: block
                     .desc
                     .inputs
@@ -52,6 +57,7 @@ impl BlocksEngine {
                         kind: input.kind.to_string(),
                     })
                     .collect(),
+
                 outputs: block
                     .desc
                     .outputs
@@ -69,6 +75,43 @@ impl BlocksEngine {
         });
 
         arr
+    }
+
+    /// Register a new JS block in the registry
+    /// The block is described by a JsBlockDesc object
+    ///
+    /// # Arguments
+    /// * `desc` - The description of the block
+    /// * `func` - The function that implements the block
+    ///
+    /// # Returns
+    /// The name of the block
+    ///  
+    #[wasm_bindgen(js_name = "registerBlock")]
+    pub fn register_block(
+        &mut self,
+        desc: JsValue,
+        func: js_sys::Function,
+    ) -> Result<String, String> {
+        let mut blocks = BLOCKS.lock().map_err(|err| err.to_string())?;
+
+        let desc: JsBlockDesc =
+            serde_wasm_bindgen::from_value(desc).map_err(|err| err.to_string())?;
+
+        let name = desc.name.clone();
+
+        blocks.insert(name.clone(), {
+            BlockEntry {
+                desc: desc.into(),
+                make: None,
+            }
+        });
+
+        unsafe {
+            JS_FNS.insert(name.clone(), func);
+        }
+
+        Ok(name)
     }
 
     #[wasm_bindgen(js_name = "engineCommand")]

@@ -10,10 +10,12 @@ use tokio::{
 };
 use uuid::Uuid;
 
+use super::block_pointer::BlockPropsPointer;
 use crate::{
     base::{
         block::{
             connect::{connect_input, connect_output, disconnect_block, disconnect_link},
+            desc::BlockImplementation,
             Block, BlockProps, BlockState,
         },
         engine::{
@@ -25,10 +27,8 @@ use crate::{
         },
         program::data::{BlockData, LinkData},
     },
-    blocks::registry::{schedule_block, schedule_block_with_uuid},
+    blocks::registry::{schedule_block, schedule_block_with_uuid, BLOCKS},
 };
-
-use super::block_pointer::BlockPropsPointer;
 
 // The concrete trait for the block properties
 pub(super) trait BlockPropsType = BlockProps<Writer = Sender<Value>, Reader = Receiver<Value>>;
@@ -402,7 +402,19 @@ impl SingleThreadedEngine {
     }
 
     fn add_block(&mut self, block_name: String) -> Option<Uuid> {
-        schedule_block(&block_name, self).ok()
+        BLOCKS.lock().unwrap().get(&block_name).and_then(|entry| {
+            if entry.desc.implementation == BlockImplementation::External {
+                #[cfg(target_arch = "wasm32")]
+                {
+                    use crate::wasm::js_block::schedule_js_block;
+                    schedule_js_block(self, &entry.desc)
+                }
+                #[cfg(not(target_arch = "wasm32"))]
+                None
+            } else {
+                schedule_block(&block_name, self).ok()
+            }
+        })
     }
 
     fn remove_block(&mut self, block_id: &Uuid) -> Option<Uuid> {

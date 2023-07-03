@@ -26,8 +26,6 @@ const categories = computed(() => blocksFiltered.value.reduce((acc, cur) => {
 
 const blocksForCategory = (category: string) =>
 	blocksFiltered.value.filter((block) => block.category === category)
-
-
 </script>
 
 

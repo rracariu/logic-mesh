@@ -4,6 +4,8 @@
 //! Defines the block description
 //!
 
+use std::fmt::Display;
+
 use libhaystack::val::kind::HaystackKind;
 
 use super::BlockProps;
@@ -30,6 +32,8 @@ pub struct BlockDesc {
     pub outputs: Vec<BlockPin>,
     /// Block documentation
     pub doc: String,
+    /// Block implementation
+    pub implementation: BlockImplementation,
 }
 
 impl BlockDesc {
@@ -54,4 +58,36 @@ pub trait BlockStaticDesc: BlockProps {
 pub struct BlockPin {
     pub name: String,
     pub kind: HaystackKind,
+}
+
+/// Defines the block variant
+#[derive(Default, Debug, Clone, PartialEq)]
+pub enum BlockImplementation {
+    /// A block that is implemented in Rust
+    #[default]
+    Native,
+    /// A block that is implemented over a FFI interface, such as JavaScript
+    External,
+}
+
+impl TryFrom<&str> for BlockImplementation {
+    type Error = String;
+
+    fn try_from(variant: &str) -> Result<Self, Self::Error> {
+        match variant {
+            "native" => Ok(BlockImplementation::Native),
+            "external" => Ok(BlockImplementation::External),
+            _ => Err(format!("Invalid variant: {variant}")),
+        }
+    }
+}
+
+impl Display for BlockImplementation {
+    fn fmt(&self, fmt: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let kind = match self {
+            BlockImplementation::Native => "native",
+            BlockImplementation::External => "external",
+        };
+        write!(fmt, "{kind}")
+    }
 }
