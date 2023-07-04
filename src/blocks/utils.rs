@@ -1,5 +1,6 @@
 // Copyright (c) 2022-2023, Radu Racariu.
 
+use anyhow::Result;
 use libhaystack::{
     units::units_generated::MILLISECOND,
     val::{Number, Value},
@@ -62,5 +63,47 @@ pub(super) fn to_millis(dur: &Option<Value>) -> Result<u64, ()> {
         }
     } else {
         Err(())
+    }
+}
+
+/// Convert all the numbers to the same unit
+///
+/// # Arguments
+/// numbers - the numbers to convert
+///
+/// # Returns
+/// A vector of numbers with the same unit
+pub(super) fn convert_units(numbers: &[Number]) -> Result<Vec<Number>> {
+    if numbers.len() <= 1 {
+        Ok(numbers.to_vec())
+    } else if let Some(unit) = numbers
+        .iter()
+        .find_map(|n| if n.unit.is_some() { n.unit } else { None })
+    {
+        numbers
+            .iter()
+            .map(|n| {
+                if let Some(other_unit) = n.unit {
+                    if other_unit != unit {
+                        other_unit
+                            .convert_to(n.value, unit)
+                            .map_err(|err| anyhow::anyhow!(err))
+                            .map(|v| Number {
+                                value: v,
+                                unit: Some(unit),
+                            })
+                    } else {
+                        Ok(*n)
+                    }
+                } else {
+                    Ok(Number {
+                        value: n.value,
+                        unit: Some(unit),
+                    })
+                }
+            })
+            .collect::<Result<Vec<Number>>>()
+    } else {
+        Ok(numbers.to_vec())
     }
 }

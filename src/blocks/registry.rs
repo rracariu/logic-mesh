@@ -6,7 +6,9 @@ use crate::base::input::InputProps;
 use crate::base::engine::Engine;
 use crate::blocks::logic::{And, Equals, Not, Or, Xor};
 use crate::blocks::math::{Abs, Add, ArcTan, Cos, Sub};
-use crate::blocks::math::{ArcCos, ArcSin, Div, Exp, Log10, Logn, Mul, Pow, Sin, Sqrt};
+use crate::blocks::math::{
+    ArcCos, ArcSin, Div, Exp, Log10, Logn, Max, Min, Mod, Mul, Pow, Sin, Sqrt,
+};
 use crate::blocks::misc::{Random, SineWave};
 use crate::blocks::string::StrLen;
 
@@ -104,8 +106,8 @@ macro_rules! register_blocks{
 register_blocks!(
     // Logic blocks
     And, Or, Not, Equals, Xor, // Math blocks
-    Abs, Add, Sub, Mul, Div, Exp, ArcCos, ArcTan, Cos, ArcSin, Sin, Log10, Logn, Sqrt, Pow,
-    // String blocks
+    Abs, Add, Sub, Mul, Div, Exp, ArcCos, ArcTan, Cos, ArcSin, Sin, Log10, Logn, Sqrt, Pow, Mod,
+    Min, Max,    // String blocks
     StrLen, // Misc blocks
     Random, SineWave
 );
