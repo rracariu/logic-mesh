@@ -8,7 +8,7 @@ use crate::base::{
     output::Output,
 };
 
-use libhaystack::val::{kind::HaystackKind, Bool, Value};
+use libhaystack::val::{kind::HaystackKind, Number, Value};
 
 use crate::{
     blocks::utils::{sleep_millis, DEFAULT_SLEEP_DUR},
@@ -16,20 +16,19 @@ use crate::{
     blocks::OutputImpl,
 };
 
-/// Outputs the logical And value of the inputs.
+/// Outputs the unary minus value of the input.
 #[block]
 #[derive(BlockProps, Debug)]
-#[category = "logic"]
-pub struct And {
-    #[input(name = "in1", kind = "Bool")]
-    pub input1: InputImpl,
-    #[input(name = "in2", kind = "Bool")]
-    pub input2: InputImpl,
-    #[output(kind = "Bool")]
+#[dis = "Negative"]
+#[category = "math"]
+pub struct Neg {
+    #[input(name = "in", kind = "Number")]
+    pub input: InputImpl,
+    #[output(kind = "Number")]
     pub out: OutputImpl,
 }
 
-impl Block for And {
+impl Block for Neg {
     async fn execute(&mut self) {
         let input = self.read_inputs().await;
 
@@ -38,12 +37,11 @@ impl Block for And {
             return;
         }
 
-        if let (Some(Value::Bool(a)), Some(Value::Bool(b))) =
-            (self.input1.get_value(), self.input2.get_value())
-        {
+        if let Some(Value::Number(a)) = self.input.get_value() {
             self.out.set(
-                Bool {
-                    value: a.value && b.value,
+                Number {
+                    value: -a.value,
+                    unit: a.unit,
                 }
                 .into(),
             );
@@ -54,26 +52,29 @@ impl Block for And {
 #[cfg(test)]
 mod test {
 
+    use std::assert_matches::assert_matches;
+
+    use libhaystack::val::{Number, Value};
+
     use crate::{
         base::block::test_utils::write_block_inputs,
         base::{block::Block, input::input_reader::InputReader},
-        blocks::logic::And,
+        blocks::math::Neg,
     };
 
     #[tokio::test]
-    async fn test_and_block() {
-        let mut block = And::new();
+    async fn test_neg_block() {
+        let mut block = Neg::new();
 
-        for _ in write_block_inputs(&mut [
-            (&mut block.input1, (0).into()),
-            (&mut block.input2, (true).into()),
-        ])
-        .await
-        {
+        for _ in write_block_inputs(&mut [(&mut block.input, 42.into())]).await {
             block.read_inputs().await;
         }
 
         block.execute().await;
-        assert_eq!(block.out.value, false.into());
+
+        assert_matches!(
+            block.out.value,
+            Value::Number(Number { value, .. }) if value == -42.0
+        );
     }
 }

@@ -63,7 +63,7 @@ mod test {
     };
 
     #[tokio::test]
-    async fn test_sub() {
+    async fn test_tan_block() {
         let mut block = Tan::new();
 
         for _ in write_block_inputs(&mut [(&mut block.input, 0.into())]).await {

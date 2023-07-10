@@ -4,10 +4,12 @@ use crate::base::block::{Block, BlockDesc, BlockProps, BlockStaticDesc};
 use crate::base::input::InputProps;
 
 use crate::base::engine::Engine;
-use crate::blocks::logic::{And, Equals, Not, Or, Xor};
+use crate::blocks::logic::{
+    And, Equal, GreaterThan, GreaterThanEq, LessThan, LessThanEq, Not, NotEqual, Or, Xor,
+};
 use crate::blocks::math::{Abs, Add, ArcTan, Cos, Sub};
 use crate::blocks::math::{
-    ArcCos, ArcSin, Div, Exp, Log10, Logn, Max, Min, Mod, Mul, Pow, Sin, Sqrt,
+    ArcCos, ArcSin, Div, Exp, Log10, Logn, Max, Min, Mod, Mul, Neg, Pow, Sin, Sqrt,
 };
 use crate::blocks::misc::{Random, SineWave};
 use crate::blocks::string::StrLen;
@@ -105,11 +107,41 @@ macro_rules! register_blocks{
 
 register_blocks!(
     // Logic blocks
-    And, Or, Not, Equals, Xor, // Math blocks
-    Abs, Add, Sub, Mul, Div, Exp, ArcCos, ArcTan, Cos, ArcSin, Sin, Log10, Logn, Sqrt, Pow, Mod,
-    Min, Max,    // String blocks
-    StrLen, // Misc blocks
-    Random, SineWave
+    And,
+    Or,
+    Not,
+    Equal,
+    NotEqual,
+    Xor,
+    GreaterThan,
+    GreaterThanEq,
+    LessThan,
+    LessThanEq,
+    // Math blocks
+    Abs,
+    Add,
+    Sub,
+    Mul,
+    Div,
+    Exp,
+    ArcCos,
+    ArcTan,
+    Cos,
+    ArcSin,
+    Sin,
+    Log10,
+    Logn,
+    Sqrt,
+    Pow,
+    Mod,
+    Min,
+    Max,
+    Neg,
+    // String blocks
+    StrLen,
+    // Misc blocks
+    Random,
+    SineWave
 );
 
 /// Construct a block properties from the registry

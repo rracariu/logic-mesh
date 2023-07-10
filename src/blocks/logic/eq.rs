@@ -20,7 +20,7 @@ use crate::{
 #[block]
 #[derive(BlockProps, Debug)]
 #[category = "logic"]
-pub struct Equals {
+pub struct Equal {
     #[input(name = "in1", kind = "Null")]
     pub input1: InputImpl,
     #[input(name = "in2", kind = "Null")]
@@ -29,7 +29,7 @@ pub struct Equals {
     pub out: OutputImpl,
 }
 
-impl Block for Equals {
+impl Block for Equal {
     async fn execute(&mut self) {
         let input = self.read_inputs().await;
 
@@ -53,12 +53,12 @@ mod test {
     use crate::{
         base::block::test_utils::write_block_inputs,
         base::{block::Block, input::input_reader::InputReader},
-        blocks::logic::Equals,
+        blocks::logic::Equal,
     };
 
     #[tokio::test]
-    async fn test_sub() {
-        let mut block = Equals::new();
+    async fn test_eq_block() {
+        let mut block = Equal::new();
 
         for _ in write_block_inputs(&mut [
             (&mut block.input1, ("true").into()),

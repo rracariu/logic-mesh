@@ -62,7 +62,7 @@ mod test {
     };
 
     #[tokio::test]
-    async fn test_sub() {
+    async fn test_cos_block() {
         let mut block = Cos::new();
 
         for _ in write_block_inputs(&mut [(&mut block.a, 0.into())]).await {

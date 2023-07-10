@@ -52,7 +52,7 @@ mod test {
     };
 
     #[tokio::test]
-    async fn test_sub() {
+    async fn test_not_block() {
         let mut block = Not::new();
 
         for _ in write_block_inputs(&mut [(&mut block.input, (true).into())]).await {

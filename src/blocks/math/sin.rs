@@ -62,7 +62,7 @@ mod test {
     };
 
     #[tokio::test]
-    async fn test_sub() {
+    async fn test_sin_block() {
         let mut block = Sin::new();
 
         for _ in write_block_inputs(&mut [(&mut block.input, 90.into())]).await {

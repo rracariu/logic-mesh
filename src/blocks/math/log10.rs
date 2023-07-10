@@ -63,7 +63,7 @@ mod test {
     };
 
     #[tokio::test]
-    async fn test_sub() {
+    async fn test_log10_block() {
         let mut block = Log10::new();
 
         for _ in write_block_inputs(&mut [(&mut block.input, 2.into())]).await {

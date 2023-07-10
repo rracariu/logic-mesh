@@ -59,3 +59,35 @@ impl Block for Div {
         }
     }
 }
+
+#[cfg(test)]
+mod test {
+
+    use std::assert_matches::assert_matches;
+
+    use libhaystack::val::{Number, Value};
+
+    use crate::{
+        base::block::test_utils::write_block_inputs,
+        base::{block::Block, input::input_reader::InputReader},
+        blocks::math::Div,
+    };
+
+    #[tokio::test]
+    async fn test_div_block() {
+        let mut block = Div::new();
+
+        for _ in
+            write_block_inputs(&mut [(&mut block.a, 42.into()), (&mut block.b, 2.into())]).await
+        {
+            block.read_inputs().await;
+        }
+
+        block.execute().await;
+
+        assert_matches!(
+            block.out.value,
+            Value::Number(Number { value, .. }) if value.round() == 21.0
+        );
+    }
+}

@@ -63,7 +63,7 @@ mod test {
     };
 
     #[tokio::test]
-    async fn test_sub() {
+    async fn test_arctan_block() {
         let mut block = ArcTan::new();
 
         for _ in write_block_inputs(&mut [(&mut block.input, 0.into())]).await {

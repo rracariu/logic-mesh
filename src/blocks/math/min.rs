@@ -79,7 +79,7 @@ mod test {
     };
 
     #[tokio::test]
-    async fn test_sub() {
+    async fn test_min_block() {
         let mut block = Min::new();
 
         for _ in

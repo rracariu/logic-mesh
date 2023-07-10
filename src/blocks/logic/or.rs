@@ -61,7 +61,7 @@ mod test {
     };
 
     #[tokio::test]
-    async fn test_sub() {
+    async fn test_or_block() {
         let mut block = Or::new();
 
         for _ in write_block_inputs(&mut [

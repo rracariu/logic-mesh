@@ -64,7 +64,7 @@ mod test {
     };
 
     #[tokio::test]
-    async fn test_sub() {
+    async fn test_sub_block() {
         let mut block = Sub::new();
 
         for _ in

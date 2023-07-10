@@ -77,3 +77,34 @@ impl Block for Add {
         }
     }
 }
+
+#[cfg(test)]
+mod test {
+
+    use crate::base::input::input_reader::InputReader;
+    use crate::{
+        base::block::{Block, BlockProps},
+        blocks::math::Add,
+    };
+
+    #[tokio::test]
+    async fn test_add_block() {
+        let mut block = Add::new();
+
+        {
+            let in1 = block.get_input_mut("in0").unwrap();
+            in1.increment_conn();
+            in1.writer().try_send(3.into()).unwrap();
+            block.read_inputs().await;
+        }
+
+        {
+            let in16 = block.get_input_mut("in15").unwrap();
+            in16.increment_conn();
+            in16.writer().try_send(3.into()).unwrap();
+        }
+
+        block.execute().await;
+        assert_eq!(block.out.value, 6.into());
+    }
+}

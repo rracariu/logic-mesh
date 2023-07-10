@@ -79,7 +79,7 @@ mod test {
     };
 
     #[tokio::test]
-    async fn test_sub() {
+    async fn test_max_block() {
         let mut block = Max::new();
 
         for _ in
