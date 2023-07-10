@@ -40,21 +40,16 @@ impl Block for Sub {
             return;
         }
 
-        let res = self.a.get_value().clone().and_then(|val| {
-            if let Value::Number(a) = val {
-                self.b.get_value().clone().and_then(|val| {
-                    if let Value::Number(b) = val {
-                        return (a - b).ok();
-                    }
-                    None
-                })
-            } else {
-                None
+        if let (Some(Value::Number(a)), Some(Value::Number(b))) =
+            (&self.a.get_value(), &self.b.get_value())
+        {
+            match *a - *b {
+                Ok(res) => self.out.set(res.into()),
+                Err(e) => {
+                    log::error!("Error while subtracting: {}", e);
+                    self.set_state(BlockState::Fault);
+                }
             }
-        });
-
-        if let Some(res) = res {
-            self.out.set(res.into())
         }
     }
 }
