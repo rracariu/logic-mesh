@@ -1,4 +1,4 @@
-import {initEngine, BlockNotification, BlockDesc} from 'logic-mesh'
+import { BlockNotification, initEngine } from 'logic-mesh'
 import { registerBlocks } from './JsBlocks'
 
 export type { BlockNotification, BlockDesc } from 'logic-mesh'

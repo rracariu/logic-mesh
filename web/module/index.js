@@ -1,1 +1,1 @@
-export {initEngine, EngineCommand, BlocksEngine} from './logic_mesh.js'
+export { BlocksEngine, EngineCommand, initEngine } from "./logic_mesh.js";

@@ -21,6 +21,7 @@
 	"module": "index.js",
 	"types": "index.d.ts",
 	"sideEffects": [
+		"./index.js",
 		"./logic_mesh.js",
 		"./snippets/*"
 	],

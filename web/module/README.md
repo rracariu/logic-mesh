@@ -36,15 +36,38 @@ const engine = initEngine();
 // Get a command instance for the engine
 const command = engine.engineCommand();
 
+// Add a SineWave block
+const sineWaveId = await command.addBlock('SineWave')
+// Add a StrLen block
+const strLenId = await command.addBlock('StrLen')
+
+// Connect the blocks, sineWave -> strLen (sineWave's out port to strLen's in port)
+command.createLink(sineWaveId, strLenId, 'out', 'in')
+
 // Start the engine (this is async)
 engine.run()
+```
+
+### Watch for block changes
+```ts
+import { initEngine } from 'logic-mesh';
+
+// Initialize the engine
+const engine = initEngine();
+
+// Get a command instance for the engine
+const command = engine.engineCommand();
 
 // Add a SineWave block
-const b1 = await command.addBlock('SineWave')
-// Add a StrLen block
-const b2 = await command.addBlock('StrLen')
+const sineWave = await command.addBlock('SineWave')
 
-// Connect the blocks, b1 -> b2 (b1's out port to b2's in port)
-command.createLink(b1, b2, 'out', 'in')
+// Create a new command instance for the watcher
+const watchCommand = engine.engineCommand()
+// Register a callback that will be called when the block changes
+watchCommand.createWatch((notification) => {
+	console.log('Block changed', JSON.stringify(notification))
+})
+
+engine.run()
 ```
 
