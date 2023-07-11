@@ -10,7 +10,7 @@ const props = defineProps<{ data: Block }>()
 const handlePos = (index: number) => `top: ${index + index / 2 + 3.5}em`
 
 const blockStyle = computed(() => {
-	let css = `width: 100%; height: ${Object.keys(props.data.inputs).length + 4.5}em; `
+	let css = `width: 100%; height: ${Object.keys(props.data.inputs).length + 8}em; `
 
 	if (currentBlock.value?.data.id === props.data.id) {
 		css += 'box-shadow: 2px 2px 7px 3px var(--surface-200);'

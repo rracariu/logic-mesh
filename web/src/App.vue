@@ -9,8 +9,8 @@ import SplitterPanel from 'primevue/splitterpanel';
 
 import BlockList from './components/BlockList.vue';
 import BlockNode from './components/BlockNode.vue';
-import { Block, BlockDesc, blockInstance } from './lib/Block';
-import { Notification, command, blocks, startWatch, engine } from './lib/Engine';
+import { Block, blockInstance } from './lib/Block';
+import { command, blocks, startWatch, BlockNotification, BlockDesc } from './lib/Engine';
 import { Ref, onMounted, ref } from 'vue';
 import { currentBlock, currentLink } from './lib/Model'
 
@@ -36,7 +36,7 @@ onMounted(() => {
 	}
 })
 
-startWatch((notification: Notification) => {
+startWatch((notification: BlockNotification) => {
 	const block = blockMap.get(notification.id)
 
 	if (!block || !notification.changes.length) {

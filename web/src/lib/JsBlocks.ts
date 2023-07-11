@@ -1,10 +1,5 @@
-import { BlocksEngine } from 'logic-mesh'
-import { BlockDesc } from './Block'
+import { BlockDesc, BlocksEngine, JsBlock } from 'logic-mesh'
 
-export type JsBlock = {
-	desc: BlockDesc
-	function: (inputs: unknown[]) => Promise<unknown[]>
-}
 
 /**
  * Defines a block that is implemented in JS

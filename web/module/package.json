@@ -1,0 +1,34 @@
+{
+	"name": "logic-mesh",
+	"collaborators": [
+		"Radu Racariu <radu.racariu@gmail.com>"
+	],
+	"description": "Control logic engine using event based and reactive blocks written in Rust.",
+	"version": "0.1.1",
+	"license": "BSD-3-Clause",
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/rracariu/logic-mesh"
+	},
+	"files": [
+		"index.js",
+		"index.d.ts",
+		"logic_mesh_bg.wasm",
+		"logic_mesh.js",
+		"logic_mesh_bg.js",
+		"logic_mesh.d.ts"
+	],
+	"module": "index.js",
+	"types": "index.d.ts",
+	"sideEffects": [
+		"./logic_mesh.js",
+		"./snippets/*"
+	],
+	"keywords": [
+		"logic",
+		"control",
+		"reactive",
+		"wasm",
+		"low-code"
+	]
+}

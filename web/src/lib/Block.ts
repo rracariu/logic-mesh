@@ -1,18 +1,5 @@
-/**
- * Describe a block that is available in block library.
- */
-export interface BlockDesc {
-	name: string
-	dis: string
-	lib: string
-	ver: string
-	category: string
-	doc: string
-	variant: string
+import { BlockDesc, BlockPin } from "logic-mesh"
 
-	inputs: BlockPin[]
-	outputs: BlockPin[]
-}
 
 /**
  * Create a block instance from a block description.
@@ -56,13 +43,4 @@ export interface Block {
 	outputs: {
 		[key: string]: BlockPin
 	}
-}
-
-/**
- * A block pin.
- */
-export interface BlockPin {
-	name: string
-	kind: string
-	value?: unknown
 }

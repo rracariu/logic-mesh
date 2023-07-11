@@ -1,7 +1,9 @@
-import * as logic from 'logic-mesh'
+import {initEngine, BlockNotification, BlockDesc} from 'logic-mesh'
 import { registerBlocks } from './JsBlocks'
 
-export const engine = logic.initEngine()
+export type { BlockNotification, BlockDesc } from 'logic-mesh'
+
+export const engine = initEngine()
 
 // Register JS blocks
 registerBlocks(engine)
@@ -9,13 +11,8 @@ registerBlocks(engine)
 export const blocks = engine.listBlocks()
 export const command = engine.engineCommand()
 
-export interface Notification {
-	id: string
 
-	changes: { name: string; source: string; value: {} }[]
-}
-
-export function startWatch(callback: (notification: Notification) => void) {
+export function startWatch(callback: (notification: BlockNotification) => void) {
 	const watchCommand = engine.engineCommand()
 
 	watchCommand.createWatch(callback)

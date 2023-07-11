@@ -15,12 +15,16 @@ jobs:
             node-version: latest
 
       - name: wasm-build
-        run: npm install -g wasm-pack && wasm-pack build
+        run: npm install -g wasm-pack && wasm-pack build --release --out-dir ./web/module/pkg
 
-      - run: echo "//registry.npmjs.org/:_authToken=${{secrets.NPM_TOKEN}}" > ./pkg/.npmrc
+      - name: prepare
+        run: mv ./web/module/pkg/*.{js,ts,wasm} ./web/module && rm -rf ./web/module/pkg
+
+      - name: npmrc
+        run: echo "//registry.npmjs.org/:_authToken=${{secrets.NPM_TOKEN}}" > ./web/module/.npmrc
 
       - name: publish
         run: npm publish --access public
-        working-directory: ./pkg
+        working-directory: ./web/module
         env:
           NODE_AUTH_TOKEN:: ${{ secrets.NPM_TOKEN }}

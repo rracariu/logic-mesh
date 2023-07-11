@@ -4,7 +4,7 @@ import AccordionTab from 'primevue/accordiontab';
 import Button from 'primevue/button';
 import InputText from 'primevue/inputtext';
 
-import { BlockDesc } from '../lib/Block'
+import type { BlockDesc } from 'logic-mesh'
 import { capitalize, computed, ref } from 'vue';
 
 const props = defineProps<{
