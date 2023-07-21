@@ -71,3 +71,37 @@ watchCommand.createWatch((notification) => {
 engine.run()
 ```
 
+### Add a custom JavaScript block
+```ts
+import { initEngine, JsBlock } from 'logic-mesh';
+
+// Initialize the engine
+const engine = initEngine();
+
+/**
+ * Defines a block that is implemented in JS
+ */
+const JsAddBlock = {
+	// The block description
+	desc: {
+		name: 'AddBlock',
+		dis: 'JS Add block',
+		lib: 'examples',
+		ver: '0.0.1',
+		category: 'Docs',
+		doc: 'Adds two numbers',
+		variant: 'external',
+		inputs: [{ name: 'in1', kind: 'Number' }, { name: 'in2', kind: 'Number' }],
+		outputs: [{ name: 'out', kind: 'Number' }],
+	} satisfies BlockDesc,
+	// The block implementation
+	function: async (inputs: unknown[]) => {
+		return (inputs[0] as number) + (inputs[1] as number)
+	},
+} satisfies JsBlock
+
+engine.registerBlock(JsAddBlock.desc, JsAddBlock.function)
+
+engine.run()
+```
+

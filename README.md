@@ -24,6 +24,10 @@ The included WASM support allows it to be used in web applications, with the opt
 There is a sample low code editor that is built on top of Logic Mesh, which can be found [here](https://rracariu.github.io/logic-mesh/). It serves as an example of how Logic Mesh can be used, and as
 a simple way to experiment with the Logic Mesh engine.
 
+## NPM Package
+The engine is also available as an NPM package, which can be found [here](https://www.npmjs.com/package/logic-mesh).
+The NPM package is a thin wrapper around the WASM package, and it can be used in a Node.js environment.
+
 ## Examples
 
 The following examples are written in Rust.
