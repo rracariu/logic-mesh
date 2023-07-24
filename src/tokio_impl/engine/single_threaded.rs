@@ -257,70 +257,69 @@ impl SingleThreadedEngine {
             EngineMessage::AddBlockReq(sender_uuid, block_name) => {
                 log::debug!("Adding block: {:?}", block_name);
 
-                let id = self.add_block(block_name);
-                self.reply_to_sender(sender_uuid, EngineMessage::AddBlockRes(id));
+                let block_id = self.add_block(block_name).map_err(|err| err.to_string());
+                self.reply_to_sender(sender_uuid, EngineMessage::AddBlockRes(block_id));
             }
 
             EngineMessage::RemoveBlockReq(sender_uuid, block_id) => {
                 log::debug!("Removing block: {:?}", block_id);
 
-                let id = self.remove_block(&block_id);
-
-                self.reply_to_sender(sender_uuid, EngineMessage::RemoveBlockRes(id));
+                let block_id = self.remove_block(&block_id).map_err(|err| err.to_string());
+                self.reply_to_sender(sender_uuid, EngineMessage::RemoveBlockRes(block_id));
             }
 
             EngineMessage::InspectBlockReq(sender_uuid, block_uuid) => {
-                if let Some(block) = self.get_block_props_mut(&block_uuid) {
-                    let data = BlockParam {
-                        id: block.id().to_string(),
-                        name: block.name().to_string(),
-                        library: block.desc().library.clone(),
-                        inputs: block
-                            .inputs()
-                            .iter()
-                            .map(|input| {
-                                (
-                                    input.name().to_string(),
-                                    BlockInputData {
-                                        kind: input.kind().to_string(),
-                                        val: input
-                                            .get_value()
-                                            .as_ref()
-                                            .cloned()
-                                            .unwrap_or_default(),
-                                    },
-                                )
-                            })
-                            .collect(),
-                        outputs: block
-                            .outputs()
-                            .iter()
-                            .map(|output| {
-                                (
-                                    output.desc().name.to_string(),
-                                    BlockOutputData {
-                                        kind: output.desc().kind.to_string(),
-                                        val: output.value().clone(),
-                                    },
-                                )
-                            })
-                            .collect(),
-                    };
+                match self.get_block_props_mut(&block_uuid) {
+                    Some(block) => {
+                        let data = BlockParam {
+                            id: block.id().to_string(),
+                            name: block.name().to_string(),
+                            library: block.desc().library.clone(),
+                            inputs: block
+                                .inputs()
+                                .iter()
+                                .map(|input| {
+                                    (
+                                        input.name().to_string(),
+                                        BlockInputData {
+                                            kind: input.kind().to_string(),
+                                            val: input
+                                                .get_value()
+                                                .as_ref()
+                                                .cloned()
+                                                .unwrap_or_default(),
+                                        },
+                                    )
+                                })
+                                .collect(),
+                            outputs: block
+                                .outputs()
+                                .iter()
+                                .map(|output| {
+                                    (
+                                        output.desc().name.to_string(),
+                                        BlockOutputData {
+                                            kind: output.desc().kind.to_string(),
+                                            val: output.value().clone(),
+                                        },
+                                    )
+                                })
+                                .collect(),
+                        };
 
-                    self.reply_to_sender(
-                        sender_uuid,
-                        EngineMessage::InspectBlockRes(sender_uuid, Some(data)),
-                    );
-                } else {
-                    self.reply_to_sender(
-                        sender_uuid,
-                        EngineMessage::InspectBlockRes(sender_uuid, None),
-                    );
+                        self.reply_to_sender(sender_uuid, EngineMessage::InspectBlockRes(Ok(data)));
+                    }
+                    None => {
+                        self.reply_to_sender(
+                            sender_uuid,
+                            EngineMessage::InspectBlockRes(Err("Block not found".into())),
+                        );
+                    }
                 }
             }
 
             EngineMessage::WriteBlockOutputReq(sender_uuid, block_uuid, output_name, value) => {
-                let response: Result<Value, &'static str>;
+                let response: Result<Value, String>;
 
                 match self.get_block_props_mut(&block_uuid) {
                     Some(block) => {
@@ -330,11 +329,11 @@ impl SingleThreadedEngine {
 
                             response = Ok(prev);
                         } else {
-                            response = Err("Output not found");
+                            response = Err("Output not found".to_string());
                         }
                     }
                     None => {
-                        response = Err("Block not found");
+                        response = Err("Block not found".to_string());
                     }
                 }
 
@@ -366,10 +365,7 @@ impl SingleThreadedEngine {
 
                 self.reply_to_sender(
                     sender_uuid,
-                    EngineMessage::GetCurrentProgramRes(
-                        sender_uuid,
-                        program.map_err(|err| err.to_string()),
-                    ),
+                    EngineMessage::GetCurrentProgramRes(program.map_err(|err| err.to_string())),
                 );
             }
 
@@ -379,10 +375,7 @@ impl SingleThreadedEngine {
                 let res = self.connect_blocks(&link_data);
                 self.reply_to_sender(
                     sender_uuid,
-                    EngineMessage::ConnectBlocksRes(
-                        sender_uuid,
-                        res.map_err(|err| err.to_string()),
-                    ),
+                    EngineMessage::ConnectBlocksRes(res.map_err(|err| err.to_string())),
                 );
             }
 
@@ -399,7 +392,7 @@ impl SingleThreadedEngine {
                     })
                 });
 
-                self.reply_to_sender(sender_uuid, EngineMessage::RemoveLinkRes(sender_uuid, res));
+                self.reply_to_sender(sender_uuid, EngineMessage::RemoveLinkRes(Ok(res)));
             }
 
             _ => unreachable!("Invalid message"),
@@ -423,40 +416,42 @@ impl SingleThreadedEngine {
         })
     }
 
-    fn add_block(&mut self, block_name: String) -> Option<Uuid> {
-        BLOCKS.lock().unwrap().get(&block_name).and_then(|entry| {
-            if entry.desc.implementation == BlockImplementation::External {
-                #[cfg(target_arch = "wasm32")]
-                {
-                    use crate::wasm::js_block::schedule_js_block;
-                    schedule_js_block(self, &entry.desc)
+    fn add_block(&mut self, block_name: String) -> Result<Uuid> {
+        match BLOCKS.lock().unwrap().get(&block_name) {
+            Some(block) => {
+                if block.desc.implementation == BlockImplementation::External {
+                    #[cfg(target_arch = "wasm32")]
+                    {
+                        use crate::wasm::js_block::schedule_js_block;
+                        schedule_js_block(self, &block.desc)
+                    }
+                    #[cfg(not(target_arch = "wasm32"))]
+                    Err(anyhow!("External blocks not supported on this platform"))
+                } else {
+                    schedule_block(&block_name, self)
                 }
-                #[cfg(not(target_arch = "wasm32"))]
-                None
-            } else {
-                schedule_block(&block_name, self).ok()
             }
-        })
+            None => Err(anyhow!("Block not found")),
+        }
     }
 
-    fn remove_block(&mut self, block_id: &Uuid) -> Option<Uuid> {
+    fn remove_block(&mut self, block_id: &Uuid) -> Result<Uuid> {
         // Terminate the block
-        let id = self.get_block_props_mut(block_id).map(|block| {
-            block.set_state(BlockState::Terminate);
+        match self.get_block_props_mut(block_id) {
+            Some(block) => {
+                block.set_state(BlockState::Terminate);
 
-            disconnect_block(block, |id, name| {
-                let target_block = self.get_block_props_mut(id);
-                target_block.and_then(|target_block| {
-                    target_block
-                        .get_input_mut(name)
-                        .map(|input| input.decrement_conn())
-                })
-            });
-
-            *block.id()
-        });
-
-        id?;
+                disconnect_block(block, |id, name| {
+                    let target_block = self.get_block_props_mut(id);
+                    target_block.and_then(|target_block| {
+                        target_block
+                            .get_input_mut(name)
+                            .map(|input| input.decrement_conn())
+                    })
+                });
+            }
+            None => return Err(anyhow!("Block not found")),
+        };
 
         // Remove the block from any links
         self.blocks_iter_mut().for_each(|block| {
@@ -478,7 +473,7 @@ impl SingleThreadedEngine {
         // Remove the block from the block props
         self.block_props.remove(block_id);
 
-        id
+        Ok(*block_id)
     }
 }
 
@@ -583,8 +578,7 @@ mod test {
 
                     let res = receiver.recv().await;
 
-                    if let Some(InspectBlockRes(id, Some(data))) = res {
-                        assert_eq!(id, channel_id);
+                    if let Some(InspectBlockRes(Ok(data))) = res {
                         assert_eq!(data.id, add_uuid.to_string());
                         assert_eq!(data.name, "Add");
                         assert_eq!(data.inputs.len(), 16);

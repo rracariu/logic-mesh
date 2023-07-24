@@ -48,31 +48,31 @@ pub struct WatchMessage {
 #[derive(Debug, Clone)]
 pub enum EngineMessage<WatchEventSender: Clone> {
     AddBlockReq(Uuid, String),
-    AddBlockRes(Option<Uuid>),
+    AddBlockRes(Result<Uuid, String>),
 
     RemoveBlockReq(Uuid, Uuid),
-    RemoveBlockRes(Option<Uuid>),
+    RemoveBlockRes(Result<Uuid, String>),
 
     WatchBlockSubReq(Uuid, WatchEventSender),
     WatchBlockSubRes(Result<Uuid, &'static str>),
 
     WriteBlockOutputReq(Uuid, Uuid, String, Value),
-    WriteBlockOutputRes(Result<Value, &'static str>),
+    WriteBlockOutputRes(Result<Value, String>),
 
     WatchBlockUnsubReq(Uuid),
     WatchBlockUnsubRes(Result<Uuid, &'static str>),
 
     GetCurrentProgramReq(Uuid),
-    GetCurrentProgramRes(Uuid, Result<(Vec<BlockData>, Vec<LinkData>), String>),
+    GetCurrentProgramRes(Result<(Vec<BlockData>, Vec<LinkData>), String>),
 
     InspectBlockReq(Uuid, Uuid),
-    InspectBlockRes(Uuid, Option<BlockParam>),
+    InspectBlockRes(Result<BlockParam, String>),
 
     ConnectBlocksReq(Uuid, LinkData),
-    ConnectBlocksRes(Uuid, Result<LinkData, String>),
+    ConnectBlocksRes(Result<LinkData, String>),
 
     RemoveLinkReq(Uuid, Uuid),
-    RemoveLinkRes(Uuid, bool),
+    RemoveLinkRes(Result<bool, String>),
 
     Shutdown,
 }

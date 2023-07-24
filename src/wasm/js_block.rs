@@ -2,6 +2,7 @@
 
 use std::collections::BTreeMap;
 
+use anyhow::Result;
 use js_sys::Promise;
 use libhaystack::val::Value;
 use uuid::Uuid;
@@ -256,9 +257,7 @@ pub(crate) fn schedule_js_block(
         Writer = <InputImpl as InputProps>::Writer,
     >,
     desc: &BlockDesc,
-) -> Option<Uuid> {
-    log::debug!("Scheduling JS block {}", desc.name);
-
+) -> Result<Uuid> {
     match unsafe { JS_FNS.get(desc.name.as_str()) } {
         Some(func) => {
             let block = JsBlock::new(desc.clone(), func.clone());
@@ -266,11 +265,11 @@ pub(crate) fn schedule_js_block(
 
             engine.schedule(block);
 
-            Some(id)
+            Ok(id)
         }
-        None => {
-            log::error!("No JS function found for block {}", desc.name);
-            None
-        }
+        None => Err(anyhow::format_err!(
+            "No JS function found for block {}",
+            desc.name
+        )),
     }
 }

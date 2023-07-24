@@ -1,3 +1,4 @@
+use std::f32::consts::E;
 use std::str::FromStr;
 
 use crate::base::program::data::LinkData;
@@ -33,22 +34,21 @@ impl EngineCommand {
     /// Adds a block instance to the engine
     /// to be immediately scheduled for execution
     #[wasm_bindgen(js_name = "addBlock")]
-    pub async fn add_block(&mut self, block_name: String) -> Option<String> {
-        if self
+    pub async fn add_block(&mut self, block_name: String) -> Result<String, String> {
+        match self
             .sender
             .send(EngineMessage::AddBlockReq(self.uuid, block_name))
             .await
-            .is_ok()
         {
-            self.receiver.recv().await.and_then(|msg| {
-                if let EngineMessage::AddBlockRes(id) = msg {
-                    id.map(|id| id.to_string())
-                } else {
-                    None
-                }
-            })
-        } else {
-            None
+            Ok(_) => match self.receiver.recv().await {
+                Some(res) => match res {
+                    EngineMessage::AddBlockRes(data) => data.map(|ok| ok.to_string()),
+                    _ => Err("Invalid response".to_string()),
+                },
+                None => Err("Failed to receive message".to_string()),
+            },
+
+            Err(_) => Err("Failed to send message".to_string()),
         }
     }
 
@@ -62,25 +62,24 @@ impl EngineCommand {
     /// # Returns
     /// The UUID of the removed block
     #[wasm_bindgen(js_name = "removeBlock")]
-    pub async fn remove_block(&mut self, block_uuid: String) -> Option<String> {
-        if self
+    pub async fn remove_block(&mut self, block_uuid: String) -> Result<String, String> {
+        match self
             .sender
             .send(EngineMessage::RemoveBlockReq(
                 self.uuid,
                 Uuid::from_str(&block_uuid).unwrap_or_default(),
             ))
             .await
-            .is_ok()
         {
-            self.receiver.recv().await.and_then(|msg| {
-                if let EngineMessage::RemoveBlockRes(id) = msg {
-                    id.map(|id| id.to_string())
-                } else {
-                    None
-                }
-            })
-        } else {
-            None
+            Ok(_) => match self.receiver.recv().await {
+                Some(res) => match res {
+                    EngineMessage::RemoveBlockRes(data) => data.map(|ok| ok.to_string()),
+                    _ => Err("Invalid response".to_string()),
+                },
+                None => Err("Failed to receive message".to_string()),
+            },
+
+            Err(_) => Err("Failed to send message".to_string()),
         }
     }
 
@@ -106,8 +105,8 @@ impl EngineCommand {
         target_block_uuid: String,
         source_block_pin_name: String,
         target_block_pin_name: String,
-    ) -> JsValue {
-        if self
+    ) -> Result<JsValue, String> {
+        match self
             .sender
             .send(EngineMessage::ConnectBlocksReq(
                 self.uuid,
@@ -120,21 +119,18 @@ impl EngineCommand {
                 },
             ))
             .await
-            .is_ok()
         {
-            self.receiver
-                .recv()
-                .await
-                .and_then(|msg| {
-                    if let EngineMessage::ConnectBlocksRes(_, Ok(data)) = msg {
-                        serde_wasm_bindgen::to_value(&data).ok()
-                    } else {
-                        None
-                    }
-                })
-                .unwrap_or(JsValue::UNDEFINED)
-        } else {
-            JsValue::UNDEFINED
+            Ok(_) => match self.receiver.recv().await {
+                Some(res) => match res {
+                    EngineMessage::ConnectBlocksRes(data) => data
+                        .map(|ok| serde_wasm_bindgen::to_value(&ok))?
+                        .map_err(|err| err.to_string()),
+                    _ => Err("Invalid response".to_string()),
+                },
+                None => Err("Failed to receive message".to_string()),
+            },
+
+            Err(_) => Err("Failed to send message".to_string()),
         }
     }
 
@@ -146,23 +142,23 @@ impl EngineCommand {
     /// # Returns
     /// True if the link was removed, false otherwise
     #[wasm_bindgen(js_name = "removeLink")]
-    pub async fn remove_link(&mut self, link_uuid: String) -> bool {
-        if self
+    pub async fn remove_link(&mut self, link_uuid: String) -> Result<bool, String> {
+        match self
             .sender
             .send(EngineMessage::RemoveLinkReq(
                 self.uuid,
                 Uuid::from_str(&link_uuid).unwrap_or_default(),
             ))
             .await
-            .is_ok()
         {
-            self.receiver
-                .recv()
-                .await
-                .map(|msg| matches!(msg, EngineMessage::RemoveLinkRes(_, true)))
-                .unwrap_or_default()
-        } else {
-            false
+            Ok(_) => match self.receiver.recv().await {
+                Some(res) => match res {
+                    EngineMessage::RemoveLinkRes(data) => data,
+                    _ => Err("Invalid response".to_string()),
+                },
+                None => Err("Failed to receive message".to_string()),
+            },
+            Err(_) => Err("Failed to send message".to_string()),
         }
     }
 
@@ -209,54 +205,46 @@ impl EngineCommand {
     /// Get the current running engine program.
     /// The program contains the scheduled blocks, their properties, and their links.
     #[wasm_bindgen(js_name = "getProgram")]
-    pub async fn get_program(&mut self) -> JsValue {
-        if self
+    pub async fn get_program(&mut self) -> Result<JsValue, String> {
+        match self
             .sender
             .send(EngineMessage::GetCurrentProgramReq(self.uuid))
             .await
-            .is_ok()
         {
-            self.receiver
-                .recv()
-                .await
-                .and_then(|msg| {
-                    if let EngineMessage::GetCurrentProgramRes(_, data) = msg {
-                        serde_wasm_bindgen::to_value(&data).ok()
-                    } else {
-                        None
-                    }
-                })
-                .unwrap_or(JsValue::UNDEFINED)
-        } else {
-            JsValue::UNDEFINED
+            Ok(_) => match self.receiver.recv().await {
+                Some(res) => match res {
+                    EngineMessage::GetCurrentProgramRes(data) => data
+                        .map(|ok| serde_wasm_bindgen::to_value(&ok))?
+                        .map_err(|err| err.to_string()),
+                    _ => Err("Invalid response".to_string()),
+                },
+                None => Err("Failed to receive message".to_string()),
+            },
+            Err(_) => Err("Failed to send message".to_string()),
         }
     }
 
     /// Inspects the current state of a block
     #[wasm_bindgen(js_name = "inspectBlock")]
-    pub async fn inspect_block(&mut self, block_uuid: String) -> JsValue {
-        if self
+    pub async fn inspect_block(&mut self, block_uuid: String) -> Result<JsValue, String> {
+        match self
             .sender
             .send(EngineMessage::InspectBlockReq(
                 self.uuid,
                 Uuid::from_str(&block_uuid).unwrap_or_default(),
             ))
             .await
-            .is_ok()
         {
-            self.receiver
-                .recv()
-                .await
-                .and_then(|msg| {
-                    if let EngineMessage::InspectBlockRes(_, data) = msg {
-                        serde_wasm_bindgen::to_value(&data).ok()
-                    } else {
-                        None
-                    }
-                })
-                .unwrap_or(JsValue::UNDEFINED)
-        } else {
-            JsValue::UNDEFINED
+            Ok(_) => match self.receiver.recv().await {
+                Some(res) => match res {
+                    EngineMessage::InspectBlockRes(data) => data
+                        .map(|ok| serde_wasm_bindgen::to_value(&ok))?
+                        .map_err(|err| err.to_string()),
+                    _ => Err("Invalid response".to_string()),
+                },
+                None => Err("Failed to receive message".to_string()),
+            },
+            Err(_) => Err("Failed to send message".to_string()),
         }
     }
 
