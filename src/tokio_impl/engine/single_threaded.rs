@@ -319,6 +319,28 @@ impl SingleThreadedEngine {
                 }
             }
 
+            EngineMessage::WriteBlockOutputReq(sender_uuid, block_uuid, output_name, value) => {
+                let response: Result<Value, &'static str>;
+
+                match self.get_block_props_mut(&block_uuid) {
+                    Some(block) => {
+                        if let Some(output) = block.get_output_mut(&output_name) {
+                            let prev = output.value().clone();
+                            output.set(value);
+
+                            response = Ok(prev);
+                        } else {
+                            response = Err("Output not found");
+                        }
+                    }
+                    None => {
+                        response = Err("Block not found");
+                    }
+                }
+
+                self.reply_to_sender(sender_uuid, EngineMessage::WriteBlockOutputRes(response));
+            }
+
             EngineMessage::WatchBlockSubReq(sender_uuid, sender) => {
                 self.watchers.borrow_mut().insert(sender_uuid, sender);
 

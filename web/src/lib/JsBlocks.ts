@@ -4,26 +4,25 @@ import { BlockDesc, BlocksEngine, JsBlock } from 'logic-mesh'
 /**
  * Defines a block that is implemented in JS
  */
-const SampleJsBlock = {
+const InputBlock = {
 	desc: {
-		name: 'JsTest',
-		dis: 'JS block',
-		lib: 'test',
+		name: 'Input',
+		dis: 'Input',
+		lib: 'ui',
 		ver: '0.0.1',
-		category: 'test',
-		doc: 'Tests the blocks JS interface',
+		category: 'UI',
+		doc: 'An input box ',
 		variant: 'external',
-		inputs: [{ name: 'in', kind: 'Number' }],
-		outputs: [{ name: 'out', kind: 'Number' }],
+		inputs: [{
+			name: 'in', kind: 'str' }],
+		outputs: [{
+			name: 'out', kind: 'str' }],
 	} satisfies BlockDesc,
 	function: async (inputs: unknown[]) => {
-		console.log(
-			`Test block called with ${inputs.length} inputs, first is ${inputs[0]}`
-		)
-		return [(inputs[0] as number) ** 2]
+		return ['']
 	},
 } satisfies JsBlock
 
 export function registerBlocks(engine: BlocksEngine) {
-	engine.registerBlock(SampleJsBlock.desc, SampleJsBlock.function)
+	engine.registerBlock(InputBlock.desc, InputBlock.function)
 }

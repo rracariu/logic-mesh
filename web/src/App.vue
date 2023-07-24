@@ -13,6 +13,7 @@ import { Block, blockInstance } from './lib/Block';
 import { command, blocks, startWatch, BlockNotification, BlockDesc } from './lib/Engine';
 import { Ref, onMounted, ref } from 'vue';
 import { currentBlock, currentLink } from './lib/Model'
+import InputBlock from './components/blocks/InputBlock.vue';
 
 const { edges, removeEdges, addNodes, findNode, removeNodes, deleteKeyCode } = useVueFlow()
 const blockMap = new Map<string, Ref<Block>>()
@@ -135,7 +136,9 @@ const onEdgeClick = (event: EdgeMouseEvent) => {
 				<Background pattern-color="#aaa" :gap="8" />
 
 				<template #node-custom="{ data }">
-					<BlockNode :data="data" />
+					<BlockNode v-if="data.desc.variant == 'native'" :data="data" />
+					<InputBlock v-else-if="data.desc.variant == 'external' && data.desc.name == 'Input'" :data="data" />
+					<BlockNode v-else :data="data" />
 				</template>
 
 				<Controls />

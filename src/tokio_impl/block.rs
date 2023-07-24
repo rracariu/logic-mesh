@@ -41,7 +41,8 @@ impl<B: Block> InputReader for B {
 ///
 /// # Returns
 /// The index of the input that was read with a valid value.
-///
+// TODO: clippy issue
+#[allow(clippy::needless_pass_by_ref_mut)]
 pub(crate) async fn read_block_inputs<B: Block>(block: &mut B) -> Option<usize> {
     let mut inputs = block
         .inputs_mut()

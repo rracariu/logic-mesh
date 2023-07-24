@@ -166,6 +166,46 @@ impl EngineCommand {
         }
     }
 
+    /// Writes the given block out with a value
+    ///
+    /// # Arguments
+    /// * `block_uuid` - The UUID of the block to write to
+    /// * `output_name` - The name of the output to write to
+    /// * `value` - The value to write
+    ///
+    /// # Returns
+    /// The block data
+    #[wasm_bindgen(js_name = "writeBlockOutput")]
+    pub async fn write_block_output(
+        &mut self,
+        block_uuid: String,
+        output_name: String,
+        value: JsValue,
+    ) -> Result<JsValue, String> {
+        match self
+            .sender
+            .send(EngineMessage::WriteBlockOutputReq(
+                self.uuid,
+                Uuid::from_str(&block_uuid).unwrap_or_default(),
+                output_name,
+                serde_wasm_bindgen::from_value(value).unwrap_or_default(),
+            ))
+            .await
+        {
+            Ok(_) => match self.receiver.recv().await {
+                Some(res) => match res {
+                    EngineMessage::WriteBlockOutputRes(data) => data
+                        .map(|ok| serde_wasm_bindgen::to_value(&ok))?
+                        .map_err(|err| err.to_string()),
+                    _ => Err("Invalid response".to_string()),
+                },
+                None => Err("Failed to receive message".to_string()),
+            },
+
+            Err(_) => Err("Failed to send message".to_string()),
+        }
+    }
+
     /// Get the current running engine program.
     /// The program contains the scheduled blocks, their properties, and their links.
     #[wasm_bindgen(js_name = "getProgram")]
