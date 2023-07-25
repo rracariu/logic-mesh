@@ -1,5 +1,4 @@
-import { BlockDesc, BlockPin } from "logic-mesh"
-
+import { BlockDesc, BlockPin } from 'logic-mesh'
 
 /**
  * Create a block instance from a block description.

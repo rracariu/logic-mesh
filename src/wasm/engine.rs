@@ -46,7 +46,7 @@ impl BlocksEngine {
                 ver: block.desc.ver.clone(),
                 category: block.desc.category.clone(),
                 doc: block.desc.doc.clone(),
-                variant: block.desc.implementation.to_string(),
+                implementation: block.desc.implementation.to_string(),
 
                 inputs: block
                     .desc

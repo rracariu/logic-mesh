@@ -24,7 +24,7 @@ pub struct JsBlockDesc {
     pub ver: String,
     pub category: String,
     pub doc: String,
-    pub variant: String,
+    pub implementation: String,
     pub inputs: Vec<JsBlockPin>,
     pub outputs: Vec<JsBlockPin>,
 }
@@ -70,7 +70,7 @@ impl From<BlockDesc> for JsBlockDesc {
             ver: desc.ver,
             category: desc.category,
             doc: desc.doc,
-            variant: desc.implementation.to_string(),
+            implementation: desc.implementation.to_string(),
 
             inputs: desc
                 .inputs

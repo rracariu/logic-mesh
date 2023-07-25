@@ -1,6 +1,5 @@
 import { BlockDesc, BlocksEngine, JsBlock } from 'logic-mesh'
 
-
 /**
  * Defines a block that is implemented in JS
  */
@@ -12,11 +11,19 @@ const InputBlock = {
 		ver: '0.0.1',
 		category: 'UI',
 		doc: 'An input box ',
-		variant: 'external',
-		inputs: [{
-			name: 'in', kind: 'str' }],
-		outputs: [{
-			name: 'out', kind: 'str' }],
+		implementation: 'external',
+		inputs: [
+			{
+				name: 'in',
+				kind: 'str',
+			},
+		],
+		outputs: [
+			{
+				name: 'out',
+				kind: 'str',
+			},
+		],
 	} satisfies BlockDesc,
 	function: async (inputs: unknown[]) => {
 		return ['']

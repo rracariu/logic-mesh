@@ -90,7 +90,7 @@ const JsAddBlock = {
 		ver: '0.0.1',
 		category: 'Docs',
 		doc: 'Adds two numbers',
-		variant: 'external',
+		implementation: 'external',
 		inputs: [{ name: 'in1', kind: 'Number' }, { name: 'in2', kind: 'Number' }],
 		outputs: [{ name: 'out', kind: 'Number' }],
 	} satisfies BlockDesc,

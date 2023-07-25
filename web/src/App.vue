@@ -136,8 +136,9 @@ const onEdgeClick = (event: EdgeMouseEvent) => {
 				<Background pattern-color="#aaa" :gap="8" />
 
 				<template #node-custom="{ data }">
-					<BlockNode v-if="data.desc.variant == 'native'" :data="data" />
-					<InputBlock v-else-if="data.desc.variant == 'external' && data.desc.name == 'Input'" :data="data" />
+					<BlockNode v-if="data.desc.implementation == 'native'" :data="data" />
+					<InputBlock v-else-if="data.desc.implementation == 'external' && data.desc.name == 'Input'"
+						:data="data" />
 					<BlockNode v-else :data="data" />
 				</template>
 

@@ -1,5 +1,27 @@
 export { BlocksEngine, initEngine, EngineCommand } from './logic_mesh'
 
+/**
+ * The kind of the block pin.
+ */
+export type Kind =
+	| 'null'
+	| 'remove'
+	| 'marker'
+	| 'na'
+	| 'bool'
+	| 'number'
+	| 'str'
+	| 'uri'
+	| 'ref'
+	| 'symbol'
+	| 'date'
+	| 'time'
+	| 'dateTime'
+	| 'coord'
+	| 'xstr'
+	| 'list'
+	| 'dict'
+	| 'grid'
 
 /**
  * A block that is implemented in JS
@@ -19,7 +41,7 @@ export type JsBlock = {
 
 /**
  * A block pin.
- * 
+ *
  * Pins are the inputs and outputs of a block.
  */
 export interface BlockPin {
@@ -32,14 +54,13 @@ export interface BlockPin {
 	 * Must be a valid haystack type kind.
 	 * See https://project-haystack.org/doc/docHaystack/Kinds
 	 */
-	kind: string
+	kind: Kind
 	/**
 	 * The pin value
 	 * Value is a Haystack value encoded as JSON.
 	 */
 	value?: unknown
 }
-
 
 /**
  * Describe a block that is available in block library.
@@ -70,10 +91,9 @@ export interface BlockDesc {
 	 */
 	doc: string
 	/**
-	 * The block variant
+	 * The block implementation
 	 */
-	variant: string
-
+	implementation: 'native' | 'external'
 	/**
 	 * The block inputs
 	 */
@@ -100,11 +120,11 @@ export interface BlockNotification {
 		/**
 		 * The block pin name
 		 */
-		name: string,
+		name: string
 		/**
 		 * The block pin source
 		 */
-		source: string,
+		source: string
 		/**
 		 * The value that was changed on this pin
 		 */

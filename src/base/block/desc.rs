@@ -60,7 +60,7 @@ pub struct BlockPin {
     pub kind: HaystackKind,
 }
 
-/// Defines the block variant
+/// Defines the block implementation
 #[derive(Default, Debug, Clone, PartialEq)]
 pub enum BlockImplementation {
     /// A block that is implemented in Rust
@@ -73,11 +73,11 @@ pub enum BlockImplementation {
 impl TryFrom<&str> for BlockImplementation {
     type Error = String;
 
-    fn try_from(variant: &str) -> Result<Self, Self::Error> {
-        match variant {
+    fn try_from(implementation: &str) -> Result<Self, Self::Error> {
+        match implementation {
             "native" => Ok(BlockImplementation::Native),
             "external" => Ok(BlockImplementation::External),
-            _ => Err(format!("Invalid variant: {variant}")),
+            _ => Err(format!("Invalid implementation: {implementation}")),
         }
     }
 }
