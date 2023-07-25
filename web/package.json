@@ -13,12 +13,13 @@
 	"dependencies": {
 		"@vue-flow/background": "^1.2.0",
 		"@vue-flow/controls": "^1.1.0",
-		"@vue-flow/core": "^1.20.1",
+		"@vue-flow/core": "^1.22.0",
 		"@vue-flow/minimap": "^1.1.1",
+		"chart.js": "^4.3.1",
 		"logic-mesh": "file:module",
 		"primeflex": "^3.3.1",
 		"primeicons": "^6.0.1",
-		"primevue": "^3.29.2",
+		"primevue": "^3.30.2",
 		"vite-plugin-wasm": "^3.2.2",
 		"vue": "^3.3.4"
 	},

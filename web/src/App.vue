@@ -14,6 +14,7 @@ import { command, blocks, startWatch, BlockNotification, BlockDesc } from './lib
 import { Ref, onMounted, ref } from 'vue';
 import { currentBlock, currentLink } from './lib/Model'
 import InputBlock from './components/blocks/InputBlock.vue';
+import ChartBlock from './components/blocks/ChartBlock.vue';
 
 const { edges, removeEdges, addNodes, findNode, removeNodes, deleteKeyCode } = useVueFlow()
 const blockMap = new Map<string, Ref<Block>>()
@@ -139,6 +140,8 @@ const onEdgeClick = (event: EdgeMouseEvent) => {
 					<BlockNode v-if="data.desc.implementation == 'native'" :data="data" />
 					<InputBlock v-else-if="data.desc.implementation == 'external' && data.desc.name == 'Input'"
 						:data="data" />
+					<ChartBlock v-else-if="data.desc.implementation == 'external' && data.desc.name == 'Chart'"
+						:data="data" />
 					<BlockNode v-else :data="data" />
 				</template>
 
@@ -175,7 +178,7 @@ html {
 	justify-content: space-between;
 	align-items: center;
 	gap: 3px;
-	max-width: 250px;
+	max-width: 400px;
 	min-width: 8em;
 }
 </style>
