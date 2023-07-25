@@ -1,4 +1,3 @@
-use std::f32::consts::E;
 use std::str::FromStr;
 
 use crate::base::program::data::LinkData;

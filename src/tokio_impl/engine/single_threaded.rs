@@ -202,10 +202,19 @@ impl SingleThreadedEngine {
                     source_block.get_input_mut(&link_data.source_block_pin_name)
                 {
                     id = connect_input(source_input, target_input).map_err(|err| anyhow!(err))?;
+
+                    target_input
+                        .writer()
+                        .try_send(source_input.get_value().clone().unwrap_or_default())
+                        .map_err(|err| anyhow!(err))?;
                 } else if let Some(source_output) =
                     source_block.get_output_mut(&link_data.source_block_pin_name)
                 {
                     id = connect_output(source_output, target_input).map_err(|err| anyhow!(err))?;
+                    target_input
+                        .writer()
+                        .try_send(source_output.value().clone())
+                        .map_err(|err| anyhow!(err))?;
                 } else {
                     return Err(anyhow!("Source Pin not found"));
                 }
