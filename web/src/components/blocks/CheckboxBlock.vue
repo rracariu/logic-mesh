@@ -8,7 +8,7 @@ import { Block } from '../../lib/Block';
 
 const props = defineProps<{ data: Block }>()
 
-function onInputChange(data: string) {
+function onInputChange(data: boolean) {
 	command.writeBlockOutput(props.data.id, Object.keys(props.data.outputs)[0] ?? '', data)
 }
 
@@ -23,7 +23,7 @@ function onInputChange(data: string) {
 		</div>
 
 		<div class="flex align-items-center justify-content-center m-1 border-round">
-			<Checkbox :value="data.inputs.in.value" v-on:update:model-value="onInputChange" />
+			<Checkbox v-model="data.inputs.in.value" :binary="true" v-on:update:model-value="onInputChange" />
 		</div>
 
 		<div class="flex align-items-center justify-content-center m-1 border-round">
