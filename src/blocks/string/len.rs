@@ -11,7 +11,6 @@ use crate::base::{
 use libhaystack::val::{kind::HaystackKind, Number, Value};
 
 use crate::{
-    blocks::utils::{sleep_millis, DEFAULT_SLEEP_DUR},
     blocks::InputImpl,
     blocks::OutputImpl,
 };
@@ -30,14 +29,9 @@ pub struct StrLen {
 
 impl Block for StrLen {
     async fn execute(&mut self) {
-        let input = self.read_inputs().await;
+        self.read_inputs_until_ready().await;
 
-        if input.is_none() {
-            sleep_millis(DEFAULT_SLEEP_DUR).await;
-            return;
-        }
-
-        if let Some(Value::Str(a)) = self.input.get_value() {
+       if let Some(Value::Str(a)) = self.input.get_value() {
             self.out.set(
                 Number {
                     value: a.value.len() as f64,

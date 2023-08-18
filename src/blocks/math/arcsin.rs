@@ -11,7 +11,6 @@ use crate::base::{
 use libhaystack::val::{kind::HaystackKind, Number, Value};
 
 use crate::{
-    blocks::utils::{sleep_millis, DEFAULT_SLEEP_DUR},
     blocks::InputImpl,
     blocks::OutputImpl,
 };
@@ -29,12 +28,7 @@ pub struct ArcSin {
 
 impl Block for ArcSin {
     async fn execute(&mut self) {
-        let input = self.read_inputs().await;
-
-        if input.is_none() {
-            sleep_millis(DEFAULT_SLEEP_DUR).await;
-            return;
-        }
+        self.read_inputs_until_ready().await;
 
         if let Some(Value::Number(a)) = self.input.get_value() {
             self.out.set(

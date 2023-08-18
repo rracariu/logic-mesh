@@ -11,7 +11,6 @@ use crate::base::{
 use libhaystack::val::{kind::HaystackKind, Bool};
 
 use crate::{
-    blocks::utils::{sleep_millis, DEFAULT_SLEEP_DUR},
     blocks::InputImpl,
     blocks::OutputImpl,
 };
@@ -31,12 +30,7 @@ pub struct Equal {
 
 impl Block for Equal {
     async fn execute(&mut self) {
-        let input = self.read_inputs().await;
-
-        if input.is_none() {
-            sleep_millis(DEFAULT_SLEEP_DUR).await;
-            return;
-        }
+        self.read_inputs_until_ready().await;
 
         self.out.set(
             Bool {

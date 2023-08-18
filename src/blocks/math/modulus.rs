@@ -15,7 +15,6 @@ use crate::{
 use libhaystack::val::{kind::HaystackKind, Number, Value};
 
 use crate::{
-    blocks::utils::{sleep_millis, DEFAULT_SLEEP_DUR},
     blocks::InputImpl,
     blocks::OutputImpl,
 };
@@ -36,13 +35,8 @@ pub struct Mod {
 
 impl Block for Mod {
     async fn execute(&mut self) {
-        let input = self.read_inputs().await;
-
-        if input.is_none() {
-            sleep_millis(DEFAULT_SLEEP_DUR).await;
-            return;
-        }
-
+        self.read_inputs_until_ready().await;
+        
         if let (Some(Value::Number(a)), Some(Value::Number(b))) =
             (self.a.get_value(), self.b.get_value())
         {

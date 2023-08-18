@@ -8,14 +8,24 @@ use libhaystack::val::kind::HaystackKind;
 
 use crate::base::block::convert_value;
 use crate::base::{block::Block, input::input_reader::InputReader};
-use crate::blocks::utils::sleep_millis;
+use crate::blocks::utils::{sleep_millis, DEFAULT_SLEEP_DUR};
 
 impl<B: Block> InputReader for B {
     async fn read_inputs(&mut self) -> Option<usize> {
         read_block_inputs(self).await
     }
 
-    async fn wait_on_inputs(&mut self, timeout: Duration) {
+	async fn read_inputs_until_ready(&mut self) -> Option<usize> {
+        loop {
+			let result  = read_block_inputs(self).await;
+			if result.is_some() {
+				return result;
+			}
+			sleep_millis(DEFAULT_SLEEP_DUR).await;
+		}
+    }
+
+    async fn wait_on_inputs(&mut self, timeout: Duration) -> Option<usize> {
         let millis = timeout.as_millis() as u64;
         let (_, index, _) = select_all([
             sleep_millis(millis).boxed_local(),
@@ -28,6 +38,9 @@ impl<B: Block> InputReader for B {
 
         if index != 0 {
             sleep_millis(millis).await;
+			None
+		} else {
+			Some(index)
         }
     }
 }

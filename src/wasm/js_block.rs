@@ -13,7 +13,6 @@ use crate::base::block::{Block, BlockState, BlockStaticDesc};
 use crate::base::engine::Engine;
 use crate::base::input::input_reader::InputReader;
 
-use crate::blocks::utils::{sleep_millis, DEFAULT_SLEEP_DUR};
 use crate::{
     base::{
         block::{BlockDesc, BlockProps},
@@ -192,12 +191,7 @@ impl BlockStaticDesc for JsBlock {
 
 impl Block for JsBlock {
     async fn execute(&mut self) {
-        let input = self.read_inputs().await;
-
-        if input.is_none() {
-            sleep_millis(DEFAULT_SLEEP_DUR).await;
-            return;
-        }
+        self.read_inputs_until_ready().await;
 
         let values = self
             .inputs
