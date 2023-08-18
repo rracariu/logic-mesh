@@ -116,19 +116,30 @@ impl Engine for SingleThreadedEngine {
     }
 
     async fn run(&mut self) {
+        let mut is_paused = false;
         loop {
             let local_tasks = &self.local;
             let mut engine_msg = None;
 
-            local_tasks
-                .run_until(async {
-                    engine_msg = self.receiver.recv().await;
-                })
-                .await;
+            if !is_paused {
+                local_tasks
+                    .run_until(async {
+                        engine_msg = self.receiver.recv().await;
+                    })
+                    .await;
+            } else {
+                engine_msg = self.receiver.recv().await;
+            }
 
             if let Some(message) = engine_msg {
                 if matches!(message, EngineMessage::Shutdown) {
                     break;
+                } else if matches!(message, EngineMessage::Pause) {
+                    is_paused = true;
+                    continue;
+                } else if matches!(message, EngineMessage::Resume) {
+                    is_paused = false;
+                    continue;
                 }
 
                 self.dispatch_message(message).await;

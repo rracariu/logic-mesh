@@ -271,4 +271,24 @@ impl EngineCommand {
             JsValue::UNDEFINED
         }
     }
+
+    /// Pauses the execution of the engine
+    /// If the engine is already paused, this does nothing
+    #[wasm_bindgen(js_name = "pauseExecution")]
+    pub async fn pause_execution(&mut self) -> Result<(), String> {
+        self.sender
+            .send(EngineMessage::Pause)
+            .await
+            .map_err(|err| err.to_string())
+    }
+
+    /// Resumes the execution of the engine
+    /// If the engine is not paused, this does nothing
+    #[wasm_bindgen(js_name = "resumeExecution")]
+    pub async fn resume_execution(&mut self) -> Result<(), String> {
+        self.sender
+            .send(EngineMessage::Resume)
+            .await
+            .map_err(|err| err.to_string())
+    }
 }

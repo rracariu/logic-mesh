@@ -19,6 +19,7 @@ use lazy_static::lazy_static;
 use std::collections::BTreeMap;
 use std::sync::Mutex;
 
+use super::misc::ParseNumber;
 use super::InputImpl;
 
 pub(crate) type DynBlockProps = dyn BlockProps<
@@ -141,7 +142,8 @@ register_blocks!(
     StrLen,
     // Misc blocks
     Random,
-    SineWave
+    SineWave,
+    ParseNumber
 );
 
 /// Construct a block properties from the registry

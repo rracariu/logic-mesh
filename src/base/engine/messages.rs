@@ -75,4 +75,6 @@ pub enum EngineMessage<WatchEventSender: Clone> {
     RemoveLinkRes(Result<bool, String>),
 
     Shutdown,
+    Pause,
+    Resume,
 }
