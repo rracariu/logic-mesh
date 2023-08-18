@@ -10,10 +10,7 @@ use crate::base::{
 
 use libhaystack::val::{kind::HaystackKind, Number, Value};
 
-use crate::{
-    blocks::InputImpl,
-    blocks::OutputImpl,
-};
+use crate::{blocks::InputImpl, blocks::OutputImpl};
 
 /// Outputs the unary minus value of the input.
 #[block]

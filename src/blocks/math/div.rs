@@ -10,10 +10,7 @@ use crate::base::{
 
 use libhaystack::val::{kind::HaystackKind, Value};
 
-use crate::{
-    blocks::InputImpl,
-    blocks::OutputImpl,
-};
+use crate::{blocks::InputImpl, blocks::OutputImpl};
 
 /// Performs an division of 2 numbers.
 /// The operation would take into account the units of those input's values,
@@ -33,9 +30,9 @@ pub struct Div {
 
 impl Block for Div {
     async fn execute(&mut self) {
-		self.read_inputs_until_ready().await;
+        self.read_inputs_until_ready().await;
 
-       let res = self.a.get_value().clone().and_then(|val| {
+        let res = self.a.get_value().clone().and_then(|val| {
             if let Value::Number(a) = val {
                 self.b.get_value().clone().and_then(|val| {
                     if let Value::Number(b) = val {

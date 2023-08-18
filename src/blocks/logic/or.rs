@@ -10,10 +10,7 @@ use crate::base::{
 
 use libhaystack::val::{kind::HaystackKind, Bool, Value};
 
-use crate::{
-    blocks::InputImpl,
-    blocks::OutputImpl,
-};
+use crate::{blocks::InputImpl, blocks::OutputImpl};
 
 /// Outputs the logical Or value of the inputs.
 #[block]

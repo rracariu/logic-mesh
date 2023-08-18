@@ -15,14 +15,14 @@ impl<B: Block> InputReader for B {
         read_block_inputs(self).await
     }
 
-	async fn read_inputs_until_ready(&mut self) -> Option<usize> {
+    async fn read_inputs_until_ready(&mut self) -> Option<usize> {
         loop {
-			let result  = read_block_inputs(self).await;
-			if result.is_some() {
-				return result;
-			}
-			sleep_millis(DEFAULT_SLEEP_DUR).await;
-		}
+            let result = read_block_inputs(self).await;
+            if result.is_some() {
+                return result;
+            }
+            sleep_millis(DEFAULT_SLEEP_DUR).await;
+        }
     }
 
     async fn wait_on_inputs(&mut self, timeout: Duration) -> Option<usize> {
@@ -38,9 +38,9 @@ impl<B: Block> InputReader for B {
 
         if index != 0 {
             sleep_millis(millis).await;
-			None
-		} else {
-			Some(index)
+            None
+        } else {
+            Some(index)
         }
     }
 }

@@ -10,10 +10,7 @@ use crate::base::{
 
 use libhaystack::val::{kind::HaystackKind, Number, Value};
 
-use crate::{
-    blocks::InputImpl,
-    blocks::OutputImpl,
-};
+use crate::{blocks::InputImpl, blocks::OutputImpl};
 
 /// Performs an addition of multiple numbers from the 16 inputs
 /// this block has.

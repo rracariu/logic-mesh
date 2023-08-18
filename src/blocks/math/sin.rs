@@ -10,10 +10,7 @@ use crate::base::{
 
 use libhaystack::val::{kind::HaystackKind, Number, Value};
 
-use crate::{
-    blocks::InputImpl,
-    blocks::OutputImpl,
-};
+use crate::{blocks::InputImpl, blocks::OutputImpl};
 
 /// Returns the sinus value of the input.
 #[block]
@@ -30,7 +27,7 @@ impl Block for Sin {
     async fn execute(&mut self) {
         self.read_inputs_until_ready().await;
 
-      if let Some(Value::Number(a)) = self.input.get_value() {
+        if let Some(Value::Number(a)) = self.input.get_value() {
             self.out.set(
                 Number {
                     value: a.value.sin(),

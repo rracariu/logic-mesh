@@ -14,10 +14,7 @@ use crate::{
 
 use libhaystack::val::{kind::HaystackKind, Number, Value};
 
-use crate::{
-    blocks::InputImpl,
-    blocks::OutputImpl,
-};
+use crate::{blocks::InputImpl, blocks::OutputImpl};
 
 /// Outputs the modulus value of the inputs.
 #[block]
@@ -36,7 +33,7 @@ pub struct Mod {
 impl Block for Mod {
     async fn execute(&mut self) {
         self.read_inputs_until_ready().await;
-        
+
         if let (Some(Value::Number(a)), Some(Value::Number(b))) =
             (self.a.get_value(), self.b.get_value())
         {

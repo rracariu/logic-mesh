@@ -13,8 +13,8 @@ pub trait InputReader: Block {
     /// The index of the input that received a value.
     async fn read_inputs(&mut self) -> Option<usize>;
 
-	/// Reads the connected block inputs.
-	/// This would only complete when at least one input has data.
+    /// Reads the connected block inputs.
+    /// This would only complete when at least one input has data.
     ///
     /// # Returns
     /// The index of the input that received a value.

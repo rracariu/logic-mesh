@@ -10,10 +10,7 @@ use crate::base::{
 
 use libhaystack::val::{kind::HaystackKind, Number, Value};
 
-use crate::{
-    blocks::InputImpl,
-    blocks::OutputImpl,
-};
+use crate::{blocks::InputImpl, blocks::OutputImpl};
 
 /// Returns the length of the input string.
 #[block]
@@ -31,7 +28,7 @@ impl Block for StrLen {
     async fn execute(&mut self) {
         self.read_inputs_until_ready().await;
 
-       if let Some(Value::Str(a)) = self.input.get_value() {
+        if let Some(Value::Str(a)) = self.input.get_value() {
             self.out.set(
                 Number {
                     value: a.value.len() as f64,

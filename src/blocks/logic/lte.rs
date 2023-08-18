@@ -10,10 +10,7 @@ use crate::base::{
 
 use libhaystack::val::{kind::HaystackKind, Bool};
 
-use crate::{
-    blocks::InputImpl,
-    blocks::OutputImpl,
-};
+use crate::{blocks::InputImpl, blocks::OutputImpl};
 
 /// Outputs true if value of the in1 is less or equal.
 #[block]
@@ -31,8 +28,8 @@ pub struct LessThanEq {
 
 impl Block for LessThanEq {
     async fn execute(&mut self) {
-       self.read_inputs_until_ready().await;
-       
+        self.read_inputs_until_ready().await;
+
         self.out.set(
             Bool {
                 value: self.input1.get_value() <= self.input2.get_value(),

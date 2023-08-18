@@ -10,10 +10,7 @@ use crate::base::{
 
 use libhaystack::val::{kind::HaystackKind, Bool, Value};
 
-use crate::{
-    blocks::InputImpl,
-    blocks::OutputImpl,
-};
+use crate::{blocks::InputImpl, blocks::OutputImpl};
 
 /// Outputs the logical And value of the inputs.
 #[block]
@@ -31,7 +28,7 @@ pub struct And {
 impl Block for And {
     async fn execute(&mut self) {
         self.read_inputs_until_ready().await;
-        
+
         if let (Some(Value::Bool(a)), Some(Value::Bool(b))) =
             (self.input1.get_value(), self.input2.get_value())
         {
