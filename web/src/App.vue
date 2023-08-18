@@ -126,7 +126,6 @@ const onEdgeClick = (event: EdgeMouseEvent) => {
 	<Splitter style="height: 97vh">
 		<SplitterPanel :size="18">
 			<BlockList :blocks="blocks" @add-block="addBlock" />
-
 		</SplitterPanel>
 		<SplitterPanel :size="82">
 			<VueFlow @connect="onConnect" @connect-start="onConnectStart" @node-click="onBlockClick"

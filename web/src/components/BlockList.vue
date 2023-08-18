@@ -3,6 +3,7 @@ import Accordion from 'primevue/accordion';
 import AccordionTab from 'primevue/accordiontab';
 import Button from 'primevue/button';
 import InputText from 'primevue/inputtext';
+import ScrollPanel from 'primevue/scrollpanel';
 
 import type { BlockDesc } from 'logic-mesh'
 import { capitalize, computed, ref } from 'vue';
@@ -32,14 +33,16 @@ const blocksForCategory = (category: string) =>
 <template>
 	<div class="flex flex-column w-full gap-1">
 		<InputText v-model="blockSearch" placeholder="Search block..." class="w-full" />
-		<Accordion :multiple="true" :activeIndex="[0]">
-			<AccordionTab v-for="(category) in categories" :header="capitalize(category)">
-				<Button v-for="block of blocksForCategory(category)" :key="block.name" :label="capitalize(block.dis)"
-					:title="block.doc" @click="$emit('addBlock', block)" class="m-1 w-min" text raised>
-				</Button>
+		<ScrollPanel style="width: 100%; height: 90vh" class="scrollbar">
+			<Accordion :multiple="true" :activeIndex="[0]">
+				<AccordionTab v-for="(category) in categories" :header="capitalize(category)">
+					<Button v-for="block of blocksForCategory(category)" :key="block.name" :label="capitalize(block.dis)"
+						:title="block.doc" @click="$emit('addBlock', block)" class="m-1 w-min" text raised>
+					</Button>
 
-			</AccordionTab>
-		</Accordion>
+				</AccordionTab>
+			</Accordion>
+		</ScrollPanel>
 	</div>
 </template>
 
@@ -54,5 +57,19 @@ const blocksForCategory = (category: string) =>
 
 :deep(.p-accordion-content) {
 	padding: 0.3em !important;
+}
+
+:deep(.p-scrollpanel.scrollbar .p-scrollpanel-wrapper) {
+	border-right: 10px solid var(--surface-ground);
+}
+
+:deep(.p-scrollpanel.scrollbar .p-scrollpanel-bar) {
+	background-color: var(--primary-300);
+	opacity: 1;
+	transition: background-color 0.3s;
+}
+
+:deep(.p-scrollpanel.scrollbar .p-scrollpanel-bar:hover) {
+	background-color: var(--primary-400);
 }
 </style>
