@@ -12,7 +12,7 @@ import { Block, blockInstance } from './lib/Block';
 import { command, blocks, startWatch, BlockNotification, BlockDesc } from './lib/Engine';
 import { Ref, onMounted, ref } from 'vue';
 import { currentBlock, currentLink } from './lib/Model'
-import BlockTemplate from './components/blocks/BlockTemplate.vue';
+import BlockTemplate from './components/BlockNode.vue';
 
 const { edges, removeEdges, addNodes, findNode, removeNodes, deleteKeyCode } = useVueFlow()
 const blockMap = new Map<string, Ref<Block>>()
