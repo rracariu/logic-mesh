@@ -10,7 +10,7 @@ export function blockInstance(id: string, desc: BlockDesc): Block {
 	function toObj(pins: BlockPin[]) {
 		return pins.reduce(
 			(acc, pin) => {
-				acc[pin.name] = { ...pin, value: undefined }
+				acc[pin.name] = { ...pin, value: undefined, isConnected: false }
 				return acc
 			},
 			{} as {
@@ -35,9 +35,7 @@ export interface Block {
 
 	desc: BlockDesc
 
-	inputs: {
-		[key: string]: BlockPin
-	}
+	inputs: { [key: string]: BlockPin }
 
 	outputs: {
 		[key: string]: BlockPin

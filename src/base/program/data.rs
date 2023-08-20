@@ -13,6 +13,7 @@ pub struct ProgramMeta {
 }
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct LinkData {
     pub id: Option<String>,
     pub source_block_uuid: String,

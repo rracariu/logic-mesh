@@ -3,14 +3,38 @@ import { Connection, Handle, Position, } from '@vue-flow/core';
 
 import { computed } from 'vue';
 import { Block } from '../../lib/Block';
-import { currentBlock } from '../../lib/Model'
+import { currentBlock } from '../../lib/Model';
 
 const props = defineProps<{ data: Block }>()
 
-const handlePos = (index: number) => `top: ${index + index / 2 + 3.5}em`
+const handlePos = (index: number) => `top: ${index * 1.5 + 3.0}em`
+
+const inputPins = computed(() => {
+	const ins = props.data.inputs
+
+	if (Object.keys(ins).length < 7) {
+		return ins
+	}
+
+	const entries = Object.entries(ins)
+
+	let lastConnected = 0
+	for (let i = 0; i < entries.length; i++) {
+		if (entries[i][1].isConnected) {
+			lastConnected = i > 0 ? i + 1 : i
+		}
+	}
+
+	const res: Block['inputs'] = {}
+	for (let i = 0; i < Math.min(lastConnected + 2, entries.length); i++) {
+		res[entries[i][0]] = entries[i][1]
+	}
+
+	return res
+})
 
 const blockStyle = computed(() => {
-	let css = `width: 100%; height: ${Object.keys(props.data.inputs).length + 8}em; `
+	let css = `width: 100%; height: ${Object.keys(inputPins.value).length * 1.3 + 3.0}em; `
 
 	if (currentBlock.value?.data.id === props.data.id) {
 		css += 'box-shadow: 2px 2px 7px 3px var(--surface-200);'
@@ -26,14 +50,15 @@ const validConnection = (conn: Connection) => {
 const format = (value: unknown) => {
 	return typeof value === 'number' ? Intl.NumberFormat().format(value) : value
 }
+
 </script>
 
 <template>
 	<div :style="blockStyle">
 		<div class="header">
-			{{ data.desc.name }}
+			<label :title="data.desc.doc"> {{ data.desc.name }} </label>
 		</div>
-		<Handle v-for="(input, name, index) in data.inputs" :key="name" :id="input.name"
+		<Handle v-for="(input, name, index) in inputPins" :key="name" :id="input.name"
 			:is-valid-connection="validConnection" type="target" :position="Position.Left" :style="handlePos(index)"
 			class="block-input">
 			{{ name }} {{ input.value != null ? `${format(input.value)}` : '' }}

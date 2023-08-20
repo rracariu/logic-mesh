@@ -60,6 +60,11 @@ export interface BlockPin {
 	 * Value is a Haystack value encoded as JSON.
 	 */
 	value?: unknown
+
+	/**
+	 * True if the pin is connected to another pin.
+	 */
+	isConnected: boolean
 }
 
 /**
@@ -130,4 +135,31 @@ export interface BlockNotification {
 		 */
 		value: {}
 	}[]
+}
+
+export interface LinkData {
+	/**
+	 * The link id
+	 */
+	id?: string
+
+	/**
+	 * The link source block pin name
+	 */
+	sourceBlockPinName: string
+
+	/**
+	 * The link source block uuid
+	 */
+	sourceBlockUuid: string
+
+	/**
+	 * The link target block pin name
+	 */
+	targetBlockPinName: string
+
+	/**
+	 * The link target block uuid
+	 */
+	targetBlockUuid: string
 }

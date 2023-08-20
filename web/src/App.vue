@@ -9,7 +9,7 @@ import SplitterPanel from 'primevue/splitterpanel';
 
 import BlockList from './components/BlockList.vue';
 import { Block, blockInstance } from './lib/Block';
-import { command, blocks, startWatch, BlockNotification, BlockDesc } from './lib/Engine';
+import { command, blocks, startWatch, BlockNotification, BlockDesc, LinkData } from './lib/Engine';
 import { Ref, onMounted, ref } from 'vue';
 import { currentBlock, currentLink } from './lib/Model'
 import BlockTemplate from './components/BlockNode.vue';
@@ -30,6 +30,7 @@ onMounted(() => {
 			} else if (currentLink.value) {
 				removeEdges([currentLink.value.id])
 				command.removeLink(currentLink.value.data.id)
+
 				currentLink.value = undefined
 			}
 		}
@@ -92,7 +93,7 @@ const onConnect = (conn: Connection) => {
 
 	connSource = undefined
 
-	return command.createLink(conn.source, conn.target, conn.sourceHandle ?? '', conn.targetHandle ?? '').then((data) => {
+	return command.createLink(conn.source, conn.target, conn.sourceHandle ?? '', conn.targetHandle ?? '').then((data: LinkData) => {
 		if (data) {
 			const link = edges.value.find((edge) => edge.target === conn.target
 				&& edge.source === conn.source
@@ -100,6 +101,22 @@ const onConnect = (conn: Connection) => {
 				&& edge.targetHandle === conn.targetHandle)
 
 			if (link) {
+				const sourceBlock = blockMap.get(conn.source)
+				if (sourceBlock) {
+					const input = sourceBlock.value.inputs[conn.sourceHandle ?? '']
+					if (input) input.isConnected = true
+					const output = sourceBlock.value.outputs[conn.sourceHandle ?? '']
+					if (output) output.isConnected = true
+				}
+
+				const targetBlock = blockMap.get(conn.target)
+				if (targetBlock) {
+					const input = targetBlock.value.inputs[conn.targetHandle ?? '']
+					if (input) input.isConnected = true
+					const output = targetBlock.value.outputs[conn.targetHandle ?? '']
+					if (output) output.isConnected = true
+				}
+
 				link.data = data
 			}
 		}
