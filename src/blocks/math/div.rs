@@ -32,21 +32,12 @@ impl Block for Div {
     async fn execute(&mut self) {
         self.read_inputs_until_ready().await;
 
-        let res = self.a.get_value().and_then(|val| {
-            if let Value::Number(a) = val {
-                self.b.get_value().and_then(|val| {
-                    if let Value::Number(b) = val {
-                        return (*a / *b).ok();
-                    }
-                    None
-                })
-            } else {
-                None
+        if let (Some(Value::Number(a)), Some(Value::Number(b))) =
+            (self.a.get_value(), self.b.get_value())
+        {
+            if let Ok(res) = *a / *b {
+                self.out.set(res.into());
             }
-        });
-
-        if let Some(res) = res {
-            self.out.set(res.into())
         }
     }
 }
