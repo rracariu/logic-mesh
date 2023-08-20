@@ -20,7 +20,7 @@ const inputPins = computed(() => {
 
 	let lastConnected = 0
 	for (let i = 0; i < entries.length; i++) {
-		if (entries[i][1].isConnected) {
+		if (!!entries[i][1].isConnected) {
 			lastConnected = i > 0 ? i + 1 : i
 		}
 	}

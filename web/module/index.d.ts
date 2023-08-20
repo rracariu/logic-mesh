@@ -64,7 +64,7 @@ export interface BlockPin {
 	/**
 	 * True if the pin is connected to another pin.
 	 */
-	isConnected: boolean
+	isConnected?: boolean
 }
 
 /**
