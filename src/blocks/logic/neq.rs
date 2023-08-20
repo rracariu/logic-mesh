@@ -12,6 +12,8 @@ use libhaystack::val::{kind::HaystackKind, Bool};
 
 use crate::{blocks::InputImpl, blocks::OutputImpl};
 
+use super::binary::BinaryBlock;
+
 /// Outputs true if value of the inputs are not equal.
 #[block]
 #[derive(BlockProps, Debug)]
@@ -25,13 +27,17 @@ pub struct NotEqual {
     pub out: OutputImpl,
 }
 
+impl BinaryBlock for NotEqual {}
+
 impl Block for NotEqual {
     async fn execute(&mut self) {
         self.read_inputs_until_ready().await;
 
+        let (input1, input2) = self.convert_inputs();
+
         self.out.set(
             Bool {
-                value: self.input1.get_value() != self.input2.get_value(),
+                value: input1 != input2,
             }
             .into(),
         );

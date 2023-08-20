@@ -308,11 +308,7 @@ impl SingleThreadedEngine {
                                         input.name().to_string(),
                                         BlockInputData {
                                             kind: input.kind().to_string(),
-                                            val: input
-                                                .get_value()
-                                                .as_ref()
-                                                .cloned()
-                                                .unwrap_or_default(),
+                                            val: input.get_value().cloned().unwrap_or_default(),
                                         },
                                     )
                                 })

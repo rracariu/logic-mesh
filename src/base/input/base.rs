@@ -87,8 +87,8 @@ impl<Reader, Writer: Clone> InputProps for BaseInput<Reader, Writer> {
         &mut self.writer
     }
 
-    fn get_value(&self) -> &Option<Value> {
-        &self.val
+    fn get_value(&self) -> Option<&Value> {
+        self.val.as_ref()
     }
 
     fn increment_conn(&mut self) -> usize {

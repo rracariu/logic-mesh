@@ -5,6 +5,7 @@
 //!
 
 pub mod and;
+mod binary;
 pub mod eq;
 pub mod gt;
 pub mod gte;

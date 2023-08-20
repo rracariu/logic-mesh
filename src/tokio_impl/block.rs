@@ -6,7 +6,7 @@ use futures::future::select_all;
 use futures::FutureExt;
 use libhaystack::val::kind::HaystackKind;
 
-use crate::base::block::convert_value;
+use crate::base::block::{convert_value_kind, BlockState};
 use crate::base::{block::Block, input::input_reader::InputReader};
 use crate::blocks::utils::{sleep_millis, DEFAULT_SLEEP_DUR};
 
@@ -82,18 +82,18 @@ pub(crate) async fn read_block_inputs<B: Block>(block: &mut B) -> Option<usize> 
             let actual = HaystackKind::from(&value);
 
             if expected != HaystackKind::Null && expected != actual {
-                match convert_value(value, expected, actual) {
+                match convert_value_kind(value, expected, actual) {
                     Ok(value) => input.set_value(value),
                     Err(err) => {
                         log::error!("Error converting value: {}", err);
-                        block.set_state(crate::base::block::BlockState::Fault);
+                        block.set_state(BlockState::Fault);
                     }
                 }
             } else {
                 input.set_value(value);
             }
         } else {
-            block.set_state(crate::base::block::BlockState::Fault);
+            block.set_state(BlockState::Fault);
         }
         Some(idx)
     } else {

@@ -31,6 +31,20 @@ pub trait Block: BlockConnect {
     async fn execute(&mut self);
 }
 
+/// Converts the actual value to the expected type expected value.
+///
+/// # Arguments
+/// - `expect` The expected value, this is used to determine the expected type
+/// - `actual` The actual value to convert
+///
+/// # Returns
+/// The converted value if the conversion was successful.
+/// If the conversion was not successful, an error is returned.
+pub fn convert_value(expect: &Value, actual: Value) -> Result<Value> {
+    let to_kind = HaystackKind::from(&actual);
+    convert_value_kind(actual, HaystackKind::from(expect), to_kind)
+}
+
 /// Converts a value from one kind to another.
 ///
 /// # Arguments
@@ -40,7 +54,15 @@ pub trait Block: BlockConnect {
 ///
 /// # Returns
 /// The converted value if the conversion was successful.
-pub fn convert_value(val: Value, expected: HaystackKind, actual: HaystackKind) -> Result<Value> {
+pub fn convert_value_kind(
+    val: Value,
+    expected: HaystackKind,
+    actual: HaystackKind,
+) -> Result<Value> {
+    if expected == actual {
+        return Ok(val);
+    }
+
     match (expected, actual) {
         (HaystackKind::Bool, HaystackKind::Bool) => Ok(val),
         (HaystackKind::Bool, HaystackKind::Number) => {
@@ -173,5 +195,21 @@ mod test {
         assert_eq!(test_block.outputs()[0].desc().name, "out");
         assert_eq!(test_block.outputs()[0].desc().kind, HaystackKind::Number);
         assert!(!test_block.outputs()[0].is_connected());
+    }
+
+    #[test]
+    fn convert_value_num_to_bool_test() {
+        let val = Value::make_bool(true);
+        let converted =
+            super::convert_value_kind(val, HaystackKind::Number, HaystackKind::Bool).unwrap();
+        assert_eq!(converted, Value::make_int(1));
+    }
+
+    #[test]
+    fn convert_value_str_to_num_test() {
+        let val = Value::make_str("42");
+        let converted =
+            super::convert_value_kind(val, HaystackKind::Number, HaystackKind::Str).unwrap();
+        assert_eq!(converted, Value::make_int(42));
     }
 }

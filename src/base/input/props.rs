@@ -79,7 +79,7 @@ pub trait InputProps {
     fn writer(&mut self) -> &mut Self::Writer;
 
     /// Gets this input value
-    fn get_value(&self) -> &Option<Value>;
+    fn get_value(&self) -> Option<&Value>;
 
     /// Increment the connection count when this input
     /// is linked to another block's output.
