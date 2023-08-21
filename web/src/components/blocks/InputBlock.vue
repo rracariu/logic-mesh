@@ -25,7 +25,7 @@ function onInputChange(data: string) {
 		</div>
 
 		<div class="flex align-items-center justify-content-center m-1 border-round">
-			<InputTex :value="data.inputs.in.value" v-on:update:model-value="onInputChange" />
+			<InputTex :value="data.inputs.in.value" v-on:update:model-value="onInputChange" size="small" />
 		</div>
 
 		<div class="flex align-items-center justify-content-center m-1 border-round">

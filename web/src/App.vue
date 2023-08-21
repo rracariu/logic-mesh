@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import { Background } from '@vue-flow/background';
 import { Controls } from '@vue-flow/controls';
+import { Panel } from '@vue-flow/core';
 import { Connection, EdgeMouseEvent, NodeMouseEvent, OnConnectStartParams, VueFlow, useVueFlow } from '@vue-flow/core';
 import { MiniMap } from '@vue-flow/minimap';
+
 
 import Splitter from 'primevue/splitter';
 import SplitterPanel from 'primevue/splitterpanel';
@@ -13,6 +15,8 @@ import { command, blocks, startWatch, BlockNotification, BlockDesc, LinkData } f
 import { Ref, onMounted, ref } from 'vue';
 import { currentBlock, currentLink } from './lib/Model'
 import BlockTemplate from './components/BlockNode.vue';
+import Toolbar from './components/ToolBar.vue';
+
 
 const { edges, removeEdges, addNodes, findNode, removeNodes, deleteKeyCode } = useVueFlow()
 const blockMap = new Map<string, Ref<Block>>()
@@ -156,6 +160,9 @@ const onEdgeClick = (event: EdgeMouseEvent) => {
 
 				<Controls />
 				<MiniMap></MiniMap>
+				<Panel position="bottom-center" class="controls">
+					<Toolbar></Toolbar>
+				</Panel>
 			</VueFlow>
 		</SplitterPanel>
 	</Splitter>
