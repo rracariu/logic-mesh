@@ -8,13 +8,14 @@ import { Block } from '../../lib/Block';
 
 const props = defineProps<{ data: Block }>()
 
+let chartId = `chart-${crypto.randomUUID()}`
 let chart: Chart;
 let chartYAxis = [] as number[]
 let chartXAxis = [] as number[]
 let count = 0
 
 const draw = () => {
-	chart = new Chart(document.getElementById('chart') as HTMLCanvasElement, {
+	chart = new Chart(document.getElementById(chartId) as HTMLCanvasElement, {
 		type: 'line',
 		data: {
 			labels: chartXAxis,
@@ -77,7 +78,7 @@ watch(() => props.data.inputs.in.value, () => {
 		</div>
 
 
-		<canvas id="chart" width="200" height="100" />
+		<canvas :id="chartId" width="200" height="100" />
 
 	</div>
 </template>
