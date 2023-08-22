@@ -12,7 +12,7 @@ const handlePos = (index: number) => `top: ${index * 1.5 + 3.0}em`
 const inputPins = computed(() => {
 	const ins = props.data.inputs
 
-	if (Object.keys(ins).length < 7) {
+	if (!Object.keys(ins).every((k) => k.match(/^[a-zA-z]+[0-9]+$/))) {
 		return ins
 	}
 
