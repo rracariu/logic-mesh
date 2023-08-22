@@ -80,7 +80,7 @@ impl Block for Pid {
         let proportional = kp * error;
 
         // Integral term
-        self.integral = self.integral + ki * time * (error + self.last_error);
+        self.integral += ki * time * (error + self.last_error);
 
         if self.integral > max / 2.0 {
             self.integral = max / 2.0;
