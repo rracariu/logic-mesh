@@ -12,7 +12,7 @@ use libhaystack::val::{kind::HaystackKind, Number, Value};
 
 use crate::{blocks::InputImpl, blocks::OutputImpl};
 
-/// Returns the Arc Tangent value of the input.
+/// Outputs the Arc Tangent value of the input.
 #[block]
 #[derive(BlockProps, Debug)]
 #[dis = "ArcTangent"]

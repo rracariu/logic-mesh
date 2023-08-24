@@ -12,7 +12,7 @@ use libhaystack::val::{kind::HaystackKind, Number, Value};
 
 use crate::{blocks::InputImpl, blocks::OutputImpl};
 
-/// Returns the ArcSin value of the input.
+/// Outputs the ArcSin value of the input.
 #[block]
 #[derive(BlockProps, Debug)]
 #[category = "math"]

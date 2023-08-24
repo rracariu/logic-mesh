@@ -12,7 +12,7 @@ use libhaystack::val::{kind::HaystackKind, Number, Value};
 
 use crate::{blocks::InputImpl, blocks::OutputImpl};
 
-/// Returns the exponential value of the input.
+/// Outputs the exponential value of the input.
 #[block]
 #[derive(BlockProps, Debug)]
 #[category = "math"]

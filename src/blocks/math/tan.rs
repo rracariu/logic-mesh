@@ -12,7 +12,7 @@ use libhaystack::val::{kind::HaystackKind, Number, Value};
 
 use crate::{blocks::InputImpl, blocks::OutputImpl};
 
-/// Returns the Tangent value of the input.
+/// Outputs the Tangent value of the input.
 #[block]
 #[derive(BlockProps, Debug)]
 #[dis = "Tangent"]

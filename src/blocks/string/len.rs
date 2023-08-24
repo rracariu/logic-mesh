@@ -12,7 +12,7 @@ use libhaystack::val::{kind::HaystackKind, Number, Value};
 
 use crate::{blocks::InputImpl, blocks::OutputImpl};
 
-/// Returns the length of the input string.
+/// Outputs the length of the input string.
 #[block]
 #[derive(BlockProps, Debug)]
 #[dis = "StringLen"]
