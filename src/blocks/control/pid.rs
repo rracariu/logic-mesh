@@ -27,18 +27,31 @@ use crate::{blocks::InputImpl, blocks::OutputImpl};
 pub struct Pid {
     #[input(kind = "Number")]
     pub sp: InputImpl,
+
     #[input(kind = "Number")]
     pub kp: InputImpl,
+
     #[input(kind = "Number")]
     pub ki: InputImpl,
+
     #[input(kind = "Number")]
     pub kd: InputImpl,
+
     #[input(kind = "Number")]
     pub interval: InputImpl,
-    #[input(name = "min", kind = "Number")]
+
+    #[input(kind = "Number")]
     pub min: InputImpl,
-    #[input(name = "max", kind = "Number")]
+
+    #[input(kind = "Number")]
     pub max: InputImpl,
+
+    #[input(kind = "Number")]
+    pub bias: InputImpl,
+
+    #[input(kind = "Number")]
+    pub input: InputImpl,
+
     #[output(kind = "Number")]
     pub out: OutputImpl,
 
@@ -58,9 +71,10 @@ impl Block for Pid {
             return;
         }
 
-        let kp = input_as_number(&self.kp).map(|v| v.value).unwrap_or(1.0);
-        let ki = input_as_number(&self.ki).map(|v| v.value).unwrap_or(1.0);
-        let kd = input_as_number(&self.kd).map(|v| v.value).unwrap_or(1.0);
+        let kp = input_as_number(&self.kp).map(|v| v.value).unwrap_or(0.98);
+        let ki = input_as_number(&self.ki).map(|v| v.value).unwrap_or(0.5);
+        let kd = input_as_number(&self.kd).map(|v| v.value).unwrap_or(0.25);
+        let bias = input_as_number(&self.kd).map(|v| v.value).unwrap_or(2.0);
 
         if kp < 0.0 || ki < 0.0 || kd < 0.0 {
             return;
@@ -71,7 +85,11 @@ impl Block for Pid {
         let max = input_as_number(&self.max).map(|v| v.value).unwrap_or(100.0);
         let time = millis as f64;
 
-        let cur_value = TryInto::<f64>::try_into(self.out.value()).unwrap_or(0.0);
+        let cur_value = if self.input.is_connected() {
+            input_as_number(&self.input).map(|v| v.value).unwrap_or(0.0)
+        } else {
+            TryInto::<f64>::try_into(self.out.value()).unwrap_or(0.0)
+        };
 
         // Error
         let error = sp - cur_value;
@@ -89,7 +107,9 @@ impl Block for Pid {
         }
 
         // Derivative term
-        self.derivative = -(kd * (cur_value - self.last_value) + time * self.derivative) / time;
+        self.derivative = -(bias * kd * (cur_value - self.last_value)
+            + (bias - time) * self.derivative)
+            / (bias + time);
 
         let mut output = proportional + self.integral + self.derivative;
 
