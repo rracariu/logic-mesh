@@ -8,7 +8,9 @@ import Dropdown from 'primevue/dropdown';
 import { command } from '../lib/Engine';
 
 const emit = defineEmits<{
-	(event: 'reset'): void
+	(event: 'reset'): void,
+	(event: 'copy'): void
+	(event: 'paste'): void
 }>()
 
 const isRunning = ref(true)
@@ -23,8 +25,7 @@ function onPauseResume() {
 	isRunning.value = !isRunning.value
 }
 
-const onReset = () => {
-	command.resetEngine()
+function onReset() {
 	isRunning.value = true
 	emit('reset')
 }
@@ -42,8 +43,8 @@ const onReset = () => {
 		</template>
 		<template #end>
 			<div class="flex-grow">
-				<Button title="Copy program" :icon="'pi pi-copy'" class="m-1" disabled />
-				<Button title="Paste program" :icon="'pi pi-file'" class="m-1" disabled />
+				<Button title="Copy program" :icon="'pi pi-copy'" class="m-1" @click="emit('copy')" />
+				<Button title="Paste program" :icon="'pi pi-file'" class="m-1" @click="emit('paste')" />
 				<Button title="Reset engine" :icon="'pi pi-refresh'" rounded @click="onReset" class="m-1" />
 			</div>
 		</template>

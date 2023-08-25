@@ -39,8 +39,8 @@ pub struct JsBlock {
 
 impl JsBlock {
     /// Create a new instance of a block
-    pub fn new(desc: BlockDesc, func: js_sys::Function) -> Self {
-        let id = uuid::Uuid::new_v4();
+    pub fn new(desc: BlockDesc, func: js_sys::Function, block_id: Option<Uuid>) -> Self {
+        let id = block_id.unwrap_or_else(|| uuid::Uuid::new_v4());
 
         let inputs = desc
             .inputs
@@ -251,10 +251,11 @@ pub(crate) fn schedule_js_block(
         Writer = <InputImpl as InputProps>::Writer,
     >,
     desc: &BlockDesc,
+    block_id: Option<Uuid>,
 ) -> Result<Uuid> {
     match unsafe { JS_FNS.get(desc.name.as_str()) } {
         Some(func) => {
-            let block = JsBlock::new(desc.clone(), func.clone());
+            let block = JsBlock::new(desc.clone(), func.clone(), block_id);
             let id = *block.id();
 
             engine.schedule(block);

@@ -33,10 +33,16 @@ impl EngineCommand {
     /// Adds a block instance to the engine
     /// to be immediately scheduled for execution
     #[wasm_bindgen(js_name = "addBlock")]
-    pub async fn add_block(&mut self, block_name: String) -> Result<String, String> {
+    pub async fn add_block(
+        &mut self,
+        block_name: String,
+        block_uuid: Option<String>,
+    ) -> Result<String, String> {
         match self
             .sender
-            .send(EngineMessage::AddBlockReq(self.uuid, block_name))
+            .send(EngineMessage::AddBlockReq(
+                self.uuid, block_name, block_uuid,
+            ))
             .await
         {
             Ok(_) => match self.receiver.recv().await {

@@ -286,10 +286,27 @@ impl SingleThreadedEngine {
 
     async fn dispatch_message(&mut self, msg: Messages) {
         match msg {
-            EngineMessage::AddBlockReq(sender_uuid, block_name) => {
+            EngineMessage::AddBlockReq(sender_uuid, block_name, block_uuid) => {
                 log::debug!("Adding block: {:?}", block_name);
 
-                let block_id = self.add_block(block_name).map_err(|err| err.to_string());
+                let block_id = if let Some(uuid) = block_uuid {
+                    match Uuid::parse_str(&uuid) {
+                        Ok(uuid) => Some(uuid),
+                        Err(_) => {
+                            return self.reply_to_sender(
+                                sender_uuid,
+                                EngineMessage::AddBlockRes(Err("Invalid UUID".into())),
+                            )
+                        }
+                    }
+                } else {
+                    None
+                };
+
+                let block_id = self
+                    .add_block(block_name, block_id)
+                    .map_err(|err| err.to_string());
+
                 self.reply_to_sender(sender_uuid, EngineMessage::AddBlockRes(block_id));
             }
 
@@ -444,17 +461,19 @@ impl SingleThreadedEngine {
         })
     }
 
-    fn add_block(&mut self, block_name: String) -> Result<Uuid> {
+    fn add_block(&mut self, block_name: String, block_id: Option<Uuid>) -> Result<Uuid> {
         match BLOCKS.lock().unwrap().get(&block_name) {
             Some(block) => {
                 if block.desc.implementation == BlockImplementation::External {
                     #[cfg(target_arch = "wasm32")]
                     {
                         use crate::wasm::js_block::schedule_js_block;
-                        schedule_js_block(self, &block.desc)
+                        schedule_js_block(self, &block.desc, block_id)
                     }
                     #[cfg(not(target_arch = "wasm32"))]
                     Err(anyhow!("External blocks not supported on this platform"))
+                } else if let Some(uuid) = block_id {
+                    schedule_block_with_uuid(&block_name, uuid, self)
                 } else {
                     schedule_block(&block_name, self)
                 }

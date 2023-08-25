@@ -47,7 +47,7 @@ pub struct WatchMessage {
 /// Messages that engine accepts
 #[derive(Debug, Clone)]
 pub enum EngineMessage<WatchEventSender: Clone> {
-    AddBlockReq(Uuid, String),
+    AddBlockReq(Uuid, String, Option<String>),
     AddBlockRes(Result<Uuid, String>),
 
     RemoveBlockReq(Uuid, Uuid),

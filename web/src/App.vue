@@ -1,24 +1,28 @@
 <script setup lang="ts">
 import { Background } from '@vue-flow/background';
 import { Controls } from '@vue-flow/controls';
-import { Panel } from '@vue-flow/core';
-import { Connection, EdgeMouseEvent, NodeMouseEvent, OnConnectStartParams, VueFlow, useVueFlow } from '@vue-flow/core';
+import { Connection, EdgeMouseEvent, NodeMouseEvent, OnConnectStartParams, Panel, VueFlow, useVueFlow } from '@vue-flow/core';
 import { MiniMap } from '@vue-flow/minimap';
 
+import { useClipboard } from '@vueuse/core';
 
 import Splitter from 'primevue/splitter';
 import SplitterPanel from 'primevue/splitterpanel';
+import Toast from 'primevue/toast';
+import { useToast } from "primevue/usetoast";
 
-import BlockList from './components/BlockList.vue';
-import { Block, blockInstance } from './lib/Block';
-import { command, blocks, startWatch, BlockNotification, BlockDesc, LinkData } from './lib/Engine';
 import { Ref, onMounted, ref } from 'vue';
-import { currentBlock, currentLink } from './lib/Model'
+import BlockList from './components/BlockList.vue';
 import BlockTemplate from './components/BlockNode.vue';
 import Toolbar from './components/ToolBar.vue';
+import { Block, blockInstance } from './lib/Block';
+import { BlockDesc, BlockNotification, LinkData, blocks, command, startWatch } from './lib/Engine';
+import { currentBlock, currentLink } from './lib/Model';
+import { load, save } from './lib/Program';
 
+const toast = useToast();
 
-const { edges, nodes, removeEdges, addNodes, findNode, removeNodes, deleteKeyCode } = useVueFlow()
+const { edges, nodes, removeEdges, addNodes, addEdges, findNode, removeNodes, deleteKeyCode } = useVueFlow()
 const blockMap = new Map<string, Ref<Block>>()
 deleteKeyCode.value = null
 
@@ -141,9 +145,50 @@ const onEdgeClick = (event: EdgeMouseEvent) => {
 	currentLink.value = event.edge
 }
 
-function onReset() {
-	removeEdges(edges.value.map((edge) => edge.id))
-	removeNodes(nodes.value.map((node) => node.id))
+async function onReset() {
+	await command.resetEngine();
+	blockMap.clear();
+
+	currentBlock.value = undefined;
+	currentLink.value = undefined;
+
+	removeEdges(edges.value.map((edge) => edge.id));
+	removeNodes(nodes.value.map((node) => node.id));
+}
+
+function onCopy() {
+	const program = save({ name: 'test', nodes: nodes.value, edges: edges.value })
+	const { copy } = useClipboard()
+	copy(JSON.stringify(program))
+
+	toast.add({ severity: 'success', summary: 'Copy', detail: 'Program copied...', life: 3000 });
+}
+
+function onPaste() {
+	onReset().then(async () => {
+		const clipText = await navigator.clipboard
+			.readText();
+		const program = JSON.parse(clipText);
+		let { nodes, edges } = await load(program);
+
+		nodes = nodes.map((node) => {
+			const desc = blocks.find((block) => block.name === node.data.name) ?? node.data;
+			const data = ref(blockInstance(node.id, desc))
+			blockMap.set(node.id, data);
+
+			node.data = data;
+			return node;
+		});
+
+		addNodes(nodes);
+		addEdges(edges);
+
+		toast.add({ severity: 'success', summary: 'Paste', detail: 'Program pasted...', life: 3000 });
+	}).catch(
+		(err) => {
+			toast.add({ severity: 'error', summary: 'Paste', detail: err, life: 3000 });
+		},
+	)
 }
 
 </script>
@@ -154,6 +199,7 @@ function onReset() {
 			<BlockList :blocks="blocks" @add-block="addBlock" />
 		</SplitterPanel>
 		<SplitterPanel :size="82">
+			<Toast />
 			<VueFlow @connect="onConnect" @connect-start="onConnectStart" @node-click="onBlockClick"
 				@edge-click="onEdgeClick" :default-edge-options="{ type: 'smoothstep' }" :min-zoom="1" :max-zoom="4"
 				:elevate-edges-on-select="true" :apply-default="true" auto-connect>
@@ -166,7 +212,7 @@ function onReset() {
 				<Controls />
 				<MiniMap></MiniMap>
 				<Panel position="bottom-center" class="controls">
-					<Toolbar @reset="onReset" style="min-width: 30em;" />
+					<Toolbar @reset="onReset" @copy="onCopy" @paste="onPaste" style="min-width: 30em;" />
 				</Panel>
 			</VueFlow>
 		</SplitterPanel>
