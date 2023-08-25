@@ -142,6 +142,9 @@ mod test {
         for _ in write_block_inputs(&mut [
             (&mut block.interval, (1).into()),
             (&mut block.sp, (100).into()),
+            (&mut block.kp, (1.0).into()),
+            (&mut block.ki, (1.0).into()),
+            (&mut block.kd, (1.0).into()),
         ])
         .await
         {
