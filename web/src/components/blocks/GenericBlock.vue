@@ -47,8 +47,8 @@ const validConnection = (conn: Connection) => {
 	return conn.source !== conn.target
 }
 
-const format = (value: unknown) => {
-	return typeof value === 'number' ? Intl.NumberFormat().format(value) : value
+const format = (value: object) => {
+	return typeof value === 'number' ? Intl.NumberFormat().format(value) : value.toString().slice(0, 8)
 }
 
 </script>
