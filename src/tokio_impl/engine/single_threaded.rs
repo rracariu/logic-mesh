@@ -134,6 +134,13 @@ impl Engine for SingleThreadedEngine {
             if let Some(message) = engine_msg {
                 if matches!(message, EngineMessage::Shutdown) {
                     break;
+                } else if matches!(message, EngineMessage::Reset) {
+                    self.blocks_iter_mut().for_each(|block| {
+                        block.set_state(BlockState::Terminate);
+                    });
+
+                    self.block_props.clear();
+                    continue;
                 } else if matches!(message, EngineMessage::Pause) {
                     is_paused = true;
                     continue;

@@ -291,4 +291,13 @@ impl EngineCommand {
             .await
             .map_err(|err| err.to_string())
     }
+
+    /// Resets the engine state, clears all blocks and links
+    #[wasm_bindgen(js_name = "resetEngine")]
+    pub async fn reset_engine(&mut self) -> Result<(), String> {
+        self.sender
+            .send(EngineMessage::Reset)
+            .await
+            .map_err(|err| err.to_string())
+    }
 }

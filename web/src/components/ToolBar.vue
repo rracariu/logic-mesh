@@ -6,6 +6,10 @@ import Button from 'primevue/button';
 
 import { command } from '../lib/Engine';
 
+const emit = defineEmits<{
+	(event: 'reset'): void
+}>()
+
 const isRunning = ref(true)
 
 function onPauseResume() {
@@ -18,13 +22,22 @@ function onPauseResume() {
 	isRunning.value = !isRunning.value
 }
 
+const onReset = () => {
+	command.resetEngine()
+	isRunning.value = true
+	emit('reset')
+}
 
 </script>
 
 <template>
 	<Toolbar>
 		<template #center>
-			<Button :icon="'pi ' + (isRunning ? 'pi-pause' : 'pi-play')" rounded @click="onPauseResume" />
+			<Button title="Pause/Resume execution" :icon="'pi ' + (isRunning ? 'pi-pause' : 'pi-play')" rounded
+				@click="onPauseResume" />
+		</template>
+		<template #end>
+			<Button title="Reset engine" :icon="'pi pi-refresh'" rounded @click="onReset" />
 		</template>
 	</Toolbar>
 </template>

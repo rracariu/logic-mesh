@@ -77,4 +77,5 @@ pub enum EngineMessage<WatchEventSender: Clone> {
     Shutdown,
     Pause,
     Resume,
+    Reset,
 }

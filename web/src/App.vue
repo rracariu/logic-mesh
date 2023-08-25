@@ -18,7 +18,7 @@ import BlockTemplate from './components/BlockNode.vue';
 import Toolbar from './components/ToolBar.vue';
 
 
-const { edges, removeEdges, addNodes, findNode, removeNodes, deleteKeyCode } = useVueFlow()
+const { edges, nodes, removeEdges, addNodes, findNode, removeNodes, deleteKeyCode } = useVueFlow()
 const blockMap = new Map<string, Ref<Block>>()
 deleteKeyCode.value = null
 
@@ -141,6 +141,11 @@ const onEdgeClick = (event: EdgeMouseEvent) => {
 	currentLink.value = event.edge
 }
 
+function onReset() {
+	removeEdges(edges.value.map((edge) => edge.id))
+	removeNodes(nodes.value.map((node) => node.id))
+}
+
 </script>
 
 <template>
@@ -161,7 +166,7 @@ const onEdgeClick = (event: EdgeMouseEvent) => {
 				<Controls />
 				<MiniMap></MiniMap>
 				<Panel position="bottom-center" class="controls">
-					<Toolbar></Toolbar>
+					<Toolbar @reset="onReset" style="min-width: 30em;" />
 				</Panel>
 			</VueFlow>
 		</SplitterPanel>
