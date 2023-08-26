@@ -19,6 +19,7 @@ import { Block, blockInstance } from './lib/Block';
 import { BlockDesc, BlockNotification, LinkData, blocks, command, startWatch } from './lib/Engine';
 import { currentBlock, currentLink } from './lib/Model';
 import { load, save } from './lib/Program';
+import { BlockPin, Program } from 'logic-mesh';
 
 const toast = useToast();
 
@@ -169,26 +170,51 @@ function onPaste() {
 		const clipText = await navigator.clipboard
 			.readText();
 		const program = JSON.parse(clipText);
-		let { nodes, edges } = await load(program);
-
-		nodes = nodes.map((node) => {
-			const desc = blocks.find((block) => block.name === node.data.name) ?? node.data;
-			const data = ref(blockInstance(node.id, desc))
-			blockMap.set(node.id, data);
-
-			node.data = data;
-			return node;
-		});
-
-		addNodes(nodes);
-		addEdges(edges);
-
-		toast.add({ severity: 'success', summary: 'Paste', detail: 'Program pasted...', life: 3000 });
+		await loadProgram(program);
 	}).catch(
 		(err) => {
 			toast.add({ severity: 'error', summary: 'Paste', detail: err, life: 3000 });
 		},
 	)
+}
+
+function onLoad(program: Program) {
+	onReset().then(async () => {
+		await loadProgram(program);
+	}).catch(
+		(err) => {
+			toast.add({ severity: 'error', summary: 'Load', detail: err, life: 3000 });
+		},
+	)
+}
+
+async function loadProgram(program: any) {
+	let { nodes, edges } = await load(program);
+
+	nodes = nodes.map((node) => {
+		const desc = blocks.find((block) => block.name === node.data.name) ?? node.data;
+		const data = ref(blockInstance(node.id, desc));
+		blockMap.set(node.id, data);
+
+		for (const [name, e] of Object.entries(node.data.inputs ?? {})) {
+			const input = e as BlockPin
+			data.value.inputs[name].value = input.value;
+			data.value.inputs[name].isConnected = input.isConnected;
+		}
+
+		for (const [name, e] of Object.entries(node.data.outputs ?? {})) {
+			const output = e as BlockPin
+			data.value.outputs[name].value = output.value;
+		}
+
+		node.data = data;
+		return node;
+	});
+
+	addNodes(nodes);
+	addEdges(edges);
+
+	toast.add({ severity: 'success', summary: 'Paste', detail: 'Program pasted...', life: 3000 });
 }
 
 </script>
@@ -212,7 +238,7 @@ function onPaste() {
 				<Controls />
 				<MiniMap></MiniMap>
 				<Panel position="bottom-center" class="controls">
-					<Toolbar @reset="onReset" @copy="onCopy" @paste="onPaste" style="min-width: 30em;" />
+					<Toolbar @reset="onReset" @copy="onCopy" @paste="onPaste" @load="onLoad" style="min-width: 30em;" />
 				</Panel>
 			</VueFlow>
 		</SplitterPanel>

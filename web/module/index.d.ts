@@ -205,6 +205,14 @@ export interface Program {
 				x: number
 				y: number
 			}
+
+			inputs?: {
+				[pinName: string]: { value?: unknown; isConnected?: boolean }
+			}
+
+			outputs?: {
+				[pinName: string]: { value?: unknown }
+			}
 		}
 	}
 

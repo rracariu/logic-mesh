@@ -15,12 +15,13 @@ export function save(ops: {
 	edges: Edge[]
 }): Program {
 	const program: Program = {
-			name: ops.name,
-			description: ops.desc,
+		name: ops.name,
+		description: ops.desc,
 	} as Program
 
 	ops.nodes.forEach((node) => {
-		const {desc} = node.data as Block
+		const data = node.data as Block
+		const { desc } = data
 		program.blocks = program.blocks || {}
 		program.blocks[node.id] = {
 			name: desc.name,
@@ -30,6 +31,27 @@ export function save(ops: {
 				y: node.position.y,
 			},
 		}
+
+		const curProgram = program.blocks[node.id]
+
+		Object.entries(data.inputs).forEach(([name, input]) => {
+			if (input.value != null) {
+				curProgram.inputs = curProgram.inputs || {}
+				curProgram.inputs[name] = {
+					value: input.value,
+					isConnected: input.isConnected,
+				}
+			}
+		})
+
+		Object.entries(data.outputs).forEach(([name, output]) => {
+			if (output.value != null) {
+				curProgram.outputs = curProgram.outputs || {}
+				curProgram.outputs[name] = {
+					value: output.value,
+				}
+			}
+		})
 	})
 
 	ops.edges.forEach((edge) => {
@@ -50,7 +72,9 @@ export function save(ops: {
  * @param program the program object
  * @returns the nodes and edges to be used in the vue-flow component
  */
-export async function load(program: Program): Promise<{ nodes: Node[]; edges: Edge[]} > {
+export async function load(
+	program: Program
+): Promise<{ nodes: Node[]; edges: Edge[] }> {
 	const nodes: Node[] = []
 	const edges: Edge[] = []
 
@@ -58,7 +82,7 @@ export async function load(program: Program): Promise<{ nodes: Node[]; edges: Ed
 		const block = program.blocks[blockUuid]
 
 		const id = await command.addBlock(block.name, blockUuid)
-		if (blockUuid !== id) { 
+		if (blockUuid !== id) {
 			throw new Error(`Block uuid mismatch: ${blockUuid} !== ${id}`)
 		}
 
@@ -72,6 +96,8 @@ export async function load(program: Program): Promise<{ nodes: Node[]; edges: Ed
 			data: {
 				name: block.name ?? '',
 				lib: block.lib ?? '',
+				inputs: block.inputs ?? {},
+				outputs: block.outputs ?? {},
 			},
 		})
 	}
@@ -79,7 +105,12 @@ export async function load(program: Program): Promise<{ nodes: Node[]; edges: Ed
 	for (const linkId in program.links) {
 		const link = program.links[linkId]
 
-		await command.createLink(link.sourceBlockUuid, link.targetBlockUuid, link.sourceBlockPinName, link.targetBlockPinName)
+		await command.createLink(
+			link.sourceBlockUuid,
+			link.targetBlockUuid,
+			link.sourceBlockPinName,
+			link.targetBlockPinName
+		)
 
 		edges.push({
 			id: linkId,
@@ -88,6 +119,22 @@ export async function load(program: Program): Promise<{ nodes: Node[]; edges: Ed
 			sourceHandle: link.sourceBlockPinName,
 			targetHandle: link.targetBlockPinName,
 		})
+	}
+
+	for (const blockUuid in program.blocks) {
+		const block = program.blocks[blockUuid]
+
+		for (const [name, input] of Object.entries(block.inputs ?? {})) {
+			if (input.value != null) {
+				await command.writeBlockInput(blockUuid, name, input.value)
+			}
+		}
+
+		for (const [name, output] of Object.entries(block.outputs ?? {})) {
+			if (output.value != null) {
+				await command.writeBlockOutput(blockUuid, name, output.value)
+			}
+		}
 	}
 
 	return { nodes, edges }

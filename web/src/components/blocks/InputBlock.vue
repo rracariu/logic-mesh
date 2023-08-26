@@ -1,17 +1,22 @@
 <script setup lang="ts">
-import InputTex from 'primevue/inputtext';
 import { Handle, Position, } from '@vue-flow/core';
-import { capitalize } from 'vue';
+import InputTex from 'primevue/inputtext';
+import { capitalize, onMounted } from 'vue';
 
-import { command } from '../../lib/Engine';
 import { Block } from '../../lib/Block';
+import { command } from '../../lib/Engine';
 
 const props = defineProps<{ data: Block }>()
 
+onMounted(() => {
+	if (props.data.inputs.in.value == null && props.data.outputs.out.value != null) {
+		props.data.inputs.in.value = props.data.outputs.out.value
+	}
+})
+
 function onInputChange(data: string) {
-	command.writeBlockOutput(props.data.id, Object.keys(props.data.outputs)[0] ?? '', data).then((val) => {
-		console.log(val);
-	})
+	props.data.outputs.out.value = data
+	command.writeBlockOutput(props.data.id, Object.keys(props.data.outputs)[0] ?? '', data)
 }
 
 </script>

@@ -207,6 +207,46 @@ impl EngineCommand {
         }
     }
 
+    /// Writes the given block input with a value
+    ///
+    /// # Arguments
+    /// * `block_uuid` - The UUID of the block to write to
+    /// * `input_name` - The name of the input to write to
+    /// * `value` - The value to write
+    ///
+    /// # Returns
+    /// The previous value of the input
+    #[wasm_bindgen(js_name = "writeBlockInput")]
+    pub async fn write_block_input(
+        &mut self,
+        block_uuid: String,
+        input_name: String,
+        value: JsValue,
+    ) -> Result<JsValue, String> {
+        match self
+            .sender
+            .send(EngineMessage::WriteBlockInputReq(
+                self.uuid,
+                Uuid::from_str(&block_uuid).unwrap_or_default(),
+                input_name,
+                serde_wasm_bindgen::from_value(value).unwrap_or_default(),
+            ))
+            .await
+        {
+            Ok(_) => match self.receiver.recv().await {
+                Some(res) => match res {
+                    EngineMessage::WriteBlockInputRes(data) => data
+                        .map(|ok| serde_wasm_bindgen::to_value(&ok))?
+                        .map_err(|err| err.to_string()),
+                    _ => Err("Invalid response".to_string()),
+                },
+                None => Err("Failed to receive message".to_string()),
+            },
+
+            Err(_) => Err("Failed to send message".to_string()),
+        }
+    }
+
     /// Get the current running engine program.
     /// The program contains the scheduled blocks, their properties, and their links.
     #[wasm_bindgen(js_name = "getProgram")]

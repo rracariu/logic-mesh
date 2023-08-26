@@ -59,6 +59,9 @@ pub enum EngineMessage<WatchEventSender: Clone> {
     WriteBlockOutputReq(Uuid, Uuid, String, Value),
     WriteBlockOutputRes(Result<Value, String>),
 
+    WriteBlockInputReq(Uuid, Uuid, String, Value),
+    WriteBlockInputRes(Result<Option<Value>, String>),
+
     WatchBlockUnsubReq(Uuid),
     WatchBlockUnsubRes(Result<Uuid, &'static str>),
 

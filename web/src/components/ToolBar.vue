@@ -1,19 +1,28 @@
 <script setup lang="ts">
-import { ref } from 'vue';
+import { onMounted, ref } from 'vue';
 
 import Toolbar from 'primevue/toolbar';
 import Button from 'primevue/button';
 import Dropdown from 'primevue/dropdown';
 
 import { command } from '../lib/Engine';
+import { examplePrograms } from '../lib/Examples';
+import { Program } from 'logic-mesh';
 
 const emit = defineEmits<{
 	(event: 'reset'): void,
 	(event: 'copy'): void
 	(event: 'paste'): void
+	(event: 'load', program: Program): void
 }>()
 
 const isRunning = ref(true)
+const curProgram = ref({} as Program)
+
+onMounted(() => {
+	curProgram.value = examplePrograms[1]
+	emit('load', curProgram.value)
+})
 
 function onPauseResume() {
 	if (isRunning.value) {
@@ -35,7 +44,8 @@ function onReset() {
 <template>
 	<Toolbar>
 		<template #start>
-			<Dropdown optionLabel="programName" placeholder="Select a Program" class="w-full md:w-14rem" disabled />
+			<Dropdown v-model="curProgram" :options="examplePrograms" optionLabel="name" placeholder="Select a Program"
+				@change="emit('load', curProgram)" class="w-full md:w-14rem" />
 		</template>
 		<template #center>
 			<Button title="Pause/Resume execution" :icon="'pi ' + (isRunning ? 'pi-pause' : 'pi-play')" rounded
