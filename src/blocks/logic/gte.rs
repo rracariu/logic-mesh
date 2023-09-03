@@ -58,9 +58,11 @@ mod test {
     async fn test_gte_block() {
         let mut block = GreaterThanEq::new();
 
-        for _ in
-            write_block_inputs(&mut [(&mut block.input1, 3.into()), (&mut block.input2, 3.into())])
-                .await
+        for _ in write_block_inputs(&mut [
+            (&mut block.input1, 3.into()),
+            (&mut block.input2, (-3).into()),
+        ])
+        .await
         {
             block.read_inputs().await;
         }
