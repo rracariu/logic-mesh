@@ -12,7 +12,7 @@ use libhaystack::val::{kind::HaystackKind, Value};
 
 use crate::{blocks::InputImpl, blocks::OutputImpl};
 
-/// Outputs if the input value is odd.
+/// Outputs true if the input value is odd.
 #[block]
 #[derive(BlockProps, Debug)]
 #[dis = "Odd"]
