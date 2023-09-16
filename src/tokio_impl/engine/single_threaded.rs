@@ -4,6 +4,7 @@ use std::{cell::Cell, cell::RefCell, collections::BTreeMap, rc::Rc};
 
 use anyhow::{anyhow, Result};
 use libhaystack::val::Value;
+
 use tokio::{
     sync::mpsc::{self, Receiver, Sender},
     task::LocalSet,
@@ -226,17 +227,24 @@ impl SingleThreadedEngine {
                             .writer()
                             .try_send(val.clone())
                             .map_err(|err| anyhow!(err))?;
+
+                        reset_target_inputs(target_block)?;
                     }
                 } else if let Some(source_output) =
                     source_block.get_output_mut(&link_data.source_block_pin_name)
                 {
                     id = connect_output(source_output, target_input).map_err(|err| anyhow!(err))?;
 
+                    // After connection, send the current value of the source output to the target input
                     if source_output.value().has_value() {
+                        // Send the current value of the source output to the
+                        // target input
                         target_input
                             .writer()
                             .try_send(source_output.value().clone())
                             .map_err(|err| anyhow!(err))?;
+
+                        reset_target_inputs(target_block)?;
                     }
                 } else {
                     return Err(anyhow!("Source Pin not found"));
@@ -591,6 +599,32 @@ fn change_of_value_check<B: Block + 'static>(
             });
         }
     }
+}
+
+/// Implements the logic for resetting the target block inputs
+/// when a link is created.
+/// This is needed because the target block would be monitoring the current set of inputs
+/// added before the link was created, and would not be aware of the new input.
+fn reset_target_inputs(target_block: &mut dyn BlockPropsType) -> Result<()> {
+    // If the target block has other connected inputs, send the current value of one of
+    // them to itself (refresh current value.) in order to trigger the block to execute.
+    if let Some(a_connected_input) = target_block.inputs().iter().find_map(|input| {
+        if input.is_connected() {
+            Some(input.name().to_string())
+        } else {
+            None
+        }
+    }) {
+        if let Some(target_input) = target_block.get_input_mut(a_connected_input.as_str()) {
+            if let Some(value) = target_input.get_value().cloned() {
+                target_input
+                    .writer()
+                    .try_send(value.clone())
+                    .map_err(|err| anyhow!(err))?;
+            }
+        }
+    }
+    Ok(())
 }
 
 #[cfg(not(target_arch = "wasm32"))]
