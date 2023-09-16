@@ -82,7 +82,7 @@ mod test {
     use crate::{base::block::Block, blocks::math::Median};
 
     #[tokio::test]
-    async fn test_average_block() {
+    async fn test_median_block() {
         let mut block = Median::new();
 
         write_block_inputs(&mut [(&mut block._inputs.get_mut(0).unwrap(), 1.into())]).await;

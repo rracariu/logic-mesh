@@ -10,7 +10,8 @@ use crate::blocks::logic::{
 };
 use crate::blocks::math::{Abs, Add, ArcTan, Cos, Sub};
 use crate::blocks::math::{
-    ArcCos, ArcSin, Average, Div, Exp, Log10, Logn, Max, Median, Min, Mod, Mul, Neg, Pow, Sin, Sqrt,
+    ArcCos, ArcSin, Average, Div, Even, Exp, Log10, Logn, Max, Median, Min, Mod, Mul, Neg, Odd,
+    Pow, Sin, Sqrt,
 };
 use crate::blocks::misc::{Random, SineWave};
 use crate::blocks::string::StrLen;
@@ -126,6 +127,8 @@ register_blocks!(
     ArcTan,
     Average,
     Median,
+    Even,
+    Odd,
     Sub,
     Mul,
     Div,
