@@ -21,7 +21,7 @@ use crate::{blocks::InputImpl, blocks::OutputImpl};
 /// if the units are not convertible, the block would be in an error state.
 #[block]
 #[derive(BlockProps, Debug)]
-#[dis = "Average"]
+#[dis = "Median"]
 #[category = "math"]
 #[input(kind = "Number", count = 16)]
 pub struct Median {
