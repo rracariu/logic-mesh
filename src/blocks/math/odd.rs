@@ -15,12 +15,12 @@ use crate::{blocks::InputImpl, blocks::OutputImpl};
 /// Outputs if the input value is odd.
 #[block]
 #[derive(BlockProps, Debug)]
-#[dis = "Even"]
+#[dis = "Odd"]
 #[category = "math"]
 pub struct Odd {
     #[input(name = "in", kind = "Number")]
     pub input: InputImpl,
-    #[output(kind = "Number")]
+    #[output(kind = "Bool")]
     pub out: OutputImpl,
 }
 

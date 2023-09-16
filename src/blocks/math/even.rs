@@ -20,7 +20,7 @@ use crate::{blocks::InputImpl, blocks::OutputImpl};
 pub struct Even {
     #[input(name = "in", kind = "Number")]
     pub input: InputImpl,
-    #[output(kind = "Number")]
+    #[output(kind = "Bool")]
     pub out: OutputImpl,
 }
 
