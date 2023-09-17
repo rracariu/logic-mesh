@@ -84,13 +84,7 @@ watch(() => props.data.inputs.in.value, () => {
 </template>
 
 <style scoped>
-[class*="handle-"] {
-	padding: 1px;
-	display: inline-table;
-	height: 1em;
-	border-radius: 10%;
-	overflow: hidden;
-}
+@import '../../assets/js-block.css';
 
 .handle-input {
 	background: var(--blue-200);

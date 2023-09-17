@@ -25,6 +25,9 @@ const InputBlock = {
 			},
 		],
 	} satisfies BlockDesc,
+	function: async (inputs: unknown[]) => {
+		return [inputs[0]]
+	},
 } satisfies JsBlock
 
 /**
@@ -52,8 +55,38 @@ const CheckboxBlock = {
 			},
 		],
 	} satisfies BlockDesc,
-	function: async () => {
-		return [false]
+	function: async (inputs: unknown[]) => {
+		return [inputs[0]]
+	},
+} satisfies JsBlock
+
+/**
+ * Block that renders a gauge for the input data
+ */
+const GaugeBlock = {
+	desc: {
+		name: 'Gauge',
+		dis: 'Gauge',
+		lib: 'ui',
+		ver: '0.0.1',
+		category: 'UI',
+		doc: 'A gauge',
+		implementation: 'external',
+		inputs: [
+			{
+				name: 'in',
+				kind: 'number',
+			},
+		],
+		outputs: [
+			{
+				name: 'out',
+				kind: 'number',
+			},
+		],
+	} satisfies BlockDesc,
+	function: async (inputs: unknown[]) => {
+		return [inputs[0]]
 	},
 } satisfies JsBlock
 
@@ -80,7 +113,8 @@ const ChartBlock = {
 } satisfies JsBlock
 
 export function registerBlocks(engine: BlocksEngine) {
-	engine.registerBlock(InputBlock.desc)
+	engine.registerBlock(InputBlock.desc, InputBlock.function)
 	engine.registerBlock(CheckboxBlock.desc, CheckboxBlock.function)
+	engine.registerBlock(GaugeBlock.desc, GaugeBlock.function)
 	engine.registerBlock(ChartBlock.desc)
 }
