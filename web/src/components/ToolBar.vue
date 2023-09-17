@@ -39,6 +39,17 @@ function onReset() {
 	emit('reset')
 }
 
+function onPaste() {
+	if (!isRunning.value) {
+		command.resumeExecution().then(() => {
+			isRunning.value = true
+			emit('paste')
+		})
+	} else {
+		emit('paste')
+	}
+}
+
 </script>
 
 <template>
@@ -54,7 +65,7 @@ function onReset() {
 		<template #end>
 			<div class="flex-grow">
 				<Button title="Copy program" :icon="'pi pi-copy'" class="m-1" @click="emit('copy')" />
-				<Button title="Paste program" :icon="'pi pi-file'" class="m-1" @click="emit('paste')" />
+				<Button title="Paste program" :icon="'pi pi-file'" class="m-1" @click="onPaste" />
 				<Button title="Reset engine" :icon="'pi pi-refresh'" rounded @click="onReset" class="m-1" />
 			</div>
 		</template>

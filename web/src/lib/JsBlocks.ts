@@ -52,7 +52,7 @@ const CheckboxBlock = {
 			},
 		],
 	} satisfies BlockDesc,
-	function: async (_inputs: unknown[]) => {
+	function: async () => {
 		return [false]
 	},
 } satisfies JsBlock
