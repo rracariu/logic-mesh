@@ -33,11 +33,11 @@ export type JsBlock = {
 	desc: BlockDesc
 
 	/**
-	 * The block function
+	 * An optional block function that is called when the block is executed.
 	 * @param inputs The block inputs that have been set
 	 * @returns The block outputs that have to be set
 	 */
-	function: (inputs: unknown[]) => Promise<unknown[]>
+	function?: (inputs: unknown[]) => Promise<unknown[]>
 }
 
 /**

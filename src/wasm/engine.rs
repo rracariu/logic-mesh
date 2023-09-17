@@ -82,7 +82,8 @@ impl BlocksEngine {
     ///
     /// # Arguments
     /// * `desc` - The description of the block
-    /// * `func` - The function that implements the block
+    /// * `func` - Optional function that implements the block
+    /// 		  logic. If not provided, the block would do nothing.
     ///
     /// # Returns
     /// The name of the block
@@ -91,7 +92,7 @@ impl BlocksEngine {
     pub fn register_block(
         &mut self,
         desc: JsValue,
-        func: js_sys::Function,
+        func: Option<js_sys::Function>,
     ) -> Result<String, String> {
         let mut blocks = BLOCKS.lock().map_err(|err| err.to_string())?;
 
@@ -107,8 +108,10 @@ impl BlocksEngine {
             }
         });
 
-        unsafe {
-            JS_FNS.insert(name.clone(), func);
+        if let Some(func) = func {
+            unsafe {
+                JS_FNS.insert(name.clone(), func);
+            }
         }
 
         Ok(name)

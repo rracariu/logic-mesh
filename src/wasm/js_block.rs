@@ -34,12 +34,12 @@ pub struct JsBlock {
     inputs: Vec<InputImpl>,
     outputs: Vec<OutputImpl>,
     state: BlockState,
-    func: js_sys::Function,
+    func: Option<js_sys::Function>,
 }
 
 impl JsBlock {
     /// Create a new instance of a block
-    pub fn new(desc: BlockDesc, func: js_sys::Function, block_id: Option<Uuid>) -> Self {
+    pub fn new(desc: BlockDesc, func: Option<js_sys::Function>, block_id: Option<Uuid>) -> Self {
         let id = block_id.unwrap_or_else(|| uuid::Uuid::new_v4());
 
         let inputs = desc
@@ -61,6 +61,49 @@ impl JsBlock {
             outputs,
             state: BlockState::Stopped,
             func,
+        }
+    }
+
+    // Call the JS function with the inputs as arguments
+    async fn call_js_function(&mut self, values: JsValue) {
+        if let Some(ref func) = self.func {
+            match func.call1(&JsValue::NULL, &values) {
+                Ok(result) => {
+                    let promise = Promise::from(result);
+                    let future = JsFuture::from(promise);
+
+                    future
+                        .await
+                        .map_err(|err| {
+                            serde_wasm_bindgen::from_value::<String>(err)
+                                .unwrap_or_else(|err| format!("{err:#?}"))
+                        })
+                        .and_then(|res| {
+                            if res.is_array() {
+                                serde_wasm_bindgen::from_value::<Vec<Value>>(res)
+                                    .map_err(|err| format!("{err:#?}"))
+                                    .and_then(|list| {
+                                        list.iter().enumerate().for_each(|(index, res)| {
+                                            if let Some(output) = self.outputs.get_mut(index) {
+                                                output.set(res.clone());
+                                            }
+                                        });
+                                        Ok(())
+                                    })
+                            } else {
+                                Ok(())
+                            }
+                        })
+                        .unwrap_or_else(|err| {
+                            log::error!("Failed to execute JS block: {err}");
+                            self.set_state(BlockState::Fault);
+                        });
+                }
+                Err(err) => {
+                    log::error!("Failed to execute JS block: {err:#?}");
+                    self.set_state(BlockState::Fault);
+                }
+            }
         }
     }
 }
@@ -200,43 +243,9 @@ impl Block for JsBlock {
             .collect::<Vec<_>>();
 
         match serde_wasm_bindgen::to_value(&values) {
-            Ok(values) => match self.func.call1(&JsValue::NULL, &values) {
-                Ok(result) => {
-                    let promise = Promise::from(result);
-                    let future = JsFuture::from(promise);
-
-                    future
-                        .await
-                        .map_err(|err| {
-                            serde_wasm_bindgen::from_value::<String>(err)
-                                .unwrap_or_else(|err| format!("{err:#?}"))
-                        })
-                        .and_then(|res| {
-                            if res.is_array() {
-                                serde_wasm_bindgen::from_value::<Vec<Value>>(res)
-                                    .map_err(|err| format!("{err:#?}"))
-                                    .and_then(|list| {
-                                        list.iter().enumerate().for_each(|(index, res)| {
-                                            if let Some(output) = self.outputs.get_mut(index) {
-                                                output.set(res.clone());
-                                            }
-                                        });
-                                        Ok(())
-                                    })
-                            } else {
-                                Ok(())
-                            }
-                        })
-                        .unwrap_or_else(|err| {
-                            log::error!("Failed to execute JS block: {err}");
-                            self.set_state(BlockState::Fault);
-                        });
-                }
-                Err(err) => {
-                    log::error!("Failed to execute JS block: {err:#?}");
-                    self.set_state(BlockState::Fault);
-                }
-            },
+            Ok(values) => {
+                self.call_js_function(values).await;
+            }
             Err(err) => {
                 log::error!("Failed to serialize input values: {}", err);
                 self.set_state(BlockState::Fault);
@@ -253,18 +262,11 @@ pub(crate) fn schedule_js_block(
     desc: &BlockDesc,
     block_id: Option<Uuid>,
 ) -> Result<Uuid> {
-    match unsafe { JS_FNS.get(desc.name.as_str()) } {
-        Some(func) => {
-            let block = JsBlock::new(desc.clone(), func.clone(), block_id);
-            let id = *block.id();
+    let func = unsafe { JS_FNS.get(desc.name.as_str()) };
+    let block = JsBlock::new(desc.clone(), func.cloned(), block_id);
+    let id = *block.id();
 
-            engine.schedule(block);
+    engine.schedule(block);
 
-            Ok(id)
-        }
-        None => Err(anyhow::format_err!(
-            "No JS function found for block {}",
-            desc.name
-        )),
-    }
+    Ok(id)
 }

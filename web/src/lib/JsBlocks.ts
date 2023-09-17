@@ -25,9 +25,6 @@ const InputBlock = {
 			},
 		],
 	} satisfies BlockDesc,
-	function: async (inputs: unknown[]) => {
-		return ['']
-	},
 } satisfies JsBlock
 
 /**
@@ -55,7 +52,7 @@ const CheckboxBlock = {
 			},
 		],
 	} satisfies BlockDesc,
-	function: async (inputs: unknown[]) => {
+	function: async (_inputs: unknown[]) => {
 		return [false]
 	},
 } satisfies JsBlock
@@ -80,13 +77,10 @@ const ChartBlock = {
 		],
 		outputs: [],
 	} satisfies BlockDesc,
-	function: async (inputs: unknown[]) => {
-		return ['']
-	},
 } satisfies JsBlock
 
 export function registerBlocks(engine: BlocksEngine) {
-	engine.registerBlock(InputBlock.desc, InputBlock.function)
+	engine.registerBlock(InputBlock.desc)
 	engine.registerBlock(CheckboxBlock.desc, CheckboxBlock.function)
-	engine.registerBlock(ChartBlock.desc, ChartBlock.function)
+	engine.registerBlock(ChartBlock.desc)
 }
