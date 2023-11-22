@@ -40,9 +40,7 @@ impl EngineCommand {
     ) -> Result<String, String> {
         match self
             .sender
-            .send(EngineMessage::AddBlockReq(
-                self.uuid, block_name, block_uuid,
-            ))
+            .send(EngineMessage::AddBlockReq(self.uuid, block_name, block_uuid))
             .await
         {
             Ok(_) => match self.receiver.recv().await {

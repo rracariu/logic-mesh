@@ -75,9 +75,8 @@ impl Engine for SingleThreadedEngine {
         &mut self,
         mut block: B,
     ) {
-        let props = Rc::new(Cell::new(BlockPropsPointer::new(
-            &mut block as &mut dyn BlockPropsType,
-        )));
+        let props =
+            Rc::new(Cell::new(BlockPropsPointer::new(&mut block as &mut dyn BlockPropsType)));
         self.block_props.insert(*block.id(), props.clone());
 
         let watchers = self.watchers.clone();
@@ -85,9 +84,7 @@ impl Engine for SingleThreadedEngine {
         self.local.spawn_local(async move {
             // Must do here also so we get the correct address
             // of the moved block instance
-            props.set(BlockPropsPointer::new(
-                &mut block as &mut dyn BlockPropsType,
-            ));
+            props.set(BlockPropsPointer::new(&mut block as &mut dyn BlockPropsType));
 
             // Tacks changes to block pins
             let mut last_pin_values = BTreeMap::<String, Value>::new();
@@ -593,10 +590,11 @@ fn change_of_value_check<B: Block + 'static>(
 
     if !changes.is_empty() {
         for sender in notification_channels.borrow().values() {
-            let _ = sender.try_send(WatchMessage {
-                block_id: *block.id(),
-                changes: changes.clone(),
-            });
+            let _ =
+                sender.try_send(WatchMessage {
+                    block_id: *block.id(),
+                    changes: changes.clone(),
+                });
         }
     }
 }
@@ -608,13 +606,15 @@ fn change_of_value_check<B: Block + 'static>(
 fn reset_target_inputs(target_block: &mut dyn BlockPropsType) -> Result<()> {
     // If the target block has other connected inputs, send the current value of one of
     // them to itself (refresh current value.) in order to trigger the block to execute.
-    if let Some(a_connected_input) = target_block.inputs().iter().find_map(|input| {
-        if input.is_connected() {
-            Some(input.name().to_string())
-        } else {
-            None
-        }
-    }) {
+    if let Some(a_connected_input) =
+        target_block.inputs().iter().find_map(|input| {
+            if input.is_connected() {
+                Some(input.name().to_string())
+            } else {
+                None
+            }
+        })
+    {
         if let Some(target_input) = target_block.get_input_mut(a_connected_input.as_str()) {
             if let Some(value) = target_input.get_value().cloned() {
                 target_input

@@ -28,6 +28,7 @@ pub enum BlockState {
 }
 
 pub trait Block: BlockConnect {
+    #[allow(async_fn_in_trait)]
     async fn execute(&mut self);
 }
 
@@ -107,11 +108,13 @@ pub fn convert_value_kind(
             let str = zinc::encode::to_zinc_string(&val)?;
             Ok(str.as_str().into())
         }
-        _ => Err(anyhow::anyhow!(
-            "Cannot convert {:?} to {:?}",
-            actual,
-            expected
-        )),
+        _ => {
+            Err(anyhow::anyhow!(
+                "Cannot convert {:?} to {:?}",
+                actual,
+                expected
+            ))
+        }
     }
 }
 

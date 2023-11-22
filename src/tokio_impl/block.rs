@@ -27,15 +27,16 @@ impl<B: Block> InputReader for B {
 
     async fn wait_on_inputs(&mut self, timeout: Duration) -> Option<usize> {
         let millis = timeout.as_millis() as u64;
-        let (result, index, _) = select_all([
-            async {
-                sleep_millis(millis).await;
-                None
-            }
-            .boxed_local(),
-            async { self.read_inputs().await }.boxed_local(),
-        ])
-        .await;
+        let (result, index, _) =
+            select_all([
+                async {
+                    sleep_millis(millis).await;
+                    None
+                }
+                .boxed_local(),
+                async { self.read_inputs().await }.boxed_local(),
+            ])
+            .await;
 
         if index != 0 {
             sleep_millis(millis).await;
@@ -68,14 +69,15 @@ pub(crate) async fn read_block_inputs<B: Block>(block: &mut B) -> Option<usize> 
         return None;
     }
 
-    let (val, idx, _) = {
-        let input_futures = inputs
-            .iter_mut()
-            .map(|input| input.receiver())
-            .collect::<Vec<_>>();
+    let (val, idx, _) =
+        {
+            let input_futures = inputs
+                .iter_mut()
+                .map(|input| input.receiver())
+                .collect::<Vec<_>>();
 
-        select_all(input_futures).await
-    };
+            select_all(input_futures).await
+        };
 
     if let Some(value) = val {
         if let Some(input) = inputs.get_mut(idx) {

@@ -1,11 +1,11 @@
 // Copyright (c) 2022-2023, Radu Racariu.
 
-use std::time::Duration;
-
 use crate::base::block::Block;
+use std::time::Duration;
 
 /// Specifies the protocol for reading
 /// block inputs
+#[allow(async_fn_in_trait)]
 pub trait InputReader: Block {
     /// Reads the connected block inputs.
     ///

@@ -33,14 +33,14 @@ impl Block for Median {
     async fn execute(&mut self) {
         self.read_inputs_until_ready().await;
 
-        let val = self
-            .inputs()
-            .into_iter()
-            .filter_map(|input| match input.get_value().as_ref() {
-                Some(Value::Number(num)) => Some(*num),
-                _ => None,
-            })
-            .collect::<Vec<Number>>();
+        let val =
+            self.inputs()
+                .into_iter()
+                .filter_map(|input| match input.get_value().as_ref() {
+                    Some(Value::Number(num)) => Some(*num),
+                    _ => None,
+                })
+                .collect::<Vec<Number>>();
 
         if let Ok(mut numbers) = convert_units(&val) {
             if self.state() != BlockState::Running {
@@ -51,7 +51,7 @@ impl Block for Median {
 
             let median = if numbers.len() % 2 == 0 {
                 let mid = numbers.len() / 2;
-                (numbers[mid].value + numbers[mid - 1].value) / 2.0
+                (numbers[mid - 1].value + numbers[mid].value) / 2.0
             } else {
                 let mid = numbers.len() / 2;
                 numbers[mid].value
@@ -60,14 +60,14 @@ impl Block for Median {
             let median = if let Some(Number {
                 value: _,
                 unit: Some(unit),
-            }) = numbers.get(0)
+            }) = numbers.first()
             {
                 Number::make_with_unit(median, unit)
             } else {
                 Number::make(median)
             };
 
-            self.out.set((median).into());
+            self.out.set(median.into());
         } else {
             self.set_state(BlockState::Fault);
         }

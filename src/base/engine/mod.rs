@@ -37,6 +37,7 @@ pub trait Engine {
 
     /// Runs the event loop of this engine
     /// an execute the blocks that where scheduled
+    #[allow(async_fn_in_trait)]
     async fn run(&mut self);
 
     /// Get a handle to this engines messaging system so external
