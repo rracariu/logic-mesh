@@ -34,6 +34,9 @@ pub struct BlockDesc {
     pub doc: String,
     /// Block implementation
     pub implementation: BlockImplementation,
+
+    /// The condition under which the block should run
+    pub run_condition: Option<BlockRunCondition>,
 }
 
 impl BlockDesc {
@@ -87,6 +90,38 @@ impl Display for BlockImplementation {
         let kind = match self {
             BlockImplementation::Native => "native",
             BlockImplementation::External => "external",
+        };
+        write!(fmt, "{kind}")
+    }
+}
+
+/// Defines the block implementation
+#[derive(Default, Debug, Clone, PartialEq)]
+pub enum BlockRunCondition {
+    /// Runs on change of inputs
+    #[default]
+    Change,
+    /// Always runs, regardless of inputs
+    Always,
+}
+
+impl TryFrom<&str> for BlockRunCondition {
+    type Error = String;
+
+    fn try_from(implementation: &str) -> Result<Self, Self::Error> {
+        match implementation {
+            "change" => Ok(BlockRunCondition::Change),
+            "always" => Ok(BlockRunCondition::Always),
+            _ => Err(format!("Invalid implementation: {implementation}")),
+        }
+    }
+}
+
+impl Display for BlockRunCondition {
+    fn fmt(&self, fmt: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let kind = match self {
+            BlockRunCondition::Change => "native",
+            BlockRunCondition::Always => "external",
         };
         write!(fmt, "{kind}")
     }

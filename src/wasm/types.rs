@@ -17,6 +17,7 @@ pub struct JsBlockPin {
 
 /// Block description as a simple struct
 #[derive(Default, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct JsBlockDesc {
     pub name: String,
     pub dis: String,
@@ -27,6 +28,7 @@ pub struct JsBlockDesc {
     pub implementation: String,
     pub inputs: Vec<JsBlockPin>,
     pub outputs: Vec<JsBlockPin>,
+    pub run_condition: Option<String>,
 }
 
 impl From<JsBlockDesc> for BlockDesc {
@@ -57,6 +59,10 @@ impl From<JsBlockDesc> for BlockDesc {
                     kind: pin.kind.as_str().try_into().unwrap_or_default(),
                 })
                 .collect(),
+
+            run_condition: desc
+                .run_condition
+                .map(|cond| cond.as_str().try_into().unwrap_or_default()),
         }
     }
 }
@@ -89,6 +95,8 @@ impl From<BlockDesc> for JsBlockDesc {
                     kind: pin.kind.to_string(),
                 })
                 .collect(),
+
+            run_condition: desc.run_condition.map(|cond| cond.to_string()),
         }
     }
 }

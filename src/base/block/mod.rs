@@ -108,6 +108,12 @@ pub fn convert_value_kind(
             let str = zinc::encode::to_zinc_string(&val)?;
             Ok(str.as_str().into())
         }
+
+        (HaystackKind::Str, _) => {
+            let str = zinc::encode::to_zinc_string(&val)?;
+            Ok(str.as_str().into())
+        }
+
         _ => {
             Err(anyhow::anyhow!(
                 "Cannot convert {:?} to {:?}",

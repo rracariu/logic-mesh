@@ -293,26 +293,29 @@ impl EngineCommand {
 
     /// Creates a watch on block changes
     #[wasm_bindgen(js_name = "createWatch")]
-    pub async fn create_watch(&mut self, callback: &js_sys::Function) -> JsValue {
+    pub async fn create_watch(&mut self, callback: &js_sys::Function) -> Result<(), String> {
         let (sender, mut receiver) = mpsc::channel(32);
 
-        if self
+        match self
             .sender
             .send(EngineMessage::WatchBlockSubReq(self.uuid, sender.clone()))
             .await
-            .is_ok()
         {
-            loop {
-                let _ = receiver.recv().await.and_then(|msg| {
-                    let js_res = serde_wasm_bindgen::to_value::<JsWatchNotification>(&msg.into());
-                    if let Ok(js_res) = js_res {
-                        let _ = callback.call1(&JsValue::NULL, &js_res);
+            Ok(_) => loop {
+                if let Some(msg) = receiver.recv().await {
+                    match serde_wasm_bindgen::to_value::<JsWatchNotification>(&msg.into())
+                        .map_err(|err| format!("Failed to deserialize watch message: {:?}", err))
+                        .and_then(|js_res| {
+                            callback
+                                .call1(&JsValue::NULL, &js_res)
+                                .map_err(|err| format!("Failed to call watch callback: {:?}", err))
+                        }) {
+                        Ok(_) => (),
+                        Err(err) => return Err(err),
                     }
-                    None::<JsValue>
-                });
-            }
-        } else {
-            JsValue::UNDEFINED
+                }
+            },
+            Err(_) => return Err("Failed to send message".to_string()),
         }
     }
 

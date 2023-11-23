@@ -4,6 +4,7 @@ use crate::base::block::{Block, BlockDesc, BlockProps, BlockStaticDesc};
 use crate::base::input::InputProps;
 
 use crate::base::engine::Engine;
+use crate::blocks::collections::GetElement;
 use crate::blocks::control::Pid;
 use crate::blocks::logic::{
     And, Equal, GreaterThan, GreaterThanEq, LessThan, LessThanEq, Not, NotEqual, Or, Xor,
@@ -148,6 +149,8 @@ register_blocks!(
     Pid,
     // String blocks
     StrLen,
+    // Collections blocks
+    GetElement,
     // Misc blocks
     Random,
     SineWave,

@@ -67,6 +67,12 @@ impl BlocksEngine {
                         kind: output.kind.to_string(),
                     })
                     .collect(),
+
+                run_condition: block
+                    .desc
+                    .run_condition
+                    .clone()
+                    .map(|cond| cond.to_string()),
             };
 
             if let Ok(desc) = serde_wasm_bindgen::to_value(&desc) {

@@ -170,6 +170,7 @@ pub(super) fn block_props_impl(ast: &syn::DeriveInput) -> TokenStream {
 
                         let desc = BlockDesc {
                             implementation: BlockImplementation::Native,
+                            run_condition: None,
                             #(#block_prop_names : #block_prop_values.to_string(),)*
                             #out_desc,
                             #input_desc

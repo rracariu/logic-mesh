@@ -1,6 +1,7 @@
 // Copyright (c) 2022-2023, Radu Racariu.
 
 use std::collections::BTreeMap;
+use std::time::Duration;
 
 use anyhow::Result;
 use js_sys::Promise;
@@ -9,10 +10,12 @@ use uuid::Uuid;
 use wasm_bindgen::JsValue;
 use wasm_bindgen_futures::JsFuture;
 
+use crate::base::block::desc::BlockRunCondition;
 use crate::base::block::{Block, BlockState, BlockStaticDesc};
 use crate::base::engine::Engine;
 use crate::base::input::input_reader::InputReader;
 
+use crate::blocks::utils::DEFAULT_SLEEP_DUR;
 use crate::{
     base::{
         block::{BlockDesc, BlockProps},
@@ -26,8 +29,8 @@ use crate::{
 type ExternFuncRegistryType = BTreeMap<String, js_sys::Function>;
 pub static mut JS_FNS: ExternFuncRegistryType = ExternFuncRegistryType::new();
 
-/// A block that is implemented in JavaScript
-/// This block is a wrapper around a JavaScript function.
+/// A block that is implemented in JavaScript.
+/// The block will delegate the evaluation to a JS function that will be called with the inputs as arguments.
 pub struct JsBlock {
     id: Uuid,
     desc: BlockDesc,
@@ -81,7 +84,6 @@ impl JsBlock {
                         .and_then(|res| {
                             if res.is_array() {
                                 serde_wasm_bindgen::from_value::<Vec<Value>>(res)
-                                    .map_err(|err| format!("{err:#?}"))
                                     .and_then(|list| {
                                         list.iter().enumerate().for_each(|(index, res)| {
                                             if let Some(output) = self.outputs.get_mut(index) {
@@ -90,17 +92,18 @@ impl JsBlock {
                                         });
                                         Ok(())
                                     })
+                                    .map_err(|err| format!("{err:#?}"))
                             } else {
                                 Ok(())
                             }
                         })
                         .unwrap_or_else(|err| {
-                            log::error!("Failed to execute JS block: {err}");
+                            log::error!("Failed to process the return of the JS function: {err}");
                             self.set_state(BlockState::Fault);
                         });
                 }
                 Err(err) => {
-                    log::error!("Failed to execute JS block: {err:#?}");
+                    log::error!("Failed to execute JS function block: {err:#?}");
                     self.set_state(BlockState::Fault);
                 }
             }
@@ -167,6 +170,7 @@ impl BlockProps for JsBlock {
             .find(|output| output.name() == name)
             .map(|output| output as _)
     }
+
     fn inputs(&self) -> Vec<&dyn Input<Reader = Self::Reader, Writer = Self::Writer>> {
         self.inputs.iter().map(|input| input as _).collect()
     }
@@ -234,7 +238,12 @@ impl BlockStaticDesc for JsBlock {
 
 impl Block for JsBlock {
     async fn execute(&mut self) {
-        self.read_inputs_until_ready().await;
+        if let Some(BlockRunCondition::Always) = self.desc.run_condition {
+            self.wait_on_inputs(Duration::from_millis(DEFAULT_SLEEP_DUR))
+                .await;
+        } else {
+            self.read_inputs_until_ready().await;
+        }
 
         let values = self
             .inputs
@@ -247,7 +256,7 @@ impl Block for JsBlock {
                 self.call_js_function(values).await;
             }
             Err(err) => {
-                log::error!("Failed to serialize input values: {}", err);
+                log::error!("Failed to serialize input values: {err}");
                 self.set_state(BlockState::Fault);
             }
         }
