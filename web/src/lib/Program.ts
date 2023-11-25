@@ -56,7 +56,7 @@ export function save(ops: {
 
 	ops.edges.forEach((edge) => {
 		program.links = program.links || {}
-		program.links[edge.data.id] = {
+		program.links[edge.data.id ?? crypto.randomUUID()] = {
 			sourceBlockPinName: edge.sourceHandle ?? '',
 			targetBlockPinName: edge.targetHandle ?? '',
 			sourceBlockUuid: edge.source,

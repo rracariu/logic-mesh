@@ -48,7 +48,18 @@ const validConnection = (conn: Connection) => {
 }
 
 const format = (value: object) => {
-	return typeof value === 'number' ? Intl.NumberFormat().format(value) : value.toString().slice(0, 8)
+	if (typeof value === 'number')
+		return Intl.NumberFormat().format(value)
+	else if (typeof value === 'string')
+		return value
+	else if (typeof value === 'boolean')
+		return value ? 'true' : 'false'
+	else if (Array.isArray(value))
+		return '[]'
+	else if (typeof value === 'object')
+		return '{}'
+	else
+		return '-'
 }
 
 </script>

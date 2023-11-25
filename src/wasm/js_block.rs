@@ -7,6 +7,7 @@ use anyhow::Result;
 use js_sys::Promise;
 use libhaystack::val::Value;
 use uuid::Uuid;
+use wasm_bindgen::JsCast;
 use wasm_bindgen::JsValue;
 use wasm_bindgen_futures::JsFuture;
 
@@ -272,7 +273,23 @@ pub(crate) fn schedule_js_block(
     block_id: Option<Uuid>,
 ) -> Result<Uuid> {
     let func = unsafe { JS_FNS.get(desc.name.as_str()) };
-    let block = JsBlock::new(desc.clone(), func.cloned(), block_id);
+
+    let func = match func {
+        Some(func) => {
+            let func = func
+                .call0(&JsValue::NULL)
+                .map_err(|err| anyhow::anyhow!("Failed to call JS function: {err:#?}"))?;
+
+            let func = func
+                .dyn_into::<js_sys::Function>()
+                .map_err(|err| anyhow::anyhow!("Value is not a function: {err:#?}"))?;
+
+            Some(func)
+        }
+        None => None,
+    };
+
+    let block = JsBlock::new(desc.clone(), func, block_id);
     let id = *block.id();
 
     engine.schedule(block);

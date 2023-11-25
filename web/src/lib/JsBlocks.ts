@@ -1,5 +1,13 @@
 import { BlockDesc, BlocksEngine, JsBlock } from 'logic-mesh'
 
+async function passThroughExecute(inputs: unknown[]): Promise<unknown[]> {
+	return [inputs[0]]
+}
+
+function passThroughFactory(): (inputs: unknown[]) => Promise<unknown[]> {
+	return passThroughExecute
+}
+
 /**
  * A Text input block
  */
@@ -25,9 +33,7 @@ const InputBlock = {
 			},
 		],
 	} satisfies BlockDesc,
-	function: async (inputs: unknown[]) => {
-		return [inputs[0]]
-	},
+	executor: passThroughFactory,
 } satisfies JsBlock
 
 /**
@@ -55,9 +61,7 @@ const CheckboxBlock = {
 			},
 		],
 	} satisfies BlockDesc,
-	function: async (inputs: unknown[]) => {
-		return [inputs[0]]
-	},
+	executor: passThroughFactory,
 } satisfies JsBlock
 
 /**
@@ -85,9 +89,7 @@ const GaugeBlock = {
 			},
 		],
 	} satisfies BlockDesc,
-	function: async (inputs: unknown[]) => {
-		return [inputs[0]]
-	},
+	executor: passThroughFactory,
 } satisfies JsBlock
 
 /**
@@ -113,8 +115,8 @@ const ChartBlock = {
 } satisfies JsBlock
 
 export function registerBlocks(engine: BlocksEngine) {
-	engine.registerBlock(InputBlock.desc, InputBlock.function)
-	engine.registerBlock(CheckboxBlock.desc, CheckboxBlock.function)
-	engine.registerBlock(GaugeBlock.desc, GaugeBlock.function)
+	engine.registerBlock(InputBlock.desc, InputBlock.executor)
+	engine.registerBlock(CheckboxBlock.desc, CheckboxBlock.executor)
+	engine.registerBlock(GaugeBlock.desc, GaugeBlock.executor)
 	engine.registerBlock(ChartBlock.desc)
 }

@@ -33,11 +33,12 @@ export type JsBlock = {
 	desc: BlockDesc
 
 	/**
-	 * An optional block function that is called when the block is executed.
-	 * @param inputs The block inputs that have been set
-	 * @returns The block outputs that have to be set
+	 * An optional block factory function that returns a function that is called when the block is executed.
+	 * @returns The execute function that is called when the block is executed.
 	 */
-	function?: (inputs: unknown[]) => Promise<unknown[]>
+	executor?: () => (
+		inputs: (unknown | undefined)[]
+	) => Promise<(unknown | undefined)[]>
 }
 
 /**
@@ -118,6 +119,16 @@ export interface BlockDesc {
 	 * The block outputs
 	 */
 	outputs: BlockPin[]
+
+	/**
+	 * The block run condition.
+	 *
+	 * If not set, the block will be executed when any of its inputs change.
+	 * Otherwise, the block will execute regularly according to the run condition.
+	 *
+	 * Default: 'change'
+	 */
+	runCondition?: 'change' | 'always'
 }
 
 /**
@@ -211,7 +222,7 @@ export interface Program {
 			}
 
 			outputs?: {
-				[pinName: string]: { value?: unknown }
+				[pinName: string]: { value?: unknown; isConnected?: boolean }
 			}
 		}
 	}
