@@ -28,14 +28,12 @@ impl Block for Keys {
         self.read_inputs_until_ready().await;
 
         match self.input.get_value() {
-            Some(Value::Dict(dict)) => {
-                self.out.set(
-                    dict.keys()
-                        .map(|k| k.as_str().into())
-                        .collect::<Vec<_>>()
-                        .into(),
-                )
-            }
+            Some(Value::Dict(dict)) => self.out.set(
+                dict.keys()
+                    .map(|k| k.as_str().into())
+                    .collect::<Vec<_>>()
+                    .into(),
+            ),
             _ => self.out.set(Vec::default().into()),
         }
     }

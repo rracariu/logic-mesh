@@ -40,7 +40,9 @@ impl EngineCommand {
     ) -> Result<String, String> {
         match self
             .sender
-            .send(EngineMessage::AddBlockReq(self.uuid, block_name, block_uuid))
+            .send(EngineMessage::AddBlockReq(
+                self.uuid, block_name, block_uuid,
+            ))
             .await
         {
             Ok(_) => match self.receiver.recv().await {
@@ -344,6 +346,15 @@ impl EngineCommand {
     pub async fn reset_engine(&mut self) -> Result<(), String> {
         self.sender
             .send(EngineMessage::Reset)
+            .await
+            .map_err(|err| err.to_string())
+    }
+
+    /// Stop the engine's execution
+    #[wasm_bindgen(js_name = "stopEngine")]
+    pub async fn stop_engine(&mut self) -> Result<(), String> {
+        self.sender
+            .send(EngineMessage::Shutdown)
             .await
             .map_err(|err| err.to_string())
     }

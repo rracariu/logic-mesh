@@ -4,11 +4,11 @@ import Knob from 'primevue/knob';
 
 import { Handle, Position, } from '@vue-flow/core';
 import { capitalize } from 'vue';
-
 import { Block } from '../../lib/Block';
-import { command } from '../../lib/Engine';
+import { useEngine } from '../../lib/Engine';
 
 const props = defineProps<{ data: Block }>()
+const { command } = useEngine()
 
 function onChange(data: string) {
 	props.data.outputs.out.value = data

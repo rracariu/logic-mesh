@@ -18,20 +18,20 @@ crate-type = ["cdylib", "rlib"]
 [dependencies]
 logic_mesh_block_macro = { path = "block_macro", version = "0.1.2" }
 serde = { version = "^1.0", features = ["derive"] }
-libhaystack = { version = "^1.0.12", default-features = false, features = [
+libhaystack = { version = "^1.0.13", default-features = false, features = [
 	"value",
 	"zinc",
 	"json",
 ] }
-uuid = { version = "^1.3.4", features = ["v4"] }
+uuid = { version = "^1.6", features = ["v4"] }
 lazy_static = "^1.4.0"
-futures = "^0.3.28"
+futures = "^0.3.29"
 rand = "^0.8.5"
-anyhow = "^1.0.71"
-log = "0.4.19"
+anyhow = "^1.0.75"
+log = "0.4.20"
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-tokio = { version = "^1.28.2", features = [
+tokio = { version = "^1.34.0", features = [
 	"rt-multi-thread",
 	"sync",
 	"time",
@@ -42,18 +42,18 @@ tokio = { version = "^1.28.2", features = [
 default = ["console_error_panic_hook"]
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
-tokio = { version = "^1.28.2", features = ["rt", "sync", "time", "macros"] }
-wasm-bindgen = { version = "^0.2.87", features = ["serde-serialize"] }
-serde-wasm-bindgen = "^0.5.0"
-js-sys = "0.3.64"
-web-sys = { version = "0.3.64", features = ["Window"] }
-wasm-bindgen-futures = "^0.4.37"
+tokio = { version = "^1.34.0", features = ["rt", "sync", "time", "macros"] }
+wasm-bindgen = { version = "^0.2.88", features = ["serde-serialize"] }
+serde-wasm-bindgen = "^0.6.1"
+js-sys = "0.3.65"
+web-sys = { version = "0.3.65", features = ["Window"] }
+wasm-bindgen-futures = "^0.4.38"
 wasm-bindgen-console-logger = "0.1.1"
 
 console_error_panic_hook = { version = "^0.1.7", optional = true }
 
 [dev-dependencies]
-wasm-bindgen-test = "^0.3.37"
+wasm-bindgen-test = "^0.3.38"
 
 [profile.release]
 #debug = true

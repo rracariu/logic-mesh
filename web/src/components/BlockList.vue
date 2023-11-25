@@ -34,7 +34,7 @@ const blocksForCategory = (category: string) =>
 	<div class="flex flex-column w-full gap-1">
 		<InputText v-model="blockSearch" placeholder="Search block..." class="w-full" />
 		<ScrollPanel style="width: 100%; height: 90vh" class="scrollbar">
-			<Accordion :multiple="true" :activeIndex="[0]">
+			<Accordion :multiple="true" :activeIndex="blockSearch.length > 0 ? [...Array(categories.size).keys()] : []">
 				<AccordionTab v-for="(category) in categories" :header="capitalize(category)">
 					<Button v-for="block of blocksForCategory(category)" :key="block.name" :label="capitalize(block.dis)"
 						:title="block.doc" @click="$emit('addBlock', block)" class="m-1 w-min" text raised>

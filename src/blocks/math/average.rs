@@ -33,14 +33,14 @@ impl Block for Average {
     async fn execute(&mut self) {
         self.read_inputs_until_ready().await;
 
-        let val =
-            self.inputs()
-                .into_iter()
-                .filter_map(|input| match input.get_value().as_ref() {
-                    Some(Value::Number(num)) => Some(*num),
-                    _ => None,
-                })
-                .collect::<Vec<Number>>();
+        let val = self
+            .inputs()
+            .into_iter()
+            .filter_map(|input| match input.get_value().as_ref() {
+                Some(Value::Number(num)) => Some(*num),
+                _ => None,
+            })
+            .collect::<Vec<Number>>();
 
         if let Ok(numbers) = convert_units(&val) {
             if self.state() != BlockState::Running {

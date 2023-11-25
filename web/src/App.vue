@@ -1,25 +1,30 @@
 <script setup lang="ts">
 import { Background } from '@vue-flow/background';
 import { Controls } from '@vue-flow/controls';
-import { Connection, EdgeMouseEvent, NodeMouseEvent, OnConnectStartParams, Panel, VueFlow, useVueFlow } from '@vue-flow/core';
+import { Connection, EdgeMouseEvent, OnConnectStartParams, Panel, VueFlow, useEdge, useVueFlow } from '@vue-flow/core';
 import { MiniMap } from '@vue-flow/minimap';
 
 import { useClipboard } from '@vueuse/core';
 
 import Splitter from 'primevue/splitter';
 import SplitterPanel from 'primevue/splitterpanel';
+import PrimePanel from 'primevue/panel';
 import Toast from 'primevue/toast';
 import { useToast } from "primevue/usetoast";
 
+import { BlockPin, Program } from 'logic-mesh';
+import ProgressBar from 'primevue/progressbar';
+import Textarea from 'primevue/textarea';
 import { Ref, onMounted, ref } from 'vue';
 import BlockList from './components/BlockList.vue';
 import BlockTemplate from './components/BlockNode.vue';
 import Toolbar from './components/ToolBar.vue';
 import { Block, blockInstance } from './lib/Block';
-import { BlockDesc, BlockNotification, LinkData, blocks, command, startWatch } from './lib/Engine';
+import type { BlockDesc, BlockNotification, EngineCommand, LinkData } from 'logic-mesh';
 import { currentBlock, currentLink } from './lib/Model';
 import { load, save } from './lib/Program';
-import { BlockPin, Program } from 'logic-mesh';
+import { useEngine } from './lib/Engine';
+
 
 const toast = useToast();
 
@@ -27,7 +32,35 @@ const { edges, nodes, removeEdges, addNodes, addEdges, findNode, removeNodes, de
 const blockMap = new Map<string, Ref<Block>>()
 deleteKeyCode.value = null
 
+const { engine, blocks, command, startWatch } = useEngine()
+let engineRunning = false
+
 onMounted(() => {
+	if (!engineRunning) {
+
+		engine.run()
+
+		startWatch((notification: BlockNotification) => {
+			const block = blockMap.get(notification.id)
+
+			if (!block || !notification.changes.length) {
+				return
+			}
+
+			notification.changes.forEach((change) => {
+				if (change.source === 'input') {
+					edges.value.filter((edge) => edge.target === block.value.id && edge.targetHandle === change.name)
+						.forEach((edge) => {
+							edge.animated = true
+						})
+				}
+
+				const pins = change.source === 'input' ? block.value.inputs : block.value.outputs
+				pins[change.name].value = change.value
+			})
+		})
+	}
+
 	onkeydown = (event: KeyboardEvent) => {
 		if (event.key === 'Delete') {
 			if (currentBlock.value) {
@@ -44,26 +77,6 @@ onMounted(() => {
 			}
 		}
 	}
-})
-
-startWatch((notification: BlockNotification) => {
-	const block = blockMap.get(notification.id)
-
-	if (!block || !notification.changes.length) {
-		return
-	}
-
-	notification.changes.forEach((change) => {
-		if (change.source === 'input') {
-			edges.value.filter((edge) => edge.target === block.value.id && edge.targetHandle === change.name)
-				.forEach((edge) => {
-					edge.animated = true
-				})
-		}
-
-		const pins = change.source === 'input' ? block.value.inputs : block.value.outputs
-		pins[change.name].value = change.value
-	})
 })
 
 const addBlock = (desc: BlockDesc) => {
@@ -136,7 +149,7 @@ const onConnectStart = (conn: OnConnectStartParams) => {
 	connSource = conn
 }
 
-const onBlockClick = (event: NodeMouseEvent) => {
+const onBlockClick = (event: any) => {
 	currentLink.value = undefined
 	currentBlock.value = event.node
 }
@@ -160,7 +173,12 @@ async function onReset() {
 function onCopy() {
 	const program = save({ name: 'test', nodes: nodes.value, edges: edges.value })
 	const { copy } = useClipboard()
-	copy(JSON.stringify(program))
+	copy(JSON.stringify(program, (_, value) => {
+		if (typeof value === 'number') {
+			return parseFloat(value.toFixed(2))
+		}
+		return value
+	}))
 
 	toast.add({ severity: 'success', summary: 'Copy', detail: 'Program copied...', life: 3000 });
 }
@@ -193,28 +211,66 @@ async function loadProgram(program: any) {
 
 	nodes = nodes.map((node) => {
 		const desc = blocks.find((block) => block.name === node.data.name) ?? node.data;
-		const data = ref(blockInstance(node.id, desc));
-		blockMap.set(node.id, data);
+		const block = ref(blockInstance(node.id, desc));
+		blockMap.set(node.id, block);
 
 		for (const [name, e] of Object.entries(node.data.inputs ?? {})) {
 			const input = e as BlockPin
-			data.value.inputs[name].value = input.value;
-			data.value.inputs[name].isConnected = input.isConnected;
+			block.value.inputs[name].value = input.value;
+			block.value.inputs[name].isConnected = input.isConnected;
 		}
 
 		for (const [name, e] of Object.entries(node.data.outputs ?? {})) {
 			const output = e as BlockPin
-			data.value.outputs[name].value = output.value;
+			block.value.outputs[name].value = output.value;
+			block.value.outputs[name].isConnected = output.isConnected;
 		}
 
-		node.data = data;
+		node.data = block;
 		return node;
 	});
 
 	addNodes(nodes);
 	addEdges(edges);
 
-	toast.add({ severity: 'success', summary: 'Paste', detail: 'Program pasted...', life: 3000 });
+	toast.add({ severity: 'success', summary: 'Load', detail: 'Program loaded...', life: 3000 });
+}
+
+// AI
+
+const clientId = crypto.randomUUID()
+const prompt = ref('')
+const processing = ref(false)
+
+async function assistantPrompt() {
+	if (!prompt.value) {
+		return
+	}
+
+	processing.value = true
+
+	const response = await fetch('/api/blocks/builder', {
+		method: 'POST',
+		headers: {
+			'Content-Type': 'application/json'
+		},
+		body: JSON.stringify({ prompt: prompt.value, clientId })
+	})
+
+	const json = await response.json()
+
+	let program = json.messages.data[0].content[0].text.value as string
+
+	program = program.replace('```json\n', '');
+	program = program.replace('```', '');
+	program = program.replace(/\/\/[\s\S]+/g, '');
+
+	console.log(program)
+
+	await onReset()
+	await loadProgram(JSON.parse(program))
+
+	processing.value = false
 }
 
 </script>
@@ -239,6 +295,13 @@ async function loadProgram(program: any) {
 				<MiniMap></MiniMap>
 				<Panel position="bottom-center" class="controls">
 					<Toolbar @reset="onReset" @copy="onCopy" @paste="onPaste" @load="onLoad" style="min-width: 30em;" />
+				</Panel>
+				<Panel position="top-left" class="controls">
+					<PrimePanel header="Assistant" toggleable :collapsed="true">
+						<ProgressBar v-if="processing" mode="indeterminate" style="height: 3px;" />
+						<Textarea v-model="prompt" placeholder="Type assistant instructions..." :disabled="processing"
+							rows="5" cols="30" @keydown.stop.prevent.enter="assistantPrompt()" />
+					</PrimePanel>
 				</Panel>
 			</VueFlow>
 		</SplitterPanel>

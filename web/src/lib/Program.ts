@@ -1,7 +1,9 @@
 import { Edge, Node } from '@vue-flow/core'
 import { Program } from 'logic-mesh'
 import { Block } from './Block'
-import { command } from './Engine'
+import { useEngine } from './Engine'
+
+const { command } = useEngine()
 
 /**
  * Save the program to a Program object

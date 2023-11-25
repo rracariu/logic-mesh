@@ -2,11 +2,11 @@
 import { Handle, Position, } from '@vue-flow/core';
 import InputTex from 'primevue/inputtext';
 import { capitalize, onMounted } from 'vue';
-
 import { Block } from '../../lib/Block';
-import { command } from '../../lib/Engine';
+import { useEngine } from '../../lib/Engine';
 
 const props = defineProps<{ data: Block }>()
+const { command } = useEngine()
 
 onMounted(() => {
 	if (props.data.inputs.in.value == null && props.data.outputs.out.value != null) {

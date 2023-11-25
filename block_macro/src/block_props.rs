@@ -205,10 +205,9 @@ fn create_block_input_fields_init(
             .iter()
             .map(|(name, props)| props.get("name").cloned().unwrap_or(name.clone()));
 
-        let kind =
-            block_input_props.iter().map(|(_, props)| {
-                format_ident!("{}", props.get("kind").cloned().unwrap_or("Null".into()))
-            });
+        let kind = block_input_props.iter().map(|(_, props)| {
+            format_ident!("{}", props.get("kind").cloned().unwrap_or("Null".into()))
+        });
 
         quote! {
             #(#input_field: InputImpl::new(#input_name, HaystackKind::#kind, uuid.clone())),*
@@ -292,10 +291,9 @@ fn create_block_outputs_field_init(
             .iter()
             .map(|(name, props)| props.get("name").cloned().unwrap_or(name.clone()));
 
-        let kind =
-            block_output_props.iter().map(|(_, props)| {
-                format_ident!("{}", props.get("kind").cloned().unwrap_or("Null".into()))
-            });
+        let kind = block_output_props.iter().map(|(_, props)| {
+            format_ident!("{}", props.get("kind").cloned().unwrap_or("Null".into()))
+        });
 
         quote! {
             #(#out_field: OutputImpl::new_named(#output_name, HaystackKind::#kind, uuid)),*
@@ -323,9 +321,10 @@ fn create_input_members_ref(
                 TokenTree::from(format_ident!("iter_mut")),
             )
         } else {
-            let empty = TokenTree::Group(
-                Group::new(proc_macro2::Delimiter::None, TokenStream::default().into())
-            );
+            let empty = TokenTree::Group(Group::new(
+                proc_macro2::Delimiter::None,
+                TokenStream::default().into(),
+            ));
 
             (empty, TokenTree::from(format_ident!("iter")))
         };
@@ -360,7 +359,10 @@ fn create_outputs_member_ref(
         let borrow = if mutable {
             TokenTree::from(format_ident!("mut"))
         } else {
-            TokenTree::Group(Group::new(proc_macro2::Delimiter::None, TokenStream::default().into()))
+            TokenTree::Group(Group::new(
+                proc_macro2::Delimiter::None,
+                TokenStream::default().into(),
+            ))
         };
 
         quote! {

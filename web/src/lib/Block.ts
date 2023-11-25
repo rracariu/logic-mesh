@@ -29,7 +29,7 @@ export function blockInstance(id: string, desc: BlockDesc): Block {
 
 /**
  * A block instance.
- **/
+ */
 export interface Block {
 	id: string
 

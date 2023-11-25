@@ -30,7 +30,7 @@ impl Block for Length {
         match self.input.get_value() {
             Some(Value::Dict(dict)) => self.out.set((dict.len() as f64).into()),
             Some(Value::List(list)) => self.out.set((list.len() as f64).into()),
-            Some(Value::Str(str)) => self.out.set((str.len() as f64).into()),
+            Some(Value::Str(str)) => self.out.set((str.value.len() as f64).into()),
             _ => self.out.set(0.into()),
         }
     }

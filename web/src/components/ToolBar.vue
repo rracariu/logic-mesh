@@ -5,9 +5,9 @@ import Toolbar from 'primevue/toolbar';
 import Button from 'primevue/button';
 import Dropdown from 'primevue/dropdown';
 
-import { command } from '../lib/Engine';
 import { examplePrograms } from '../lib/Examples';
 import { Program } from 'logic-mesh';
+import { useEngine } from '../lib/Engine';
 
 const emit = defineEmits<{
 	(event: 'reset'): void,
@@ -16,12 +16,14 @@ const emit = defineEmits<{
 	(event: 'load', program: Program): void
 }>()
 
+const { command } = useEngine()
+
 const isRunning = ref(true)
 const curProgram = ref({} as Program)
 
 onMounted(() => {
 	curProgram.value = examplePrograms[1]
-	emit('load', curProgram.value)
+	//emit('load', curProgram.value)
 })
 
 function onPauseResume() {

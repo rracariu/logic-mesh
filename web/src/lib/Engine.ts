@@ -1,23 +1,35 @@
-import { BlockNotification, initEngine } from 'logic-mesh'
+import {
+	BlockDesc,
+	BlockNotification,
+	BlocksEngine,
+	EngineCommand,
+	initEngine,
+} from 'logic-mesh'
 import { registerBlocks } from './JsBlocks'
 
-export type { BlockNotification, BlockDesc, LinkData } from 'logic-mesh'
+let engine: BlocksEngine
+let blocks: BlockDesc[]
+let command: EngineCommand
 
-export const engine = initEngine()
+export function useEngine() {
+	if (!engine) {
+		engine = initEngine()
+		// Register JS blocks
+		registerBlocks(engine)
+		blocks = engine.listBlocks()
+		command = engine.engineCommand()
+	}
 
-// Register JS blocks
-registerBlocks(engine)
+	function startWatch(callback: (notification: BlockNotification) => void) {
+		const watchCommand = engine.engineCommand()
 
-export const blocks = engine.listBlocks()
-export const command = engine.engineCommand()
+		watchCommand.createWatch(callback)
+	}
 
-export function startWatch(
-	callback: (notification: BlockNotification) => void
-) {
-	const watchCommand = engine.engineCommand()
-
-	watchCommand.createWatch(callback)
+	return {
+		engine,
+		blocks,
+		command,
+		startWatch,
+	}
 }
-
-// Start the engine
-engine.run()

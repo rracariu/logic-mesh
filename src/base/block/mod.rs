@@ -114,13 +114,11 @@ pub fn convert_value_kind(
             Ok(str.as_str().into())
         }
 
-        _ => {
-            Err(anyhow::anyhow!(
-                "Cannot convert {:?} to {:?}",
-                actual,
-                expected
-            ))
-        }
+        _ => Err(anyhow::anyhow!(
+            "Cannot convert {:?} to {:?}",
+            actual,
+            expected
+        )),
     }
 }
 
