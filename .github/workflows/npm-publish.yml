@@ -9,21 +9,21 @@ jobs:
     name: Publish npm package
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
-      - uses: actions/setup-node@v3
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
-            node-version: latest
+          node-version: latest
 
       - name: wasm-build
         run: npm install -g wasm-pack && wasm-pack build --release --out-dir ./web/module/pkg
 
       - name: copy build file
         run: mv ./web/module/pkg/*.{js,ts,wasm} ./web/module
-      
+
       - name: sync package version
         run: npm version $(node -p "require('./pkg/package.json').version") --allow-same-version && rm -rf ./pkg
         working-directory: ./web/module
- 
+
       - name: npmrc
         run: echo "//registry.npmjs.org/:_authToken=${{secrets.NPM_TOKEN}}" > ./web/module/.npmrc
 

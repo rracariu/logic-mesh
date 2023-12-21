@@ -1,29 +1,26 @@
 <script setup lang="ts">
 import { Background } from '@vue-flow/background';
 import { Controls } from '@vue-flow/controls';
-import { Connection, EdgeMouseEvent, OnConnectStartParams, Panel, VueFlow, useEdge, useVueFlow } from '@vue-flow/core';
+import { Connection, EdgeMouseEvent, OnConnectStartParams, Panel, VueFlow, useVueFlow } from '@vue-flow/core';
 import { MiniMap } from '@vue-flow/minimap';
 
 import { useClipboard } from '@vueuse/core';
 
 import Splitter from 'primevue/splitter';
 import SplitterPanel from 'primevue/splitterpanel';
-import PrimePanel from 'primevue/panel';
 import Toast from 'primevue/toast';
 import { useToast } from "primevue/usetoast";
 
+import type { BlockDesc, BlockNotification, LinkData } from 'logic-mesh';
 import { BlockPin, Program } from 'logic-mesh';
-import ProgressBar from 'primevue/progressbar';
-import Textarea from 'primevue/textarea';
 import { Ref, onMounted, ref } from 'vue';
 import BlockList from './components/BlockList.vue';
 import BlockTemplate from './components/BlockNode.vue';
 import Toolbar from './components/ToolBar.vue';
 import { Block, blockInstance } from './lib/Block';
-import type { BlockDesc, BlockNotification, EngineCommand, LinkData } from 'logic-mesh';
+import { useEngine } from './lib/Engine';
 import { currentBlock, currentLink } from './lib/Model';
 import { load, save } from './lib/Program';
-import { useEngine } from './lib/Engine';
 
 
 const toast = useToast();
@@ -236,43 +233,6 @@ async function loadProgram(program: any) {
 	toast.add({ severity: 'success', summary: 'Load', detail: 'Program loaded...', life: 3000 });
 }
 
-// AI
-
-const clientId = crypto.randomUUID()
-const prompt = ref('')
-const processing = ref(false)
-
-async function assistantPrompt() {
-	if (!prompt.value) {
-		return
-	}
-
-	processing.value = true
-
-	const response = await fetch('/api/blocks/builder', {
-		method: 'POST',
-		headers: {
-			'Content-Type': 'application/json'
-		},
-		body: JSON.stringify({ prompt: prompt.value, clientId })
-	})
-
-	const json = await response.json()
-
-	let program = json.messages.data[0].content[0].text.value as string
-
-	program = program.replace('```json\n', '');
-	program = program.replace('```', '');
-	program = program.replace(/\/\/[\s\S]+/g, '');
-
-	console.log(program)
-
-	await onReset()
-	await loadProgram(JSON.parse(program))
-
-	processing.value = false
-}
-
 </script>
 
 <template>
@@ -295,13 +255,6 @@ async function assistantPrompt() {
 				<MiniMap></MiniMap>
 				<Panel position="bottom-center" class="controls">
 					<Toolbar @reset="onReset" @copy="onCopy" @paste="onPaste" @load="onLoad" style="min-width: 30em;" />
-				</Panel>
-				<Panel position="top-left" class="controls">
-					<PrimePanel header="Assistant" toggleable :collapsed="true">
-						<ProgressBar v-if="processing" mode="indeterminate" style="height: 3px;" />
-						<Textarea v-model="prompt" placeholder="Type assistant instructions..." :disabled="processing"
-							rows="5" cols="30" @keydown.stop.prevent.enter="assistantPrompt()" />
-					</PrimePanel>
 				</Panel>
 			</VueFlow>
 		</SplitterPanel>
