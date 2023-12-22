@@ -47,11 +47,11 @@ const validConnection = (conn: Connection) => {
 	return conn.source !== conn.target
 }
 
-const format = (value: object) => {
+const format = (value: unknown) => {
 	if (typeof value === 'number')
 		return Intl.NumberFormat().format(value)
 	else if (typeof value === 'string')
-		return value
+		return value.slice(0, 5)
 	else if (typeof value === 'boolean')
 		return value ? 'true' : 'false'
 	else if (Array.isArray(value))

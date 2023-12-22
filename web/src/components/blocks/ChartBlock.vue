@@ -5,6 +5,7 @@ import { Handle, Position, } from '@vue-flow/core';
 import { capitalize, onMounted, watch } from 'vue';
 
 import { Block } from '../../lib/Block';
+import BlockCommons from '../BlockCommons.vue';
 
 const props = defineProps<{ data: Block }>()
 
@@ -70,17 +71,19 @@ watch(() => props.data.inputs.in.value, () => {
 </script>
 
 <template>
-	<div class="flex">
-		<Handle :id="Object.keys(data.inputs)[0] ?? 'in'" type="target" :position="Position.Left" class="handle-input" />
+	<BlockCommons :data="data">
+		<template #body>
+			<Handle :id="Object.keys(data.inputs)[0] ?? 'in'" type="target" :position="Position.Left"
+				class="handle-input" />
 
-		<div class="flex align-items-center justify-content-center m-1 border-round">
-			{{ capitalize(Object.keys(data.inputs)[0] ?? '') }}
-		</div>
+			<div class="flex align-items-center justify-content-center m-1 border-round">
+				{{ capitalize(Object.keys(data.inputs)[0] ?? '') }}
+			</div>
 
 
-		<canvas :id="chartId" width="200" height="100" />
-
-	</div>
+			<canvas :id="chartId" width="200" height="100" />
+		</template>
+	</BlockCommons>
 </template>
 
 <style scoped>

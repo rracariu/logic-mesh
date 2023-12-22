@@ -5,3 +5,9 @@
 	border-radius: 10%;
 	overflow: hidden;
 }
+
+.header {
+	border-bottom: 1px solid var(--surface-200);
+	border-radius: 0px !important;
+	width: 100%;
+}
