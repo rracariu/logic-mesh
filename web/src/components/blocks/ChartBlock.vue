@@ -72,17 +72,14 @@ watch(() => props.data.inputs.in.value, () => {
 
 <template>
 	<BlockCommons :data="data">
-		<template #body>
-			<Handle :id="Object.keys(data.inputs)[0] ?? 'in'" type="target" :position="Position.Left"
-				class="handle-input" />
+		<Handle :id="Object.keys(data.inputs)[0] ?? 'in'" type="target" :position="Position.Left" class="handle-input" />
 
-			<div class="flex align-items-center justify-content-center m-1 border-round">
-				{{ capitalize(Object.keys(data.inputs)[0] ?? '') }}
-			</div>
+		<div class="flex align-items-center justify-content-center m-1 border-round">
+			{{ capitalize(Object.keys(data.inputs)[0] ?? '') }}
+		</div>
 
+		<canvas :id="chartId" width="200" height="100" />
 
-			<canvas :id="chartId" width="200" height="100" />
-		</template>
 	</BlockCommons>
 </template>
 

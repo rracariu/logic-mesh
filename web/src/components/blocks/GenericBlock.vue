@@ -3,7 +3,7 @@ import { Connection, Handle, Position, } from '@vue-flow/core';
 
 import { computed } from 'vue';
 import { Block } from '../../lib/Block';
-import { currentBlock } from '../../lib/Model';
+import BlockCommons from '../BlockCommons.vue';
 
 const props = defineProps<{ data: Block }>()
 
@@ -34,13 +34,7 @@ const inputPins = computed(() => {
 })
 
 const blockStyle = computed(() => {
-	let css = `width: 100%; height: ${Object.keys(inputPins.value).length * 1.3 + 3.0}em; `
-
-	if (currentBlock.value?.data.id === props.data.id) {
-		css += 'box-shadow: 2px 2px 7px 3px var(--surface-200);'
-	}
-
-	return css
+	return `width: 100%; height: ${Object.keys(inputPins.value).length * 1.3 + 3.0}em;`
 })
 
 const validConnection = (conn: Connection) => {
@@ -65,33 +59,25 @@ const format = (value: unknown) => {
 </script>
 
 <template>
-	<div :style="blockStyle">
-		<div class="header">
-			<label :title="data.desc.doc"> {{ data.desc.name }} </label>
+	<BlockCommons :data="data">
+		<div :style="blockStyle">
+			<Handle v-for="(input, name, index) in inputPins" :key="name" :id="input.name"
+				:is-valid-connection="validConnection" type="target" :position="Position.Left" :style="handlePos(index)"
+				class="block-input">
+				{{ name }} {{ input.value != null ? `${format(input.value)}` : '' }}
+			</Handle>
+
+
+			<Handle v-for="(output, name, index) in data.outputs" :key="name" :id="output.name"
+				:is-valid-connection="validConnection" type="source" :position="Position.Right" class="block-output"
+				:style="handlePos(index)">
+				{{ name }} {{ output.value != null ? `${format(output.value)}` : '' }}
+			</Handle>
 		</div>
-		<Handle v-for="(input, name, index) in inputPins" :key="name" :id="input.name"
-			:is-valid-connection="validConnection" type="target" :position="Position.Left" :style="handlePos(index)"
-			class="block-input">
-			{{ name }} {{ input.value != null ? `${format(input.value)}` : '' }}
-		</Handle>
-
-
-		<Handle v-for="(output, name, index) in data.outputs" :key="name" :id="output.name"
-			:is-valid-connection="validConnection" type="source" :position="Position.Right" class="block-output"
-			:style="handlePos(index)">
-			{{ name }} {{ output.value != null ? `${format(output.value)}` : '' }}
-		</Handle>
-	</div>
+	</BlockCommons>
 </template>
 
 <style scoped>
-.header {
-	border-bottom: 1px solid var(--surface-200);
-	border-radius: 0px !important;
-	width: 100%;
-	text-align: center;
-}
-
 [class*="block-"] {
 	font-size: x-small;
 	padding: 1px;

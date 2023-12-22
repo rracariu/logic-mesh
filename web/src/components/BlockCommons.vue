@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import { Block } from '../lib/Block';
-import { currentBlock } from '../lib/Model';
+import { currentBlock, removeBlock } from '../lib/Model';
 import Button from 'primevue/button';
 
 const props = defineProps<{ data: Block }>()
@@ -11,15 +11,13 @@ const mainBlockClass = computed(() =>
 )
 
 function remove() {
-	if (currentBlock.value?.data.id === props.data.id) {
-		dispatchEvent(new KeyboardEvent("keydown", { key: "Delete" }))
-	}
+	removeBlock(props.data.id)
 }
 
 </script>
 
 <template>
-	<div :class="mainBlockClass">
+	<div style="width: 100%" :class="mainBlockClass">
 		<div class="flex justify-content-start header">
 			<div class="flex flex-grow-1 align-items-center justify-content-center">
 				<label :title="data.desc.doc"> {{ data.desc.name }} </label>
@@ -29,8 +27,8 @@ function remove() {
 					text rounded @click="remove" />
 			</div>
 		</div>
-		<div class="flex">
-			<slot name="body"></slot>
+		<div class="flex min-w-full">
+			<slot></slot>
 		</div>
 	</div>
 </template>

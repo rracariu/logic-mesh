@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { Background } from '@vue-flow/background';
 import { Controls } from '@vue-flow/controls';
-import { Connection, EdgeMouseEvent, OnConnectStartParams, Panel, VueFlow, useVueFlow } from '@vue-flow/core';
+import { Connection, EdgeMouseEvent, OnConnectStartParams, Panel, VueFlow } from '@vue-flow/core';
 import { MiniMap } from '@vue-flow/minimap';
 
 import { useClipboard } from '@vueuse/core';
@@ -11,25 +11,22 @@ import SplitterPanel from 'primevue/splitterpanel';
 import Toast from 'primevue/toast';
 import { useToast } from "primevue/usetoast";
 
-import type { BlockDesc, BlockNotification, LinkData } from 'logic-mesh';
+import type { BlockNotification, LinkData } from 'logic-mesh';
 import { BlockPin, Program } from 'logic-mesh';
-import { Ref, onMounted, ref } from 'vue';
+import { onMounted, ref } from 'vue';
 import BlockList from './components/BlockList.vue';
 import BlockTemplate from './components/BlockNode.vue';
 import Toolbar from './components/ToolBar.vue';
-import { Block, blockInstance } from './lib/Block';
+import { blockInstance } from './lib/Block';
 import { useEngine } from './lib/Engine';
-import { currentBlock, currentLink } from './lib/Model';
+import { addBlock, currentBlock, currentLink, removeBlock, useFlowModel, blockInstances } from './lib/Model';
 import { load, save } from './lib/Program';
 
 
 const toast = useToast();
-
-const { edges, nodes, removeEdges, addNodes, addEdges, findNode, removeNodes, deleteKeyCode } = useVueFlow()
-const blockMap = new Map<string, Ref<Block>>()
-deleteKeyCode.value = null
-
+const { edges, nodes, removeEdges, addNodes, addEdges, removeNodes, deleteKeyCode } = useFlowModel()
 const { engine, blocks, command, startWatch } = useEngine()
+
 let engineRunning = false
 
 onMounted(() => {
@@ -38,7 +35,7 @@ onMounted(() => {
 		engine.run()
 
 		startWatch((notification: BlockNotification) => {
-			const block = blockMap.get(notification.id)
+			const block = blockInstances.get(notification.id)
 
 			if (!block || !notification.changes.length) {
 				return
@@ -58,12 +55,11 @@ onMounted(() => {
 		})
 	}
 
+	deleteKeyCode.value = null
 	onkeydown = (event: KeyboardEvent) => {
 		if (event.key === 'Delete') {
 			if (currentBlock.value) {
-				removeNodes([currentBlock.value.data.id])
-				command.removeBlock(currentBlock.value.data.id)
-				blockMap.delete(currentBlock.value.data.id)
+				removeBlock(currentBlock.value.id)
 
 				currentBlock.value = undefined
 			} else if (currentLink.value) {
@@ -75,29 +71,6 @@ onMounted(() => {
 		}
 	}
 })
-
-const addBlock = (desc: BlockDesc) => {
-	command.addBlock(desc.name).then(id => {
-		if (id) {
-			const data = ref(blockInstance(id, desc))
-
-			let position = { x: 250, y: 5 }
-
-			if (currentBlock.value) {
-				const x = currentBlock.value.position.x
-				const y = currentBlock.value.position.y
-
-				position = { x: x ? x + 200 : 250, y: y ? y + 10 : 5 }
-			}
-
-			addNodes(
-				{ id, type: 'custom', label: desc.name, position, data }
-			)
-			blockMap.set(id, data)
-			currentBlock.value = findNode(id)
-		}
-	})
-}
 
 let connSource: OnConnectStartParams | undefined
 
@@ -120,7 +93,7 @@ const onConnect = (conn: Connection) => {
 				&& edge.targetHandle === conn.targetHandle)
 
 			if (link) {
-				const sourceBlock = blockMap.get(conn.source)
+				const sourceBlock = blockInstances.get(conn.source)
 				if (sourceBlock) {
 					const input = sourceBlock.value.inputs[conn.sourceHandle ?? '']
 					if (input) input.isConnected = true
@@ -128,7 +101,7 @@ const onConnect = (conn: Connection) => {
 					if (output) output.isConnected = true
 				}
 
-				const targetBlock = blockMap.get(conn.target)
+				const targetBlock = blockInstances.get(conn.target)
 				if (targetBlock) {
 					const input = targetBlock.value.inputs[conn.targetHandle ?? '']
 					if (input) input.isConnected = true
@@ -158,7 +131,7 @@ const onEdgeClick = (event: EdgeMouseEvent) => {
 
 async function onReset() {
 	await command.resetEngine();
-	blockMap.clear();
+	blockInstances.clear();
 
 	currentBlock.value = undefined;
 	currentLink.value = undefined;
@@ -209,7 +182,7 @@ async function loadProgram(program: any) {
 	nodes = nodes.map((node) => {
 		const desc = blocks.find((block) => block.name === node.data.name) ?? node.data;
 		const block = ref(blockInstance(node.id, desc));
-		blockMap.set(node.id, block);
+		blockInstances.set(node.id, block);
 
 		for (const [name, e] of Object.entries(node.data.inputs ?? {})) {
 			const input = e as BlockPin

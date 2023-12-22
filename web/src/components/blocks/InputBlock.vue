@@ -24,25 +24,23 @@ function onInputChange(data: string) {
 
 <template>
 	<BlockCommons :data="data">
-		<template #body>
-			<Handle :id="Object.keys(data.inputs)[0] ?? 'in'" type="target" :position="Position.Left"
-				class="handle-input" />
+		<Handle :id="Object.keys(data.inputs)[0] ?? 'in'" type="target" :position="Position.Left" class="handle-input" />
 
-			<div class="flex align-items-center justify-content-center m-1 border-round">
-				{{ capitalize(Object.keys(data.inputs)[0] ?? '') }}
-			</div>
+		<div class="flex align-items-start justify-content-center m-1 border-round">
+			{{ capitalize(Object.keys(data.inputs)[0] ?? '') }}
+		</div>
 
-			<div class="flex align-items-center justify-content-center m-1 border-round">
-				<InputTex :value="data.inputs.in.value" v-on:update:model-value="onInputChange" size="small" />
-			</div>
+		<div class="flex flex-grow-1 align-items-center justify-content-center m-1 border-round">
+			<InputTex :value="data.inputs.in.value" v-on:update:model-value="onInputChange" size="small" />
+		</div>
 
-			<div class="flex align-items-center justify-content-center m-1 border-round">
-				{{ capitalize(Object.keys(data.outputs)[0] ?? '') }}
-			</div>
+		<div class="flex align-items-start justify-content-center m-1 border-round">
+			{{ capitalize(Object.keys(data.outputs)[0] ?? '') }}
+		</div>
 
-			<Handle :id="Object.keys(data.outputs)[0] ?? 'out'" type="source" :position="Position.Right"
-				class="handle-output" />
-		</template>
+		<Handle :id="Object.keys(data.outputs)[0] ?? 'out'" type="source" :position="Position.Right"
+			class="handle-output" />
+
 	</BlockCommons>
 </template>
 

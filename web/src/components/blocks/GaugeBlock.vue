@@ -30,33 +30,31 @@ function decrement() {
 
 <template>
 	<BlockCommons :data="data">
-		<template #body>
-			<Handle :id="Object.keys(data.inputs)[0] ?? 'in'" type="target" :position="Position.Left"
-				class="handle-input" />
+		<Handle :id="Object.keys(data.inputs)[0] ?? 'in'" type="target" :position="Position.Left" class="handle-input" />
 
-			<div class="flex align-items-center justify-content-center m-1 border-round">
-				{{ capitalize(Object.keys(data.inputs)[0] ?? '') }}
-			</div>
+		<div class="flex align-items-center justify-content-center m-1 border-round">
+			{{ capitalize(Object.keys(data.inputs)[0] ?? '') }}
+		</div>
 
-			<div class="grid align-items-center justify-content-center">
-				<div class="col">
-					<Knob v-model="data.inputs.in.value as number" v-on:update:model-value="onChange" readonly />
-					<div class="grid align-items-center justify-content-center">
-						<Button icon="pi pi-plus" text rounded aria-label="Increment" @click="increment" />
-						<Button icon="pi pi-minus" text rounded aria-label="Decrement" @click="decrement" />
-					</div>
+		<div class="grid align-items-center justify-content-center">
+			<div class="col">
+				<Knob v-model="data.inputs.in.value as number" v-on:update:model-value="onChange" readonly />
+				<div class="grid align-items-center justify-content-center">
+					<Button icon="pi pi-plus" text rounded aria-label="Increment" @click="increment" />
+					<Button icon="pi pi-minus" text rounded aria-label="Decrement" @click="decrement" />
 				</div>
 			</div>
+		</div>
 
-			<div class="flex align-items-center justify-content-center m-1 border-round">
-				{{ capitalize(Object.keys(data.outputs)[0] ?? '') }}
-			</div>
+		<div class="flex align-items-center justify-content-center m-1 border-round">
+			{{ capitalize(Object.keys(data.outputs)[0] ?? '') }}
+		</div>
 
 
-			<Handle :id="Object.keys(data.outputs)[0] ?? 'out'" type="source" :position="Position.Right"
-				class="handle-output" />
+		<Handle :id="Object.keys(data.outputs)[0] ?? 'out'" type="source" :position="Position.Right"
+			class="handle-output" />
 
-		</template>
+
 	</BlockCommons>
 </template>
 
