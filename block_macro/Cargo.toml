@@ -1,6 +1,6 @@
 [package]
 name = "logic_mesh_block_macro"
-version = "0.1.3"
+version = "0.1.4"
 edition = "2021"
 authors = ["Radu Racariu <radu.racariu@gmail.com>"]
 repository = "https://github.com/rracariu/logic-mesh"
