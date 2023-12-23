@@ -77,9 +77,9 @@ mod test {
     async fn test_average_block() {
         let mut block = Average::new();
 
-        write_block_inputs(&mut [(&mut block._inputs.get_mut(0).unwrap(), 1.into())]).await;
+        write_block_inputs(&mut [(block._inputs.get_mut(0).unwrap(), 1.into())]).await;
         block.read_inputs().await;
-        write_block_inputs(&mut [(&mut block._inputs.get_mut(15).unwrap(), 9.into())]).await;
+        write_block_inputs(&mut [(block._inputs.get_mut(15).unwrap(), 9.into())]).await;
 
         block.execute().await;
         assert_eq!(block.out.value, 5.into());

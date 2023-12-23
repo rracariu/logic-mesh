@@ -13,7 +13,9 @@ use crate::base::{
     link::LinkState,
 };
 
-pub type InputImpl = BaseInput<Receiver<Value>, Sender<Value>>;
+pub type Reader = Receiver<Value>;
+pub type Writer = Sender<Value>;
+pub type InputImpl = BaseInput<Reader, Writer>;
 
 impl InputImpl {
     pub fn new(name: &str, kind: HaystackKind, block_id: Uuid) -> Self {

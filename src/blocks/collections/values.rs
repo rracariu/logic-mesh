@@ -47,7 +47,7 @@ mod test {
     };
 
     #[tokio::test]
-    async fn test_length_block() {
+    async fn test_values_block() {
         let mut block = Values::new();
 
         write_block_inputs(&mut [(&mut block.input, (Dict::default()).into())]).await;

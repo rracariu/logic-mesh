@@ -1,7 +1,5 @@
 // Copyright (c) 2022-2023, Radu Racariu.
 
-use tokio::sync::mpsc::Sender;
-
 use libhaystack::val::Value;
 
 use crate::base::{
@@ -10,9 +8,9 @@ use crate::base::{
     output::{BaseOutput, Output},
 };
 
-use super::input::InputImpl;
+use super::input::{InputImpl, Writer};
 
-pub type OutputImpl = BaseOutput<BaseLink<Sender<Value>>>;
+pub type OutputImpl = BaseOutput<BaseLink<Writer>>;
 
 impl Output for OutputImpl {
     type Writer = <InputImpl as InputProps>::Writer;

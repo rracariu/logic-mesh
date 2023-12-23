@@ -22,7 +22,7 @@ pub fn init_engine() -> BlocksEngine {
 #[wasm_bindgen(start)]
 pub fn start() {
     panic::set_hook(Box::new(console_error_panic_hook::hook));
-    log::set_logger(&DEFAULT_LOGGER).unwrap();
+    log::set_logger(&DEFAULT_LOGGER).expect("Unable to set default logger.");
     log::set_max_level(log::LevelFilter::Trace);
 
     info!("Blocks module loaded.");

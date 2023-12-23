@@ -12,27 +12,26 @@ use tokio::{
 use uuid::Uuid;
 
 use super::block_pointer::BlockPropsPointer;
+use super::message_dispatch::dispatch_message;
 use crate::{
     base::{
         block::{
-            connect::{connect_input, connect_output, disconnect_block, disconnect_link},
+            connect::{connect_input, connect_output, disconnect_block},
             desc::BlockImplementation,
             Block, BlockProps, BlockState,
         },
         engine::{
-            messages::{
-                BlockInputData, BlockOutputData, BlockParam, ChangeSource, EngineMessage,
-                WatchMessage,
-            },
+            messages::{ChangeSource, EngineMessage, WatchMessage},
             Engine,
         },
         program::data::{BlockData, LinkData},
     },
     blocks::registry::{schedule_block, schedule_block_with_uuid, BLOCKS},
+    tokio_impl::input::{Reader, Writer},
 };
 
 // The concrete trait for the block properties
-pub(super) trait BlockPropsType = BlockProps<Writer = Sender<Value>, Reader = Receiver<Value>>;
+pub(super) trait BlockPropsType = BlockProps<Writer = Writer, Reader = Reader>;
 
 /// The concrete type for the engine messages
 pub type Messages = EngineMessage<Sender<WatchMessage>>;
@@ -54,9 +53,9 @@ pub struct SingleThreadedEngine {
     /// Senders used to reply to issued commands
     /// Each sender would be associated to an external process
     /// issuing commands to the engine.
-    reply_senders: BTreeMap<uuid::Uuid, Sender<Messages>>,
+    pub(super) reply_senders: BTreeMap<uuid::Uuid, Sender<Messages>>,
     /// Watchers for changes in block pins
-    watchers: Rc<RefCell<BTreeMap<Uuid, Sender<WatchMessage>>>>,
+    pub(super) watchers: Rc<RefCell<BTreeMap<Uuid, Sender<WatchMessage>>>>,
 }
 
 impl Default for SingleThreadedEngine {
@@ -66,8 +65,8 @@ impl Default for SingleThreadedEngine {
 }
 
 impl Engine for SingleThreadedEngine {
-    type Writer = Sender<Value>;
-    type Reader = Receiver<Value>;
+    type Writer = Writer;
+    type Reader = Reader;
 
     type Channel = Sender<Messages>;
 
@@ -150,7 +149,7 @@ impl Engine for SingleThreadedEngine {
                     continue;
                 }
 
-                self.dispatch_message(message).await;
+                dispatch_message(self, message).await;
             }
         }
     }
@@ -194,7 +193,7 @@ impl SingleThreadedEngine {
         self.blocks_iter_mut().collect()
     }
 
-    fn blocks_iter_mut(&self) -> impl Iterator<Item = &mut dyn BlockPropsType> {
+    pub(super) fn blocks_iter_mut(&self) -> impl Iterator<Item = &mut dyn BlockPropsType> {
         self.block_props
             .values()
             .filter_map(|props| {
@@ -204,7 +203,7 @@ impl SingleThreadedEngine {
             .map(|prop| unsafe { &mut *prop })
     }
 
-    fn connect_blocks(&mut self, link_data: &LinkData) -> Result<LinkData> {
+    pub(super) fn connect_blocks(&mut self, link_data: &LinkData) -> Result<LinkData> {
         let (source_block_uuid, target_block_uuid) = (
             Uuid::try_from(link_data.source_block_uuid.as_str())?,
             Uuid::try_from(link_data.target_block_uuid.as_str())?,
@@ -216,24 +215,25 @@ impl SingleThreadedEngine {
         ) {
             if let Some(target_input) = target_block.get_input_mut(&link_data.target_block_pin_name)
             {
-                let id;
+                let link_id;
                 if let Some(source_input) =
                     source_block.get_input_mut(&link_data.source_block_pin_name)
                 {
-                    id = connect_input(source_input, target_input).map_err(|err| anyhow!(err))?;
+                    link_id =
+                        connect_input(source_input, target_input).map_err(|err| anyhow!(err))?;
 
                     if let Some(val) = source_input.get_value() {
                         target_input
                             .writer()
                             .try_send(val.clone())
                             .map_err(|err| anyhow!(err))?;
-
-                        reset_target_inputs(target_block)?;
                     }
+                    reset_target_inputs(target_block, &link_data.target_block_pin_name)?;
                 } else if let Some(source_output) =
                     source_block.get_output_mut(&link_data.source_block_pin_name)
                 {
-                    id = connect_output(source_output, target_input).map_err(|err| anyhow!(err))?;
+                    link_id =
+                        connect_output(source_output, target_input).map_err(|err| anyhow!(err))?;
 
                     // After connection, send the current value of the source output to the target input
                     if source_output.value().has_value() {
@@ -243,14 +243,13 @@ impl SingleThreadedEngine {
                             .writer()
                             .try_send(source_output.value().clone())
                             .map_err(|err| anyhow!(err))?;
-
-                        reset_target_inputs(target_block)?;
                     }
+                    reset_target_inputs(target_block, &link_data.target_block_pin_name)?;
                 } else {
                     return Err(anyhow!("Source Pin not found"));
                 }
                 Ok(LinkData {
-                    id: Some(id.to_string()),
+                    id: Some(link_id.to_string()),
                     ..link_data.clone()
                 })
             } else {
@@ -261,7 +260,7 @@ impl SingleThreadedEngine {
         }
     }
 
-    fn save_blocks_and_links(&mut self) -> Result<(Vec<BlockData>, Vec<LinkData>)> {
+    pub(super) fn save_blocks_and_links(&mut self) -> Result<(Vec<BlockData>, Vec<LinkData>)> {
         let blocks = self
             .blocks_iter_mut()
             .map(|block| BlockData {
@@ -292,208 +291,22 @@ impl SingleThreadedEngine {
         Ok((blocks, links))
     }
 
-    async fn dispatch_message(&mut self, msg: Messages) {
-        match msg {
-            EngineMessage::AddBlockReq(sender_uuid, block_name, block_uuid) => {
-                log::debug!("Adding block: {:?}", block_name);
-
-                let block_id = if let Some(uuid) = block_uuid {
-                    match Uuid::parse_str(&uuid) {
-                        Ok(uuid) => Some(uuid),
-                        Err(_) => {
-                            return self.reply_to_sender(
-                                sender_uuid,
-                                EngineMessage::AddBlockRes(Err("Invalid UUID".into())),
-                            )
-                        }
-                    }
-                } else {
-                    None
-                };
-
-                let block_id = self
-                    .add_block(block_name, block_id)
-                    .map_err(|err| err.to_string());
-
-                self.reply_to_sender(sender_uuid, EngineMessage::AddBlockRes(block_id));
-            }
-
-            EngineMessage::RemoveBlockReq(sender_uuid, block_id) => {
-                log::debug!("Removing block: {:?}", block_id);
-
-                let block_id = self.remove_block(&block_id).map_err(|err| err.to_string());
-                self.reply_to_sender(sender_uuid, EngineMessage::RemoveBlockRes(block_id));
-            }
-
-            EngineMessage::InspectBlockReq(sender_uuid, block_uuid) => {
-                match self.get_block_props_mut(&block_uuid) {
-                    Some(block) => {
-                        let data = BlockParam {
-                            id: block.id().to_string(),
-                            name: block.name().to_string(),
-                            library: block.desc().library.clone(),
-                            inputs: block
-                                .inputs()
-                                .iter()
-                                .map(|input| {
-                                    (
-                                        input.name().to_string(),
-                                        BlockInputData {
-                                            kind: input.kind().to_string(),
-                                            val: input.get_value().cloned().unwrap_or_default(),
-                                        },
-                                    )
-                                })
-                                .collect(),
-                            outputs: block
-                                .outputs()
-                                .iter()
-                                .map(|output| {
-                                    (
-                                        output.desc().name.to_string(),
-                                        BlockOutputData {
-                                            kind: output.desc().kind.to_string(),
-                                            val: output.value().clone(),
-                                        },
-                                    )
-                                })
-                                .collect(),
-                        };
-
-                        self.reply_to_sender(sender_uuid, EngineMessage::InspectBlockRes(Ok(data)));
-                    }
-                    None => {
-                        self.reply_to_sender(
-                            sender_uuid,
-                            EngineMessage::InspectBlockRes(Err("Block not found".into())),
-                        );
-                    }
-                }
-            }
-
-            EngineMessage::WriteBlockOutputReq(sender_uuid, block_uuid, output_name, value) => {
-                let response: Result<Value, String>;
-
-                match self.get_block_props_mut(&block_uuid) {
-                    Some(block) => {
-                        if let Some(output) = block.get_output_mut(&output_name) {
-                            let prev = output.value().clone();
-                            output.set(value);
-
-                            response = Ok(prev);
-                        } else {
-                            response = Err("Output not found".to_string());
-                        }
-                    }
-                    None => {
-                        response = Err("Block not found".to_string());
-                    }
-                }
-
-                self.reply_to_sender(sender_uuid, EngineMessage::WriteBlockOutputRes(response));
-            }
-
-            EngineMessage::WriteBlockInputReq(sender_uuid, block_uuid, input_name, value) => {
-                let response: Result<Option<Value>, String>;
-
-                match self.get_block_props_mut(&block_uuid) {
-                    Some(block) => {
-                        if let Some(input) = block.get_input_mut(&input_name) {
-                            let prev = input.get_value().cloned();
-
-                            input.set_value(value);
-
-                            response = Ok(prev);
-                        } else {
-                            response = Err("Input not found".to_string());
-                        }
-                    }
-                    None => {
-                        response = Err("Block not found".to_string());
-                    }
-                }
-
-                self.reply_to_sender(sender_uuid, EngineMessage::WriteBlockInputRes(response));
-            }
-
-            EngineMessage::WatchBlockSubReq(sender_uuid, sender) => {
-                self.watchers.borrow_mut().insert(sender_uuid, sender);
-
-                self.reply_to_sender(
-                    sender_uuid,
-                    EngineMessage::WatchBlockSubRes(Ok(sender_uuid)),
-                );
-            }
-
-            EngineMessage::WatchBlockUnsubReq(sender_uuid) => {
-                self.watchers.borrow_mut().remove(&sender_uuid);
-
-                self.reply_to_sender(
-                    sender_uuid,
-                    EngineMessage::WatchBlockUnsubRes(Ok(sender_uuid)),
-                );
-            }
-
-            EngineMessage::GetCurrentProgramReq(sender_uuid) => {
-                log::debug!("GetCurrentProgramReq");
-
-                let program = self.save_blocks_and_links();
-
-                self.reply_to_sender(
-                    sender_uuid,
-                    EngineMessage::GetCurrentProgramRes(program.map_err(|err| err.to_string())),
-                );
-            }
-
-            EngineMessage::ConnectBlocksReq(sender_uuid, link_data) => {
-                log::debug!("ConnectBlocksReq: {:?}", link_data);
-
-                let res = self.connect_blocks(&link_data);
-                self.reply_to_sender(
-                    sender_uuid,
-                    EngineMessage::ConnectBlocksRes(res.map_err(|err| err.to_string())),
-                );
-            }
-
-            EngineMessage::RemoveLinkReq(sender_uuid, link_id) => {
-                log::debug!("RemoveLinkReq: {:?}", link_id);
-                let res = self.blocks_iter_mut().any(|block| {
-                    disconnect_link(block, &link_id, |id, name| {
-                        let target_block = self.get_block_props_mut(id);
-                        target_block.and_then(|target_block| {
-                            target_block
-                                .get_input_mut(name)
-                                .map(|input| input.decrement_conn())
-                        })
-                    })
-                });
-
-                self.reply_to_sender(sender_uuid, EngineMessage::RemoveLinkRes(Ok(res)));
-            }
-
-            _ => unreachable!("Invalid message"),
-        }
-    }
-
-    fn reply_to_sender(&mut self, sender_uuid: Uuid, engine_message: Messages) {
-        for (sender_id, sender) in self.reply_senders.iter() {
-            if sender_id != &sender_uuid {
-                continue;
-            }
-
-            let _ = sender.try_send(engine_message.clone());
-        }
-    }
-
-    fn get_block_props_mut(&self, block_id: &Uuid) -> Option<&mut (dyn BlockPropsType + 'static)> {
+    pub(super) fn get_block_props_mut(
+        &self,
+        block_id: &Uuid,
+    ) -> Option<&mut (dyn BlockPropsType + 'static)> {
         self.block_props.get(block_id).and_then(|ptr| {
             let fat_ptr = (**ptr).get();
             fat_ptr.get().map(|ptr| unsafe { &mut *ptr })
         })
     }
 
-    fn add_block(&mut self, block_name: String, block_id: Option<Uuid>) -> Result<Uuid> {
-        match BLOCKS.lock().unwrap().get(&block_name) {
+    pub(super) fn add_block(&mut self, block_name: String, block_id: Option<Uuid>) -> Result<Uuid> {
+        match BLOCKS
+            .lock()
+            .expect("Can't get lock to blocks registry")
+            .get(&block_name)
+        {
             Some(block) => {
                 if block.desc.implementation == BlockImplementation::External {
                     #[cfg(target_arch = "wasm32")]
@@ -513,7 +326,7 @@ impl SingleThreadedEngine {
         }
     }
 
-    fn remove_block(&mut self, block_id: &Uuid) -> Result<Uuid> {
+    pub(super) fn remove_block(&mut self, block_id: &Uuid) -> Result<Uuid> {
         // Terminate the block
         match self.get_block_props_mut(block_id) {
             Some(block) => {
@@ -605,17 +418,17 @@ fn change_of_value_check<B: Block + 'static>(
 /// when a link is created.
 /// This is needed because the target block would be monitoring the current set of inputs
 /// added before the link was created, and would not be aware of the new input.
-fn reset_target_inputs(target_block: &mut dyn BlockPropsType) -> Result<()> {
+fn reset_target_inputs(target_block: &mut dyn BlockPropsType, input_to_ignore: &str) -> Result<()> {
     // If the target block has other connected inputs, send the current value of one of
     // them to itself (refresh current value.) in order to trigger the block to execute.
     if let Some(a_connected_input) = target_block.inputs().iter().find_map(|input| {
-        if input.is_connected() {
+        if input.is_connected() && input.name() != input_to_ignore {
             Some(input.name().to_string())
         } else {
             None
         }
     }) {
-        if let Some(target_input) = target_block.get_input_mut(a_connected_input.as_str()) {
+        if let Some(target_input) = target_block.get_input_mut(&a_connected_input) {
             if let Some(value) = target_input.get_value().cloned() {
                 target_input
                     .writer()

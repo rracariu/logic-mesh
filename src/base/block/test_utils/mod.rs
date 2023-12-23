@@ -2,8 +2,8 @@ use std::ops::Range;
 
 use libhaystack::val::Value;
 
-use crate::base::input::props::InputProps;
-use crate::blocks::InputImpl;
+use crate::base::input::Input;
+use crate::tokio_impl::input::{Reader, Writer};
 
 #[cfg(test)]
 pub mod mock;
@@ -11,10 +11,10 @@ pub mod mock;
 /// Writes the given values to the given inputs
 /// and returns the range of indices of the inputs that were written to.
 pub(crate) async fn write_block_inputs<'a>(
-    values: &'a mut [(&'a mut InputImpl, Value)],
+    values: &'a mut [(&'a mut dyn Input<Reader = Reader, Writer = Writer>, Value)],
 ) -> Range<u32> {
     for (input, value) in values.iter_mut() {
-        if input.connection_count == 0 {
+        if !input.is_connected() {
             input.increment_conn();
         }
 
