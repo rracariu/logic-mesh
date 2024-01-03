@@ -293,6 +293,16 @@ impl EngineCommand {
         }
     }
 
+    /// Evaluates a block by name
+    /// This will create a block instance and execute it.
+    ///
+    /// # Arguments
+    /// * `block_name` - The name of the block to evaluate
+    /// * `inputs` - The input values to the block
+    ///
+    /// # Returns
+    /// A list of values representing the outputs of the block
+    #[wasm_bindgen(js_name = "evalBlock")]
     pub async fn eval_block(
         &mut self,
         block_name: String,
@@ -302,8 +312,8 @@ impl EngineCommand {
             .sender
             .send(EngineMessage::EvaluateBlockReq(
                 self.uuid,
-                block_name,
                 "core".to_string(),
+                block_name,
                 inputs
                     .into_iter()
                     .map(|v| serde_wasm_bindgen::from_value(v).unwrap_or_default())
