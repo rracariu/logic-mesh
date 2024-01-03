@@ -52,7 +52,9 @@ impl BlockDesc {
 /// one allows block to be trait objects.
 pub trait BlockStaticDesc: BlockProps {
     /// Static access to the block description
-    fn desc() -> &'static BlockDesc;
+    fn desc() -> &'static BlockDesc
+    where
+        Self: Sized;
 }
 
 /// Defines a block pin

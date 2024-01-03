@@ -1,7 +1,9 @@
-// Copyright (c) 2022-2023, Radu Racariu.
+// Copyright (c) 2022-2024, Radu Racariu.
 
 use crate::base::block::{Block, BlockDesc, BlockProps, BlockStaticDesc};
+use crate::base::input::input_reader::InputReader;
 use crate::base::input::InputProps;
+use libhaystack::val::Value;
 
 use crate::base::engine::Engine;
 use crate::blocks::collections::{Dict, GetElement, Keys, Length, List, Values};
@@ -42,16 +44,16 @@ pub struct BlockEntry {
 /// available in the system.
 #[macro_export]
 macro_rules! register_blocks{
-    ( $( $x:ty ),* ) => {
+    ( $( $block_name:ty ),* ) => {
 		lazy_static! {
 			/// The block registry
 			/// This is a static variable that is initialized once and then
 			/// used throughout the lifetime of the program.
-			pub static ref  BLOCKS: BlockRegistry = {
+			pub static ref BLOCKS: BlockRegistry = {
 				let mut reg = BTreeMap::new();
 
 				$(
-					register_impl::<$x>(&mut reg);
+					register_impl::<$block_name>(&mut reg);
 				)*
 
 				reg.into()
@@ -73,8 +75,8 @@ macro_rules! register_blocks{
 
 			match name {
 				$(
-					stringify!($x) => {
-						let block = <$x>::new();
+					stringify!($block_name) => {
+						let block = <$block_name>::new();
 						let uuid = *block.id();
 						eng.schedule(block);
 						Ok(uuid)
@@ -94,8 +96,8 @@ macro_rules! register_blocks{
 
 			match name {
 				$(
-					stringify!($x) => {
-						let block = <$x>::new_uuid(uuid);
+					stringify!($block_name) => {
+						let block = <$block_name>::new_uuid(uuid);
 						eng.schedule(block);
 						Ok(uuid)
 					}
@@ -105,6 +107,45 @@ macro_rules! register_blocks{
 				}
 			}
 
+		}
+
+		/// Evaluate a block by name.
+		/// This will create a block instance and execute it.
+		///
+		/// # Arguments
+		/// - name: The name of the block to evaluate
+		/// - inputs: The input values to the block
+		///
+		/// # Returns
+		/// A list of values representing the outputs of the block
+		pub async fn eval_block(name: &str, inputs: Vec<Value>) -> Result<Vec<Value>> {
+			match name {
+				$(
+					stringify!($block_name) => {
+						let mut block = <$block_name>::new();
+
+						for (i, input) in inputs.iter().enumerate() {
+							let mut input_pins = block.inputs_mut();
+
+							if i >= input_pins.len() {
+								return Err(anyhow!("Too many inputs"));
+							}
+
+							input_pins[i].increment_conn();
+							if input_pins[i].writer().try_send(input.clone()).is_ok()
+								&& i < inputs.len() - 1 {
+									block.read_inputs().await;
+							}
+						}
+
+						block.execute().await;
+						Ok(block.outputs().iter().map(|o| o.value().clone()).collect())
+					}
+				)*
+				_ => {
+					return Err(anyhow!("Block not found"));
+				}
+			}
 		}
     };
 }
@@ -226,15 +267,20 @@ mod test {
 
     #[test]
     fn test_registry() {
-        let mut add = make("Add").expect("Add block not found");
-        let mut random = make("Random").expect("Random block not found");
-        let sine = make("SineWave").expect("SineWave block not found");
+        let reg = BLOCKS.lock().expect("Block registry is locked");
 
-        assert_eq!(add.desc().name, "Add");
-        assert_eq!(random.desc().name, "Random");
-        assert_eq!(sine.desc().name, "SineWave");
+        let add = reg.get("Add").expect("Add block not found");
+        let random = reg.get("Random").expect("Random block not found");
+        let sine = reg.get("SineWave").expect("SineWave block not found");
 
+        assert_eq!(add.desc.name, "Add");
+        assert_eq!(random.desc.name, "Random");
+        assert_eq!(sine.desc.name, "SineWave");
+
+        let mut random = random.make.unwrap()();
         let mut outs = random.outputs_mut();
+
+        let mut add = add.make.unwrap()();
         let mut ins = add.inputs_mut();
 
         let out = outs.first_mut().unwrap();
@@ -247,5 +293,12 @@ mod test {
         schedule_block("Add", &mut eng).expect("Block");
 
         assert!(eng.blocks().iter().any(|b| b.desc().name == "Add"));
+    }
+
+    #[tokio::test]
+    async fn test_block_eval() {
+        let result = eval_block("Add", vec![Value::from(1), Value::from(2)]).await;
+
+        assert_eq!(result.unwrap(), vec![Value::from(3)]);
     }
 }

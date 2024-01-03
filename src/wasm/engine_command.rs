@@ -293,6 +293,37 @@ impl EngineCommand {
         }
     }
 
+    pub async fn eval_block(
+        &mut self,
+        block_name: String,
+        inputs: Vec<JsValue>,
+    ) -> Result<JsValue, String> {
+        match self
+            .sender
+            .send(EngineMessage::EvaluateBlockReq(
+                self.uuid,
+                block_name,
+                "core".to_string(),
+                inputs
+                    .into_iter()
+                    .map(|v| serde_wasm_bindgen::from_value(v).unwrap_or_default())
+                    .collect(),
+            ))
+            .await
+        {
+            Ok(_) => match self.receiver.recv().await {
+                Some(res) => match res {
+                    EngineMessage::EvaluateBlockRes(data) => data
+                        .map(|ok| serde_wasm_bindgen::to_value(&ok))?
+                        .map_err(|err| err.to_string()),
+                    _ => Err("Invalid response".to_string()),
+                },
+                None => Err("Failed to receive message".to_string()),
+            },
+            Err(_) => Err("Failed to send message".to_string()),
+        }
+    }
+
     /// Creates a watch on block changes
     #[wasm_bindgen(js_name = "createWatch")]
     pub async fn create_watch(&mut self, callback: &js_sys::Function) -> Result<(), String> {
@@ -313,7 +344,7 @@ impl EngineCommand {
                                 .map_err(|err| format!("Failed to call watch callback: {:?}", err))
                         }) {
                         Ok(_) => (),
-                        Err(err) => return Err(err),
+                        Err(err) => log::debug!(target: "create_watch", "{err}"),
                     }
                 }
             },

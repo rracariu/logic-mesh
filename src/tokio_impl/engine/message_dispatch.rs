@@ -3,6 +3,7 @@ use crate::base::engine::messages::BlockInputData;
 use crate::base::engine::messages::BlockOutputData;
 use crate::base::engine::messages::BlockParam;
 use crate::base::engine::messages::EngineMessage;
+use crate::blocks::registry::eval_block;
 use crate::single_threaded::Messages;
 use crate::single_threaded::SingleThreadedEngine;
 use libhaystack::val::Value;
@@ -93,6 +94,16 @@ pub(super) async fn dispatch_message(engine: &mut SingleThreadedEngine, msg: Mes
                     );
                 }
             }
+        }
+
+        EngineMessage::EvaluateBlockReq(sender_uuid, _lib, name, inputs) => {
+            let response = eval_block(&name, inputs).await;
+
+            reply_to_sender(
+                engine,
+                sender_uuid,
+                EngineMessage::EvaluateBlockRes(response.map_err(|err| err.to_string())),
+            );
         }
 
         EngineMessage::WriteBlockOutputReq(sender_uuid, block_uuid, output_name, value) => {

@@ -71,6 +71,9 @@ pub enum EngineMessage<WatchEventSender: Clone> {
     InspectBlockReq(Uuid, Uuid),
     InspectBlockRes(Result<BlockParam, String>),
 
+    EvaluateBlockReq(Uuid, String, String, Vec<Value>),
+    EvaluateBlockRes(Result<Vec<Value>, String>),
+
     ConnectBlocksReq(Uuid, LinkData),
     ConnectBlocksRes(Result<LinkData, String>),
 
