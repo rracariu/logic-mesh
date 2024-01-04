@@ -66,7 +66,7 @@ mod test {
     };
 
     #[tokio::test]
-    async fn test_sub() {
+    async fn test_replace() {
         let mut block = Replace::new();
 
         println!("block: {:?}", block.desc());

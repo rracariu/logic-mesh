@@ -80,7 +80,7 @@ impl JsBlock {
                         .await
                         .map_err(|err| {
                             serde_wasm_bindgen::from_value::<String>(err)
-                                .unwrap_or_else(|err| format!("{err:#?}"))
+                                .unwrap_or_else(|err| err.to_string())
                         })
                         .and_then(|res| {
                             if res.is_array() {
@@ -93,7 +93,7 @@ impl JsBlock {
                                         });
                                         Ok(())
                                     })
-                                    .map_err(|err| format!("{err:#?}"))
+                                    .map_err(|err| err.to_string())
                             } else {
                                 Ok(())
                             }

@@ -9,7 +9,7 @@ use crate::base::engine::Engine;
 use crate::blocks::collections::{Dict, GetElement, Keys, Length, List, Values};
 use crate::blocks::control::Pid;
 use crate::blocks::logic::{
-    And, Equal, GreaterThan, GreaterThanEq, LessThan, LessThanEq, Not, NotEqual, Or, Xor,
+    And, Equal, GreaterThan, GreaterThanEq, Latch, LessThan, LessThanEq, Not, NotEqual, Or, Xor,
 };
 use crate::blocks::math::{Abs, Add, ArcTan, Cos, Sub};
 use crate::blocks::math::{
@@ -161,6 +161,7 @@ register_blocks!(
     Xor,
     GreaterThan,
     GreaterThanEq,
+    Latch,
     LessThan,
     LessThanEq,
     // Math blocks
