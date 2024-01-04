@@ -47,18 +47,14 @@ mod test {
     use libhaystack::val::{Number, Value};
 
     use crate::{
-        base::block::test_utils::write_block_inputs,
-        base::{block::Block, input::input_reader::InputReader},
-        blocks::math::Cos,
+        base::block::test_utils::write_block_inputs, base::block::Block, blocks::math::Cos,
     };
 
     #[tokio::test]
     async fn test_cos_block() {
         let mut block = Cos::new();
 
-        for _ in write_block_inputs(&mut [(&mut block.a, 0.into())]).await {
-            block.read_inputs().await;
-        }
+        write_block_inputs(&mut [(&mut block.a, 0.into())]).await;
 
         block.execute().await;
 

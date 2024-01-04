@@ -37,18 +37,14 @@ impl Block for Not {
 mod test {
 
     use crate::{
-        base::block::test_utils::write_block_inputs,
-        base::{block::Block, input::input_reader::InputReader},
-        blocks::logic::Not,
+        base::block::test_utils::write_block_inputs, base::block::Block, blocks::logic::Not,
     };
 
     #[tokio::test]
     async fn test_not_block() {
         let mut block = Not::new();
 
-        for _ in write_block_inputs(&mut [(&mut block.input, (true).into())]).await {
-            block.read_inputs().await;
-        }
+        write_block_inputs(&mut [(&mut block.input, (true).into())]).await;
 
         block.execute().await;
         assert_eq!(block.out.value, false.into());

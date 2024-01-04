@@ -48,18 +48,14 @@ mod test {
     use libhaystack::val::{Number, Value};
 
     use crate::{
-        base::block::test_utils::write_block_inputs,
-        base::{block::Block, input::input_reader::InputReader},
-        blocks::math::Sqrt,
+        base::block::test_utils::write_block_inputs, base::block::Block, blocks::math::Sqrt,
     };
 
     #[tokio::test]
     async fn test_sqrt_block() {
         let mut block = Sqrt::new();
 
-        for _ in write_block_inputs(&mut [(&mut block.input, 4.into())]).await {
-            block.read_inputs().await;
-        }
+        write_block_inputs(&mut [(&mut block.input, 4.into())]).await;
 
         block.execute().await;
 

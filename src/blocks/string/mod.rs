@@ -4,6 +4,10 @@
 //! String Blocks
 //!
 
+pub mod concat;
 pub mod len;
+pub mod replace;
 
+pub use concat::Concat;
 pub use len::StrLen;
+pub use replace::Replace;

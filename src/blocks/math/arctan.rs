@@ -48,18 +48,14 @@ mod test {
     use libhaystack::val::{Number, Value};
 
     use crate::{
-        base::block::test_utils::write_block_inputs,
-        base::{block::Block, input::input_reader::InputReader},
-        blocks::math::ArcTan,
+        base::block::test_utils::write_block_inputs, base::block::Block, blocks::math::ArcTan,
     };
 
     #[tokio::test]
     async fn test_arctan_block() {
         let mut block = ArcTan::new();
 
-        for _ in write_block_inputs(&mut [(&mut block.input, 0.into())]).await {
-            block.read_inputs().await;
-        }
+        write_block_inputs(&mut [(&mut block.input, 0.into())]).await;
 
         block.execute().await;
 

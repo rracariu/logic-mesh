@@ -48,18 +48,14 @@ mod test {
     use libhaystack::val::{Number, Value};
 
     use crate::{
-        base::block::test_utils::write_block_inputs,
-        base::{block::Block, input::input_reader::InputReader},
-        blocks::string::StrLen,
+        base::block::test_utils::write_block_inputs, base::block::Block, blocks::string::StrLen,
     };
 
     #[tokio::test]
     async fn test_sub() {
         let mut block = StrLen::new();
 
-        for _ in write_block_inputs(&mut [(&mut block.input, "ana are mere".into())]).await {
-            block.read_inputs().await;
-        }
+        write_block_inputs(&mut [(&mut block.input, "ana are mere".into())]).await;
 
         block.execute().await;
 

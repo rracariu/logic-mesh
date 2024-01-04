@@ -195,12 +195,12 @@ pub(super) fn block_props_impl(ast: &syn::DeriveInput) -> TokenStream {
 
 /// Init the input fields of a block
 fn create_block_input_fields_init(
-    block_input_props: &BTreeMap<String, BTreeMap<String, String>>,
+    block_input_props: &[(String, BTreeMap<String, String>)],
 ) -> proc_macro2::TokenStream {
     if block_input_props.is_empty() {
         proc_macro2::TokenStream::default()
     } else {
-        let input_field = block_input_props.keys().map(|k| format_ident!("{k}"));
+        let input_field = block_input_props.iter().map(|(k, _)| format_ident!("{k}"));
         let input_name = block_input_props
             .iter()
             .map(|(name, props)| props.get("name").cloned().unwrap_or(name.clone()));
@@ -218,18 +218,18 @@ fn create_block_input_fields_init(
 /// Init custom fields that a user my have on a block
 fn create_block_fields_init(
     block_fields: &BTreeMap<String, String>,
-    block_input_props: &BTreeMap<String, BTreeMap<String, String>>,
-    block_output_props: &BTreeMap<String, BTreeMap<String, String>>,
+    block_input_props: &[(String, BTreeMap<String, String>)],
+    block_output_props: &[(String, BTreeMap<String, String>)],
 ) -> proc_macro2::TokenStream {
     if block_fields.is_empty() {
         proc_macro2::TokenStream::default()
     } else {
         let filter = |field_name: &&String| {
-            !block_input_props.contains_key(*field_name)
-                && !block_output_props.contains_key(*field_name)
-                && field_name.as_str() != "id"
+            field_name.as_str() != "id"
                 && field_name.as_str() != "name"
                 && field_name.as_str() != "state"
+                && !block_input_props.iter().any(|(id, _)| id == *field_name)
+                && !block_output_props.iter().any(|(id, _)| id == *field_name)
         };
 
         let field = block_fields
@@ -280,12 +280,14 @@ fn create_block_defined_input_init(
 
 /// Create the outputS fieLd init
 fn create_block_outputs_field_init(
-    block_output_props: &BTreeMap<String, BTreeMap<String, String>>,
+    block_output_props: &[(String, BTreeMap<String, String>)],
 ) -> proc_macro2::TokenStream {
     if block_output_props.is_empty() {
         panic!("Block must have at least one output field.")
     } else {
-        let out_field = block_output_props.keys().map(|id| format_ident!("{id}"));
+        let out_field = block_output_props
+            .iter()
+            .map(|(id, _)| format_ident!("{id}"));
 
         let output_name = block_output_props
             .iter()
@@ -305,7 +307,7 @@ fn create_block_outputs_field_init(
 /// block defined automatic inputs or user defined block input fields
 fn create_input_members_ref(
     has_block_defined_inputs: bool,
-    block_input_props: &BTreeMap<String, BTreeMap<String, String>>,
+    block_input_props: &[(String, BTreeMap<String, String>)],
     mutable: bool,
 ) -> proc_macro2::TokenStream {
     if !has_block_defined_inputs && block_input_props.is_empty() {
@@ -313,7 +315,9 @@ fn create_input_members_ref(
             Vec::default()
         }
     } else {
-        let input_field = block_input_props.keys().map(|id| format_ident!("{id}"));
+        let input_field = block_input_props
+            .iter()
+            .map(|(id, _)| format_ident!("{id}"));
 
         let (borrow, iter) = if mutable {
             (
@@ -346,7 +350,7 @@ fn create_input_members_ref(
 
 /// Create the reference for the output field of the block
 fn create_outputs_member_ref(
-    block_output_props: &BTreeMap<String, BTreeMap<String, String>>,
+    block_output_props: &[(String, BTreeMap<String, String>)],
     mutable: bool,
 ) -> proc_macro2::TokenStream {
     if block_output_props.is_empty() {
@@ -354,7 +358,9 @@ fn create_outputs_member_ref(
             Vec::default()
         }
     } else {
-        let output_fields = block_output_props.keys().map(|id| format_ident!("{id}"));
+        let output_fields = block_output_props
+            .iter()
+            .map(|(id, _)| format_ident!("{id}"));
 
         let borrow = if mutable {
             TokenTree::from(format_ident!("mut"))
@@ -374,7 +380,7 @@ fn create_outputs_member_ref(
 /// Create the description of the input fields
 fn create_input_desc(
     block_defined_input_props: &BTreeMap<String, String>,
-    block_input_props: &BTreeMap<String, BTreeMap<String, String>>,
+    block_input_props: &[(String, BTreeMap<String, String>)],
 ) -> proc_macro2::TokenStream {
     ensure_unique_inputs(block_defined_input_props, block_input_props);
 
@@ -411,7 +417,7 @@ fn create_input_desc(
 
 /// Create the description of the outputs field
 fn create_output_desc(
-    block_output_props: &BTreeMap<String, BTreeMap<String, String>>,
+    block_output_props: &[(String, BTreeMap<String, String>)],
 ) -> proc_macro2::TokenStream {
     let output_names = block_output_props
         .iter()
@@ -429,13 +435,13 @@ fn create_output_desc(
 /// Ensure that the block defined inputs and user defined inputs have different names
 fn ensure_unique_inputs(
     block_defined_inputs: &BTreeMap<String, String>,
-    block_input_props: &BTreeMap<String, BTreeMap<String, String>>,
+    block_input_props: &[(String, BTreeMap<String, String>)],
 ) {
     if let Some(count) = get_block_defined_inputs_count(block_defined_inputs) {
         (0..count).for_each(|i| {
 		if block_input_props
-			.keys()
-			.any(|input| input == &format!("in{}", i))
+			.iter()
+			.any(|(input, _)| input == &format!("in{}", i))
 		{
 			eprintln!("Block defined input: 'in{}' shadows the user defined input with the same name.", i);
 			panic!("Block defined inputs and user defined inputs must have different names.")
@@ -447,13 +453,13 @@ fn ensure_unique_inputs(
 /// Ensure that the block defined outputs do not shadow the user defined inputs
 fn ensure_unique_outputs(
     block_defined_inputs: &BTreeMap<String, String>,
-    block_output_props: &BTreeMap<String, BTreeMap<String, String>>,
+    block_output_props: &[(String, BTreeMap<String, String>)],
 ) {
     if let Some(count) = get_block_defined_inputs_count(block_defined_inputs) {
         (0..count).for_each(|i| {
 		if block_output_props
-			.keys()
-			.any(|output| output == &format!("in{}", i))
+			.iter()
+			.any(|(output, _)| output == &format!("in{}", i))
 		{
 			eprintln!("Block defined output: 'in{}' shadows the user defined input with the same name.", i);
 			panic!("Block defined inputs and user defined outputs must have different names.")

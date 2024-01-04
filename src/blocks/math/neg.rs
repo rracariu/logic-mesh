@@ -48,18 +48,14 @@ mod test {
     use libhaystack::val::{Number, Value};
 
     use crate::{
-        base::block::test_utils::write_block_inputs,
-        base::{block::Block, input::input_reader::InputReader},
-        blocks::math::Neg,
+        base::block::test_utils::write_block_inputs, base::block::Block, blocks::math::Neg,
     };
 
     #[tokio::test]
     async fn test_neg_block() {
         let mut block = Neg::new();
 
-        for _ in write_block_inputs(&mut [(&mut block.input, 42.into())]).await {
-            block.read_inputs().await;
-        }
+        write_block_inputs(&mut [(&mut block.input, 42.into())]).await;
 
         block.execute().await;
 

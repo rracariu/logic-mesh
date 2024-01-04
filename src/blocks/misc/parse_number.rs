@@ -40,18 +40,14 @@ impl Block for ParseNumber {
 mod test {
 
     use crate::{
-        base::block::test_utils::write_block_inputs,
-        base::{block::Block, input::input_reader::InputReader},
-        blocks::misc::ParseNumber,
+        base::block::test_utils::write_block_inputs, base::block::Block, blocks::misc::ParseNumber,
     };
 
     #[tokio::test]
     async fn test_parse_number_block() {
         let mut block = ParseNumber::new();
 
-        for _ in write_block_inputs(&mut [(&mut block.input, ("33.5").into())]).await {
-            block.read_inputs().await;
-        }
+        write_block_inputs(&mut [(&mut block.input, ("33.5").into())]).await;
 
         block.execute().await;
         assert_eq!(block.out.value, 33.5.into());

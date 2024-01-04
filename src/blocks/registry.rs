@@ -17,7 +17,7 @@ use crate::blocks::math::{
     Pow, Sin, Sqrt,
 };
 use crate::blocks::misc::{Random, SineWave};
-use crate::blocks::string::StrLen;
+use crate::blocks::string::{Concat, Replace, StrLen};
 
 use anyhow::{anyhow, Result};
 use lazy_static::lazy_static;
@@ -190,6 +190,8 @@ register_blocks!(
     // Control blocks
     Pid,
     // String blocks
+    Concat,
+    Replace,
     StrLen,
     // Collections blocks
     GetElement,

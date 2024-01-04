@@ -39,9 +39,7 @@ impl Block for Add {
                 Some(Value::Number(num)) => Some(*num),
                 _ => None,
             })
-            .reduce(|acc, val| {
-                let mut acc = acc;
-
+            .reduce(|mut acc, val| {
                 if acc.unit.is_none() && acc.value == 0.0 {
                     if let Some(unit) = val.unit {
                         acc = Number::make_with_unit(0.0, unit);

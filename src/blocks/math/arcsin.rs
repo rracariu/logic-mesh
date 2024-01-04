@@ -47,18 +47,14 @@ mod test {
     use libhaystack::val::{Number, Value};
 
     use crate::{
-        base::block::test_utils::write_block_inputs,
-        base::{block::Block, input::input_reader::InputReader},
-        blocks::math::ArcSin,
+        base::block::test_utils::write_block_inputs, base::block::Block, blocks::math::ArcSin,
     };
 
     #[tokio::test]
     async fn test_arcsin_block() {
         let mut block = ArcSin::new();
 
-        for _ in write_block_inputs(&mut [(&mut block.input, 0.into())]).await {
-            block.read_inputs().await;
-        }
+        write_block_inputs(&mut [(&mut block.input, 0.into())]).await;
 
         block.execute().await;
 

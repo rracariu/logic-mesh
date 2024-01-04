@@ -26,6 +26,9 @@ use crate::{blocks::InputImpl, blocks::OutputImpl};
 #[category = "control"]
 pub struct Pid {
     #[input(kind = "Number")]
+    pub input: InputImpl,
+
+    #[input(kind = "Number")]
     pub sp: InputImpl,
 
     #[input(kind = "Number")]
@@ -48,9 +51,6 @@ pub struct Pid {
 
     #[input(kind = "Number")]
     pub bias: InputImpl,
-
-    #[input(kind = "Number")]
-    pub input: InputImpl,
 
     #[output(kind = "Number")]
     pub out: OutputImpl,

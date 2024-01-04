@@ -31,7 +31,7 @@ pub(super) fn get_block_fields(ast: &syn::DeriveInput) -> BTreeMap<String, Strin
 ///
 pub(super) fn get_block_inputs_props(
     ast: &syn::DeriveInput,
-) -> BTreeMap<String, BTreeMap<String, String>> {
+) -> Vec<(String, BTreeMap<String, String>)> {
     get_block_field_props(ast, "input")
 }
 
@@ -40,7 +40,7 @@ pub(super) fn get_block_inputs_props(
 ///
 pub(super) fn get_block_outputs_props(
     ast: &syn::DeriveInput,
-) -> BTreeMap<String, BTreeMap<String, String>> {
+) -> Vec<(String, BTreeMap<String, String>)> {
     get_block_field_props(ast, "output")
 }
 
@@ -147,8 +147,8 @@ fn filed_attribute_is(attr: &Attribute, field_type: &str) -> bool {
 fn get_block_field_props(
     ast: &syn::DeriveInput,
     field_type: &str,
-) -> BTreeMap<String, BTreeMap<String, String>> {
-    let mut props: BTreeMap<String, BTreeMap<String, String>> = BTreeMap::new();
+) -> Vec<(String, BTreeMap<String, String>)> {
+    let mut props: Vec<(String, BTreeMap<String, String>)> = Vec::new();
 
     if let syn::Data::Struct(struct_data) = &ast.data {
         if let syn::Fields::Named(fields) = &struct_data.fields {
@@ -156,17 +156,20 @@ fn get_block_field_props(
                 if let Some(field_name) = field.ident.as_ref() {
                     if let syn::Type::Path(ty) = &field.ty {
                         if field_type_is(ty, field_type) {
+                            let mut attr_props: BTreeMap<String, String> = BTreeMap::new();
                             for attr in field
                                 .attrs
                                 .iter()
                                 .filter(|attr| filed_attribute_is(attr, field_type))
                             {
-                                let mut attr_props: BTreeMap<String, String> = BTreeMap::new();
                                 get_attribute_props(attr, &mut attr_props);
+                            }
 
-                                if !attr_props.is_empty() {
-                                    props.insert(field_name.to_string(), attr_props);
-                                }
+                            let field_name = field_name.to_string();
+                            if !attr_props.is_empty()
+                                && !props.iter().any(|(name, _)| name == &field_name)
+                            {
+                                props.push((field_name, attr_props));
                             }
                         }
                     }

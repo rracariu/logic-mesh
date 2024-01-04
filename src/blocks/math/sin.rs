@@ -47,18 +47,14 @@ mod test {
     use libhaystack::val::{Number, Value};
 
     use crate::{
-        base::block::test_utils::write_block_inputs,
-        base::{block::Block, input::input_reader::InputReader},
-        blocks::math::Sin,
+        base::block::test_utils::write_block_inputs, base::block::Block, blocks::math::Sin,
     };
 
     #[tokio::test]
     async fn test_sin_block() {
         let mut block = Sin::new();
 
-        for _ in write_block_inputs(&mut [(&mut block.input, 90.into())]).await {
-            block.read_inputs().await;
-        }
+        write_block_inputs(&mut [(&mut block.input, 90.into())]).await;
 
         block.execute().await;
 

@@ -43,18 +43,14 @@ impl Block for Abs {
 mod test {
 
     use crate::{
-        base::block::test_utils::write_block_inputs,
-        base::{block::Block, input::input_reader::InputReader},
-        blocks::math::Abs,
+        base::block::test_utils::write_block_inputs, base::block::Block, blocks::math::Abs,
     };
 
     #[tokio::test]
     async fn test_abs_block() {
         let mut block = Abs::new();
 
-        for _ in write_block_inputs(&mut [(&mut block.input, (-4).into())]).await {
-            block.read_inputs().await;
-        }
+        write_block_inputs(&mut [(&mut block.input, (-4).into())]).await;
 
         block.execute().await;
         assert_eq!(block.out.value, 4.into());
