@@ -34,10 +34,8 @@ impl Block for ParseBool {
             let parsed = input.value.parse::<bool>();
             if let Ok(parsed) = parsed {
                 self.out.set(parsed.into());
-            } else {
-                if let Ok(Value::Bool(bool)) = zinc::decode::from_str(&input.value) {
-                    self.out.set(bool.into());
-                }
+            } else if let Ok(Value::Bool(bool)) = zinc::decode::from_str(&input.value) {
+                self.out.set(bool.into());
             }
         }
     }
