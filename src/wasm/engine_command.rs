@@ -37,11 +37,12 @@ impl EngineCommand {
         &mut self,
         block_name: String,
         block_uuid: Option<String>,
+        lib: Option<String>,
     ) -> Result<String, String> {
         match self
             .sender
             .send(EngineMessage::AddBlockReq(
-                self.uuid, block_name, block_uuid,
+                self.uuid, block_name, block_uuid, lib,
             ))
             .await
         {

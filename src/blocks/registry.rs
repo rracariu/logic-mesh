@@ -31,10 +31,11 @@ pub(crate) type DynBlockProps = dyn BlockProps<
     Reader = <InputImpl as InputProps>::Reader,
     Writer = <InputImpl as InputProps>::Writer,
 >;
-type MapType = BTreeMap<String, BlockEntry>;
+type MapType = BTreeMap<String, BTreeMap<String, BlockEntry>>;
 type BlockRegistry = Mutex<MapType>;
 
 /// Register a block in the registry
+#[derive(Debug, Clone)]
 pub struct BlockEntry {
     pub desc: BlockDesc,
     pub make: Option<fn() -> Box<DynBlockProps>>,
@@ -49,7 +50,7 @@ macro_rules! register_blocks{
 			/// The block registry
 			/// This is a static variable that is initialized once and then
 			/// used throughout the lifetime of the program.
-			pub static ref BLOCKS: BlockRegistry = {
+			static ref BLOCKS: BlockRegistry = {
 				let mut reg = BTreeMap::new();
 
 				$(
@@ -208,14 +209,60 @@ register_blocks!(
 /// - name: The name of the block to get
 /// # Returns
 /// A boxed block
-pub fn make(name: &str) -> Option<Box<DynBlockProps>> {
+pub fn make(name: &str, lib: Option<String>) -> Option<Box<DynBlockProps>> {
+    let entry = get_block(name, lib)?;
+    entry.make.map(|make| make())
+}
+
+/// Get a block entry from the registry
+pub fn get_block(name: &str, lib: Option<String>) -> Option<BlockEntry> {
+    let reg = BLOCKS.lock().expect("Block registry is locked");
+    let lib = lib.unwrap_or_else(|| "core".to_string());
+
+    let reg = reg.get(&lib)?;
+    reg.get(name).cloned()
+}
+
+/// Get a core block
+pub fn get_core_block(name: &str) -> Option<BlockEntry> {
+    get_block(name, Some("core".to_string()))
+}
+
+/// Get all block descriptions from the registry
+pub fn list_registered_blocks() -> Vec<BlockDesc> {
     let reg = BLOCKS.lock().expect("Block registry is locked");
 
-    if let Some(data) = reg.get(name) {
-        data.make.map(|make| make())
-    } else {
-        None
+    let mut blocks = Vec::new();
+    for (_, lib) in reg.iter() {
+        for (_, block) in lib.iter() {
+            blocks.push(block.desc.clone());
+        }
     }
+
+    blocks
+}
+
+/// Register a block with the registry
+pub fn register_block_desc(desc: &BlockDesc) -> Result<()> {
+    let mut reg = BLOCKS.lock().expect("Block registry is locked");
+
+    let lib = desc.library.clone();
+    let reg = reg.entry(lib).or_default();
+
+    let name = desc.name.clone();
+    if reg.contains_key(&name) {
+        return Err(anyhow!("Block already registered"));
+    }
+
+    reg.insert(
+        name.to_string(),
+        BlockEntry {
+            desc: desc.clone(),
+            make: None,
+        },
+    );
+
+    Ok(())
 }
 
 /// Register a block with the registry
@@ -244,8 +291,10 @@ fn register_impl<
 >(
     reg: &mut MapType,
 ) {
-    reg.insert(<B as BlockStaticDesc>::desc().name.clone(), {
-        let desc = <B as BlockStaticDesc>::desc();
+    let desc = <B as BlockStaticDesc>::desc();
+    let lib = desc.library.clone();
+
+    reg.entry(lib).or_default().insert(desc.name.clone(), {
         let make = || -> Box<DynBlockProps> {
             let block = B::default();
             Box::new(block)
@@ -267,11 +316,9 @@ mod test {
 
     #[test]
     fn test_registry() {
-        let reg = BLOCKS.lock().expect("Block registry is locked");
-
-        let add = reg.get("Add").expect("Add block not found");
-        let random = reg.get("Random").expect("Random block not found");
-        let sine = reg.get("SineWave").expect("SineWave block not found");
+        let add = get_core_block("Add").expect("Add block not found");
+        let random = get_core_block("Random").expect("Random block not found");
+        let sine = get_core_block("SineWave").expect("SineWave block not found");
 
         assert_eq!(add.desc.name, "Add");
         assert_eq!(random.desc.name, "Random");

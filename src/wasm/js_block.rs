@@ -27,7 +27,7 @@ use crate::{
     blocks::{InputImpl, OutputImpl},
 };
 
-type ExternFuncRegistryType = BTreeMap<String, js_sys::Function>;
+type ExternFuncRegistryType = BTreeMap<String, BTreeMap<String, js_sys::Function>>;
 pub static mut JS_FNS: ExternFuncRegistryType = ExternFuncRegistryType::new();
 
 /// A block that is implemented in JavaScript.
@@ -272,17 +272,20 @@ pub(crate) fn schedule_js_block(
     desc: &BlockDesc,
     block_id: Option<Uuid>,
 ) -> Result<Uuid> {
-    let func = unsafe { JS_FNS.get(desc.name.as_str()) };
+    let lib = unsafe { JS_FNS.get(&desc.library) };
+    let func = lib
+        .ok_or_else(|| anyhow::anyhow!("Missing library: {}", desc.library))?
+        .get(desc.name.as_str());
 
     let func = match func {
         Some(func) => {
-            let func = func
-                .call0(&JsValue::NULL)
-                .map_err(|err| anyhow::anyhow!("Failed to call JS function: {err:#?}"))?;
+            let func = func.call0(&JsValue::NULL).map_err(|err| {
+                anyhow::anyhow!("Failed to call the JS factory function: {err:#?}")
+            })?;
 
-            let func = func
-                .dyn_into::<js_sys::Function>()
-                .map_err(|err| anyhow::anyhow!("Value is not a function: {err:#?}"))?;
+            let func = func.dyn_into::<js_sys::Function>().map_err(|err| {
+                anyhow::anyhow!("Factory function return is not a function: {err:#?}")
+            })?;
 
             Some(func)
         }

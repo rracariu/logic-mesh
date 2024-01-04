@@ -11,8 +11,12 @@ use uuid::Uuid;
 
 pub(super) async fn dispatch_message(engine: &mut SingleThreadedEngine, msg: Messages) {
     match msg {
-        EngineMessage::AddBlockReq(sender_uuid, block_name, block_uuid) => {
-            log::debug!("Adding block: {:?}", block_name);
+        EngineMessage::AddBlockReq(sender_uuid, block_name, block_uuid, lib) => {
+            log::debug!(
+                "Adding block: {}::{:?}",
+                block_name,
+                lib.clone().unwrap_or("core".into())
+            );
 
             let block_id = if let Some(uuid) = block_uuid {
                 match Uuid::parse_str(&uuid) {
@@ -30,7 +34,7 @@ pub(super) async fn dispatch_message(engine: &mut SingleThreadedEngine, msg: Mes
             };
 
             let block_id = engine
-                .add_block(block_name, block_id)
+                .add_block(block_name, block_id, lib)
                 .map_err(|err| err.to_string());
 
             reply_to_sender(engine, sender_uuid, EngineMessage::AddBlockRes(block_id));

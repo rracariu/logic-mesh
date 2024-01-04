@@ -11,13 +11,12 @@ use tokio::{
 };
 use uuid::Uuid;
 
-use super::block_pointer::BlockPropsPointer;
 use super::message_dispatch::dispatch_message;
+use super::{block_pointer::BlockPropsPointer, schedule_block_on_engine};
 use crate::{
     base::{
         block::{
             connect::{connect_input, connect_output, disconnect_block},
-            desc::BlockImplementation,
             Block, BlockProps, BlockState,
         },
         engine::{
@@ -26,7 +25,7 @@ use crate::{
         },
         program::data::{BlockData, LinkData},
     },
-    blocks::registry::{schedule_block, schedule_block_with_uuid, BLOCKS},
+    blocks::registry::get_block,
     tokio_impl::input::{Reader, Writer},
 };
 
@@ -105,8 +104,15 @@ impl Engine for SingleThreadedEngine {
 
     fn load_blocks_and_links(&mut self, blocks: &[BlockData], links: &[LinkData]) -> Result<()> {
         blocks.iter().try_for_each(|block| -> Result<()> {
-            let id = Uuid::try_from(block.id.as_str())?;
-            schedule_block_with_uuid(&block.name, id, self)?;
+            let id = Uuid::try_from(block.id.as_str()).ok();
+            if id.is_none() {
+                return Err(anyhow!("Invalid block id"));
+            }
+
+            let block = get_block(&block.name, Some(block.lib.clone()))
+                .ok_or_else(|| anyhow!("Block not found"))?;
+            schedule_block_on_engine(&block.desc, id, self)?;
+
             Ok(())
         })?;
 
@@ -301,29 +307,16 @@ impl SingleThreadedEngine {
         })
     }
 
-    pub(super) fn add_block(&mut self, block_name: String, block_id: Option<Uuid>) -> Result<Uuid> {
-        match BLOCKS
-            .lock()
-            .expect("Can't get lock to blocks registry")
-            .get(&block_name)
-        {
-            Some(block) => {
-                if block.desc.implementation == BlockImplementation::External {
-                    #[cfg(target_arch = "wasm32")]
-                    {
-                        use crate::wasm::js_block::schedule_js_block;
-                        schedule_js_block(self, &block.desc, block_id)
-                    }
-                    #[cfg(not(target_arch = "wasm32"))]
-                    Err(anyhow!("External blocks not supported on this platform"))
-                } else if let Some(uuid) = block_id {
-                    schedule_block_with_uuid(&block_name, uuid, self)
-                } else {
-                    schedule_block(&block_name, self)
-                }
-            }
-            None => Err(anyhow!("Block not found")),
-        }
+    pub(super) fn add_block(
+        &mut self,
+        block_name: String,
+        block_id: Option<Uuid>,
+        lib: Option<String>,
+    ) -> Result<Uuid> {
+        let block =
+            get_block(block_name.as_str(), lib).ok_or_else(|| anyhow!("Block not found"))?;
+
+        schedule_block_on_engine(&block.desc, block_id, self)
     }
 
     pub(super) fn remove_block(&mut self, block_id: &Uuid) -> Result<Uuid> {

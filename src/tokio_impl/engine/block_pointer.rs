@@ -2,16 +2,14 @@
 
 use super::single_threaded::BlockPropsType;
 
-/// Holds a fat pointer to a BlockProps
-/// trait object.
+/// Holds a fat pointer to a BlockProps trait object.
 #[derive(Default, Clone, Copy)]
 pub(super) struct BlockPropsPointer {
     fat_pointer: [usize; 2],
 }
 
 impl BlockPropsPointer {
-    /// Constructs the BlockProps pointer from a ref to the trait
-    /// object.
+    /// Constructs the BlockProps pointer from a ref to the trait object.
     pub(super) fn new(block: &mut dyn BlockPropsType) -> Self {
         let block_props_ptr = block as *mut (dyn BlockPropsType);
 
@@ -22,8 +20,8 @@ impl BlockPropsPointer {
         Self { fat_pointer }
     }
 
-    /// Tries to get the pointer to the trait object from the fat pointer
-    /// stored.
+    /// Tries to get the pointer to the trait object from
+    /// the fat pointer stored.
     /// It returns None if there is no pointer store.
     ///
     /// # Safety

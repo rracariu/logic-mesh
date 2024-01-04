@@ -1,6 +1,6 @@
 // Copyright (c) 2022-2023, Radu Racariu.
 
-use crate::blocks::registry::{BlockEntry, BLOCKS};
+use crate::blocks::registry::{list_registered_blocks, register_block_desc};
 use crate::single_threaded::SingleThreadedEngine;
 use crate::wasm::engine_command::EngineCommand;
 use crate::wasm::js_block::JS_FNS;
@@ -37,19 +37,17 @@ impl BlocksEngine {
     pub fn list_blocks(&self) -> Array {
         let arr = Array::new();
 
-        let blocks = BLOCKS.lock().expect("Failed to lock blocks registry");
-        blocks.iter().for_each(|(_, block)| {
+        list_registered_blocks().iter().for_each(|block| {
             let desc = JsBlockDesc {
-                name: block.desc.name.clone(),
-                dis: block.desc.dis.clone(),
-                lib: block.desc.library.clone(),
-                ver: block.desc.ver.clone(),
-                category: block.desc.category.clone(),
-                doc: block.desc.doc.clone(),
-                implementation: block.desc.implementation.to_string(),
+                name: block.name.clone(),
+                dis: block.dis.clone(),
+                lib: block.library.clone(),
+                ver: block.ver.clone(),
+                category: block.category.clone(),
+                doc: block.doc.clone(),
+                implementation: block.implementation.to_string(),
 
                 inputs: block
-                    .desc
                     .inputs
                     .iter()
                     .map(|input| JsBlockPin {
@@ -59,7 +57,6 @@ impl BlocksEngine {
                     .collect(),
 
                 outputs: block
-                    .desc
                     .outputs
                     .iter()
                     .map(|output| JsBlockPin {
@@ -68,11 +65,7 @@ impl BlocksEngine {
                     })
                     .collect(),
 
-                run_condition: block
-                    .desc
-                    .run_condition
-                    .clone()
-                    .map(|cond| cond.to_string()),
+                run_condition: block.run_condition.clone().map(|cond| cond.to_string()),
             };
 
             if let Ok(desc) = serde_wasm_bindgen::to_value(&desc) {
@@ -100,23 +93,20 @@ impl BlocksEngine {
         desc: JsValue,
         func: Option<js_sys::Function>,
     ) -> Result<String, String> {
-        let mut blocks = BLOCKS.lock().map_err(|err| err.to_string())?;
-
         let desc: JsBlockDesc =
             serde_wasm_bindgen::from_value(desc).map_err(|err| err.to_string())?;
 
         let name = desc.name.clone();
+        let lib = desc.lib.clone();
 
-        blocks.insert(name.clone(), {
-            BlockEntry {
-                desc: desc.into(),
-                make: None,
-            }
-        });
+        register_block_desc(&desc.into()).map_err(|err| err.to_string())?;
 
         if let Some(func) = func {
             unsafe {
-                JS_FNS.insert(name.clone(), func);
+                JS_FNS
+                    .entry(lib)
+                    .or_insert(Default::default())
+                    .insert(name.clone(), func);
             }
         }
 

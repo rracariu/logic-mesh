@@ -5,10 +5,10 @@
 
 pub mod data;
 
-use anyhow::{anyhow, Result};
+use anyhow::Result;
 use serde::{Deserialize, Serialize};
 
-use crate::blocks::{registry::BLOCKS, InputImpl};
+use crate::blocks::InputImpl;
 
 use self::data::{BlockData, LinkData, ProgramMeta};
 
@@ -41,14 +41,6 @@ impl<E: EngineType> Program<E> {
     }
 
     pub fn load(&mut self) -> Result<()> {
-        if let Ok(reg) = BLOCKS.lock() {
-            if !self.blocks.iter().all(|b| reg.contains_key(&b.name)) {
-                return Err(anyhow!("Block not found"));
-            }
-        } else {
-            return Err(anyhow!("Block registry is locked"));
-        }
-
         self.engine.load_blocks_and_links(&self.blocks, &self.links)
     }
 
@@ -75,7 +67,7 @@ mod test {
                     id: "00000000-0000-0000-0000-000000000000".to_string(),
                     name: "Add".to_string(),
                     dis: "Add".to_string(),
-                    lib: "test".to_string(),
+                    lib: "core".to_string(),
                     category: "maths".to_string(),
                     ver: "0.1.0".to_string(),
                 },
@@ -83,7 +75,7 @@ mod test {
                     id: "00000000-0000-0000-0000-000000000001".to_string(),
                     name: "Add".to_string(),
                     dis: "Add".to_string(),
-                    lib: "test".to_string(),
+                    lib: "core".to_string(),
                     category: "maths".to_string(),
                     ver: "0.1.0".to_string(),
                 },
