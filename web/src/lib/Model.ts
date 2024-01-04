@@ -13,7 +13,7 @@ export let state: VueFlowStore
 const { command } = useEngine()
 
 export async function addBlock(desc: BlockDesc): Promise<Block> {
-	const id = await command.addBlock(desc.name)
+	const id = await command.addBlock(desc.name, undefined, desc.lib)
 
 	const block = ref(blockInstance(id, desc))
 

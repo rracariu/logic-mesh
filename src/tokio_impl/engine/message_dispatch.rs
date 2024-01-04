@@ -13,9 +13,9 @@ pub(super) async fn dispatch_message(engine: &mut SingleThreadedEngine, msg: Mes
     match msg {
         EngineMessage::AddBlockReq(sender_uuid, block_name, block_uuid, lib) => {
             log::debug!(
-                "Adding block: {}::{:?}",
+                "Adding block: {}::{}",
+                lib.clone().unwrap_or("core".into()),
                 block_name,
-                lib.clone().unwrap_or("core".into())
             );
 
             let block_id = if let Some(uuid) = block_uuid {

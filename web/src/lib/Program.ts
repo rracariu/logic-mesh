@@ -83,7 +83,7 @@ export async function load(
 	for (const blockUuid in program.blocks) {
 		const block = program.blocks[blockUuid]
 
-		const id = await command.addBlock(block.name, blockUuid)
+		const id = await command.addBlock(block.name, blockUuid, block.lib)
 		if (blockUuid !== id) {
 			throw new Error(`Block uuid mismatch: ${blockUuid} !== ${id}`)
 		}

@@ -74,11 +74,15 @@ pub fn convert_value_kind(
         (HaystackKind::Bool, HaystackKind::Str) => {
             let val = Str::try_from(&val).map_err(|err| anyhow::anyhow!(err))?;
 
+            if val.value == "true" || val.value == "false" {
+                return Ok(val.value.parse::<bool>()?.into());
+            }
+
             let num = zinc::decode::from_str(&val.value)?;
-            if num.is_bool() {
-                Ok(num)
-            } else {
-                Err(anyhow::anyhow!("Expected a bool value, but got {:?}", val))
+            match num {
+                Value::Number(Number { value, unit: _ }) => Ok((value != 0.0).into()),
+                Value::Bool(Bool { value }) => Ok(value.into()),
+                _ => Err(anyhow::anyhow!("Expected a bool value, but got {:?}", val)),
             }
         }
 
