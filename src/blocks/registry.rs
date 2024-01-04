@@ -16,7 +16,7 @@ use crate::blocks::math::{
     ArcCos, ArcSin, Average, Div, Even, Exp, Log10, Logn, Max, Median, Min, Mod, Mul, Neg, Odd,
     Pow, Sin, Sqrt,
 };
-use crate::blocks::misc::{Random, SineWave};
+use crate::blocks::misc::{HasValue, ParseNumber, Random, SineWave};
 use crate::blocks::string::{Concat, Replace, StrLen};
 
 use anyhow::{anyhow, Result};
@@ -24,7 +24,6 @@ use lazy_static::lazy_static;
 use std::collections::BTreeMap;
 use std::sync::Mutex;
 
-use super::misc::ParseNumber;
 use super::InputImpl;
 
 pub(crate) type DynBlockProps = dyn BlockProps<
@@ -204,7 +203,8 @@ register_blocks!(
     // Misc blocks
     Random,
     SineWave,
-    ParseNumber
+    ParseNumber,
+    HasValue
 );
 
 /// Construct a block properties from the registry
