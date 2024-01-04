@@ -16,7 +16,7 @@ use crate::blocks::math::{
     ArcCos, ArcSin, Average, Div, Even, Exp, Log10, Logn, Max, Median, Min, Mod, Mul, Neg, Odd,
     Pow, Sin, Sqrt,
 };
-use crate::blocks::misc::{HasValue, ParseNumber, Random, SineWave};
+use crate::blocks::misc::{HasValue, ParseBool, ParseNumber, Random, SineWave};
 use crate::blocks::string::{Concat, Replace, StrLen};
 
 use anyhow::{anyhow, Result};
@@ -203,6 +203,7 @@ register_blocks!(
     // Misc blocks
     Random,
     SineWave,
+    ParseBool,
     ParseNumber,
     HasValue
 );

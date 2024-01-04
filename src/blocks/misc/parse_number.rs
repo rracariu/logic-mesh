@@ -8,7 +8,10 @@ use crate::base::{
     output::Output,
 };
 
-use libhaystack::val::{kind::HaystackKind, Value};
+use libhaystack::{
+    encoding::zinc,
+    val::{kind::HaystackKind, Value},
+};
 
 use crate::{blocks::InputImpl, blocks::OutputImpl};
 
@@ -31,6 +34,10 @@ impl Block for ParseNumber {
             let parsed = input.value.parse::<f64>();
             if let Ok(parsed) = parsed {
                 self.out.set(parsed.into());
+            } else {
+                if let Ok(Value::Number(number)) = zinc::decode::from_str(&input.value) {
+                    self.out.set(number.into());
+                }
             }
         }
     }
@@ -39,17 +46,29 @@ impl Block for ParseNumber {
 #[cfg(test)]
 mod test {
 
+    use libhaystack::val::Value;
+
     use crate::{
         base::block::test_utils::write_block_inputs, base::block::Block, blocks::misc::ParseNumber,
     };
 
     #[tokio::test]
-    async fn test_parse_number_block() {
+    async fn test_parse_number() {
         let mut block = ParseNumber::new();
 
         write_block_inputs(&mut [(&mut block.input, ("33.5").into())]).await;
 
         block.execute().await;
         assert_eq!(block.out.value, 33.5.into());
+    }
+
+    #[tokio::test]
+    async fn test_parse_number_unit() {
+        let mut block = ParseNumber::new();
+
+        write_block_inputs(&mut [(&mut block.input, ("33.5F").into())]).await;
+
+        block.execute().await;
+        assert_eq!(block.out.value, Value::make_number_unit(33.5, "F".into()));
     }
 }
