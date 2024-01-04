@@ -21,12 +21,12 @@ const blockSearch = ref('')
 const blocksFiltered = computed(() => props.blocks.filter((block) => block.dis.toLowerCase().includes(blockSearch.value.toLowerCase())))
 
 const categories = computed(() => blocksFiltered.value.reduce((acc, cur) => {
-	acc.add(cur.category)
+	acc.add(cur.category.toLowerCase())
 	return acc
 }, new Set<string>()))
 
 const blocksForCategory = (category: string) =>
-	blocksFiltered.value.filter((block) => block.category === category)
+	blocksFiltered.value.filter((block) => block.category.toLowerCase() === category.toLowerCase())
 </script>
 
 
@@ -35,11 +35,10 @@ const blocksForCategory = (category: string) =>
 		<InputText v-model="blockSearch" placeholder="Search block..." class="w-full" />
 		<ScrollPanel style="width: 100%; height: 90vh" class="scrollbar">
 			<Accordion :multiple="true" :activeIndex="blockSearch.length > 0 ? [...Array(categories.size).keys()] : []">
-				<AccordionTab v-for="(category) in categories" :header="capitalize(category)">
+				<AccordionTab v-for="category in categories" :header="capitalize(category)">
 					<Button v-for="block of blocksForCategory(category)" :key="block.name" :label="capitalize(block.dis)"
 						:title="block.doc" @click="$emit('addBlock', block)" class="m-1 w-min" text raised>
 					</Button>
-
 				</AccordionTab>
 			</Accordion>
 		</ScrollPanel>
