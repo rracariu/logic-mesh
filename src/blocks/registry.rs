@@ -1,6 +1,6 @@
 // Copyright (c) 2022-2024, Radu Racariu.
 
-use crate::base::block::{Block, BlockDesc, BlockProps, BlockStaticDesc};
+use crate::base::block::{BlockDesc, BlockProps, BlockStaticDesc};
 use crate::base::input::input_reader::InputReader;
 use crate::base::input::InputProps;
 use libhaystack::val::Value;
@@ -24,7 +24,7 @@ use lazy_static::lazy_static;
 use std::collections::BTreeMap;
 use std::sync::Mutex;
 
-use super::InputImpl;
+use super::{BlockImpl, InputImpl};
 
 pub(crate) type DynBlockProps = dyn BlockProps<
     Reader = <InputImpl as InputProps>::Reader,
@@ -109,7 +109,7 @@ macro_rules! register_blocks{
 
 		}
 
-		/// Evaluate a block by name.
+		/// Evaluate a static registered block by name.
 		/// This will create a block instance and execute it.
 		///
 		/// # Arguments
@@ -118,28 +118,12 @@ macro_rules! register_blocks{
 		///
 		/// # Returns
 		/// A list of values representing the outputs of the block
-		pub async fn eval_block(name: &str, inputs: Vec<Value>) -> Result<Vec<Value>> {
+		pub async fn eval_static_block(name: &str, inputs: Vec<Value>) -> Result<Vec<Value>> {
 			match name {
 				$(
 					stringify!($block_name) => {
 						let mut block = <$block_name>::new();
-
-						for (i, input) in inputs.iter().enumerate() {
-							let mut input_pins = block.inputs_mut();
-
-							if i >= input_pins.len() {
-								return Err(anyhow!("Too many inputs"));
-							}
-
-							input_pins[i].increment_conn();
-							if input_pins[i].writer().try_send(input.clone()).is_ok()
-								&& i < inputs.len() - 1 {
-									block.read_inputs().await;
-							}
-						}
-
-						block.execute().await;
-						Ok(block.outputs().iter().map(|o| o.value().clone()).collect())
+						eval_block_impl(&mut block, inputs).await
 					}
 				)*
 				_ => {
@@ -274,27 +258,41 @@ pub fn register_block_desc(desc: &BlockDesc) -> Result<()> {
 /// - B: The block type to register
 /// # Panics
 /// Panics if the block registry is already locked
-pub fn register<
-    B: Block<
-            Reader = <InputImpl as InputProps>::Reader,
-            Writer = <InputImpl as InputProps>::Writer,
-        > + Default
-        + 'static,
->() {
+pub fn register<B: BlockImpl>() {
     let mut reg = BLOCKS.lock().expect("Block registry is locked");
 
     register_impl::<B>(&mut reg);
 }
 
-fn register_impl<
-    B: Block<
-            Reader = <InputImpl as InputProps>::Reader,
-            Writer = <InputImpl as InputProps>::Writer,
-        > + Default
-        + 'static,
->(
-    reg: &mut MapType,
-) {
+/// Evaluate a block directly
+///
+/// # Arguments
+/// - block: The block to evaluate
+/// - inputs: The input values to the block
+/// # Returns
+/// A list of values representing the outputs of the block
+pub async fn eval_block_impl<B: BlockImpl>(
+    block: &mut B,
+    inputs: Vec<Value>,
+) -> Result<Vec<Value>> {
+    for (i, input) in inputs.iter().enumerate() {
+        let mut input_pins = block.inputs_mut();
+
+        if i >= input_pins.len() {
+            return Err(anyhow!("Too many inputs"));
+        }
+
+        input_pins[i].increment_conn();
+        if input_pins[i].writer().try_send(input.clone()).is_ok() && i < inputs.len() - 1 {
+            block.read_inputs().await;
+        }
+    }
+
+    block.execute().await;
+    Ok(block.outputs().iter().map(|o| o.value().clone()).collect())
+}
+
+fn register_impl<B: BlockImpl>(reg: &mut MapType) {
     let desc = <B as BlockStaticDesc>::desc();
     let lib = desc.library.clone();
 
@@ -348,7 +346,7 @@ mod test {
 
     #[tokio::test]
     async fn test_block_eval() {
-        let result = eval_block("Add", vec![Value::from(1), Value::from(2)]).await;
+        let result = eval_static_block("Add", vec![Value::from(1), Value::from(2)]).await;
 
         assert_eq!(result.unwrap(), vec![Value::from(3)]);
     }

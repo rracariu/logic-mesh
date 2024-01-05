@@ -1,3 +1,5 @@
+// Copyright (c) 2022-2024, Radu Racariu.
+
 use std::str::FromStr;
 
 use crate::base::program::data::LinkData;
@@ -300,6 +302,7 @@ impl EngineCommand {
     /// # Arguments
     /// * `block_name` - The name of the block to evaluate
     /// * `inputs` - The input values to the block
+    /// * `lib` - Optional, the library to load the block from, defaults to "core"
     ///
     /// # Returns
     /// A list of values representing the outputs of the block
@@ -308,17 +311,18 @@ impl EngineCommand {
         &mut self,
         block_name: String,
         inputs: Vec<JsValue>,
+        lib: Option<String>,
     ) -> Result<JsValue, String> {
         match self
             .sender
             .send(EngineMessage::EvaluateBlockReq(
                 self.uuid,
-                "core".to_string(),
                 block_name,
                 inputs
                     .into_iter()
                     .map(|v| serde_wasm_bindgen::from_value(v).unwrap_or_default())
                     .collect(),
+                lib,
             ))
             .await
         {

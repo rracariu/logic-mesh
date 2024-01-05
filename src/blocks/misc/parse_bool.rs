@@ -1,4 +1,4 @@
-// Copyright (c) 2022-2023, Radu Racariu.
+// Copyright (c) 2022-2024, Radu Racariu.
 
 use uuid::Uuid;
 

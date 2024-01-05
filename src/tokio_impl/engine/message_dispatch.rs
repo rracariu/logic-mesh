@@ -1,13 +1,18 @@
+// Copyright (c) 2022-2024, Radu Racariu.
+
 use crate::base::block::connect::disconnect_link;
 use crate::base::engine::messages::BlockInputData;
 use crate::base::engine::messages::BlockOutputData;
 use crate::base::engine::messages::BlockParam;
 use crate::base::engine::messages::EngineMessage;
-use crate::blocks::registry::eval_block;
+
+use crate::blocks::registry::get_block;
 use crate::single_threaded::Messages;
 use crate::single_threaded::SingleThreadedEngine;
 use libhaystack::val::Value;
 use uuid::Uuid;
+
+use super::eval_block;
 
 pub(super) async fn dispatch_message(engine: &mut SingleThreadedEngine, msg: Messages) {
     match msg {
@@ -100,8 +105,16 @@ pub(super) async fn dispatch_message(engine: &mut SingleThreadedEngine, msg: Mes
             }
         }
 
-        EngineMessage::EvaluateBlockReq(sender_uuid, _lib, name, inputs) => {
-            let response = eval_block(&name, inputs).await;
+        EngineMessage::EvaluateBlockReq(sender_uuid, name, inputs, lib) => {
+            let Some(block) = get_block(name.as_str(), lib) else {
+                return reply_to_sender(
+                    engine,
+                    sender_uuid,
+                    EngineMessage::EvaluateBlockRes(Err("Block not found".into())),
+                );
+            };
+
+            let response = eval_block(&block.desc, inputs).await;
 
             reply_to_sender(
                 engine,

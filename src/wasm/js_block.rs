@@ -16,6 +16,7 @@ use crate::base::block::{Block, BlockState, BlockStaticDesc};
 use crate::base::engine::Engine;
 use crate::base::input::input_reader::InputReader;
 
+use crate::blocks::registry::eval_block_impl;
 use crate::blocks::utils::DEFAULT_SLEEP_DUR;
 use crate::{
     base::{
@@ -32,6 +33,7 @@ pub static mut JS_FNS: ExternFuncRegistryType = ExternFuncRegistryType::new();
 
 /// A block that is implemented in JavaScript.
 /// The block will delegate the evaluation to a JS function that will be called with the inputs as arguments.
+#[derive(Debug, Default)]
 pub struct JsBlock {
     id: Uuid,
     desc: BlockDesc,
@@ -272,11 +274,30 @@ pub(crate) fn schedule_js_block(
     desc: &BlockDesc,
     block_id: Option<Uuid>,
 ) -> Result<Uuid> {
+    let func = resolve_js_execute_function(desc)?;
+
+    let block = JsBlock::new(desc.clone(), func, block_id);
+    let id = *block.id();
+
+    engine.schedule(block);
+
+    Ok(id)
+}
+
+pub(crate) async fn eval_js_block(desc: &BlockDesc, inputs: Vec<Value>) -> Result<Vec<Value>> {
+    let func = resolve_js_execute_function(desc)?;
+
+    let mut block = JsBlock::new(desc.clone(), func, None);
+    eval_block_impl(&mut block, inputs).await
+}
+
+fn resolve_js_execute_function(
+    desc: &BlockDesc,
+) -> Result<Option<js_sys::Function>, anyhow::Error> {
     let lib = unsafe { JS_FNS.get(&desc.library) };
     let func = lib
         .ok_or_else(|| anyhow::anyhow!("Missing library: {}", desc.library))?
         .get(desc.name.as_str());
-
     let func = match func {
         Some(func) => {
             let func = func.call0(&JsValue::NULL).map_err(|err| {
@@ -291,11 +312,5 @@ pub(crate) fn schedule_js_block(
         }
         None => None,
     };
-
-    let block = JsBlock::new(desc.clone(), func, block_id);
-    let id = *block.id();
-
-    engine.schedule(block);
-
-    Ok(id)
+    Ok(func)
 }

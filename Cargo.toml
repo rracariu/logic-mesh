@@ -1,6 +1,6 @@
 [package]
 name = "logic-mesh"
-version = "0.1.6"
+version = "0.1.7"
 edition = "2021"
 authors = ["Radu Racariu <radu.racariu@gmail.com>"]
 description = "Control logic engine using event based and reactive blocks written in Rust."
