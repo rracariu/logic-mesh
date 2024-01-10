@@ -1,9 +1,12 @@
 [![GitHub CI](https://github.com/rracariu/logic-mesh/actions/workflows/main.yml/badge.svg)](https://github.com/rracariu/logic-mesh/actions/workflows/main.yml)
 [![License](https://img.shields.io/badge/License-BSD_3--Clause-blue.svg)](https://github.com/rracariu/logic-mesh/blob/master/LICENSE)
 [![crates.io](https://img.shields.io/crates/v/logic-mesh.svg)](https://crates.io/crates/logic-mesh)
+[![npm](https://img.shields.io/npm/v/logic-mesh.svg)](https://www.npmjs.com/package/logic-mesh)
 
 # Logic Mesh
 A logic engine that is fully async, dynamic, and reactive written in Rust.
+
+![Example program](./screen-shot.png)
 
 ## Possible applications
 Logic Mesh started as a hardware control engine, but the scope expanded to anything that requires a reactive and dynamic evaluation engine. 
