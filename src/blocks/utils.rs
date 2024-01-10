@@ -1,15 +1,24 @@
 // Copyright (c) 2022-2023, Radu Racariu.
 
+use super::InputImpl;
 use anyhow::Result;
 use libhaystack::{
     units::units_generated::MILLISECOND,
     val::{Number, Value},
 };
 
-use super::InputImpl;
+#[cfg(target_arch = "wasm32")]
+use wasm_bindgen::prelude::wasm_bindgen;
 
 /// Default value for sleep intervals
 pub(crate) const DEFAULT_SLEEP_DUR: u64 = 200;
+
+#[cfg(target_arch = "wasm32")]
+#[wasm_bindgen]
+extern "C" {
+    #[wasm_bindgen]
+    fn setTimeout(handler: &::js_sys::Function, timeout: i32);
+}
 
 /// Sleep for a given number of milliseconds
 /// This function is used to wait for a given amount of time
@@ -20,10 +29,7 @@ pub(crate) async fn sleep_millis(millis: u64) {
     let millis: i32 = millis.try_into().expect("Conversion to millis");
 
     let promise = js_sys::Promise::new(&mut |resolve, _| {
-        web_sys::window()
-            .expect("Window")
-            .set_timeout_with_callback_and_timeout_and_arguments_0(&resolve, millis)
-            .expect("Future");
+        setTimeout(&resolve, millis);
     });
 
     let _ = JsFuture::from(promise).await;
