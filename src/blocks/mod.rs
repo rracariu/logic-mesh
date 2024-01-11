@@ -4,6 +4,7 @@
 //! Block implementations
 //!
 
+pub mod bitwise;
 pub mod collections;
 pub mod control;
 pub mod logic;

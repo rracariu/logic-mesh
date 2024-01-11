@@ -6,6 +6,7 @@ use crate::base::input::InputProps;
 use libhaystack::val::Value;
 
 use crate::base::engine::Engine;
+use crate::blocks::bitwise::{BitwiseAnd, BitwiseNot, BitwiseOr, BitwiseXor};
 use crate::blocks::collections::{Dict, GetElement, Keys, Length, List, Values};
 use crate::blocks::control::Pid;
 use crate::blocks::logic::{
@@ -171,6 +172,11 @@ register_blocks!(
     Min,
     Max,
     Neg,
+    // Bitwise blocks
+    BitwiseAnd,
+    BitwiseNot,
+    BitwiseOr,
+    BitwiseXor,
     // Control blocks
     Pid,
     // String blocks

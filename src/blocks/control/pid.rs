@@ -20,7 +20,8 @@ use libhaystack::val::kind::HaystackKind;
 
 use crate::{blocks::InputImpl, blocks::OutputImpl};
 
-/// Outputs the PID loop result based on sp, KP, KI, and KD inputs.
+/// Outputs the PID loop result based on input, sp, KP, KI, and KD inputs.
+/// If input is not connected, the output value is used for the input.
 #[block]
 #[derive(BlockProps, Debug)]
 #[category = "control"]
@@ -72,11 +73,11 @@ impl Block for Pid {
         }
 
         let kp = input_as_number(&self.kp).map(|v| v.value).unwrap_or(0.98);
-        let ki = input_as_number(&self.ki).map(|v| v.value).unwrap_or(0.5);
+        let ki = input_as_number(&self.ki).map(|v| v.value).unwrap_or(0.002);
         let kd = input_as_number(&self.kd).map(|v| v.value).unwrap_or(0.25);
-        let bias = input_as_number(&self.kd).map(|v| v.value).unwrap_or(2.0);
+        let bias = input_as_number(&self.kd).map(|v| v.value).unwrap_or(100.0);
 
-        if kp < 0.0 || ki < 0.0 || kd < 0.0 {
+        if kp <= 0.0 || ki <= 0.0 || kd <= 0.0 {
             return;
         }
 
@@ -99,12 +100,7 @@ impl Block for Pid {
 
         // Integral term
         self.integral += ki * time * (error + self.last_error);
-
-        if self.integral > max / 2.0 {
-            self.integral = max / 2.0;
-        } else if self.integral < min / 2.0 {
-            self.integral = min / 2.0;
-        }
+        self.integral = self.integral.clamp(min, max);
 
         // Derivative term
         self.derivative = -(bias * kd * (cur_value - self.last_value)
@@ -161,6 +157,6 @@ mod test {
         block.execute().await;
         block.execute().await;
 
-        assert_eq!(block.out.value, 50.into());
+        assert_eq!(block.out.value, 100.into());
     }
 }

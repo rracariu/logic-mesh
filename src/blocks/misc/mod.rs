@@ -1,4 +1,8 @@
-// Copyright (c) 2022-2023, Radu Racariu.
+// Copyright (c) 2022-2024, Radu Racariu.
+
+//!
+//! Miscellaneous Blocks
+//!
 
 mod has_value;
 mod parse_bool;

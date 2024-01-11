@@ -4,7 +4,7 @@
 [![npm](https://img.shields.io/npm/v/logic-mesh.svg)](https://www.npmjs.com/package/logic-mesh)
 
 # Logic Mesh
-A logic engine that is fully async, dynamic, and reactive written in Rust.
+A logic engine, written in Rust, that is fully async, dynamic, and reactive.
 
 ![Example program](./screen-shot.png)
 
