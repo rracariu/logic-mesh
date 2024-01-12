@@ -3,7 +3,7 @@
 use uuid::Uuid;
 
 use crate::base::{
-    block::{BlockDesc, BlockProps, BlockState},
+    block::{Block, BlockDesc, BlockProps, BlockState},
     input::{Input, InputProps},
     output::Output,
 };
@@ -12,7 +12,7 @@ use libhaystack::val::kind::HaystackKind;
 
 use crate::{blocks::InputImpl, blocks::OutputImpl};
 
-use super::common::BitwiseOperator;
+use super::utils::execute_impl;
 
 /// Outputs bitwise AND operation.
 #[block]
@@ -27,9 +27,9 @@ pub struct BitwiseAnd {
     pub out: OutputImpl,
 }
 
-impl BitwiseOperator for BitwiseAnd {
-    fn calculate(in1: i64, in2: i64) -> i64 {
-        in1 & in2
+impl Block for BitwiseAnd {
+    async fn execute(&mut self) {
+        execute_impl(self, |in1, in2| in1 & in2).await;
     }
 }
 

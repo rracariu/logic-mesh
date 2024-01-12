@@ -5,7 +5,6 @@
 //!
 
 pub mod and;
-mod binary;
 pub mod eq;
 pub mod gt;
 pub mod gte;
@@ -15,6 +14,7 @@ pub mod lte;
 pub mod neq;
 pub mod not;
 pub mod or;
+mod util;
 pub mod xor;
 
 pub use and::And;

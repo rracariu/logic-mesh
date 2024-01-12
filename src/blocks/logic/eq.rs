@@ -4,15 +4,15 @@ use uuid::Uuid;
 
 use crate::base::{
     block::{Block, BlockDesc, BlockProps, BlockState},
-    input::{input_reader::InputReader, Input, InputProps},
+    input::{Input, InputProps},
     output::Output,
 };
 
-use libhaystack::val::{kind::HaystackKind, Bool};
+use libhaystack::val::kind::HaystackKind;
 
 use crate::{blocks::InputImpl, blocks::OutputImpl};
 
-use super::binary::BinaryBlock;
+use super::util::execute_impl;
 
 /// Outputs true if value of the inputs are equal.
 #[block]
@@ -27,20 +27,9 @@ pub struct Equal {
     pub out: OutputImpl,
 }
 
-impl BinaryBlock for Equal {}
-
 impl Block for Equal {
     async fn execute(&mut self) {
-        self.read_inputs_until_ready().await;
-
-        let (input1, input2) = self.convert_inputs();
-
-        self.out.set(
-            Bool {
-                value: input1 == input2,
-            }
-            .into(),
-        );
+        execute_impl(self, |in1, in2| in1 == in2).await;
     }
 }
 

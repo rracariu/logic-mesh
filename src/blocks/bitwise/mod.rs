@@ -8,7 +8,7 @@ pub mod bitwise_and;
 pub mod bitwise_not;
 pub mod bitwise_or;
 pub mod bitwise_xor;
-pub(crate) mod common;
+pub(crate) mod utils;
 
 pub use bitwise_and::BitwiseAnd;
 pub use bitwise_not::BitwiseNot;
