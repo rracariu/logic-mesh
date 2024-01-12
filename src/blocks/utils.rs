@@ -7,43 +7,8 @@ use libhaystack::{
     val::{Number, Value},
 };
 
-#[cfg(target_arch = "wasm32")]
-use wasm_bindgen::prelude::wasm_bindgen;
-
 /// Default value for sleep intervals
 pub(crate) const DEFAULT_SLEEP_DUR: u64 = 200;
-
-#[cfg(target_arch = "wasm32")]
-#[wasm_bindgen]
-extern "C" {
-    #[wasm_bindgen]
-    fn setTimeout(handler: &::js_sys::Function, timeout: i32);
-}
-
-/// Sleep for a given number of milliseconds
-/// This function is used to wait for a given amount of time
-#[cfg(target_arch = "wasm32")]
-pub(crate) async fn sleep_millis(millis: u64) {
-    use wasm_bindgen_futures::JsFuture;
-
-    let millis: i32 = millis.try_into().expect("Conversion to millis");
-
-    let promise = js_sys::Promise::new(&mut |resolve, _| {
-        setTimeout(&resolve, millis);
-    });
-
-    let _ = JsFuture::from(promise).await;
-}
-
-/// Sleep for a given number of milliseconds
-/// This function is used to wait for a given amount of time
-/// This is the non-wasm version
-#[cfg(not(target_arch = "wasm32"))]
-pub(crate) async fn sleep_millis(millis: u64) {
-    use tokio::time::{sleep, Duration};
-
-    sleep(Duration::from_millis(millis)).await;
-}
 
 pub(super) fn input_as_float_or_default(input: &InputImpl) -> f64 {
     input_as_number(input).map(|v| v.value).unwrap_or(0.0)

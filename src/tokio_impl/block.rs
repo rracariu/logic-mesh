@@ -6,10 +6,11 @@ use futures::future::select_all;
 use futures::FutureExt;
 use libhaystack::val::kind::HaystackKind;
 
+use super::sleep::sleep_millis;
 use crate::base::block::{convert_value_kind, BlockState};
 use crate::base::input::InputProps;
 use crate::base::{block::Block, input::input_reader::InputReader};
-use crate::blocks::utils::{sleep_millis, DEFAULT_SLEEP_DUR};
+use crate::blocks::utils::DEFAULT_SLEEP_DUR;
 use crate::blocks::InputImpl;
 
 pub trait BlockImpl = Block<Reader = <InputImpl as InputProps>::Reader, Writer = <InputImpl as InputProps>::Writer>
