@@ -1,3 +1,5 @@
+// Copyright (c) 2022-2024, Radu Racariu.
+
 use libhaystack::val::Bool;
 use libhaystack::val::Value;
 

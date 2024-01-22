@@ -1,3 +1,5 @@
+// Copyright (c) 2022-2024, Radu Racariu.
+
 use crate::base::block::Block;
 use crate::base::block::BlockState;
 use crate::base::input::input_reader::InputReader;
