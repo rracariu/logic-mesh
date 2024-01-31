@@ -34,11 +34,14 @@ export type JsBlock = {
 
 	/**
 	 * An optional block factory function that returns a function that is called when the block is executed.
+	 *
+	 * The execute function is called with the block inputs and should return the block outputs.
+	 * The order of the inputs and outputs is the same as the order of the pins in the block description.
+	 * Returning `undefined` will not change the output value.
+	 *
 	 * @returns The execute function that is called when the block is executed.
 	 */
-	executor?: () => (
-		inputs: (unknown | undefined)[]
-	) => Promise<(unknown | undefined)[]>
+	executor?: () => (inputs: unknown[]) => Promise<unknown[] | undefined>
 }
 
 /**

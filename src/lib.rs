@@ -3,6 +3,7 @@
 #![allow(incomplete_features)]
 #![feature(async_closure)]
 #![feature(trait_alias)]
+#![feature(trait_upcasting)]
 #![feature(assert_matches)]
 
 #[macro_use]

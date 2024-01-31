@@ -103,10 +103,7 @@ impl BlocksEngine {
 
         if let Some(func) = func {
             unsafe {
-                JS_FNS
-                    .entry(lib)
-                    .or_insert(Default::default())
-                    .insert(name.clone(), func);
+                JS_FNS.entry(lib).or_default().insert(name.clone(), func);
             }
         }
 

@@ -296,7 +296,13 @@ fn resolve_js_execute_function(
 ) -> Result<Option<js_sys::Function>, anyhow::Error> {
     let lib = unsafe { JS_FNS.get(&desc.library) };
     let func = lib
-        .ok_or_else(|| anyhow::anyhow!("Missing library: {}", desc.library))?
+        .ok_or_else(|| {
+            anyhow::anyhow!(
+                "Missing library: '{}'. Can't find the executor JavaScript function for: '{}' block.",
+                desc.library,
+                dec.name
+            )
+        })?
         .get(desc.name.as_str());
     let func = match func {
         Some(func) => {
