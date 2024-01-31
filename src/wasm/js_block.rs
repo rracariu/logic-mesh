@@ -300,7 +300,7 @@ fn resolve_js_execute_function(
             anyhow::anyhow!(
                 "Missing library: '{}'. Can't find the executor JavaScript function for: '{}' block.",
                 desc.library,
-                dec.name
+                desc.name
             )
         })?
         .get(desc.name.as_str());
