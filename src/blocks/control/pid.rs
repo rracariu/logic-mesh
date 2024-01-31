@@ -6,8 +6,7 @@ use uuid::Uuid;
 
 use crate::base::output::props::OutputProps;
 use crate::blocks::utils::input_as_number;
-use crate::blocks::utils::to_millis;
-use crate::blocks::utils::DEFAULT_SLEEP_DUR;
+use crate::blocks::utils::input_to_millis_or_default;
 use crate::{
     base::{
         block::{Block, BlockDesc, BlockProps, BlockState},
@@ -64,7 +63,7 @@ pub struct Pid {
 
 impl Block for Pid {
     async fn execute(&mut self) {
-        let millis = to_millis(&self.interval.val).unwrap_or(DEFAULT_SLEEP_DUR);
+        let millis = input_to_millis_or_default(&self.interval.val);
 
         self.wait_on_inputs(Duration::from_millis(millis)).await;
 

@@ -19,6 +19,7 @@ use crate::blocks::math::{
 };
 use crate::blocks::misc::{HasValue, ParseBool, ParseNumber, Random, SineWave};
 use crate::blocks::string::{Concat, Replace, StrLen};
+use crate::blocks::time::Now;
 
 use anyhow::{anyhow, Result};
 use lazy_static::lazy_static;
@@ -190,6 +191,8 @@ register_blocks!(
     Values,
     List,
     Dict,
+    // Time blocks
+    Now,
     // Misc blocks
     Random,
     SineWave,

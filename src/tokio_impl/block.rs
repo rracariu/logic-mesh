@@ -10,7 +10,7 @@ use super::sleep::sleep_millis;
 use crate::base::block::{convert_value_kind, BlockState};
 use crate::base::input::InputProps;
 use crate::base::{block::Block, input::input_reader::InputReader};
-use crate::blocks::utils::DEFAULT_SLEEP_DUR;
+use crate::blocks::utils::SLEEP_DUR;
 use crate::blocks::InputImpl;
 
 pub trait BlockImpl = Block<Reader = <InputImpl as InputProps>::Reader, Writer = <InputImpl as InputProps>::Writer>
@@ -28,7 +28,7 @@ impl<B: Block> InputReader for B {
             if result.is_some() {
                 return result;
             }
-            sleep_millis(DEFAULT_SLEEP_DUR).await;
+            sleep_millis(SLEEP_DUR.load(std::sync::atomic::Ordering::Relaxed)).await;
         }
     }
 

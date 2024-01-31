@@ -1,26 +1,24 @@
 // Copyright (c) 2022-2024, Radu Racariu.
 
-use std::time::Duration;
-
-use uuid::Uuid;
-
 use crate::{
     base::{
         block::{Block, BlockDesc, BlockProps, BlockState},
         input::{input_reader::InputReader, Input, InputProps},
         output::{Output, OutputProps},
     },
-    blocks::utils::{to_millis, DEFAULT_SLEEP_DUR},
+    blocks::utils::input_to_millis_or_default,
 };
+use std::time::Duration;
+use uuid::Uuid;
 
+use crate::tokio_impl::sleep::current_time_millis;
 use crate::{blocks::InputImpl, blocks::OutputImpl};
 use libhaystack::val::kind::HaystackKind;
-use std::time::{SystemTime, UNIX_EPOCH};
 
 /// Outputs the current wall clock time in millis at the desired resolution.
 #[block]
 #[derive(BlockProps, Debug)]
-#[category = "logic"]
+#[category = "time"]
 pub struct Now {
     #[input(name = "resolution", kind = "Number")]
     pub resolution: InputImpl,
@@ -30,7 +28,7 @@ pub struct Now {
 
 impl Block for Now {
     async fn execute(&mut self) {
-        let millis = to_millis(&self.resolution.val).unwrap_or(DEFAULT_SLEEP_DUR);
+        let millis = input_to_millis_or_default(&self.resolution.val);
 
         self.wait_on_inputs(Duration::from_millis(millis)).await;
 
@@ -38,16 +36,7 @@ impl Block for Now {
             return;
         }
 
-        let now = SystemTime::now();
-        match now.duration_since(UNIX_EPOCH) {
-            Ok(duration) => {
-                self.out.set((duration.as_millis() as f64).into());
-                self.set_state(BlockState::Running);
-            }
-            Err(_) => {
-                self.set_state(BlockState::Fault);
-            }
-        };
+        self.out.set((current_time_millis() as f64).into());
     }
 }
 
@@ -60,7 +49,7 @@ mod test {
     };
 
     #[tokio::test]
-    async fn test_and_block() {
+    async fn test_now_block() {
         let mut block = Now::new();
         block
             .out

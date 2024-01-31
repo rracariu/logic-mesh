@@ -1,5 +1,7 @@
 // Copyright (c) 2022-2023, Radu Racariu.
 
+use std::sync::atomic::AtomicU64;
+
 use super::InputImpl;
 use anyhow::Result;
 use libhaystack::{
@@ -9,6 +11,10 @@ use libhaystack::{
 
 /// Default value for sleep intervals
 pub(crate) const DEFAULT_SLEEP_DUR: u64 = 200;
+
+/// A global variable that controls the sleep duration used
+/// to schedule the execution of blocks.
+pub static SLEEP_DUR: AtomicU64 = AtomicU64::new(DEFAULT_SLEEP_DUR);
 
 pub(super) fn input_as_float_or_default(input: &InputImpl) -> f64 {
     input_as_number(input).map(|v| v.value).unwrap_or(0.0)
@@ -22,18 +28,20 @@ pub(super) fn input_as_number(input: &InputImpl) -> Option<Number> {
     }
 }
 
-pub(super) fn to_millis(dur: &Option<Value>) -> Result<u64, ()> {
+/// Convert the duration to milliseconds, or return the default with
+/// `DEFAULT_SLEEP_DUR` if the conversion fails.
+pub(super) fn input_to_millis_or_default(dur: &Option<Value>) -> u64 {
     if let Some(Value::Number(dur)) = dur {
         if let Some(unit) = dur.unit {
             match unit.convert_to(dur.value, &MILLISECOND) {
-                Ok(millis) => Ok(millis as u64),
-                Err(_) => Err(()),
+                Ok(millis) => millis as u64,
+                Err(_) => DEFAULT_SLEEP_DUR,
             }
         } else {
-            Ok(dur.value as u64)
+            dur.value as u64
         }
     } else {
-        Err(())
+        DEFAULT_SLEEP_DUR
     }
 }
 

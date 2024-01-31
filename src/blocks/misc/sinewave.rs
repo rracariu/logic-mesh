@@ -11,15 +11,12 @@ use crate::{
         input::{input_reader::InputReader, Input, InputProps},
         output::Output,
     },
-    blocks::utils::{input_as_float_or_default, to_millis},
+    blocks::utils::{input_as_float_or_default, input_to_millis_or_default},
 };
 
 use libhaystack::val::kind::HaystackKind;
 
-use crate::{
-    blocks::utils::DEFAULT_SLEEP_DUR,
-    blocks::{InputImpl, OutputImpl},
-};
+use crate::blocks::{InputImpl, OutputImpl};
 
 /// Block that generates a sine wave based on
 /// the frequency and the amplitude inputs.
@@ -38,7 +35,7 @@ pub struct SineWave {
 
 impl Block for SineWave {
     async fn execute(&mut self) {
-        let millis = to_millis(&self.freq.val).unwrap_or(DEFAULT_SLEEP_DUR);
+        let millis = input_to_millis_or_default(&self.freq.val);
 
         self.wait_on_inputs(Duration::from_millis(millis)).await;
 
@@ -46,7 +43,7 @@ impl Block for SineWave {
             return;
         }
 
-        let millis = to_millis(&self.freq.val).unwrap_or(DEFAULT_SLEEP_DUR);
+        let millis = input_to_millis_or_default(&self.freq.val);
 
         let amp = input_as_float_or_default(&self.amplitude);
         let amp = if amp == 0.0 { 1.0 } else { amp };

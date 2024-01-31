@@ -13,15 +13,12 @@ use crate::{
         input::{input_reader::InputReader, Input, InputProps},
         output::Output,
     },
-    blocks::utils::{input_as_number, to_millis},
+    blocks::utils::{input_as_number, input_to_millis_or_default},
 };
 
 use libhaystack::val::{kind::HaystackKind, Value};
 
-use crate::{
-    blocks::utils::DEFAULT_SLEEP_DUR,
-    blocks::{InputImpl, OutputImpl},
-};
+use crate::blocks::{InputImpl, OutputImpl};
 
 /// Generates a random number at the specified frequency.
 /// min and max control the range of the generated random number.
@@ -43,7 +40,7 @@ pub struct Random {
 
 impl Block for Random {
     async fn execute(&mut self) {
-        let millis = to_millis(&self.freq.val).unwrap_or(DEFAULT_SLEEP_DUR);
+        let millis = input_to_millis_or_default(&self.freq.val);
 
         self.wait_on_inputs(Duration::from_millis(millis)).await;
 

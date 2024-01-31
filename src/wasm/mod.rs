@@ -14,8 +14,8 @@ use wasm_bindgen_console_logger::DEFAULT_LOGGER;
 use self::engine::BlocksEngine;
 
 #[wasm_bindgen(js_name = "initEngine")]
-pub fn init_engine() -> BlocksEngine {
-    let engine = BlocksEngine::new();
+pub fn init_engine(sleep_duration: Option<u32>) -> BlocksEngine {
+    let engine = BlocksEngine::new(sleep_duration.map(u64::from));
     info!("Blocks engine initialized.");
     engine
 }

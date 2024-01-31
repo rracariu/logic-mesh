@@ -17,7 +17,7 @@ use crate::base::engine::Engine;
 use crate::base::input::input_reader::InputReader;
 
 use crate::blocks::registry::eval_block_impl;
-use crate::blocks::utils::DEFAULT_SLEEP_DUR;
+use crate::blocks::utils::SLEEP_DUR;
 use crate::{
     base::{
         block::{BlockDesc, BlockProps},
@@ -242,8 +242,10 @@ impl BlockStaticDesc for JsBlock {
 impl Block for JsBlock {
     async fn execute(&mut self) {
         if let Some(BlockRunCondition::Always) = self.desc.run_condition {
-            self.wait_on_inputs(Duration::from_millis(DEFAULT_SLEEP_DUR))
-                .await;
+            self.wait_on_inputs(Duration::from_millis(
+                SLEEP_DUR.load(std::sync::atomic::Ordering::Relaxed),
+            ))
+            .await;
         } else {
             self.read_inputs_until_ready().await;
         }
