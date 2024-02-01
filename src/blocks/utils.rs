@@ -10,11 +10,22 @@ use libhaystack::{
 };
 
 /// Default value for sleep intervals
-pub(crate) const DEFAULT_SLEEP_DUR: u64 = 200;
+const DEFAULT_SLEEP_DUR: u64 = 200;
 
 /// A global variable that controls the sleep duration used
 /// to schedule the execution of blocks.
-pub static SLEEP_DUR: AtomicU64 = AtomicU64::new(DEFAULT_SLEEP_DUR);
+static SLEEP_DUR: AtomicU64 = AtomicU64::new(DEFAULT_SLEEP_DUR);
+
+/// Set the sleep duration used to schedule the execution of blocks.
+pub fn set_sleep_dur(dur: u64) {
+    SLEEP_DUR.store(dur, std::sync::atomic::Ordering::Relaxed);
+}
+
+/// Get the sleep duration used to schedule the execution of blocks.
+/// If the duration is not set, the default value is returned.
+pub fn get_sleep_dur() -> u64 {
+    SLEEP_DUR.load(std::sync::atomic::Ordering::Relaxed)
+}
 
 pub(super) fn input_as_float_or_default(input: &InputImpl) -> f64 {
     input_as_number(input).map(|v| v.value).unwrap_or(0.0)

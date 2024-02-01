@@ -1,7 +1,7 @@
 // Copyright (c) 2022-2023, Radu Racariu.
 
 use crate::blocks::registry::{list_registered_blocks, register_block_desc};
-use crate::blocks::utils::SLEEP_DUR;
+use crate::blocks::utils::set_sleep_dur;
 use crate::single_threaded::SingleThreadedEngine;
 use crate::wasm::engine_command::EngineCommand;
 use crate::wasm::js_block::JS_FNS;
@@ -29,7 +29,7 @@ impl BlocksEngine {
     #[wasm_bindgen(constructor)]
     pub fn new(sleep_duration: Option<u64>) -> Self {
         if let Some(sleep_duration) = sleep_duration {
-            SLEEP_DUR.store(sleep_duration, std::sync::atomic::Ordering::Relaxed);
+            set_sleep_dur(sleep_duration);
         }
 
         Self {

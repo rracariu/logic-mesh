@@ -13,11 +13,11 @@ extern "C" {
 #[wasm_bindgen]
 extern "C" {
     # [wasm_bindgen (js_name = Performance, typescript_type = "Performance")]
-    pub type Performance;
+    type Performance;
 
     /// Bind this to the global `performance.now` function
     # [wasm_bindgen (method, js_class = "Performance", js_name = now)]
-    pub fn now(this: &Performance) -> f64;
+    fn now(this: &Performance) -> f64;
 
     #[wasm_bindgen(js_name = performance)]
     static PERFORMANCE: Performance;
