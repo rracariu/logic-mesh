@@ -1,4 +1,4 @@
-export { BlocksEngine, initEngine, EngineCommand } from './logic_mesh'
+export type { BlocksEngine, initEngine, EngineCommand } from './logic_mesh'
 
 /**
  * The kind of the block pin.
