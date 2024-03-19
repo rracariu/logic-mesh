@@ -95,7 +95,7 @@ impl Engine for SingleThreadedEngine {
 
                 change_of_value_check(&watchers, &block, &mut last_pin_values);
 
-                if block.state() == BlockState::Terminate {
+                if block.state() == BlockState::Terminated {
                     break;
                 }
             }
@@ -142,7 +142,7 @@ impl Engine for SingleThreadedEngine {
                     break;
                 } else if matches!(message, EngineMessage::Reset) {
                     self.blocks_iter_mut().for_each(|block| {
-                        block.set_state(BlockState::Terminate);
+                        block.set_state(BlockState::Terminated);
                     });
 
                     self.block_props.clear();
@@ -215,55 +215,62 @@ impl SingleThreadedEngine {
             Uuid::try_from(link_data.target_block_uuid.as_str())?,
         );
 
-        if let (Some(source_block), Some(target_block)) = (
-            self.get_block_props_mut(&source_block_uuid),
-            self.get_block_props_mut(&target_block_uuid),
-        ) {
-            if let Some(target_input) = target_block.get_input_mut(&link_data.target_block_pin_name)
-            {
-                let link_id;
-                if let Some(source_input) =
-                    source_block.get_input_mut(&link_data.source_block_pin_name)
-                {
-                    link_id =
-                        connect_input(source_input, target_input).map_err(|err| anyhow!(err))?;
+        let Some(source_block) = self.get_block_props_mut(&source_block_uuid) else {
+            return Err(anyhow!(
+                "Source block '{}' not found",
+                link_data.source_block_uuid
+            ));
+        };
+        let Some(target_block) = self.get_block_props_mut(&target_block_uuid) else {
+            return Err(anyhow!(
+                "Target block '{}' not found",
+                link_data.target_block_uuid
+            ));
+        };
 
-                    if let Some(val) = source_input.get_value() {
-                        target_input
-                            .writer()
-                            .try_send(val.clone())
-                            .map_err(|err| anyhow!(err))?;
-                    }
-                    reset_target_inputs(target_block, &link_data.target_block_pin_name)?;
-                } else if let Some(source_output) =
-                    source_block.get_output_mut(&link_data.source_block_pin_name)
-                {
-                    link_id =
-                        connect_output(source_output, target_input).map_err(|err| anyhow!(err))?;
+        let Some(target_input) = target_block.get_input_mut(&link_data.target_block_pin_name)
+        else {
+            return Err(anyhow!(
+                "Target input pin '{}' not found",
+                link_data.target_block_pin_name
+            ));
+        };
 
-                    // After connection, send the current value of the source output to the target input
-                    if source_output.value().has_value() {
-                        // Send the current value of the source output to the
-                        // target input
-                        target_input
-                            .writer()
-                            .try_send(source_output.value().clone())
-                            .map_err(|err| anyhow!(err))?;
-                    }
-                    reset_target_inputs(target_block, &link_data.target_block_pin_name)?;
-                } else {
-                    return Err(anyhow!("Source Pin not found"));
-                }
-                Ok(LinkData {
-                    id: Some(link_id.to_string()),
-                    ..link_data.clone()
-                })
-            } else {
-                Err(anyhow!("Target Input not found"))
+        let link_id;
+        if let Some(source_input) = source_block.get_input_mut(&link_data.source_block_pin_name) {
+            link_id = connect_input(source_input, target_input).map_err(|err| anyhow!(err))?;
+
+            if let Some(val) = source_input.get_value() {
+                target_input
+                    .writer()
+                    .try_send(val.clone())
+                    .map_err(|err| anyhow!(err))?;
             }
+            reset_connected_inputs(target_block, &link_data.target_block_pin_name)?;
+        } else if let Some(source_output) =
+            source_block.get_output_mut(&link_data.source_block_pin_name)
+        {
+            link_id = connect_output(source_output, target_input).map_err(|err| anyhow!(err))?;
+
+            // After connection, send the current value of the source output to the target input
+            if source_output.value().has_value() {
+                // Send the current value of the source output to the target input
+                target_input
+                    .writer()
+                    .try_send(source_output.value().clone())
+                    .map_err(|err| anyhow!(err))?;
+            }
+            reset_connected_inputs(target_block, &link_data.target_block_pin_name)?;
         } else {
-            Err(anyhow!("Block not found"))
+            return Err(anyhow!(
+                "Source pin '{}' not found",
+                link_data.source_block_pin_name
+            ));
         }
+        Ok(LinkData {
+            id: Some(link_id.to_string()),
+            ..link_data.clone()
+        })
     }
 
     pub(super) fn save_blocks_and_links(&mut self) -> Result<(Vec<BlockData>, Vec<LinkData>)> {
@@ -323,7 +330,7 @@ impl SingleThreadedEngine {
         // Terminate the block
         match self.get_block_props_mut(block_id) {
             Some(block) => {
-                block.set_state(BlockState::Terminate);
+                block.set_state(BlockState::Terminated);
 
                 disconnect_block(block, |id, name| {
                     let target_block = self.get_block_props_mut(id);
@@ -407,11 +414,13 @@ fn change_of_value_check<B: Block + 'static>(
     }
 }
 
-/// Implements the logic for resetting the target block inputs
-/// when a link is created.
+/// Implements the logic for resetting the target block inputs when a new link is created.
 /// This is needed because the target block would be monitoring the current set of inputs
-/// added before the link was created, and would not be aware of the new input.
-fn reset_target_inputs(target_block: &mut dyn BlockPropsType, input_to_ignore: &str) -> Result<()> {
+/// added before the link was created, and would not be aware of the newly created link.
+fn reset_connected_inputs(
+    target_block: &mut dyn BlockPropsType,
+    input_to_ignore: &str,
+) -> Result<()> {
     // If the target block has other connected inputs, send the current value of one of
     // them to itself (refresh current value.) in order to trigger the block to execute.
     if let Some(a_connected_input) = target_block.inputs().iter().find_map(|input| {

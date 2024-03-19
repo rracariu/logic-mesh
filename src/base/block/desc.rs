@@ -58,6 +58,7 @@ pub trait BlockStaticDesc: BlockProps {
 }
 
 /// Defines a block pin
+///
 /// A block pin is either an input or an output
 #[derive(Default, Debug, Clone, PartialEq)]
 pub struct BlockPin {

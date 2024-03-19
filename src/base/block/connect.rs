@@ -153,7 +153,7 @@ pub fn connect_output<Reader, Writer: Clone>(
     source_output: &mut dyn Output<Writer = Writer>,
     target_input: &mut dyn InputProps<Reader = Reader, Writer = Writer>,
 ) -> Result<Uuid, &'static str> {
-    // Connections to the same block and the same input are not allowed.
+    // Connections should be unique.
     if source_output.links().iter().any(|link| {
         link.target_block_id() == target_input.block_id()
             && link.target_input() == target_input.name()

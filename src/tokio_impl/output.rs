@@ -10,7 +10,8 @@ use crate::base::{
 
 use super::input::{InputImpl, Writer};
 
-pub type OutputImpl = BaseOutput<BaseLink<Writer>>;
+pub type LinkImpl = BaseLink<Writer>;
+pub type OutputImpl = BaseOutput<LinkImpl>;
 
 impl Output for OutputImpl {
     type Writer = <InputImpl as InputProps>::Writer;

@@ -24,7 +24,7 @@ pub enum BlockState {
     Stopped,
     Running,
     Fault,
-    Terminate,
+    Terminated,
 }
 
 pub trait Block: BlockConnect {

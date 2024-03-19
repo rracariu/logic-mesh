@@ -35,7 +35,7 @@ impl<L: Link> OutputProps for BaseOutput<L> {
     }
 
     fn links(&self) -> Vec<&dyn Link> {
-        self.links.iter().map(|l| l as &dyn Link).collect()
+        self.links.iter().map(|link| link as &dyn Link).collect()
     }
 
     /// Remove a link by id from this output
