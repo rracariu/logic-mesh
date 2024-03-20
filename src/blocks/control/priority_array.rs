@@ -49,7 +49,7 @@ pub struct PriorityArray {
     #[input(kind = "Number")]
     pub priority16: InputImpl,
     #[input(kind = "Number")]
-    pub def: InputImpl,
+    pub default: InputImpl,
 
     #[output(kind = "Number")]
     pub out: OutputImpl,
@@ -68,7 +68,7 @@ impl Block for PriorityArray {
             self.out.set(input.clone());
         } else {
             self.out
-                .set(self.def.get_value().cloned().unwrap_or_default());
+                .set(self.default.get_value().cloned().unwrap_or_default());
         }
     }
 }
