@@ -1,5 +1,9 @@
 // Copyright (c) 2022-2023, Radu Racariu.
 
+//!
+//! Defines the base output type.
+//!
+
 use libhaystack::val::{kind::HaystackKind, Value};
 use uuid::Uuid;
 

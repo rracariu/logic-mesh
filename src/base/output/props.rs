@@ -1,5 +1,9 @@
 // Copyright (c) 2022-2023, Radu Racariu.
 
+//!
+//! Defines the base output properties.
+//!
+
 use libhaystack::val::{kind::HaystackKind, Value};
 use uuid::Uuid;
 
@@ -8,7 +12,9 @@ use crate::base::link::Link;
 /// The description of an output pin
 #[derive(Debug, Default, Clone)]
 pub struct OutDesc {
+    /// The output's name
     pub name: String,
+    /// The output's haystack kind
     pub kind: HaystackKind,
 }
 

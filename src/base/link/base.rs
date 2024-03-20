@@ -1,5 +1,9 @@
 // Copyright (c) 2022-2023, Radu Racariu.
 
+//!
+//! Defines the base link type.
+//!
+
 use uuid::Uuid;
 
 use super::{Link, LinkState};

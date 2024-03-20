@@ -60,7 +60,7 @@ pub fn convert_value_kind(
     expected: HaystackKind,
     actual: HaystackKind,
 ) -> Result<Value> {
-    if expected == actual {
+    if expected == actual || actual == HaystackKind::Null {
         return Ok(val);
     }
 

@@ -1,15 +1,23 @@
 // Copyright (c) 2022-2023, Radu Racariu.
 
+//!
+//! Contains link types and traits.
+//!
+
 use uuid::Uuid;
 
 pub mod base;
 pub use base::BaseLink;
 
+/// The current link state
 #[derive(Default, Debug, Clone, Copy, PartialEq)]
 pub enum LinkState {
+    // The link is disconnected
     #[default]
     Disconnected,
+    // The link is connected
     Connected,
+    // The link has an error
     Error,
 }
 

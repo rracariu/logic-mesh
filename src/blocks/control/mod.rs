@@ -5,5 +5,7 @@
 //!
 
 pub mod pid;
+pub mod priority_array;
 
 pub use pid::Pid;
+pub use priority_array::PriorityArray;

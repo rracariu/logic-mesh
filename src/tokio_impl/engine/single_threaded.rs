@@ -1,5 +1,10 @@
 // Copyright (c) 2022-2023, Radu Racariu.
 
+//!
+//! Single threaded engine implementation
+//!
+//! Spawn a local task for each block to be executed on the current thread.
+
 use std::{cell::Cell, cell::RefCell, collections::BTreeMap, rc::Rc};
 
 use anyhow::{anyhow, Result};
@@ -333,12 +338,7 @@ impl SingleThreadedEngine {
                 block.set_state(BlockState::Terminated);
 
                 disconnect_block(block, |id, name| {
-                    let target_block = self.get_block_props_mut(id);
-                    target_block.and_then(|target_block| {
-                        target_block
-                            .get_input_mut(name)
-                            .map(|input| input.decrement_conn())
-                    })
+                    self.decrement_refresh_block_input(id, name)
                 });
             }
             None => return Err(anyhow!("Block not found")),
@@ -365,6 +365,25 @@ impl SingleThreadedEngine {
         self.block_props.remove(block_id);
 
         Ok(*block_id)
+    }
+
+    /// Decrements the connection count of the target block input.
+    /// Sends the current value of the input to itself (refresh current value.)
+    pub(crate) fn decrement_refresh_block_input(
+        &self,
+        block_id: &Uuid,
+        input_name: &str,
+    ) -> Option<usize> {
+        let target_block = self.get_block_props_mut(block_id);
+        target_block.and_then(|target_block| {
+            target_block.get_input_mut(input_name).map(|input| {
+                let cnt = input.decrement_conn();
+                let value = input.get_value().cloned();
+                input.writer().try_send(value.unwrap_or(Value::Null)).ok();
+
+                cnt
+            })
+        })
     }
 }
 

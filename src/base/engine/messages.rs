@@ -23,8 +23,9 @@ pub struct BlockOutputData {
     pub val: Value,
 }
 
+/// Block definition
 #[derive(Debug, Default, Serialize, Deserialize, Clone)]
-pub struct BlockParam {
+pub struct BlockDefinition {
     pub id: String,
     pub name: String,
     pub library: String,
@@ -32,12 +33,14 @@ pub struct BlockParam {
     pub outputs: BTreeMap<String, BlockOutputData>,
 }
 
+/// Defines the source of a change
 #[derive(Debug, Clone)]
 pub enum ChangeSource {
     Input(String, Value),
     Output(String, Value),
 }
 
+/// A notification message for a block change
 #[derive(Debug, Clone)]
 pub struct WatchMessage {
     pub block_id: Uuid,
@@ -69,7 +72,7 @@ pub enum EngineMessage<WatchEventSender: Clone> {
     GetCurrentProgramRes(Result<(Vec<BlockData>, Vec<LinkData>), String>),
 
     InspectBlockReq(Uuid, Uuid),
-    InspectBlockRes(Result<BlockParam, String>),
+    InspectBlockRes(Result<BlockDefinition, String>),
 
     EvaluateBlockReq(Uuid, String, Vec<Value>, Option<String>),
     EvaluateBlockRes(Result<Vec<Value>, String>),

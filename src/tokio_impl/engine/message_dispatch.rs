@@ -1,9 +1,9 @@
 // Copyright (c) 2022-2024, Radu Racariu.
 
 use crate::base::block::connect::disconnect_link;
+use crate::base::engine::messages::BlockDefinition;
 use crate::base::engine::messages::BlockInputData;
 use crate::base::engine::messages::BlockOutputData;
-use crate::base::engine::messages::BlockParam;
 use crate::base::engine::messages::EngineMessage;
 
 use crate::blocks::registry::get_block;
@@ -57,7 +57,7 @@ pub(super) async fn dispatch_message(engine: &mut SingleThreadedEngine, msg: Mes
         EngineMessage::InspectBlockReq(sender_uuid, block_uuid) => {
             match engine.get_block_props_mut(&block_uuid) {
                 Some(block) => {
-                    let data = BlockParam {
+                    let data = BlockDefinition {
                         id: block.id().to_string(),
                         name: block.name().to_string(),
                         library: block.desc().library.clone(),
@@ -224,12 +224,7 @@ pub(super) async fn dispatch_message(engine: &mut SingleThreadedEngine, msg: Mes
 
             let res = engine.blocks_iter_mut().any(|block| {
                 disconnect_link(block, &link_id, |id, name| {
-                    let target_block = engine.get_block_props_mut(id);
-                    target_block.and_then(|target_block| {
-                        target_block
-                            .get_input_mut(name)
-                            .map(|input| input.decrement_conn())
-                    })
+                    engine.decrement_refresh_block_input(id, name)
                 })
             });
 

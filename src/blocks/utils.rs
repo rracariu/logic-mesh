@@ -1,5 +1,9 @@
 // Copyright (c) 2022-2023, Radu Racariu.
 
+//!
+//! Various utility functions used by the blocks.
+//!
+
 use std::sync::atomic::AtomicU64;
 
 use super::InputImpl;

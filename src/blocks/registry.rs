@@ -1,5 +1,9 @@
 // Copyright (c) 2022-2024, Radu Racariu.
 
+//!
+//! Defines the block registry.
+//!
+
 use crate::base::block::{BlockDesc, BlockProps, BlockStaticDesc};
 use crate::base::input::input_reader::InputReader;
 use crate::base::input::InputProps;
@@ -8,7 +12,7 @@ use libhaystack::val::Value;
 use crate::base::engine::Engine;
 use crate::blocks::bitwise::{BitwiseAnd, BitwiseNot, BitwiseOr, BitwiseXor};
 use crate::blocks::collections::{Dict, GetElement, Keys, Length, List, Values};
-use crate::blocks::control::Pid;
+use crate::blocks::control::{Pid, PriorityArray};
 use crate::blocks::logic::{
     And, Equal, GreaterThan, GreaterThanEq, Latch, LessThan, LessThanEq, Not, NotEqual, Or, Xor,
 };
@@ -180,6 +184,7 @@ register_blocks!(
     BitwiseXor,
     // Control blocks
     Pid,
+    PriorityArray,
     // String blocks
     Concat,
     Replace,

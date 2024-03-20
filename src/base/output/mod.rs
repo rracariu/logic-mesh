@@ -1,5 +1,9 @@
 // Copyright (c) 2022-2023, Radu Racariu.
 
+//!
+//! Defines the base output types and traits.
+//!
+
 pub mod base;
 pub mod props;
 
