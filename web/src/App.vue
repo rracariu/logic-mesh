@@ -215,9 +215,9 @@ async function loadProgram(program: any) {
 		</SplitterPanel>
 		<SplitterPanel :size="82">
 			<Toast />
-			<VueFlow @connect="onConnect" @connect-start="onConnectStart" @node-click="onBlockClick"
-				@edge-click="onEdgeClick" :default-edge-options="{ type: 'smoothstep' }" :min-zoom="1" :max-zoom="4"
-				:elevate-edges-on-select="true" :apply-default="true" auto-connect>
+			<VueFlow @connect="(conn) => onConnect(conn as Connection)" @connect-start="onConnectStart"
+				@node-click="onBlockClick" @edge-click="onEdgeClick" :default-edge-options="{ type: 'smoothstep' }"
+				:min-zoom="1" :max-zoom="4" :elevate-edges-on-select="true" :apply-default="true" auto-connect>
 				<Background pattern-color="#aaa" :gap="8" />
 
 				<template #node-custom="{ data }">
