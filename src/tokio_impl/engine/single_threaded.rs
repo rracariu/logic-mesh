@@ -379,7 +379,7 @@ impl SingleThreadedEngine {
             target_block.get_input_mut(input_name).map(|input| {
                 let cnt = input.decrement_conn();
                 let value = input.get_value().cloned();
-                input.writer().try_send(value.unwrap_or(Value::Null)).ok();
+                input.writer().try_send(value.unwrap_or_default()).ok();
 
                 cnt
             })
