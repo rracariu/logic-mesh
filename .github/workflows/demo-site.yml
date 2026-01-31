@@ -7,8 +7,8 @@ jobs:
     name: Build demo site
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-node@v6
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: latest
 
@@ -20,7 +20,7 @@ jobs:
         run: npm ci && npm run build
         working-directory: ./web
       - name: upload
-        uses: actions/upload-pages-artifact@v4
+        uses: actions/upload-pages-artifact@v3
         with:
           path: "./web/dist/"
   deploy:
