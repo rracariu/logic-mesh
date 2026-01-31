@@ -309,6 +309,7 @@ impl SingleThreadedEngine {
         Ok((blocks, links))
     }
 
+    #[allow(clippy::mut_from_ref)]
     pub(super) fn get_block_props_mut(
         &self,
         block_id: &Uuid,

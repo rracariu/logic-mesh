@@ -27,7 +27,7 @@ impl Block for HasValue {
     async fn execute(&mut self) {
         self.read_inputs_until_ready().await;
 
-        let has_value = self.input.get_value().map_or(false, |val| val.has_value());
+        let has_value = self.input.get_value().is_some_and(|val| val.has_value());
         self.out.set(has_value.into());
     }
 }

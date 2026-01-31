@@ -58,8 +58,7 @@ impl Block for Min {
 
 #[cfg(test)]
 mod test {
-
-    use std::assert_matches::assert_matches;
+    use std::assert_matches;
 
     use libhaystack::val::{Number, Value};
 

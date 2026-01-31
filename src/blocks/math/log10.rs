@@ -43,7 +43,7 @@ impl Block for Log10 {
 #[cfg(test)]
 mod test {
 
-    use std::assert_matches::assert_matches;
+    use std::assert_matches;
 
     use libhaystack::val::{Number, Value};
 

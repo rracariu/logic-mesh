@@ -11,7 +11,7 @@ pub(super) struct BlockPropsPointer {
 impl BlockPropsPointer {
     /// Constructs the BlockProps pointer from a ref to the trait object.
     pub(super) fn new(block: &mut dyn BlockPropsType) -> Self {
-        let block_props_ptr = block as *mut (dyn BlockPropsType);
+        let block_props_ptr = block as *mut dyn BlockPropsType;
 
         let ptr_ref = &block_props_ptr as *const *mut dyn BlockPropsType;
         let pointer_parts = ptr_ref as *const [usize; 2];
