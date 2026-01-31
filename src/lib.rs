@@ -1,9 +1,5 @@
 // Copyright (c) 2022-2023, Radu Racariu.
 
-#![allow(incomplete_features)]
-#![feature(trait_alias)]
-#![feature(assert_matches)]
-
 #[macro_use]
 extern crate logic_mesh_block_macro;
 

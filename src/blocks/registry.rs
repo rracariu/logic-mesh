@@ -4,8 +4,7 @@
 //! Defines the block registry.
 //!
 
-use crate::base::block::{BlockDesc, BlockProps, BlockStaticDesc};
-use crate::base::input::InputProps;
+use crate::base::block::{Block, BlockDesc, BlockProps, BlockStaticDesc};
 use crate::base::input::input_reader::InputReader;
 use libhaystack::val::Value;
 
@@ -30,12 +29,9 @@ use std::collections::HashMap;
 use std::sync::LazyLock;
 use std::sync::Mutex;
 
-use super::{BlockImpl, InputImpl};
+use crate::blocks::{ReaderImpl, WriterImpl};
 
-pub(crate) type DynBlockProps = dyn BlockProps<
-        Reader = <InputImpl as InputProps>::Reader,
-        Writer = <InputImpl as InputProps>::Writer,
-    >;
+pub(crate) type DynBlockProps = dyn BlockProps<Reader = ReaderImpl, Writer = WriterImpl>;
 type MapType = HashMap<String, HashMap<String, BlockEntry>>;
 type BlockRegistry = Mutex<MapType>;
 
@@ -77,7 +73,7 @@ macro_rules! register_blocks {
 		/// # Returns
 		/// A result indicating success or failure
 		pub fn schedule_block<E>(name: &str, eng: &mut E) -> Result<uuid::Uuid>
-		where E : Engine<Reader = <InputImpl as InputProps>::Reader, Writer = <InputImpl as InputProps>::Writer> {
+		where E : Engine<Reader = ReaderImpl, Writer = WriterImpl> {
 
 			match name {
 				$(
@@ -98,7 +94,7 @@ macro_rules! register_blocks {
 		/// Schedule a block by name and UUID.
 		/// See [`schedule_block`] for more details.
 		pub fn schedule_block_with_uuid<E>(name: &str, uuid: uuid::Uuid, eng: &mut E) -> Result<uuid::Uuid>
-		where E : Engine<Reader = <InputImpl as InputProps>::Reader, Writer = <InputImpl as InputProps>::Writer> {
+		where E : Engine<Reader = ReaderImpl, Writer = WriterImpl> {
 
 			match name {
 				$(
@@ -272,7 +268,7 @@ pub fn register_block_desc(desc: &BlockDesc) -> Result<()> {
 /// - B: The block type to register
 /// # Panics
 /// Panics if the block registry is already locked
-pub fn register<B: BlockImpl>() {
+pub fn register<B: Block<Reader = ReaderImpl, Writer = WriterImpl> + Default + 'static>() {
     let mut reg = BLOCKS.lock().expect("Block registry is locked");
 
     register_impl::<B>(&mut reg);
@@ -285,7 +281,7 @@ pub fn register<B: BlockImpl>() {
 /// - inputs: The input values to the block
 /// # Returns
 /// A list of values representing the outputs of the block
-pub async fn eval_block_impl<B: BlockImpl>(
+pub async fn eval_block_impl<B: Block<Reader = ReaderImpl, Writer = WriterImpl>>(
     block: &mut B,
     inputs: Vec<Value>,
 ) -> Result<Vec<Value>> {
@@ -306,7 +302,9 @@ pub async fn eval_block_impl<B: BlockImpl>(
     Ok(block.outputs().iter().map(|o| o.value().clone()).collect())
 }
 
-fn register_impl<B: BlockImpl>(reg: &mut MapType) {
+fn register_impl<B: Block<Reader = ReaderImpl, Writer = WriterImpl> + Default + 'static>(
+    reg: &mut MapType,
+) {
     let desc = <B as BlockStaticDesc>::desc();
     let lib = desc.library.clone();
 

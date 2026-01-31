@@ -41,7 +41,7 @@ impl Block for Exp {
 
 #[cfg(test)]
 mod test {
-    use std::assert_matches;
+    use assert_matches::assert_matches;
 
     use libhaystack::val::{Number, Value};
 

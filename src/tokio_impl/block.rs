@@ -13,11 +13,8 @@ use crate::base::{block::Block, input::input_reader::InputReader};
 use crate::blocks::InputImpl;
 use crate::blocks::utils::get_sleep_dur;
 
-type ReaderImpl = <InputImpl as InputProps>::Reader;
-type WriterImpl = <InputImpl as InputProps>::Writer;
-
-/// A block implementation that uses Tokio for async operations
-pub trait BlockImpl = Block<Reader = ReaderImpl, Writer = WriterImpl> + Default + 'static;
+pub type ReaderImpl = <InputImpl as InputProps>::Reader;
+pub type WriterImpl = <InputImpl as InputProps>::Writer;
 
 impl<B: Block> InputReader for B {
     async fn read_inputs(&mut self) -> Option<usize> {

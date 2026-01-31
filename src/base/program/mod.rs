@@ -8,26 +8,19 @@ pub mod data;
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 
-use crate::blocks::InputImpl;
-
 use self::data::{BlockData, LinkData, ProgramMeta};
-
-use super::{engine::Engine, input::InputProps};
-
-type Reader = <InputImpl as InputProps>::Reader;
-type Writer = <InputImpl as InputProps>::Writer;
-
-pub trait EngineType = Engine<Reader = Reader, Writer = Writer> + Default;
+use super::engine::Engine;
+use crate::blocks::{ReaderImpl, WriterImpl};
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
-pub struct Program<E: EngineType> {
+pub struct Program<E: Engine<Reader = ReaderImpl, Writer = WriterImpl> + Default> {
     pub meta: ProgramMeta,
     pub blocks: Vec<BlockData>,
     pub links: Vec<LinkData>,
     pub engine: E,
 }
 
-impl<E: EngineType> Program<E> {
+impl<E: Engine<Reader = ReaderImpl, Writer = WriterImpl> + Default> Program<E> {
     pub fn new(name: &str, blocks: Vec<BlockData>, links: Vec<LinkData>) -> Self {
         Self {
             meta: ProgramMeta {

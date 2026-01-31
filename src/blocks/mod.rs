@@ -17,6 +17,6 @@ pub mod utils;
 
 // Re-export implementations working with inputs and outputs
 
-pub(super) use crate::tokio_impl::block::BlockImpl;
+pub use crate::tokio_impl::block::{ReaderImpl, WriterImpl};
 pub(super) use crate::tokio_impl::input::InputImpl;
 pub(super) use crate::tokio_impl::output::OutputImpl;

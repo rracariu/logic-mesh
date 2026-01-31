@@ -9,7 +9,7 @@ use std::pin::Pin;
 use uuid::Uuid;
 
 use crate::base::{
-    input::{BaseInput, Input, InputProps, InputReceiver},
+    input::{BaseInput, Input, InputProps},
     link::BaseLink,
     output::{BaseOutput, Output},
 };
@@ -29,7 +29,7 @@ impl InputImpl {
 }
 
 impl Input for InputImpl {
-    fn receiver(&mut self) -> Pin<Box<dyn InputReceiver + '_>> {
+    fn receiver(&mut self) -> Pin<Box<dyn Future<Output = Option<Value>> + Send + '_>> {
         Box::pin(async { None })
     }
 

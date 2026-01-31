@@ -39,7 +39,7 @@ use crate::{
 };
 
 // The concrete trait for the block properties
-pub(super) trait BlockPropsType = BlockProps<Writer = Writer, Reader = Reader>;
+pub(super) type BlockPropsType = dyn BlockProps<Writer = Writer, Reader = Reader>;
 
 /// The concrete type for the engine messages
 pub type Messages = EngineMessage<Sender<WatchMessage>>;
@@ -83,7 +83,7 @@ impl Engine for SingleThreadedEngine {
         mut block: B,
     ) {
         let props = Rc::new(Cell::new(BlockPropsPointer::new(
-            &mut block as &mut dyn BlockPropsType,
+            &mut block as &mut BlockPropsType,
         )));
         self.block_props.insert(*block.id(), props.clone());
 
@@ -92,9 +92,7 @@ impl Engine for SingleThreadedEngine {
         self.local.spawn_local(async move {
             // Must do here also so we get the correct address
             // of the moved block instance
-            props.set(BlockPropsPointer::new(
-                &mut block as &mut dyn BlockPropsType,
-            ));
+            props.set(BlockPropsPointer::new(&mut block as &mut BlockPropsType));
 
             // Tacks changes to block pins
             let mut last_pin_values = BTreeMap::<String, Value>::new();
@@ -198,17 +196,17 @@ impl SingleThreadedEngine {
 
     /// Get a list of all the blocks that are currently
     /// scheduled on this engine.
-    pub fn blocks(&self) -> Vec<&dyn BlockPropsType> {
+    pub fn blocks(&self) -> Vec<&BlockPropsType> {
         self.blocks_iter_mut().map(|prop| &*prop).collect()
     }
 
     /// Get a list of all the blocks that are currently
     /// scheduled on this engine.
-    pub fn blocks_mut(&self) -> Vec<&mut dyn BlockPropsType> {
+    pub fn blocks_mut(&self) -> Vec<&mut BlockPropsType> {
         self.blocks_iter_mut().collect()
     }
 
-    pub(super) fn blocks_iter_mut(&self) -> impl Iterator<Item = &mut dyn BlockPropsType> {
+    pub(super) fn blocks_iter_mut(&self) -> impl Iterator<Item = &mut BlockPropsType> {
         self.block_props
             .values()
             .filter_map(|props| {
@@ -314,10 +312,7 @@ impl SingleThreadedEngine {
     }
 
     #[allow(clippy::mut_from_ref)]
-    pub(super) fn get_block_props_mut(
-        &self,
-        block_id: &Uuid,
-    ) -> Option<&mut (dyn BlockPropsType + 'static)> {
+    pub(super) fn get_block_props_mut(&self, block_id: &Uuid) -> Option<&mut BlockPropsType> {
         self.block_props.get(block_id).and_then(|ptr| {
             let fat_ptr = (**ptr).get();
             fat_ptr.get().map(|ptr| unsafe { &mut *ptr })
@@ -441,10 +436,7 @@ fn change_of_value_check<B: Block + 'static>(
 /// Implements the logic for resetting the target block inputs when a new link is created.
 /// This is needed because the target block would be monitoring the current set of inputs
 /// added before the link was created, and would not be aware of the newly created link.
-fn reset_connected_inputs(
-    target_block: &mut dyn BlockPropsType,
-    input_to_ignore: &str,
-) -> Result<()> {
+fn reset_connected_inputs(target_block: &mut BlockPropsType, input_to_ignore: &str) -> Result<()> {
     // If the target block has other connected inputs, send the current value of one of
     // them to itself (refresh current value.) in order to trigger the block to execute.
     if let Some(a_connected_input) = target_block.inputs().iter().find_map(|input| {

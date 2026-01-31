@@ -9,7 +9,7 @@ use libhaystack::val::{Value, kind::HaystackKind};
 use uuid::Uuid;
 
 use crate::base::{
-    input::{BaseInput, Input, InputDefault, InputReceiver},
+    input::{BaseInput, Input, InputDefault},
     link::LinkState,
 };
 
@@ -48,7 +48,7 @@ impl InputImpl {
 }
 
 impl Input for InputImpl {
-    fn receiver(&mut self) -> Pin<Box<dyn InputReceiver + '_>> {
+    fn receiver(&mut self) -> Pin<Box<dyn Future<Output = Option<Value>> + Send + '_>> {
         self.reader.recv().boxed()
     }
 
