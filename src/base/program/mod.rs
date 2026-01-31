@@ -54,8 +54,8 @@ mod test {
     use crate::single_threaded::SingleThreadedEngine;
 
     use super::{
-        data::{BlockData, LinkData},
         Program,
+        data::{BlockData, LinkData},
     };
 
     #[test]
@@ -93,10 +93,12 @@ mod test {
 
         assert!(program.engine.blocks().iter().all(|b| b.name() == "Add"));
 
-        assert!(program.engine.blocks()[0]
-            .get_output("out")
-            .unwrap()
-            .is_connected());
+        assert!(
+            program.engine.blocks()[0]
+                .get_output("out")
+                .unwrap()
+                .is_connected()
+        );
 
         assert!(
             program.engine.blocks()[0]
@@ -107,15 +109,17 @@ mod test {
                 == 1
         );
 
-        assert!(program.engine.blocks()[0]
-            .get_output("out")
-            .unwrap()
-            .links()
-            .iter()
-            .any(
-                |l| l.target_block_id().to_string() == "00000000-0000-0000-0000-000000000001"
-                    && l.target_input() == "in1"
-            ));
+        assert!(
+            program.engine.blocks()[0]
+                .get_output("out")
+                .unwrap()
+                .links()
+                .iter()
+                .any(
+                    |l| l.target_block_id().to_string() == "00000000-0000-0000-0000-000000000001"
+                        && l.target_input() == "in1"
+                )
+        );
     }
 
     #[test]

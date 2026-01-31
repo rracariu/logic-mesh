@@ -4,11 +4,11 @@ use uuid::Uuid;
 
 use crate::base::{
     block::{Block, BlockDesc, BlockProps, BlockState},
-    input::{input_reader::InputReader, Input, InputProps},
+    input::{Input, InputProps, input_reader::InputReader},
     output::Output,
 };
 
-use libhaystack::val::{kind::HaystackKind, Dict as HDict, Value};
+use libhaystack::val::{Dict as HDict, Value, kind::HaystackKind};
 
 use crate::{blocks::InputImpl, blocks::OutputImpl};
 
@@ -53,7 +53,7 @@ impl Block for Dict {
 mod test {
     use crate::base::input::input_reader::InputReader;
     use crate::{
-        base::block::test_utils::write_block_inputs, base::block::Block, base::block::BlockProps,
+        base::block::Block, base::block::BlockProps, base::block::test_utils::write_block_inputs,
         blocks::collections::Dict as DictBlock,
     };
     use libhaystack::{dict, val::Dict, val::Value};

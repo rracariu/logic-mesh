@@ -7,8 +7,8 @@ use crate::wasm::types::JsWatchNotification;
 
 use tokio::sync::mpsc::{self, Receiver, Sender};
 use uuid::Uuid;
-use wasm_bindgen::prelude::wasm_bindgen;
 use wasm_bindgen::JsValue;
+use wasm_bindgen::prelude::wasm_bindgen;
 
 use crate::base::engine::messages::EngineMessage;
 use crate::single_threaded::Messages;

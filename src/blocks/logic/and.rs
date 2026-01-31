@@ -4,11 +4,11 @@ use uuid::Uuid;
 
 use crate::base::{
     block::{Block, BlockDesc, BlockProps, BlockState},
-    input::{input_reader::InputReader, Input, InputProps},
+    input::{Input, InputProps, input_reader::InputReader},
     output::Output,
 };
 
-use libhaystack::val::{kind::HaystackKind, Bool, Value};
+use libhaystack::val::{Bool, Value, kind::HaystackKind};
 
 use crate::{blocks::InputImpl, blocks::OutputImpl};
 

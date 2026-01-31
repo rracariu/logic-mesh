@@ -13,7 +13,7 @@ pub use connect::BlockConnect;
 pub use desc::{BlockDesc, BlockPin, BlockStaticDesc};
 use libhaystack::{
     encoding::zinc,
-    val::{kind::HaystackKind, Bool, Number, Str, Value},
+    val::{Bool, Number, Str, Value, kind::HaystackKind},
 };
 pub use props::BlockProps;
 
@@ -140,7 +140,7 @@ mod test {
 
     use super::test_utils::mock::{InputImpl, OutputImpl};
 
-    use libhaystack::val::{kind::HaystackKind, Value};
+    use libhaystack::val::{Value, kind::HaystackKind};
 
     #[block]
     #[derive(BlockProps, Debug)]
@@ -181,17 +181,21 @@ mod test {
             16
         );
 
-        assert!(test_block
-            .inputs()
-            .iter()
-            .filter(|input| input.name().starts_with("in"))
-            .enumerate()
-            .all(|(i, input)| input.name() == format!("in{}", i)));
+        assert!(
+            test_block
+                .inputs()
+                .iter()
+                .filter(|input| input.name().starts_with("in"))
+                .enumerate()
+                .all(|(i, input)| input.name() == format!("in{}", i))
+        );
 
-        assert!(test_block
-            .inputs()
-            .iter()
-            .all(|i| i.kind() == &HaystackKind::Number));
+        assert!(
+            test_block
+                .inputs()
+                .iter()
+                .all(|i| i.kind() == &HaystackKind::Number)
+        );
 
         assert!(test_block.outputs()[0].desc().name == "out");
         assert!(test_block.outputs()[0].desc().kind == HaystackKind::Number);

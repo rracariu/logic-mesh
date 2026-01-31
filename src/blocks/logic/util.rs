@@ -3,7 +3,7 @@
 use libhaystack::val::Bool;
 use libhaystack::val::Value;
 
-use crate::base::block::{convert_value, Block};
+use crate::base::block::{Block, convert_value};
 use crate::base::input::input_reader::InputReader;
 
 /// Converts the inputs to the same type.

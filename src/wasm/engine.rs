@@ -10,8 +10,8 @@ use js_sys::Array;
 
 use tokio::sync::mpsc;
 use uuid::Uuid;
-use wasm_bindgen::prelude::wasm_bindgen;
 use wasm_bindgen::JsValue;
+use wasm_bindgen::prelude::wasm_bindgen;
 
 use crate::base::engine::Engine;
 
@@ -91,7 +91,7 @@ impl BlocksEngine {
     ///
     /// # Returns
     /// The name of the block
-    ///  
+    ///
     #[wasm_bindgen(js_name = "registerBlock")]
     pub fn register_block(
         &mut self,
@@ -107,9 +107,9 @@ impl BlocksEngine {
         register_block_desc(&desc.into()).map_err(|err| err.to_string())?;
 
         if let Some(func) = func {
-            unsafe {
-                JS_FNS.entry(lib).or_default().insert(name.clone(), func);
-            }
+            JS_FNS.with_borrow_mut(|reg| {
+                reg.entry(lib).or_default().insert(name.clone(), func);
+            });
         }
 
         Ok(name)

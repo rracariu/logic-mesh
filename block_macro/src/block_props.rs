@@ -162,23 +162,22 @@ pub(super) fn block_props_impl(ast: &syn::DeriveInput) -> TokenStream {
         // using the attributes
         impl crate::base::block::BlockStaticDesc for #block_ident {
             fn desc() -> &'static BlockDesc {
-                lazy_static::lazy_static! {
-                    static ref DESC: BlockDesc = {
-                        use crate::base::block::desc::BlockDesc;
-                        use crate::base::block::desc::BlockPin;
-                        use crate::base::block::desc::BlockImplementation;
+                static DESC: std::sync::LazyLock<BlockDesc> = std::sync::LazyLock::new(|| {
+                    use crate::base::block::desc::BlockDesc;
+                    use crate::base::block::desc::BlockPin;
+                    use crate::base::block::desc::BlockImplementation;
 
-                        let desc = BlockDesc {
-                            implementation: BlockImplementation::Native,
-                            run_condition: None,
-                            #(#block_prop_names : #block_prop_values.to_string(),)*
-                            #out_desc,
-                            #input_desc
-                        };
-
-                        desc
+                    let desc = BlockDesc {
+                        implementation: BlockImplementation::Native,
+                        run_condition: None,
+                        #(#block_prop_names : #block_prop_values.to_string(),)*
+                        #out_desc,
+                        #input_desc
                     };
-                }
+
+                    desc
+                });
+
                 &*DESC
             }
         }

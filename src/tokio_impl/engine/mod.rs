@@ -5,7 +5,7 @@ use libhaystack::val::Value;
 use uuid::Uuid;
 
 use crate::{
-    base::block::{desc::BlockImplementation, BlockDesc},
+    base::block::{BlockDesc, desc::BlockImplementation},
     blocks::registry::{eval_static_block, schedule_block, schedule_block_with_uuid},
 };
 

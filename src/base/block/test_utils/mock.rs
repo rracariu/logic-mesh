@@ -13,7 +13,7 @@ use crate::base::{
     link::BaseLink,
     output::{BaseOutput, Output},
 };
-use libhaystack::val::{kind::HaystackKind, Value};
+use libhaystack::val::{Value, kind::HaystackKind};
 
 pub type InputImpl = BaseInput<String, String>;
 

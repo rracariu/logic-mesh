@@ -10,7 +10,7 @@ use crate::blocks::utils::input_to_millis_or_default;
 use crate::{
     base::{
         block::{Block, BlockDesc, BlockProps, BlockState},
-        input::{input_reader::InputReader, Input, InputProps},
+        input::{Input, InputProps, input_reader::InputReader},
         output::Output,
     },
     blocks::utils::input_as_float_or_default,

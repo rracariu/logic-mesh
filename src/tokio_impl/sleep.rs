@@ -10,7 +10,7 @@ pub(super) use crate::wasm::sleep::sleep_millis;
 /// This is the non-wasm version
 #[cfg(not(target_arch = "wasm32"))]
 pub(super) async fn sleep_millis(millis: u64) {
-    use tokio::time::{sleep, Duration};
+    use tokio::time::{Duration, sleep};
 
     sleep(Duration::from_millis(millis)).await;
 }

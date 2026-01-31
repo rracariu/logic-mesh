@@ -4,7 +4,7 @@ use uuid::Uuid;
 
 use crate::base::{
     block::{Block, BlockDesc, BlockProps, BlockState},
-    input::{input_reader::InputReader, Input, InputProps},
+    input::{Input, InputProps, input_reader::InputReader},
     output::Output,
 };
 use libhaystack::val::kind::HaystackKind;
@@ -77,7 +77,7 @@ impl Block for PriorityArray {
 mod test {
 
     use crate::{
-        base::block::test_utils::write_block_inputs, base::block::Block,
+        base::block::Block, base::block::test_utils::write_block_inputs,
         blocks::control::PriorityArray,
     };
 

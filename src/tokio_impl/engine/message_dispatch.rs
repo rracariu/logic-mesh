@@ -31,7 +31,7 @@ pub(super) async fn dispatch_message(engine: &mut SingleThreadedEngine, msg: Mes
                             engine,
                             sender_uuid,
                             EngineMessage::AddBlockRes(Err("Invalid UUID".into())),
-                        )
+                        );
                     }
                 }
             } else {

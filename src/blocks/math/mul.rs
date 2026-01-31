@@ -4,11 +4,11 @@ use uuid::Uuid;
 
 use crate::base::{
     block::{Block, BlockDesc, BlockProps, BlockState},
-    input::{input_reader::InputReader, Input, InputProps},
+    input::{Input, InputProps, input_reader::InputReader},
     output::Output,
 };
 
-use libhaystack::val::{kind::HaystackKind, Number, Value};
+use libhaystack::val::{Number, Value, kind::HaystackKind};
 
 use crate::{blocks::InputImpl, blocks::OutputImpl};
 
@@ -63,10 +63,10 @@ impl Block for Mul {
             }
         }
 
-        if cnt > 1 {
-            if let Some(res) = val {
-                self.out.set(res.into())
-            }
+        if cnt > 1
+            && let Some(res) = val
+        {
+            self.out.set(res.into())
         }
     }
 }

@@ -4,11 +4,11 @@ use uuid::Uuid;
 
 use crate::base::{
     block::{Block, BlockDesc, BlockProps, BlockState},
-    input::{input_reader::InputReader, Input, InputProps},
+    input::{Input, InputProps, input_reader::InputReader},
     output::Output,
 };
 
-use libhaystack::val::{kind::HaystackKind, Value};
+use libhaystack::val::{Value, kind::HaystackKind};
 
 use crate::{blocks::InputImpl, blocks::OutputImpl};
 
@@ -34,10 +34,9 @@ impl Block for Div {
 
         if let (Some(Value::Number(a)), Some(Value::Number(b))) =
             (self.a.get_value(), self.b.get_value())
+            && let Ok(res) = *a / *b
         {
-            if let Ok(res) = *a / *b {
-                self.out.set(res.into());
-            }
+            self.out.set(res.into());
         }
     }
 }

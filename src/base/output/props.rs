@@ -4,7 +4,7 @@
 //! Defines the base output properties.
 //!
 
-use libhaystack::val::{kind::HaystackKind, Value};
+use libhaystack::val::{Value, kind::HaystackKind};
 use uuid::Uuid;
 
 use crate::base::link::Link;

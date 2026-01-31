@@ -331,14 +331,13 @@ fn link_id_for_input<I: InputProps + ?Sized>(
     links: Vec<&dyn Link>,
     target_input: &I,
 ) -> Option<Uuid> {
-    let link_id = links
+    links
         .iter()
         .find(|link| {
             link.target_input() == target_input.name()
                 && link.target_block_id() == target_input.block_id()
         })
-        .map(|link| *link.id());
-    link_id
+        .map(|link| *link.id())
 }
 
 #[cfg(test)]
@@ -347,7 +346,7 @@ mod test {
     use uuid::Uuid;
 
     use crate::base::{
-        block::{connect::disconnect_block, Block, BlockDesc, BlockProps, BlockState},
+        block::{Block, BlockDesc, BlockProps, BlockState, connect::disconnect_block},
         input::{Input, InputProps},
         output::Output,
     };

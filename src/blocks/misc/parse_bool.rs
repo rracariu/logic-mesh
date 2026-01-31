@@ -4,13 +4,13 @@ use uuid::Uuid;
 
 use crate::base::{
     block::{Block, BlockDesc, BlockProps, BlockState},
-    input::{input_reader::InputReader, Input, InputProps},
+    input::{Input, InputProps, input_reader::InputReader},
     output::Output,
 };
 
 use libhaystack::{
     encoding::zinc,
-    val::{kind::HaystackKind, Value},
+    val::{Value, kind::HaystackKind},
 };
 
 use crate::{blocks::InputImpl, blocks::OutputImpl};
@@ -45,7 +45,7 @@ impl Block for ParseBool {
 mod test {
 
     use crate::{
-        base::block::test_utils::write_block_inputs, base::block::Block, blocks::misc::ParseBool,
+        base::block::Block, base::block::test_utils::write_block_inputs, blocks::misc::ParseBool,
     };
 
     #[tokio::test]

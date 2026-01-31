@@ -38,7 +38,7 @@ impl Block for BitwiseNot {
 #[cfg(test)]
 mod test {
     use crate::{
-        base::block::test_utils::write_block_inputs, base::block::Block,
+        base::block::Block, base::block::test_utils::write_block_inputs,
         blocks::bitwise::BitwiseNot,
     };
 

@@ -1,6 +1,6 @@
 // Copyright (c) 2022-2023, Radu Racariu.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 
 use anyhow::Result;
 use libhaystack::val::Value;
@@ -44,7 +44,7 @@ pub enum ChangeSource {
 #[derive(Debug, Clone)]
 pub struct WatchMessage {
     pub block_id: Uuid,
-    pub changes: BTreeMap<String, ChangeSource>,
+    pub changes: HashMap<String, ChangeSource>,
 }
 
 /// Messages that engine accepts

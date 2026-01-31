@@ -5,9 +5,13 @@
 //!
 //! Spawn a local task for each block to be executed on the current thread.
 
-use std::{cell::Cell, cell::RefCell, collections::BTreeMap, rc::Rc};
+use std::{
+    cell::{Cell, RefCell},
+    collections::{BTreeMap, HashMap},
+    rc::Rc,
+};
 
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use libhaystack::val::Value;
 
 use tokio::{
@@ -21,12 +25,12 @@ use super::{block_pointer::BlockPropsPointer, schedule_block_on_engine};
 use crate::{
     base::{
         block::{
-            connect::{connect_input, connect_output, disconnect_block},
             Block, BlockProps, BlockState,
+            connect::{connect_input, connect_output, disconnect_block},
         },
         engine::{
-            messages::{ChangeSource, EngineMessage, WatchMessage},
             Engine,
+            messages::{ChangeSource, EngineMessage, WatchMessage},
         },
         program::data::{BlockData, LinkData},
     },
@@ -402,7 +406,7 @@ fn change_of_value_check<B: Block + 'static>(
         return;
     }
 
-    let mut changes = BTreeMap::<String, ChangeSource>::new();
+    let mut changes = HashMap::<String, ChangeSource>::new();
 
     block.outputs().iter().for_each(|output| {
         let pin = output.desc().name.to_string();
@@ -449,16 +453,15 @@ fn reset_connected_inputs(
         } else {
             None
         }
-    }) {
-        if let Some(target_input) = target_block.get_input_mut(&a_connected_input) {
-            if let Some(value) = target_input.get_value().cloned() {
-                target_input
-                    .writer()
-                    .try_send(value.clone())
-                    .map_err(|err| anyhow!(err))?;
-            }
-        }
+    }) && let Some(target_input) = target_block.get_input_mut(&a_connected_input)
+        && let Some(value) = target_input.get_value().cloned()
+    {
+        target_input
+            .writer()
+            .try_send(value.clone())
+            .map_err(|err| anyhow!(err))?;
     }
+
     Ok(())
 }
 

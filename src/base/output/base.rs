@@ -4,12 +4,12 @@
 //! Defines the base output type.
 //!
 
-use libhaystack::val::{kind::HaystackKind, Value};
+use libhaystack::val::{Value, kind::HaystackKind};
 use uuid::Uuid;
 
 use crate::base::link::Link;
 
-use super::{props::OutDesc, OutputProps};
+use super::{OutputProps, props::OutDesc};
 
 /// The base implementation of an output pin
 #[derive(Debug)]

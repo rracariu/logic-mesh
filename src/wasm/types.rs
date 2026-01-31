@@ -4,7 +4,7 @@ use libhaystack::val::Value;
 use serde::{Deserialize, Serialize};
 
 use crate::base::{
-    block::{desc::BlockImplementation, BlockDesc, BlockPin},
+    block::{BlockDesc, BlockPin, desc::BlockImplementation},
     engine::messages::{ChangeSource, WatchMessage},
 };
 

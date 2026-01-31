@@ -4,11 +4,11 @@ use uuid::Uuid;
 
 use crate::base::{
     block::{Block, BlockDesc, BlockProps, BlockState},
-    input::{input_reader::InputReader, Input, InputProps},
+    input::{Input, InputProps, input_reader::InputReader},
     output::Output,
 };
 
-use libhaystack::val::{kind::HaystackKind, Number, Value};
+use libhaystack::val::{Number, Value, kind::HaystackKind};
 
 use crate::{blocks::InputImpl, blocks::OutputImpl};
 
@@ -40,10 +40,11 @@ impl Block for Add {
                 _ => None,
             })
             .reduce(|mut acc, val| {
-                if acc.unit.is_none() && acc.value == 0.0 {
-                    if let Some(unit) = val.unit {
-                        acc = Number::make_with_unit(0.0, unit);
-                    }
+                if acc.unit.is_none()
+                    && acc.value == 0.0
+                    && let Some(unit) = val.unit
+                {
+                    acc = Number::make_with_unit(0.0, unit);
                 };
 
                 match acc + val {

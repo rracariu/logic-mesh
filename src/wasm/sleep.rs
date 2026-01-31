@@ -19,12 +19,12 @@ extern "C" {
     # [wasm_bindgen (method, js_class = "Performance", js_name = now)]
     fn now(this: &Performance) -> f64;
 
-    #[wasm_bindgen(js_name = performance)]
+    #[wasm_bindgen(thread_local_v2, js_name = performance)]
     static PERFORMANCE: Performance;
 }
 
 /// Sleep for a given number of milliseconds.
-/// Uses `setTimeout` function so it integrates with the browser's (node's) event loop.
+/// Uses `setTimeout` function so it integrates with the browser's or node's event loop.
 pub(crate) async fn sleep_millis(millis: u64) {
     let promise = js_sys::Promise::new(&mut |resolve, _| {
         setTimeout(&resolve, millis as i32);
@@ -34,7 +34,7 @@ pub(crate) async fn sleep_millis(millis: u64) {
 }
 
 /// Get the current time in milliseconds.
-/// Uses `Performance.now` function so it integrates with the browser's (node's) event loop.
+/// Uses `Performance.now` function so it integrates with the browser's or node's event loop.
 pub(crate) fn current_time_millis() -> u64 {
-    PERFORMANCE.now() as u64
+    PERFORMANCE.with(|p| p.now()) as u64
 }

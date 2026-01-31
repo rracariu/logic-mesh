@@ -5,8 +5,8 @@
 //!
 
 use crate::base::block::{BlockDesc, BlockProps, BlockStaticDesc};
-use crate::base::input::input_reader::InputReader;
 use crate::base::input::InputProps;
+use crate::base::input::input_reader::InputReader;
 use libhaystack::val::Value;
 
 use crate::base::engine::Engine;
@@ -25,18 +25,18 @@ use crate::blocks::misc::{HasValue, ParseBool, ParseNumber, Random, SineWave};
 use crate::blocks::string::{Concat, Replace, StrLen};
 use crate::blocks::time::Now;
 
-use anyhow::{anyhow, Result};
-use lazy_static::lazy_static;
-use std::collections::BTreeMap;
+use anyhow::{Result, anyhow};
+use std::collections::HashMap;
+use std::sync::LazyLock;
 use std::sync::Mutex;
 
 use super::{BlockImpl, InputImpl};
 
 pub(crate) type DynBlockProps = dyn BlockProps<
-    Reader = <InputImpl as InputProps>::Reader,
-    Writer = <InputImpl as InputProps>::Writer,
->;
-type MapType = BTreeMap<String, BTreeMap<String, BlockEntry>>;
+        Reader = <InputImpl as InputProps>::Reader,
+        Writer = <InputImpl as InputProps>::Writer,
+    >;
+type MapType = HashMap<String, HashMap<String, BlockEntry>>;
 type BlockRegistry = Mutex<MapType>;
 
 /// Register a block in the registry
@@ -49,22 +49,22 @@ pub struct BlockEntry {
 /// Macro for statically registering all the blocks that are
 /// available in the system.
 #[macro_export]
-macro_rules! register_blocks{
+macro_rules! register_blocks {
     ( $( $block_name:ty ),* ) => {
-		lazy_static! {
-			/// The block registry
-			/// This is a static variable that is initialized once and then
-			/// used throughout the lifetime of the program.
-			static ref BLOCKS: BlockRegistry = {
-				let mut reg = BTreeMap::new();
 
-				$(
-					register_impl::<$block_name>(&mut reg);
-				)*
+		/// The block registry
+		/// This is a static variable that is initialized once and then
+		/// used throughout the lifetime of the program.
+		static BLOCKS: LazyLock<BlockRegistry> = LazyLock::new(|| {
+			let mut reg = HashMap::new();
 
-				reg.into()
-			};
-		}
+			$(
+				register_impl::<$block_name>(&mut reg);
+			)*
+
+			reg.into()
+		});
+
 
 		/// Schedule a block by name.
 		/// If the block name is valid, it will be scheduled on the engine.

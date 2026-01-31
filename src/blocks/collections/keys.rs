@@ -4,11 +4,11 @@ use uuid::Uuid;
 
 use crate::base::{
     block::{Block, BlockDesc, BlockProps, BlockState},
-    input::{input_reader::InputReader, Input, InputProps},
+    input::{Input, InputProps, input_reader::InputReader},
     output::Output,
 };
 
-use libhaystack::val::{kind::HaystackKind, Value};
+use libhaystack::val::{Value, kind::HaystackKind};
 
 use crate::{blocks::InputImpl, blocks::OutputImpl};
 
@@ -45,7 +45,7 @@ mod test {
     use libhaystack::val::Dict;
 
     use crate::{
-        base::block::test_utils::write_block_inputs, base::block::Block, blocks::collections::Keys,
+        base::block::Block, base::block::test_utils::write_block_inputs, blocks::collections::Keys,
     };
 
     #[tokio::test]

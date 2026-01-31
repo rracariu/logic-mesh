@@ -1,6 +1,7 @@
 // Copyright (c) 2022-2023, Radu Racariu.
 
-use std::collections::BTreeMap;
+use std::cell::RefCell;
+use std::collections::HashMap;
 use std::time::Duration;
 
 use anyhow::Result;
@@ -28,8 +29,12 @@ use crate::{
     blocks::{InputImpl, OutputImpl},
 };
 
-type ExternFuncRegistryType = BTreeMap<String, BTreeMap<String, js_sys::Function>>;
-pub static mut JS_FNS: ExternFuncRegistryType = ExternFuncRegistryType::new();
+type ExternFuncRegistryType = HashMap<String, HashMap<String, js_sys::Function>>;
+
+thread_local! {
+    /// A registry of JS functions that implement block logic
+    pub(crate) static JS_FNS: RefCell<ExternFuncRegistryType> = RefCell::new(HashMap::new());
+}
 
 /// A block that is implemented in JavaScript.
 /// The block will delegate the evaluation to a JS function that will be called with the inputs as arguments.
@@ -294,29 +299,35 @@ pub(crate) async fn eval_js_block(desc: &BlockDesc, inputs: Vec<Value>) -> Resul
 fn resolve_js_execute_function(
     desc: &BlockDesc,
 ) -> Result<Option<js_sys::Function>, anyhow::Error> {
-    let lib = unsafe { JS_FNS.get(&desc.library) };
-    let func = lib
-        .ok_or_else(|| {
-            anyhow::anyhow!(
-                "Missing library: '{}'. Can't find the executor JavaScript function for: '{}' block.",
-                desc.library,
-                desc.name
-            )
-        })?
-        .get(desc.name.as_str());
-    let func = match func {
-        Some(func) => {
-            let func = func.call0(&JsValue::NULL).map_err(|err| {
-                anyhow::anyhow!("Failed to call the JS factory function: {err:#?}")
-            })?;
+    JS_FNS.with(|fns| {
+		let fns = fns.borrow();
+        let lib = fns.get(&desc.library);
 
-            let func = func.dyn_into::<js_sys::Function>().map_err(|err| {
-                anyhow::anyhow!("Factory function return is not a function: {err:#?}")
-            })?;
+		let Some(lib) = lib else {
+			return Err(anyhow::anyhow!(
+				"Missing library: '{}'. Can't find the executor JavaScript function for: '{}' block.",
+				desc.library,
+				desc.name
+			));
+    	};
 
-            Some(func)
-        }
-        None => None,
-    };
-    Ok(func)
+
+		let func = lib.get(desc.name.as_str());
+		let func = match func {
+			Some(func) => {
+				let func = func.call0(&JsValue::NULL).map_err(|err| {
+					anyhow::anyhow!("Failed to call the JS factory function: {err:#?}")
+				})?;
+
+				let func = func.dyn_into::<js_sys::Function>().map_err(|err| {
+					anyhow::anyhow!("Factory function return is not a function: {err:#?}")
+				})?;
+
+				Some(func)
+			}
+			None => None,
+		};
+    	Ok(func)
+
+    })
 }

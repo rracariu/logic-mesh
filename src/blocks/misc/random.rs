@@ -10,13 +10,13 @@ use crate::base::output::props::OutputProps;
 use crate::{
     base::{
         block::{Block, BlockDesc, BlockProps, BlockState},
-        input::{input_reader::InputReader, Input, InputProps},
+        input::{Input, InputProps, input_reader::InputReader},
         output::Output,
     },
     blocks::utils::{input_as_number, input_to_millis_or_default},
 };
 
-use libhaystack::val::{kind::HaystackKind, Value};
+use libhaystack::val::{Value, kind::HaystackKind};
 
 use crate::blocks::{InputImpl, OutputImpl};
 
@@ -48,7 +48,7 @@ impl Block for Random {
             return;
         }
 
-        let mut rng = rand::thread_rng();
+        let mut rng = rand::rng();
 
         let min = input_as_number(&self.min)
             .map(|v| v.value as i64)
@@ -63,7 +63,7 @@ impl Block for Random {
             self.set_state(BlockState::Running);
         }
 
-        let res = rng.gen_range(min..max);
+        let res = rng.random_range(min..max);
 
         self.out.set(Value::make_int(res));
     }

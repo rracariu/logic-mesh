@@ -4,11 +4,11 @@ use uuid::Uuid;
 
 use crate::base::{
     block::{Block, BlockDesc, BlockProps, BlockState},
-    input::{input_reader::InputReader, Input, InputProps},
+    input::{Input, InputProps, input_reader::InputReader},
     output::Output,
 };
 
-use libhaystack::val::{kind::HaystackKind, Bool, Value};
+use libhaystack::val::{Bool, Value, kind::HaystackKind};
 
 use crate::{blocks::InputImpl, blocks::OutputImpl};
 
@@ -37,7 +37,7 @@ impl Block for Not {
 mod test {
 
     use crate::{
-        base::block::test_utils::write_block_inputs, base::block::Block, blocks::logic::Not,
+        base::block::Block, base::block::test_utils::write_block_inputs, blocks::logic::Not,
     };
 
     #[tokio::test]

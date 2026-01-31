@@ -4,11 +4,11 @@ use uuid::Uuid;
 
 use crate::base::{
     block::{Block, BlockDesc, BlockProps, BlockState},
-    input::{input_reader::InputReader, Input, InputProps},
+    input::{Input, InputProps, input_reader::InputReader},
     output::Output,
 };
 
-use libhaystack::val::{kind::HaystackKind, Str, Value};
+use libhaystack::val::{Str, Value, kind::HaystackKind};
 
 use crate::{blocks::InputImpl, blocks::OutputImpl};
 
@@ -58,7 +58,7 @@ mod test {
     use crate::{
         base::block::Block,
         base::{
-            block::{test_utils::write_block_inputs, BlockProps},
+            block::{BlockProps, test_utils::write_block_inputs},
             input::input_reader::InputReader,
         },
         blocks::string::Replace,

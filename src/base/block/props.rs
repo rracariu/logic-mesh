@@ -8,7 +8,7 @@ use uuid::Uuid;
 
 use crate::base::{input::Input, link::Link, output::Output};
 
-use super::{desc::BlockDesc, BlockState};
+use super::{BlockState, desc::BlockDesc};
 
 /// Defines the the Block properties
 /// that are common to all blocks.

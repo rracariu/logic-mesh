@@ -4,12 +4,12 @@
 //! Defines the base input type
 //!
 
-use libhaystack::val::{kind::HaystackKind, Value};
+use libhaystack::val::{Value, kind::HaystackKind};
 use uuid::Uuid;
 
 use crate::base::link::{BaseLink, Link};
 
-use super::{props::InputDefault, InputProps};
+use super::{InputProps, props::InputDefault};
 
 /// The base input type
 #[derive(Debug, Default)]

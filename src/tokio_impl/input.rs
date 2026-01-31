@@ -3,9 +3,9 @@
 use std::pin::Pin;
 
 use futures::FutureExt;
-use tokio::sync::mpsc::{channel, Receiver, Sender};
+use tokio::sync::mpsc::{Receiver, Sender, channel};
 
-use libhaystack::val::{kind::HaystackKind, Value};
+use libhaystack::val::{Value, kind::HaystackKind};
 use uuid::Uuid;
 
 use crate::base::{
@@ -68,7 +68,7 @@ impl Input for InputImpl {
 
 #[cfg(test)]
 mod test {
-    use libhaystack::val::{kind::HaystackKind, Value};
+    use libhaystack::val::{Value, kind::HaystackKind};
     use uuid::Uuid;
 
     use crate::base::input::InputDefault;
