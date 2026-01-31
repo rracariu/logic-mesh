@@ -3,19 +3,20 @@
 use std::pin::Pin;
 
 use futures::FutureExt;
-use tokio::sync::mpsc::{Receiver, Sender, channel};
+use tokio::sync::mpsc::channel;
 
 use libhaystack::val::{Value, kind::HaystackKind};
 use uuid::Uuid;
 
-use crate::base::{
-    input::{BaseInput, Input, InputDefault},
-    link::LinkState,
+use crate::{
+    base::{
+        input::{BaseInput, Input, InputDefault},
+        link::LinkState,
+    },
+    tokio_impl::{ReaderImpl, WriterImpl},
 };
 
-pub type Reader = Receiver<Value>;
-pub type Writer = Sender<Value>;
-pub type InputImpl = BaseInput<Reader, Writer>;
+pub type InputImpl = BaseInput<ReaderImpl, WriterImpl>;
 
 impl InputImpl {
     pub fn new(name: &str, kind: HaystackKind, block_id: Uuid) -> Self {

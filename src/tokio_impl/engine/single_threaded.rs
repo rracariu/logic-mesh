@@ -35,11 +35,11 @@ use crate::{
         program::data::{BlockData, LinkData},
     },
     blocks::registry::get_block,
-    tokio_impl::input::{Reader, Writer},
+    tokio_impl::{ReaderImpl, WriterImpl},
 };
 
 // The concrete trait for the block properties
-pub(super) type BlockPropsType = dyn BlockProps<Writer = Writer, Reader = Reader>;
+pub(super) type BlockPropsType = dyn BlockProps<Writer = WriterImpl, Reader = ReaderImpl>;
 
 /// The concrete type for the engine messages
 pub type Messages = EngineMessage<Sender<WatchMessage>>;
@@ -73,8 +73,8 @@ impl Default for SingleThreadedEngine {
 }
 
 impl Engine for SingleThreadedEngine {
-    type Writer = Writer;
-    type Reader = Reader;
+    type Writer = WriterImpl;
+    type Reader = ReaderImpl;
 
     type Channel = Sender<Messages>;
 

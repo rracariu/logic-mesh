@@ -2,15 +2,18 @@
 
 use libhaystack::val::Value;
 
-use crate::base::{
-    input::InputProps,
-    link::{BaseLink, LinkState},
-    output::{BaseOutput, Output},
+use crate::{
+    base::{
+        input::InputProps,
+        link::{BaseLink, LinkState},
+        output::{BaseOutput, Output},
+    },
+    tokio_impl::WriterImpl,
 };
 
-use super::input::{InputImpl, Writer};
+use super::input::InputImpl;
 
-pub type LinkImpl = BaseLink<Writer>;
+pub type LinkImpl = BaseLink<WriterImpl>;
 pub type OutputImpl = BaseOutput<LinkImpl>;
 
 impl Output for OutputImpl {
