@@ -5,3 +5,4 @@ logs
 node_modules
 build
 .svelte-kit
+module
