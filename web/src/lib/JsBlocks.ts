@@ -1,16 +1,13 @@
-import { BlockDesc, BlocksEngine, JsBlock } from 'logic-mesh'
+import type { BlockDesc, BlocksEngine, JsBlock } from 'logic-mesh';
 
 async function passThroughExecute(inputs: unknown[]): Promise<unknown[]> {
-	return [inputs[0]]
+	return [inputs[0]];
 }
 
 function passThroughFactory(): (inputs: unknown[]) => Promise<unknown[]> {
-	return passThroughExecute
+	return passThroughExecute;
 }
 
-/**
- * A Text input block
- */
 const InputBlock = {
 	desc: {
 		name: 'Input',
@@ -20,25 +17,12 @@ const InputBlock = {
 		category: 'UI',
 		doc: 'An input box',
 		implementation: 'external',
-		inputs: [
-			{
-				name: 'in',
-				kind: 'str',
-			},
-		],
-		outputs: [
-			{
-				name: 'out',
-				kind: 'str',
-			},
-		],
+		inputs: [{ name: 'in', kind: 'str' }],
+		outputs: [{ name: 'out', kind: 'str' }],
 	} satisfies BlockDesc,
 	executor: passThroughFactory,
-} satisfies JsBlock
+} satisfies JsBlock;
 
-/**
- * A Checkbox block
- */
 const CheckboxBlock = {
 	desc: {
 		name: 'Checkbox',
@@ -48,25 +32,12 @@ const CheckboxBlock = {
 		category: 'UI',
 		doc: 'A checkbox',
 		implementation: 'external',
-		inputs: [
-			{
-				name: 'in',
-				kind: 'bool',
-			},
-		],
-		outputs: [
-			{
-				name: 'out',
-				kind: 'bool',
-			},
-		],
+		inputs: [{ name: 'in', kind: 'bool' }],
+		outputs: [{ name: 'out', kind: 'bool' }],
 	} satisfies BlockDesc,
 	executor: passThroughFactory,
-} satisfies JsBlock
+} satisfies JsBlock;
 
-/**
- * Block that renders a gauge for the input data
- */
 const GaugeBlock = {
 	desc: {
 		name: 'Gauge',
@@ -76,25 +47,12 @@ const GaugeBlock = {
 		category: 'UI',
 		doc: 'A gauge',
 		implementation: 'external',
-		inputs: [
-			{
-				name: 'in',
-				kind: 'number',
-			},
-		],
-		outputs: [
-			{
-				name: 'out',
-				kind: 'number',
-			},
-		],
+		inputs: [{ name: 'in', kind: 'number' }],
+		outputs: [{ name: 'out', kind: 'number' }],
 	} satisfies BlockDesc,
 	executor: passThroughFactory,
-} satisfies JsBlock
+} satisfies JsBlock;
 
-/**
- * Block that renders a chart for the input data
- */
 const ChartBlock = {
 	desc: {
 		name: 'Chart',
@@ -104,19 +62,14 @@ const ChartBlock = {
 		category: 'UI',
 		doc: 'A line chart',
 		implementation: 'external',
-		inputs: [
-			{
-				name: 'in',
-				kind: 'str',
-			},
-		],
+		inputs: [{ name: 'in', kind: 'str' }],
 		outputs: [],
 	} satisfies BlockDesc,
-} satisfies JsBlock
+} satisfies JsBlock;
 
 export function registerBlocks(engine: BlocksEngine) {
-	engine.registerBlock(InputBlock.desc, InputBlock.executor)
-	engine.registerBlock(CheckboxBlock.desc, CheckboxBlock.executor)
-	engine.registerBlock(GaugeBlock.desc, GaugeBlock.executor)
-	engine.registerBlock(ChartBlock.desc)
+	engine.registerBlock(InputBlock.desc, InputBlock.executor);
+	engine.registerBlock(CheckboxBlock.desc, CheckboxBlock.executor);
+	engine.registerBlock(GaugeBlock.desc, GaugeBlock.executor);
+	engine.registerBlock(ChartBlock.desc);
 }
