@@ -1,5 +1,5 @@
-import type { BlockDesc, Kind } from "logic-mesh/index.d.ts";
-import type { BlocksEngine } from "logic-mesh/logic_mesh.d.ts";
+import type { BlockDesc, Kind } from "./index";
+import type { BlocksEngine } from "./logic_mesh";
 import {
   z,
   ZodArray,
@@ -107,7 +107,7 @@ export class TypedBlock<I extends TupleType, O extends TupleType> {
     throw new Error("Not implemented");
   }
 
-  protected async executeImpl(inputs: InferType<I>) {
+  async executeImpl(inputs: InferType<I>) {
     // Validate inputs
     if (inputs.length !== this.inputs.length) {
       throw new Error("Invalid number of inputs");
@@ -138,7 +138,7 @@ export class TypedBlock<I extends TupleType, O extends TupleType> {
     return res;
   }
 
-  private zodToKind(kind: ZodType | undefined): Kind {
+  zodToKind(kind: ZodType | undefined): Kind {
     if (kind === undefined) {
       throw new Error("Unspecified kind");
     }

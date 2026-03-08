@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { z } from "zod";
-import { defineBlock } from "../module/TypedBlock";
+import { defineBlock } from "../src/TypedBlock";
 
 const desc = {
   name: "TestBlock",

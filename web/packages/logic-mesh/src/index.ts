@@ -1,4 +1,4 @@
-export { BlocksEngine, initEngine, EngineCommand } from "./logic_mesh";
+export { BlocksEngine, initEngine, EngineCommand } from "./logic_mesh.js";
 export { defineBlock, TypedBlock } from "./TypedBlock";
 
 /**
