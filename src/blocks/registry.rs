@@ -9,20 +9,6 @@ use crate::base::input::input_reader::InputReader;
 use libhaystack::val::Value;
 
 use crate::base::engine::Engine;
-use crate::blocks::bitwise::{BitwiseAnd, BitwiseNot, BitwiseOr, BitwiseXor};
-use crate::blocks::collections::{Dict, GetElement, Keys, Length, List, Values};
-use crate::blocks::control::{Pid, PriorityArray};
-use crate::blocks::logic::{
-    And, Equal, GreaterThan, GreaterThanEq, Latch, LessThan, LessThanEq, Not, NotEqual, Or, Xor,
-};
-use crate::blocks::math::{Abs, Add, ArcTan, Cos, Sub};
-use crate::blocks::math::{
-    ArcCos, ArcSin, Average, Div, Even, Exp, Log10, Logn, Max, Median, Min, Mod, Mul, Neg, Odd,
-    Pow, Sin, Sqrt,
-};
-use crate::blocks::misc::{HasValue, ParseBool, ParseNumber, Random, SineWave};
-use crate::blocks::string::{Concat, Replace, StrLen};
-use crate::blocks::time::Now;
 
 use anyhow::{Result, anyhow};
 use std::collections::HashMap;
@@ -136,71 +122,9 @@ macro_rules! register_blocks {
     };
 }
 
-register_blocks!(
-    // Logic blocks
-    And,
-    Or,
-    Not,
-    Equal,
-    NotEqual,
-    Xor,
-    GreaterThan,
-    GreaterThanEq,
-    Latch,
-    LessThan,
-    LessThanEq,
-    // Math blocks
-    Abs,
-    Add,
-    ArcCos,
-    ArcTan,
-    Average,
-    Median,
-    Even,
-    Odd,
-    Sub,
-    Mul,
-    Div,
-    Exp,
-    Cos,
-    ArcSin,
-    Sin,
-    Log10,
-    Logn,
-    Sqrt,
-    Pow,
-    Mod,
-    Min,
-    Max,
-    Neg,
-    // Bitwise blocks
-    BitwiseAnd,
-    BitwiseNot,
-    BitwiseOr,
-    BitwiseXor,
-    // Control blocks
-    Pid,
-    PriorityArray,
-    // String blocks
-    Concat,
-    Replace,
-    StrLen,
-    // Collections blocks
-    GetElement,
-    Length,
-    Keys,
-    Values,
-    List,
-    Dict,
-    // Time blocks
-    Now,
-    // Misc blocks
-    Random,
-    SineWave,
-    ParseBool,
-    ParseNumber,
-    HasValue
-);
+// Block imports and register_blocks! invocation are auto-generated
+// by build.rs scanning for #[block] annotated structs in src/blocks/.
+include!(concat!(env!("OUT_DIR"), "/block_registry.rs"));
 
 /// Construct a block properties from the registry
 /// # Arguments
