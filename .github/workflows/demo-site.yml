@@ -6,23 +6,28 @@ jobs:
   site:
     name: Build demo site
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./web
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: latest
 
+      - name: install
+        run: npm install -g wasm-pack && npm ci
+
       - name: wasm-build
-        run: npm install -g wasm-pack && wasm-pack build --out-dir ./web/module/pkg
-      - name: prepare
-        run: mv ./web/module/pkg/*.{js,ts,wasm} ./web/module && rm -rf ./web/module/pkg
+        run: npm run build --workspace=logic-mesh
+
       - name: build
-        run: npm ci && npm run build
-        working-directory: ./web
+        run: npm run build --workspace=web-app
+
       - name: upload
         uses: actions/upload-pages-artifact@v3
         with:
-          path: "./web/build/"
+          path: "./web/app/build/"
   deploy:
     needs: site
 

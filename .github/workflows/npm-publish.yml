@@ -8,27 +8,26 @@ jobs:
   publish:
     name: Publish npm package
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./web
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v6
         with:
           node-version: latest
 
+      - name: install
+        run: npm install -g wasm-pack && npm ci
+
       - name: wasm-build
-        run: npm install -g wasm-pack && wasm-pack build --release --out-dir ./web/module/pkg
-
-      - name: copy build file
-        run: mv ./web/module/pkg/*.{js,ts,wasm} ./web/module
-
-      - name: sync package version
-        run: npm version $(node -p "require('./pkg/package.json').version") --allow-same-version && rm -rf ./pkg
-        working-directory: ./web/module
+        run: npm run build --workspace=logic-mesh
 
       - name: npmrc
-        run: echo "//registry.npmjs.org/:_authToken=${{secrets.NPM_TOKEN}}" > ./web/module/.npmrc
+        run: echo "//registry.npmjs.org/:_authToken=${{secrets.NPM_TOKEN}}" > ./packages/logic-mesh/.npmrc
 
       - name: publish
         run: npm publish --access public
-        working-directory: ./web/module
+        working-directory: ./web/packages/logic-mesh
         env:
           NODE_AUTH_TOKEN:: ${{ secrets.NPM_TOKEN }}

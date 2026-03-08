@@ -10,9 +10,16 @@
 		"type": "git",
 		"url": "https://github.com/rracariu/logic-mesh"
 	},
+	"scripts": {
+		"build": "wasm-pack build --release --out-dir web/packages/logic-mesh/pkg ../../.. && npm run build:copy && npm run build:clean",
+		"build:dev": "wasm-pack build --dev --out-dir web/packages/logic-mesh/pkg ../../.. && npm run build:copy && npm run build:clean",
+		"build:copy": "mv ./pkg/*.js ./pkg/*.ts ./pkg/*.wasm . && npm version $(node -p \"require('./pkg/package.json').version\") --allow-same-version",
+		"build:clean": "rm -rf ./pkg"
+	},
 	"files": [
 		"index.js",
 		"index.d.ts",
+		"TypedBlock.ts",
 		"logic_mesh_bg.wasm",
 		"logic_mesh.js",
 		"logic_mesh_bg.js",
@@ -25,6 +32,9 @@
 		"./logic_mesh.js",
 		"./snippets/*"
 	],
+	"dependencies": {
+		"zod": "^4.3.6"
+	},
 	"keywords": [
 		"logic",
 		"control",
