@@ -43,6 +43,7 @@ impl Block for Keys {
 mod test {
     use libhaystack::dict;
     use libhaystack::val::Dict;
+    use libhaystack::val::Value;
 
     use crate::{
         base::block::Block, base::block::test_utils::write_block_inputs, blocks::collections::Keys,
@@ -56,7 +57,7 @@ mod test {
         block.execute().await;
         assert_eq!(block.out.value, vec![].into());
 
-        write_block_inputs(&mut [(&mut block.input, (dict! {"a" => 1.into()}).into())]).await;
+        write_block_inputs(&mut [(&mut block.input, (dict! {"a" => 1}).into())]).await;
         block.execute().await;
         assert_eq!(block.out.value, vec!["a".into()].into());
     }

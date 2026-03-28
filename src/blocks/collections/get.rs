@@ -58,7 +58,7 @@ mod test {
         let mut block = GetElement::new();
 
         for _ in write_block_inputs(&mut [
-            (&mut block.input, (dict! {"a" => 1.into()}).into()),
+            (&mut block.input, (dict! {"a" => 1}).into()),
             (&mut block.key, "a".into()),
         ])
         .await
