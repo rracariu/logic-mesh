@@ -14,7 +14,6 @@
 	import type { BlockNotification, BlockPin, Program } from 'logic-mesh';
 
 	import BlockNode from '../components/BlockNode.svelte';
-	import BlockList from '../components/BlockList.svelte';
 	import ToolBar from '../components/ToolBar.svelte';
 
 	import { blockInstance, type Block } from '$lib/Block';
@@ -194,12 +193,6 @@
 </script>
 
 <div class="flex h-screen w-screen overflow-hidden">
-	<!-- Left panel: block list -->
-	<div class="w-[18%] min-w-[160px] overflow-hidden border-r bg-background">
-		<BlockList {blocks} onAddBlock={(desc) => model.addBlock(desc)} />
-	</div>
-
-	<!-- Right panel: flow editor -->
 	<div class="relative flex-1">
 		<SvelteFlow
 			bind:nodes={model.nodes}
@@ -224,7 +217,7 @@
 			<Controls />
 			<MiniMap />
 			<Panel position="bottom-center">
-				<ToolBar {onReset} {onCopy} {onPaste} {onLoad} />
+				<ToolBar {blocks} onAddBlock={(desc) => model.addBlock(desc)} {onReset} {onCopy} {onPaste} {onLoad} />
 			</Panel>
 		</SvelteFlow>
 	</div>

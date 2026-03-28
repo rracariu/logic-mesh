@@ -20,7 +20,7 @@ multi-threaded = []
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-logic_mesh_block_macro = { path = "block_macro", version = "^0.1.6" }
+logic_mesh_block_macro = { path = "block_macro", version = "^0.5.0" }
 serde = { version = "^1.0", features = ["derive"] }
 libhaystack = { version = "^3.0", default-features = false, features = [
 	"value",

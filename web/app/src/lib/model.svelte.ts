@@ -28,8 +28,8 @@ class FlowModel {
 
 		const position = this.currentBlock
 			? {
-					x: (this.currentBlock.position.x || 0) + 200,
-					y: (this.currentBlock.position.y || 0) + 10,
+					x: (this.currentBlock.position.x || 0) + (this.currentBlock.measured?.width ?? 200) + 50,
+					y: (this.currentBlock.position.y || 0),
 				}
 			: { x: 250, y: 5 };
 
