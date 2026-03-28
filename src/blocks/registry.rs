@@ -97,6 +97,44 @@ macro_rules! register_blocks {
 
 		}
 
+		/// Schedule a block by name on a multi-threaded engine.
+		/// The block must be `Send`.
+		#[cfg(feature = "multi-threaded")]
+		#[cfg(not(target_arch = "wasm32"))]
+		pub fn schedule_block_send(name: &str, eng: &mut $crate::tokio_impl::engine::multi_threaded::MultiThreadedEngine) -> Result<uuid::Uuid> {
+			match name {
+				$(
+					stringify!($block_name) => {
+						let block = <$block_name>::new();
+						let uuid = *block.id();
+						eng.schedule(block);
+						Ok(uuid)
+					}
+				)*
+				_ => {
+					return Err(anyhow!("Block not found"));
+				}
+			}
+		}
+
+		/// Schedule a block by name and UUID on a multi-threaded engine.
+		#[cfg(feature = "multi-threaded")]
+		#[cfg(not(target_arch = "wasm32"))]
+		pub fn schedule_block_send_with_uuid(name: &str, uuid: uuid::Uuid, eng: &mut $crate::tokio_impl::engine::multi_threaded::MultiThreadedEngine) -> Result<uuid::Uuid> {
+			match name {
+				$(
+					stringify!($block_name) => {
+						let block = <$block_name>::new_uuid(uuid);
+						eng.schedule(block);
+						Ok(uuid)
+					}
+				)*
+				_ => {
+					return Err(anyhow!("Block not found"));
+				}
+			}
+		}
+
 		/// Evaluate a static registered block by name.
 		/// This will create a block instance and execute it.
 		///

@@ -12,6 +12,10 @@ license = "BSD-3-Clause"
 [workspace]
 members = ["block_macro"]
 
+[features]
+default = []
+multi-threaded = []
+
 [lib]
 crate-type = ["cdylib", "rlib"]
 

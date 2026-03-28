@@ -6,7 +6,7 @@
 //! Spawn a local task for each block to be executed on the current thread.
 
 use std::{
-    cell::{Cell, RefCell},
+    cell::{RefCell, UnsafeCell},
     collections::{BTreeMap, HashMap},
     rc::Rc,
 };
@@ -21,7 +21,7 @@ use tokio::{
 use uuid::Uuid;
 
 use super::message_dispatch::dispatch_message;
-use super::{block_pointer::BlockPropsPointer, schedule_block_on_engine};
+use super::schedule_block_on_engine;
 use crate::{
     base::{
         block::{
@@ -44,6 +44,46 @@ pub(super) type BlockPropsType = dyn BlockProps<Writer = WriterImpl, Reader = Re
 /// The concrete type for the engine messages
 pub type Messages = EngineMessage<Sender<WatchMessage>>;
 
+/// Wrapper for shared block access via `UnsafeCell`.
+///
+/// # Safety
+/// Access is safe when used within a single-threaded `LocalSet` executor,
+/// which guarantees that only one task polls at a time.
+struct SharedBlock<B> {
+    cell: UnsafeCell<B>,
+}
+
+impl<B> SharedBlock<B> {
+    fn new(block: B) -> Self {
+        Self {
+            cell: UnsafeCell::new(block),
+        }
+    }
+
+    /// # Safety
+    /// Caller must ensure no concurrent mutable access exists.
+    #[allow(clippy::mut_from_ref)]
+    unsafe fn get_mut(&self) -> &mut B {
+        unsafe { &mut *self.cell.get() }
+    }
+}
+
+/// Type-erased access to block properties stored in a `SharedBlock`.
+trait AnyBlockProps {
+    /// # Safety
+    /// Caller must ensure no concurrent mutable access exists.
+    #[allow(clippy::mut_from_ref)]
+    unsafe fn props_mut(&self) -> &mut BlockPropsType;
+}
+
+impl<B: Block<Writer = WriterImpl, Reader = ReaderImpl> + 'static> AnyBlockProps
+    for SharedBlock<B>
+{
+    unsafe fn props_mut(&self) -> &mut BlockPropsType {
+        unsafe { &mut *self.cell.get() }
+    }
+}
+
 /// Creates single threaded execution environment for Blocks to be run on.
 ///
 /// Each block would be executed inside a local task in the engine's local context.
@@ -52,7 +92,7 @@ pub struct SingleThreadedEngine {
     /// Use to schedule task on the current thread
     local: LocalSet,
     /// Blocks registered with this engine, indexed by block id
-    block_props: BTreeMap<Uuid, Rc<Cell<BlockPropsPointer>>>,
+    block_props: BTreeMap<Uuid, Rc<dyn AnyBlockProps>>,
     /// Messaging channel used by external processes to control
     /// and inspect this engines execution
     sender: Sender<Messages>,
@@ -80,27 +120,26 @@ impl Engine for SingleThreadedEngine {
 
     fn schedule<B: Block<Writer = Self::Writer, Reader = Self::Reader> + 'static>(
         &mut self,
-        mut block: B,
+        block: B,
     ) {
-        let props = Rc::new(Cell::new(BlockPropsPointer::new(
-            &mut block as &mut BlockPropsType,
-        )));
-        self.block_props.insert(*block.id(), props.clone());
+        let shared = Rc::new(SharedBlock::new(block));
+        // SAFETY: Single-threaded context, no concurrent access.
+        let id = *unsafe { shared.get_mut() }.id();
+        self.block_props
+            .insert(id, shared.clone() as Rc<dyn AnyBlockProps>);
 
         let watchers = self.watchers.clone();
 
         self.local.spawn_local(async move {
-            // Must do here also so we get the correct address
-            // of the moved block instance
-            props.set(BlockPropsPointer::new(&mut block as &mut BlockPropsType));
-
-            // Tacks changes to block pins
             let mut last_pin_values = BTreeMap::<String, Value>::new();
 
             loop {
+                // SAFETY: Single-threaded LocalSet executor guarantees
+                // no concurrent access to the block.
+                let block = unsafe { shared.get_mut() };
                 block.execute().await;
 
-                change_of_value_check(&watchers, &block, &mut last_pin_values);
+                change_of_value_check(&watchers, block, &mut last_pin_values);
 
                 if block.state() == BlockState::Terminated {
                     break;
@@ -207,13 +246,10 @@ impl SingleThreadedEngine {
     }
 
     pub(super) fn blocks_iter_mut(&self) -> impl Iterator<Item = &mut BlockPropsType> {
+        // SAFETY: Single-threaded LocalSet executor guarantees no concurrent access.
         self.block_props
             .values()
-            .filter_map(|props| {
-                let props = props.get();
-                props.get()
-            })
-            .map(|prop| unsafe { &mut *prop })
+            .map(|shared| unsafe { shared.props_mut() })
     }
 
     pub(super) fn connect_blocks(&mut self, link_data: &LinkData) -> Result<LinkData> {
@@ -313,10 +349,10 @@ impl SingleThreadedEngine {
 
     #[allow(clippy::mut_from_ref)]
     pub(super) fn get_block_props_mut(&self, block_id: &Uuid) -> Option<&mut BlockPropsType> {
-        self.block_props.get(block_id).and_then(|ptr| {
-            let fat_ptr = (**ptr).get();
-            fat_ptr.get().map(|ptr| unsafe { &mut *ptr })
-        })
+        // SAFETY: Single-threaded LocalSet executor guarantees no concurrent access.
+        self.block_props
+            .get(block_id)
+            .map(|shared| unsafe { shared.props_mut() })
     }
 
     pub(super) fn add_block(

@@ -11,9 +11,12 @@ use crate::{
 
 use self::single_threaded::SingleThreadedEngine;
 
-mod block_pointer;
 mod message_dispatch;
 pub mod single_threaded;
+
+#[cfg(feature = "multi-threaded")]
+#[cfg(not(target_arch = "wasm32"))]
+pub mod multi_threaded;
 
 pub(super) fn schedule_block_on_engine(
     block: &BlockDesc,
@@ -35,6 +38,27 @@ pub(super) fn schedule_block_on_engine(
         schedule_block_with_uuid(&block.name, uuid, engine)
     } else {
         schedule_block(&block.name, engine)
+    }
+}
+
+#[cfg(feature = "multi-threaded")]
+#[cfg(not(target_arch = "wasm32"))]
+pub(super) fn schedule_block_on_engine_mt(
+    block: &BlockDesc,
+    block_id: Option<Uuid>,
+    engine: &mut multi_threaded::MultiThreadedEngine,
+) -> Result<Uuid> {
+    use crate::blocks::registry::{schedule_block_send, schedule_block_send_with_uuid};
+
+    if block.implementation == BlockImplementation::External {
+        use anyhow::anyhow;
+        Err(anyhow!(
+            "External blocks not supported in multi-threaded mode"
+        ))
+    } else if let Some(uuid) = block_id {
+        schedule_block_send_with_uuid(&block.name, uuid, engine)
+    } else {
+        schedule_block_send(&block.name, engine)
     }
 }
 
