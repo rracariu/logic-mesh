@@ -22,10 +22,7 @@ type ExtractZodType<T> = T extends readonly [string, infer U extends ZodType]
   : never;
 
 type BlockDetails = Omit<BlockDesc, "inputs" | "outputs" | "implementation">;
-type TupleType = readonly [
-  readonly [string, ZodType],
-  ...(readonly [string, ZodType])[],
-];
+type TupleType = readonly (readonly [string, ZodType])[];
 
 /**
  * Defines a new block type with the specified configuration.
@@ -52,9 +49,13 @@ export function defineBlock<I extends TupleType, O extends TupleType>(config: {
 
     static register(engine: BlocksEngine) {
       const executor = new (this as any)();
-      engine.registerBlock(executor.desc, () =>
-        executor.executeImpl.bind(executor),
-      );
+      if (executeFn) {
+        engine.registerBlock(executor.desc, () =>
+          executor.executeImpl.bind(executor),
+        );
+      } else {
+        engine.registerBlock(executor.desc);
+      }
     }
   };
 }

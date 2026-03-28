@@ -1,14 +1,7 @@
-import type { BlockDesc, BlocksEngine, JsBlock } from 'logic-mesh';
+import { defineBlock, type BlocksEngine } from 'logic-mesh';
+import { z } from 'zod';
 
-async function passThroughExecute(inputs: unknown[]): Promise<unknown[]> {
-	return [inputs[0]];
-}
-
-function passThroughFactory(): (inputs: unknown[]) => Promise<unknown[]> {
-	return passThroughExecute;
-}
-
-const InputBlock = {
+const InputBlock = defineBlock({
 	desc: {
 		name: 'Input',
 		dis: 'Input',
@@ -16,14 +9,13 @@ const InputBlock = {
 		ver: '0.0.1',
 		category: 'UI',
 		doc: 'An input box',
-		implementation: 'external',
-		inputs: [{ name: 'in', kind: 'str' }],
-		outputs: [{ name: 'out', kind: 'str' }],
-	} satisfies BlockDesc,
-	executor: passThroughFactory,
-} satisfies JsBlock;
+	},
+	inputs: [['in', z.string()]] as const,
+	outputs: [['out', z.string()]] as const,
+	execute: async ([input]) => [input],
+});
 
-const CheckboxBlock = {
+const CheckboxBlock = defineBlock({
 	desc: {
 		name: 'Checkbox',
 		dis: 'Checkbox',
@@ -31,14 +23,13 @@ const CheckboxBlock = {
 		ver: '0.0.1',
 		category: 'UI',
 		doc: 'A checkbox',
-		implementation: 'external',
-		inputs: [{ name: 'in', kind: 'bool' }],
-		outputs: [{ name: 'out', kind: 'bool' }],
-	} satisfies BlockDesc,
-	executor: passThroughFactory,
-} satisfies JsBlock;
+	},
+	inputs: [['in', z.boolean()]] as const,
+	outputs: [['out', z.boolean()]] as const,
+	execute: async ([input]) => [input],
+});
 
-const GaugeBlock = {
+const GaugeBlock = defineBlock({
 	desc: {
 		name: 'Gauge',
 		dis: 'Gauge',
@@ -46,14 +37,13 @@ const GaugeBlock = {
 		ver: '0.0.1',
 		category: 'UI',
 		doc: 'A gauge',
-		implementation: 'external',
-		inputs: [{ name: 'in', kind: 'number' }],
-		outputs: [{ name: 'out', kind: 'number' }],
-	} satisfies BlockDesc,
-	executor: passThroughFactory,
-} satisfies JsBlock;
+	},
+	inputs: [['in', z.number()]] as const,
+	outputs: [['out', z.number()]] as const,
+	execute: async ([input]) => [input],
+});
 
-const ChartBlock = {
+const ChartBlock = defineBlock({
 	desc: {
 		name: 'Chart',
 		dis: 'Chart',
@@ -61,15 +51,14 @@ const ChartBlock = {
 		ver: '0.0.1',
 		category: 'UI',
 		doc: 'A line chart',
-		implementation: 'external',
-		inputs: [{ name: 'in', kind: 'str' }],
-		outputs: [],
-	} satisfies BlockDesc,
-} satisfies JsBlock;
+	},
+	inputs: [['in', z.string()]] as const,
+	outputs: [],
+});
 
 export function registerBlocks(engine: BlocksEngine) {
-	engine.registerBlock(InputBlock.desc, InputBlock.executor);
-	engine.registerBlock(CheckboxBlock.desc, CheckboxBlock.executor);
-	engine.registerBlock(GaugeBlock.desc, GaugeBlock.executor);
-	engine.registerBlock(ChartBlock.desc);
+	InputBlock.register(engine);
+	CheckboxBlock.register(engine);
+	GaugeBlock.register(engine);
+	ChartBlock.register(engine);
 }
