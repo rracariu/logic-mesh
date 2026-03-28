@@ -11,8 +11,6 @@
 
 	const block = $derived(data.value);
 
-	const handlePos = (index: number) => `top: ${index * 1.5 + 3.0}em`;
-
 	const inputPins = $derived.by(() => {
 		const ins = block.inputs;
 		const keys = Object.keys(ins);
@@ -37,10 +35,6 @@
 		return res;
 	});
 
-	const blockStyle = $derived(
-		`width: 100%; height: ${Object.keys(inputPins).length * 1.3 + 3.0}em;`
-	);
-
 	const validConnection: IsValidConnection = (conn) => conn.source !== conn.target;
 
 	function format(value: unknown): string {
@@ -54,62 +48,87 @@
 </script>
 
 <BlockCommons data={block}>
-	<div style={blockStyle}>
-		{#each Object.entries(inputPins) as [name, input], index}
-			<Handle
-				id={input.name}
-				isValidConnection={validConnection}
-				type="target"
-				position={Position.Left}
-				style={handlePos(index)}
-				class="block-input"
-			>
-				<span class="pin-label">{name}{input.value != null ? ` ${format(input.value)}` : ''}</span>
-			</Handle>
-		{/each}
-
-		{#each Object.entries(block.outputs) as [name, output], index}
+	<!-- Outputs (right-aligned) -->
+	{#each Object.entries(block.outputs) as [name, output]}
+		<div class="pin-row pin-row-output">
+			<span class="pin-name">{name}</span>
+			<span class="pin-value">{output.value != null ? format(output.value) : ''}</span>
 			<Handle
 				id={output.name}
 				isValidConnection={validConnection}
 				type="source"
 				position={Position.Right}
-				style={handlePos(index)}
-				class="block-output"
-			>
-				<span class="pin-label">{name}{output.value != null ? ` ${format(output.value)}` : ''}</span>
-			</Handle>
-		{/each}
-	</div>
+				class="handle-dot handle-output"
+			/>
+		</div>
+	{/each}
+
+	<!-- Separator if both inputs and outputs exist -->
+	{#if Object.keys(block.outputs).length > 0 && Object.keys(inputPins).length > 0}
+		<div class="pin-separator"></div>
+	{/if}
+
+	<!-- Inputs (left-aligned) -->
+	{#each Object.entries(inputPins) as [name, input]}
+		<div class="pin-row pin-row-input">
+			<Handle
+				id={input.name}
+				isValidConnection={validConnection}
+				type="target"
+				position={Position.Left}
+				class="handle-dot handle-input"
+			/>
+			<span class="pin-name">{name}</span>
+			<span class="pin-value">{input.value != null ? format(input.value) : ''}</span>
+		</div>
+	{/each}
 </BlockCommons>
 
 <style>
-	:global([class*='block-']) {
-		font-size: x-small;
-		padding: 1px;
-		display: inline-table;
-		border-radius: 10% !important;
-		min-width: 5em !important;
-		white-space: nowrap;
-		overflow: hidden;
-		text-overflow: ellipsis;
+	.pin-row {
+		display: flex;
+		align-items: center;
+		padding: 1px 8px;
+		gap: 6px;
+		min-height: 20px;
+		position: relative;
 	}
 
-	:global(.block-input) {
-		margin-left: -1em;
-		text-align: left;
-		background: #93c5fd !important;
+	.pin-row-output {
+		justify-content: flex-end;
 	}
 
-	:global(.block-output) {
-		margin-right: -1em;
-		text-align: center;
-		background: #86efac !important;
-		border-radius: 10% !important;
+	.pin-row-input {
+		justify-content: flex-start;
 	}
 
-	.pin-label {
-		font-size: x-small;
-		pointer-events: none;
+	.pin-name {
+		font-size: 11px;
+	}
+
+	.pin-value {
+		font-size: 10px;
+		opacity: 0.6;
+	}
+
+	.pin-separator {
+		border-top: 1px solid var(--border);
+		margin: 2px 8px;
+	}
+
+	:global(.handle-dot) {
+		width: 8px !important;
+		height: 8px !important;
+		border-radius: 50% !important;
+		min-width: 0 !important;
+		border: 1.5px solid white !important;
+	}
+
+	:global(.handle-input) {
+		background: #6b9eff !important;
+	}
+
+	:global(.handle-output) {
+		background: #6bcf7f !important;
 	}
 </style>

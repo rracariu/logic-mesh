@@ -31,26 +31,32 @@
 </script>
 
 <BlockCommons data={block}>
-	<Handle id={inputKey} type="target" position={Position.Left} class="handle-input" />
-
-	<div class="flex flex-col items-center gap-1 p-1">
-		<span class="text-xs capitalize">{inputKey}</span>
+	<div class="ui-block-body">
+		<Handle id={inputKey} type="target" position={Position.Left} class="handle-dot handle-input" />
 		<Input
 			value={String(block.inputs.in.value ?? '')}
 			oninput={onInputChange}
-			class="h-7 w-24 text-xs"
+			class="h-7 w-28 text-xs"
 		/>
-		<span class="text-xs capitalize">{outputKey}</span>
+		<Handle id={outputKey} type="source" position={Position.Right} class="handle-dot handle-output" />
 	</div>
-
-	<Handle id={outputKey} type="source" position={Position.Right} class="handle-output" />
 </BlockCommons>
 
 <style>
-	:global(.handle-input) {
-		background: #93c5fd !important;
+	.ui-block-body {
+		display: flex;
+		align-items: center;
+		padding: 6px 10px;
+		position: relative;
 	}
-	:global(.handle-output) {
-		background: #86efac !important;
+
+	:global(.handle-dot) {
+		width: 8px !important;
+		height: 8px !important;
+		border-radius: 50% !important;
+		min-width: 0 !important;
+		border: 1.5px solid white !important;
 	}
+	:global(.handle-input) { background: #6b9eff !important; }
+	:global(.handle-output) { background: #6bcf7f !important; }
 </style>

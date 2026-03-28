@@ -20,24 +20,48 @@
 </script>
 
 <div
-	class="w-full rounded"
-	style={isSelected ? 'box-shadow: 2px 2px 7px 3px var(--muted);' : ''}
+	class="node-container"
+	style={isSelected ? 'box-shadow: 0 0 0 2px var(--primary);' : ''}
 >
-	<div class="header flex w-full items-center justify-between border-b px-1 py-0.5">
-		<div class="flex flex-1 items-center justify-center">
-			<span class="text-xs font-medium" title={data.desc.doc}>{data.desc.name}</span>
-		</div>
+	<div class="node-header">
+		<span class="node-title" title={data.desc.doc}>{data.desc.name}</span>
 		<Button
 			variant="ghost"
 			size="icon"
-			class="h-5 w-5"
+			class="h-4 w-4 text-inherit opacity-50 hover:opacity-100"
 			onclick={remove}
 			aria-label="Remove block"
 		>
 			<X class="h-3 w-3" />
 		</Button>
 	</div>
-	<div class="flex min-w-full">
+	<div class="node-body">
 		{@render children()}
 	</div>
 </div>
+
+<style>
+	.node-container {
+		width: 100%;
+		border-radius: 5px;
+		overflow: hidden;
+	}
+
+	.node-header {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		padding: 2px 6px;
+		background: var(--muted);
+		border-bottom: 1px solid var(--border);
+	}
+
+	.node-title {
+		font-size: 11px;
+		font-weight: 600;
+	}
+
+	.node-body {
+		padding: 4px 0;
+	}
+</style>

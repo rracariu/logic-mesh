@@ -58,50 +58,54 @@
 </script>
 
 <BlockCommons data={block}>
-	<Handle id={inputKey} type="target" position={Position.Left} class="handle-input" />
+	<div class="ui-block-body">
+		<Handle id={inputKey} type="target" position={Position.Left} class="handle-dot handle-input" />
 
-	<div class="flex flex-col items-center gap-1 p-1">
-		<span class="text-xs capitalize">{inputKey}</span>
+		<div class="flex flex-col items-center gap-1">
+			<svg width="88" height="88" viewBox="0 0 88 88">
+				<circle cx={cx} cy={cy} r={radius} fill="none" stroke="var(--muted)" stroke-width="6" />
+				<path
+					d="M {arcStart.x} {arcStart.y} A {radius} {radius} 0 {largeArc} 1 {arcEnd.x} {arcEnd.y}"
+					fill="none"
+					stroke="var(--primary)"
+					stroke-width="6"
+					stroke-linecap="round"
+				/>
+				<circle cx={thumbPos.x} cy={thumbPos.y} r="4" fill="var(--primary)" />
+				<text x={cx} y={cy + 5} text-anchor="middle" font-size="12" fill="var(--foreground)">
+					{numValue}
+				</text>
+			</svg>
 
-		<svg width="88" height="88" viewBox="0 0 88 88">
-			<!-- Track -->
-			<circle cx={cx} cy={cy} r={radius} fill="none" stroke="var(--muted)" stroke-width="6" />
-			<!-- Value arc -->
-			<path
-				d="M {arcStart.x} {arcStart.y} A {radius} {radius} 0 {largeArc} 1 {arcEnd.x} {arcEnd.y}"
-				fill="none"
-				stroke="var(--primary)"
-				stroke-width="6"
-				stroke-linecap="round"
-			/>
-			<!-- Thumb -->
-			<circle cx={thumbPos.x} cy={thumbPos.y} r="4" fill="var(--primary)" />
-			<!-- Value label -->
-			<text x={cx} y={cy + 5} text-anchor="middle" font-size="12" fill="var(--foreground)">
-				{numValue}
-			</text>
-		</svg>
-
-		<div class="flex gap-1">
-			<Button variant="ghost" size="icon" class="h-6 w-6" onclick={decrement} aria-label="Decrement">
-				<Minus class="h-3 w-3" />
-			</Button>
-			<Button variant="ghost" size="icon" class="h-6 w-6" onclick={increment} aria-label="Increment">
-				<Plus class="h-3 w-3" />
-			</Button>
+			<div class="flex gap-1">
+				<Button variant="ghost" size="icon" class="h-6 w-6" onclick={decrement} aria-label="Decrement">
+					<Minus class="h-3 w-3" />
+				</Button>
+				<Button variant="ghost" size="icon" class="h-6 w-6" onclick={increment} aria-label="Increment">
+					<Plus class="h-3 w-3" />
+				</Button>
+			</div>
 		</div>
 
-		<span class="text-xs capitalize">{outputKey}</span>
+		<Handle id={outputKey} type="source" position={Position.Right} class="handle-dot handle-output" />
 	</div>
-
-	<Handle id={outputKey} type="source" position={Position.Right} class="handle-output" />
 </BlockCommons>
 
 <style>
-	:global(.handle-input) {
-		background: #93c5fd !important;
+	.ui-block-body {
+		display: flex;
+		align-items: center;
+		padding: 6px 10px;
+		position: relative;
 	}
-	:global(.handle-output) {
-		background: #86efac !important;
+
+	:global(.handle-dot) {
+		width: 8px !important;
+		height: 8px !important;
+		border-radius: 50% !important;
+		min-width: 0 !important;
+		border: 1.5px solid white !important;
 	}
+	:global(.handle-input) { background: #6b9eff !important; }
+	:global(.handle-output) { background: #6bcf7f !important; }
 </style>

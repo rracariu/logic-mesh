@@ -60,17 +60,32 @@
 </script>
 
 <BlockCommons data={block}>
-	<Handle id={inputKey} type="target" position={Position.Left} class="handle-input" />
-
-	<div class="flex items-center justify-center p-1">
-		<span class="text-xs capitalize">{inputKey}</span>
+	<div class="pin-row pin-row-input">
+		<Handle id={inputKey} type="target" position={Position.Left} class="handle-dot handle-input" />
+		<span class="pin-name">{inputKey}</span>
 	</div>
 
 	<canvas id={chartId} width="200" height="100"></canvas>
 </BlockCommons>
 
 <style>
-	:global(.handle-input) {
-		background: #93c5fd !important;
+	.pin-row {
+		display: flex;
+		align-items: center;
+		padding: 1px 8px;
+		gap: 6px;
+		min-height: 20px;
+		position: relative;
 	}
+	.pin-row-input { justify-content: flex-start; }
+	.pin-name { font-size: 11px; }
+
+	:global(.handle-dot) {
+		width: 8px !important;
+		height: 8px !important;
+		border-radius: 50% !important;
+		min-width: 0 !important;
+		border: 1.5px solid white !important;
+	}
+	:global(.handle-input) { background: #6b9eff !important; }
 </style>
