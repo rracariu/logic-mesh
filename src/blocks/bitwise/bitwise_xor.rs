@@ -23,7 +23,7 @@ pub struct BitwiseXor {
     pub in1: InputImpl,
     #[input(kind = "Number")]
     pub in2: InputImpl,
-    #[output(kind = "Bool")]
+    #[output(kind = "Number")]
     pub out: OutputImpl,
 }
 
