@@ -6,6 +6,7 @@
 
 pub mod and;
 pub mod eq;
+pub mod flip_flop;
 pub mod gt;
 pub mod gte;
 pub mod latch;
@@ -14,11 +15,13 @@ pub mod lte;
 pub mod neq;
 pub mod not;
 pub mod or;
+pub mod trigger;
 mod util;
 pub mod xor;
 
 pub use and::And;
 pub use eq::Equal;
+pub use flip_flop::FlipFlop;
 pub use gt::GreaterThan;
 pub use gte::GreaterThanEq;
 pub use latch::Latch;
@@ -27,4 +30,5 @@ pub use lte::LessThanEq;
 pub use neq::NotEqual;
 pub use not::Not;
 pub use or::Or;
+pub use trigger::Trigger;
 pub use xor::Xor;

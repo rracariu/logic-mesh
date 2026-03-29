@@ -1,22 +1,20 @@
 // Copyright (c) 2022-2023, Radu Racariu.
 
 use std::collections::BTreeMap;
-use syn::{Attribute, Lit, Meta, NestedMeta, TypePath};
+use syn::{Attribute, Lit, Meta, NestedMeta, Type, TypePath};
 
 ///
 /// Extract the block field names and their types.
 ///
-pub(super) fn get_block_fields(ast: &syn::DeriveInput) -> BTreeMap<String, String> {
-    let mut members = BTreeMap::<String, String>::new();
+pub(super) fn get_block_fields(ast: &syn::DeriveInput) -> BTreeMap<String, Type> {
+    let mut members = BTreeMap::<String, Type>::new();
 
     if let syn::Data::Struct(struct_data) = &ast.data {
         if let syn::Fields::Named(fields) = &struct_data.fields {
             for field in &fields.named {
                 if let Some(id) = &field.ident {
-                    if let syn::Type::Path(ty) = &field.ty {
-                        if let Some(ty) = ty.path.get_ident() {
-                            members.insert(id.to_string(), ty.to_string());
-                        }
+                    if let syn::Type::Path(_) = &field.ty {
+                        members.insert(id.to_string(), field.ty.clone());
                     }
                 }
             }

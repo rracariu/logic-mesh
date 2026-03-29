@@ -214,9 +214,9 @@ fn create_block_input_fields_init(
     }
 }
 
-/// Init custom fields that a user my have on a block
+/// Init custom fields that a user may have on a block
 fn create_block_fields_init(
-    block_fields: &BTreeMap<String, String>,
+    block_fields: &BTreeMap<String, syn::Type>,
     block_input_props: &[(String, BTreeMap<String, String>)],
     block_output_props: &[(String, BTreeMap<String, String>)],
 ) -> proc_macro2::TokenStream {
@@ -227,6 +227,7 @@ fn create_block_fields_init(
             field_name.as_str() != "id"
                 && field_name.as_str() != "name"
                 && field_name.as_str() != "state"
+                && field_name.as_str() != "_inputs"
                 && !block_input_props.iter().any(|(id, _)| id == *field_name)
                 && !block_output_props.iter().any(|(id, _)| id == *field_name)
         };
@@ -239,10 +240,10 @@ fn create_block_fields_init(
         let ty = block_fields
             .iter()
             .filter(|(k, _)| filter(k))
-            .map(|(_, ty)| format_ident!("{ty}"));
+            .map(|(_, ty)| ty);
 
         quote! {
-            #(#field: #ty::default(),)*
+            #(#field: <#ty>::default(),)*
         }
     }
 }

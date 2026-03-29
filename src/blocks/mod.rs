@@ -13,6 +13,7 @@ pub mod misc;
 pub mod registry;
 pub mod string;
 pub mod time;
+pub mod timers;
 pub mod utils;
 
 // Re-export implementations working with inputs and outputs
