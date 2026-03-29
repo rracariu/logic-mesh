@@ -79,9 +79,7 @@ impl Block for RateLimit {
         } else if diff < 0.0 && falling_rate > 0.0 {
             let max_fall = falling_rate * dt;
             current - (-diff).min(max_fall)
-        } else if diff > 0.0 && rising_rate <= 0.0 {
-            target
-        } else if diff < 0.0 && falling_rate <= 0.0 {
+        } else if (diff > 0.0 && rising_rate <= 0.0) || (diff < 0.0 && falling_rate <= 0.0) {
             target
         } else {
             current

@@ -253,5 +253,4 @@ mod test {
         block.execute().await;
         assert_eq!(block.out.value, false.into());
     }
-
 }

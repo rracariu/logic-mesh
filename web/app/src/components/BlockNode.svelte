@@ -5,6 +5,11 @@
 	import CheckboxBlock from './blocks/CheckboxBlock.svelte';
 	import ChartBlock from './blocks/ChartBlock.svelte';
 	import GaugeBlock from './blocks/GaugeBlock.svelte';
+	import ButtonBlock from './blocks/ButtonBlock.svelte';
+	import ComboBoxBlock from './blocks/ComboBoxBlock.svelte';
+	import TableBlock from './blocks/TableBlock.svelte';
+	import LabelBlock from './blocks/LabelBlock.svelte';
+	import SliderBlock from './blocks/SliderBlock.svelte';
 
 	interface Props {
 		data: { value: Block };
@@ -25,6 +30,16 @@
 	<ChartBlock {data} />
 {:else if block.desc.name === 'Gauge'}
 	<GaugeBlock {data} />
+{:else if block.desc.name === 'Button'}
+	<ButtonBlock {data} />
+{:else if block.desc.name === 'ComboBox'}
+	<ComboBoxBlock {data} />
+{:else if block.desc.name === 'Table'}
+	<TableBlock {data} />
+{:else if block.desc.name === 'Label'}
+	<LabelBlock {data} />
+{:else if block.desc.name === 'Slider'}
+	<SliderBlock {data} />
 {:else}
 	<GenericBlock {data} />
 {/if}
