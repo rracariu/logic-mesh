@@ -54,7 +54,7 @@ mod test {
 
         assert_matches!(
             block.out.value,
-            Value::Bool(Bool { value, .. }) if value == false
+            Value::Bool(Bool { value, .. }) if !value
         );
 
         write_block_inputs(&mut [(&mut block.input, 9.into())]).await;

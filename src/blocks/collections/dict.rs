@@ -67,6 +67,6 @@ mod test {
         block.read_inputs().await;
 
         block.execute().await;
-        assert_eq!(block.out.value, Value::Dict(dict! {"a" => 200}).into());
+        assert_eq!(block.out.value, Value::Dict(dict! {"a" => 200}));
     }
 }

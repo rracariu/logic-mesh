@@ -9,7 +9,7 @@ use std::sync::atomic::AtomicU64;
 use super::InputImpl;
 use anyhow::Result;
 use libhaystack::{
-    units::units_generated::MILLISECOND,
+    units::{Unit, units_generated::MILLISECOND},
     val::{Number, Value},
 };
 
@@ -40,6 +40,34 @@ pub(super) fn input_as_number(input: &InputImpl) -> Option<Number> {
         Some(val)
     } else {
         None
+    }
+}
+
+/// Read a numeric input and return its value in `target` units.
+///
+/// - If the input has no unit set, the raw value is returned (lenient).
+/// - If the input's unit equals `target`, the raw value is returned.
+/// - If the input's unit is convertible to `target`, the converted value is returned.
+/// - If the input is missing or has an incompatible unit, returns `None`.
+pub(super) fn input_as_number_in(input: &InputImpl, target: &'static Unit) -> Option<f64> {
+    let n = input_as_number(input)?;
+    match n.unit {
+        None => Some(n.value),
+        Some(u) if u == target => Some(n.value),
+        Some(u) => u.convert_to(n.value, target).ok(),
+    }
+}
+
+/// Read a numeric input, optionally converting to `target` if a target
+/// unit is known. Used by unit-preserving blocks where the target unit
+/// is dictated by another input (typically `in`).
+pub(super) fn input_as_number_matching(
+    input: &InputImpl,
+    target: Option<&'static Unit>,
+) -> Option<f64> {
+    match target {
+        Some(u) => input_as_number_in(input, u),
+        None => input_as_number(input).map(|n| n.value),
     }
 }
 

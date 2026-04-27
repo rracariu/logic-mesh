@@ -60,7 +60,7 @@ mod test {
 
         assert_matches!(
             block.out.value,
-            Value::Number(Number { value, .. }) if value == 1.5707963267948966
+            Value::Number(Number { value, .. }) if value == std::f64::consts::FRAC_PI_2
         );
     }
 }

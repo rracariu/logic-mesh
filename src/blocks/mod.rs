@@ -10,6 +10,7 @@ pub mod control;
 pub mod logic;
 pub mod math;
 pub mod misc;
+pub mod psych;
 pub mod registry;
 pub mod string;
 pub mod time;

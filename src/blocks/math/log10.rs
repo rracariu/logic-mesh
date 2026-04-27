@@ -60,7 +60,7 @@ mod test {
 
         assert_matches!(
             block.out.value,
-            Value::Number(Number { value, .. }) if value == 0.3010299956639812
+            Value::Number(Number { value, .. }) if value == std::f64::consts::LOG10_2
         );
     }
 }

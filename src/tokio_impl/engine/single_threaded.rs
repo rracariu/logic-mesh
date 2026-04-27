@@ -539,30 +539,27 @@ mod test {
             let rt = Runtime::new().expect("RT");
 
             let handle = rt.spawn(async move {
-                loop {
-                    sleep(Duration::from_millis(300)).await;
+                sleep(Duration::from_millis(300)).await;
 
-                    let _ = engine_sender
-                        .send(InspectBlockReq(channel_id, add_uuid))
-                        .await;
+                let _ = engine_sender
+                    .send(InspectBlockReq(channel_id, add_uuid))
+                    .await;
 
-                    let res = receiver.recv().await;
+                let res = receiver.recv().await;
 
-                    if let Some(InspectBlockRes(Ok(data))) = res {
-                        assert_eq!(data.id, add_uuid.to_string());
-                        assert_eq!(data.name, "Add");
-                        assert_eq!(data.inputs.len(), 16);
-                        assert_eq!(data.outputs.len(), 1);
-                    } else {
-                        assert!(false, "Failed to find block: {:?}", res)
-                    }
-
-                    let _ = engine_sender.send(Shutdown).await;
-                    break;
+                if let Some(InspectBlockRes(Ok(data))) = res {
+                    assert_eq!(data.id, add_uuid.to_string());
+                    assert_eq!(data.name, "Add");
+                    assert_eq!(data.inputs.len(), 16);
+                    assert_eq!(data.outputs.len(), 1);
+                } else {
+                    panic!("Failed to find block: {:?}", res)
                 }
+
+                let _ = engine_sender.send(Shutdown).await;
             });
 
-            rt.block_on(async { handle.await })
+            rt.block_on(handle)
         });
 
         eng.schedule(add1);

@@ -478,7 +478,7 @@ mod test {
             assert!(block1.input1.links().len() == 1);
         }
 
-        let gid = block2.id().clone();
+        let gid = *block2.id();
         let input1 = &mut block2.input1;
 
         disconnect_block(&mut block1, |id, name| {
@@ -488,6 +488,6 @@ mod test {
         });
 
         assert!(!input1.is_connected());
-        assert!(block1.input1.links().len() == 0);
+        assert!(block1.input1.links().is_empty());
     }
 }
