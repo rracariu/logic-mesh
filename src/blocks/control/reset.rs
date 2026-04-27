@@ -58,7 +58,9 @@ impl Block for Reset {
             Some(n) => n,
             None => return,
         };
-        let out_unit = out_min_n.unit.or(input_as_number(&self.out_max).and_then(|n| n.unit));
+        let out_unit = out_min_n
+            .unit
+            .or(input_as_number(&self.out_max).and_then(|n| n.unit));
         let out_min = out_min_n.value;
         let out_max = match input_as_number_matching(&self.out_max, out_unit) {
             Some(v) => v,

@@ -82,7 +82,11 @@ impl Block for Sequencer {
         }
 
         let elapsed = now.saturating_sub(self.pending_since_ms);
-        let needed = if target > current { up_delay } else { down_delay };
+        let needed = if target > current {
+            up_delay
+        } else {
+            down_delay
+        };
 
         if elapsed >= needed {
             // Move one step at a time so each step gets re-timed.

@@ -107,7 +107,9 @@ impl Block for TrimRespond {
         let requests = input_as_number(&self.requests)
             .map(|n| n.value)
             .unwrap_or(0.0);
-        let ignore = input_as_number(&self.ignore).map(|n| n.value).unwrap_or(2.0);
+        let ignore = input_as_number(&self.ignore)
+            .map(|n| n.value)
+            .unwrap_or(2.0);
         let trim = input_as_number_matching(&self.trim, sp_unit).unwrap_or(0.0);
         let respond = input_as_number_matching(&self.respond, sp_unit).unwrap_or(0.0);
         let max_change = input_as_number_matching(&self.max_change, sp_unit)
