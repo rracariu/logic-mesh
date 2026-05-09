@@ -7,8 +7,10 @@
 pub mod calendar;
 pub mod now;
 pub mod schedule;
+pub mod sun;
 
 // Re-export implementations working with inputs and outputs
 pub use calendar::Calendar;
 pub use now::Now;
 pub use schedule::Schedule;
+pub use sun::Sun;
