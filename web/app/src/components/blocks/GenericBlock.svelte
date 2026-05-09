@@ -2,6 +2,7 @@
 	import { Handle, Position, type IsValidConnection } from '@xyflow/svelte';
 	import BlockCommons from '../BlockCommons.svelte';
 	import type { Block } from '$lib/Block';
+	import { isHaystackNumber, numericValue } from '$lib/utils';
 
 	interface Props {
 		data: { value: Block };
@@ -38,6 +39,12 @@
 	const validConnection: IsValidConnection = (conn) => conn.source !== conn.target;
 
 	function format(value: unknown): string {
+		if (isHaystackNumber(value)) {
+			const n = numericValue(value);
+			return n == null
+				? '-'
+				: Intl.NumberFormat(undefined, { maximumFractionDigits: 2 }).format(n);
+		}
 		if (typeof value === 'number') return Intl.NumberFormat().format(value);
 		if (typeof value === 'string') return value.slice(0, 5);
 		if (typeof value === 'boolean') return value ? 'true' : 'false';

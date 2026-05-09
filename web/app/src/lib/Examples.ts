@@ -1,155 +1,524 @@
 import type { Program } from "logic-mesh";
 
-const pidLoop = {
-  name: "PID Loop",
+// Each demo uses a deterministic UUID prefix so the IDs stay stable
+// across reloads and don't collide between examples.
+
+const datReset = {
+  name: "DAT Temperature Reset",
+  description:
+    "Discharge-air-temperature reset (ASHRAE G36 style): as outdoor temp rises, the supply-air setpoint falls. PID drives the simulated SAT toward the SP.",
   blocks: {
-    "46505659-8026-4de8-98dd-d2172d57bc1b": {
+    "11111111-1111-4111-8111-000000000001": {
+      name: "Slider",
+      lib: "ui",
+      label: "OAT (°F)",
+      positions: { x: 40, y: 80 },
+      inputs: {
+        in: { value: 60, isConnected: false },
+        min: { value: 30, isConnected: false },
+        max: { value: 90, isConnected: false },
+        step: { value: 1, isConnected: false },
+      },
+      outputs: { out: { value: 60 } },
+    },
+    "11111111-1111-4111-8111-000000000002": {
+      name: "Reset",
+      lib: "core",
+      label: "OAT → SAT setpoint",
+      positions: { x: 270, y: 80 },
+      inputs: {
+        inMin: { value: 50, isConnected: false },
+        inMax: { value: 70, isConnected: false },
+        outMin: { value: 65, isConnected: false },
+        outMax: { value: 55, isConnected: false },
+      },
+    },
+    "11111111-1111-4111-8111-000000000003": {
       name: "Pid",
       lib: "core",
-      positions: { x: 536, y: 64 },
+      label: "SAT loop",
+      positions: { x: 500, y: 80 },
       inputs: {
-        interval: { value: 100, isConnected: true },
-        sp: { value: 88, isConnected: true },
+        interval: { value: 200, isConnected: false },
+        kp: { value: 0.6, isConnected: false },
+        ki: { value: 0.05, isConnected: false },
+        kd: { value: 0.1, isConnected: false },
+        min: { value: 50, isConnected: false },
+        max: { value: 70, isConnected: false },
       },
-      outputs: { out: { value: 70.44131757540165 } },
     },
-    "10f282d1-2f80-456a-a6a2-8cddb291822f": {
-      name: "Input",
+    "11111111-1111-4111-8111-000000000004": {
+      name: "MultiChart",
       lib: "ui",
-      positions: { x: 221, y: 207 },
-      outputs: { out: { value: "88" } },
+      positions: { x: 740, y: 30 },
+      inputs: {
+        labelA: { value: "OAT", isConnected: false },
+        labelB: { value: "SAT SP", isConnected: false },
+        labelC: { value: "SAT PV", isConnected: false },
+      },
     },
-    "88e3fcca-4949-493d-a2ba-d3a6f817805f": {
-      name: "Chart",
+    "11111111-1111-4111-8111-000000000005": {
+      name: "Display",
       lib: "ui",
-      positions: { x: 770, y: 36 },
-      inputs: { in: { value: "70.44131757540165", isConnected: true } },
+      positions: { x: 40, y: 240 },
+      inputs: {
+        unit: { value: "°F", isConnected: false },
+        label: { value: "OAT", isConnected: false },
+      },
     },
-    "20b00b27-e25a-44d3-906c-0c4e1abde715": {
-      name: "Input",
+    "11111111-1111-4111-8111-000000000006": {
+      name: "Display",
       lib: "ui",
-      positions: { x: 217, y: 103 },
-      outputs: { out: { value: "100" } },
+      positions: { x: 270, y: 240 },
+      inputs: {
+        unit: { value: "°F", isConnected: false },
+        label: { value: "SAT SP", isConnected: false },
+      },
+    },
+    "11111111-1111-4111-8111-000000000007": {
+      name: "Display",
+      lib: "ui",
+      positions: { x: 500, y: 240 },
+      inputs: {
+        unit: { value: "°F", isConnected: false },
+        label: { value: "SAT PV", isConnected: false },
+      },
     },
   },
   links: {
-    "586a2bef-fe2c-4eca-9aaf-0010b56ec385": {
+    "11111111-1111-4111-8111-0000000000a1": {
+      sourceBlockPinName: "out",
+      targetBlockPinName: "in",
+      sourceBlockUuid: "11111111-1111-4111-8111-000000000001",
+      targetBlockUuid: "11111111-1111-4111-8111-000000000002",
+    },
+    "11111111-1111-4111-8111-0000000000a2": {
       sourceBlockPinName: "out",
       targetBlockPinName: "sp",
-      sourceBlockUuid: "10f282d1-2f80-456a-a6a2-8cddb291822f",
-      targetBlockUuid: "46505659-8026-4de8-98dd-d2172d57bc1b",
+      sourceBlockUuid: "11111111-1111-4111-8111-000000000002",
+      targetBlockUuid: "11111111-1111-4111-8111-000000000003",
     },
-    "58f596d4-65db-4037-bfbd-7c8495f74c69": {
+    "11111111-1111-4111-8111-0000000000a3": {
+      sourceBlockPinName: "out",
+      targetBlockPinName: "a",
+      sourceBlockUuid: "11111111-1111-4111-8111-000000000001",
+      targetBlockUuid: "11111111-1111-4111-8111-000000000004",
+    },
+    "11111111-1111-4111-8111-0000000000a4": {
+      sourceBlockPinName: "out",
+      targetBlockPinName: "b",
+      sourceBlockUuid: "11111111-1111-4111-8111-000000000002",
+      targetBlockUuid: "11111111-1111-4111-8111-000000000004",
+    },
+    "11111111-1111-4111-8111-0000000000a5": {
+      sourceBlockPinName: "out",
+      targetBlockPinName: "c",
+      sourceBlockUuid: "11111111-1111-4111-8111-000000000003",
+      targetBlockUuid: "11111111-1111-4111-8111-000000000004",
+    },
+    "11111111-1111-4111-8111-0000000000a6": {
       sourceBlockPinName: "out",
       targetBlockPinName: "in",
-      sourceBlockUuid: "46505659-8026-4de8-98dd-d2172d57bc1b",
-      targetBlockUuid: "88e3fcca-4949-493d-a2ba-d3a6f817805f",
+      sourceBlockUuid: "11111111-1111-4111-8111-000000000001",
+      targetBlockUuid: "11111111-1111-4111-8111-000000000005",
     },
-    "c033f434-59fa-4bbb-b4fd-1b1655426565": {
+    "11111111-1111-4111-8111-0000000000a7": {
       sourceBlockPinName: "out",
-      targetBlockPinName: "interval",
-      sourceBlockUuid: "20b00b27-e25a-44d3-906c-0c4e1abde715",
-      targetBlockUuid: "46505659-8026-4de8-98dd-d2172d57bc1b",
+      targetBlockPinName: "in",
+      sourceBlockUuid: "11111111-1111-4111-8111-000000000002",
+      targetBlockUuid: "11111111-1111-4111-8111-000000000006",
+    },
+    "11111111-1111-4111-8111-0000000000a8": {
+      sourceBlockPinName: "out",
+      targetBlockPinName: "in",
+      sourceBlockUuid: "11111111-1111-4111-8111-000000000003",
+      targetBlockUuid: "11111111-1111-4111-8111-000000000007",
     },
   },
 } as Program;
 
-const sineWave = {
-  name: "Sine Wave",
+const coolingTower = {
+  name: "Cooling Tower Stage + Lead/Lag",
+  description:
+    "Demand → Sequencer stages 0..2 with up/down delays → LeadLag rotates which fan is lead. Press the rotate button to swap the lead.",
   blocks: {
-    "28549524-491a-494a-8653-2e2b98beda10": {
-      name: "Chart",
+    "22222222-2222-4222-8222-000000000001": {
+      name: "Slider",
       lib: "ui",
-      positions: { x: 710, y: 34 },
-      inputs: { in: { value: "3.9928536847023506", isConnected: true } },
-    },
-    "ef7018d5-977f-402d-b5c9-e3fba2bd0955": {
-      name: "Input",
-      lib: "ui",
-      positions: { x: 112, y: 160 },
-      inputs: { in: { value: "4", isConnected: false } },
-      outputs: { out: { value: "4" } },
-    },
-    "09bc3b7e-89cb-4cda-b5b9-a1e9512f3c79": {
-      name: "Checkbox",
-      lib: "ui",
-      positions: { x: 822, y: 302 },
-      inputs: { in: { value: true, isConnected: true } },
-      outputs: { out: { value: true } },
-    },
-    "6e494e46-420f-4687-8f7a-c5382c4f219e": {
-      name: "GreaterThan",
-      lib: "core",
-      positions: { x: 604, y: 320 },
+      label: "Cooling demand 0–1",
+      positions: { x: 40, y: 80 },
       inputs: {
-        in1: { value: 3.99, isConnected: true },
-        in2: { value: "1.5", isConnected: true },
+        in: { value: 0.5, isConnected: false },
+        min: { value: 0, isConnected: false },
+        max: { value: 1, isConnected: false },
+        step: { value: 0.1, isConnected: false },
       },
-      outputs: { out: { value: true } },
+      outputs: { out: { value: 0.5 } },
     },
-    "a162e4d6-e24c-4f58-9640-ecbf142d4bb8": {
-      name: "SineWave",
+    "22222222-2222-4222-8222-000000000002": {
+      name: "Sequencer",
       lib: "core",
-      positions: { x: 395, y: 76 },
+      label: "2-stage stager",
+      positions: { x: 270, y: 80 },
       inputs: {
-        freq: { value: 8, isConnected: true },
-        amplitude: { value: 4, isConnected: true },
+        stages: { value: 2, isConnected: false },
+        upDelay: { value: 2000, isConnected: false },
+        downDelay: { value: 5000, isConnected: false },
       },
-      outputs: { out: { value: 3.99 } },
     },
-    "dd9367ba-6269-49ac-ab2c-063c8f1adce6": {
-      name: "Input",
+    "22222222-2222-4222-8222-000000000003": {
+      name: "Button",
       lib: "ui",
-      positions: { x: 120, y: 15.13 },
-      inputs: { in: { value: "8", isConnected: false } },
-      outputs: { out: { value: "8" } },
+      label: "Rotate lead",
+      positions: { x: 40, y: 230 },
     },
-    "59d7008c-3f9b-4a98-9ea3-ee0ee7637d18": {
-      name: "Input",
+    "22222222-2222-4222-8222-000000000004": {
+      name: "LeadLag",
+      lib: "core",
+      label: "Fan A/B rotation",
+      positions: { x: 500, y: 80 },
+      inputs: {
+        enable: { value: true, isConnected: false },
+      },
+    },
+    "22222222-2222-4222-8222-000000000005": {
+      name: "Led",
       lib: "ui",
-      positions: { x: 343, y: 314 },
-      inputs: { in: { value: "1.5", isConnected: false } },
-      outputs: { out: { value: "1.5" } },
+      positions: { x: 740, y: 60 },
+      inputs: {
+        label: { value: "Fan A", isConnected: false },
+        color: { value: "#3ecf6b", isConnected: false },
+      },
+    },
+    "22222222-2222-4222-8222-000000000006": {
+      name: "Led",
+      lib: "ui",
+      positions: { x: 740, y: 170 },
+      inputs: {
+        label: { value: "Fan B", isConnected: false },
+        color: { value: "#3ecf6b", isConnected: false },
+      },
+    },
+    "22222222-2222-4222-8222-000000000007": {
+      name: "Display",
+      lib: "ui",
+      positions: { x: 270, y: 240 },
+      inputs: {
+        unit: { value: "stages", isConnected: false },
+        label: { value: "Active", isConnected: false },
+      },
     },
   },
   links: {
-    "756260e7-d5c7-4d65-859b-24e32854937c": {
+    "22222222-2222-4222-8222-0000000000a1": {
+      sourceBlockPinName: "out",
+      targetBlockPinName: "demand",
+      sourceBlockUuid: "22222222-2222-4222-8222-000000000001",
+      targetBlockUuid: "22222222-2222-4222-8222-000000000002",
+    },
+    "22222222-2222-4222-8222-0000000000a2": {
+      sourceBlockPinName: "out",
+      targetBlockPinName: "demand",
+      sourceBlockUuid: "22222222-2222-4222-8222-000000000002",
+      targetBlockUuid: "22222222-2222-4222-8222-000000000004",
+    },
+    "22222222-2222-4222-8222-0000000000a3": {
+      sourceBlockPinName: "out",
+      targetBlockPinName: "rotate",
+      sourceBlockUuid: "22222222-2222-4222-8222-000000000003",
+      targetBlockUuid: "22222222-2222-4222-8222-000000000004",
+    },
+    "22222222-2222-4222-8222-0000000000a4": {
+      sourceBlockPinName: "a",
+      targetBlockPinName: "in",
+      sourceBlockUuid: "22222222-2222-4222-8222-000000000004",
+      targetBlockUuid: "22222222-2222-4222-8222-000000000005",
+    },
+    "22222222-2222-4222-8222-0000000000a5": {
+      sourceBlockPinName: "b",
+      targetBlockPinName: "in",
+      sourceBlockUuid: "22222222-2222-4222-8222-000000000004",
+      targetBlockUuid: "22222222-2222-4222-8222-000000000006",
+    },
+    "22222222-2222-4222-8222-0000000000a6": {
       sourceBlockPinName: "out",
       targetBlockPinName: "in",
-      sourceBlockUuid: "6e494e46-420f-4687-8f7a-c5382c4f219e",
-      targetBlockUuid: "09bc3b7e-89cb-4cda-b5b9-a1e9512f3c79",
-    },
-    "ca7eee20-2f28-4a0e-b2e4-357df3d73073": {
-      sourceBlockPinName: "out",
-      targetBlockPinName: "in",
-      sourceBlockUuid: "a162e4d6-e24c-4f58-9640-ecbf142d4bb8",
-      targetBlockUuid: "28549524-491a-494a-8653-2e2b98beda10",
-    },
-    "88c47e6a-efc7-4dd7-a4f3-ede7627e238e": {
-      sourceBlockPinName: "out",
-      targetBlockPinName: "amplitude",
-      sourceBlockUuid: "ef7018d5-977f-402d-b5c9-e3fba2bd0955",
-      targetBlockUuid: "a162e4d6-e24c-4f58-9640-ecbf142d4bb8",
-    },
-    "317bf8c5-d32c-46f2-aa36-d1ffb7402d91": {
-      sourceBlockPinName: "out",
-      targetBlockPinName: "freq",
-      sourceBlockUuid: "dd9367ba-6269-49ac-ab2c-063c8f1adce6",
-      targetBlockUuid: "a162e4d6-e24c-4f58-9640-ecbf142d4bb8",
-    },
-    "e92a22f5-dcdc-4c91-8a4e-cfd0c265bf06": {
-      sourceBlockPinName: "out",
-      targetBlockPinName: "in1",
-      sourceBlockUuid: "a162e4d6-e24c-4f58-9640-ecbf142d4bb8",
-      targetBlockUuid: "6e494e46-420f-4687-8f7a-c5382c4f219e",
-    },
-    "4119226e-8c44-460d-9318-85e261ee16e6": {
-      sourceBlockPinName: "out",
-      targetBlockPinName: "in2",
-      sourceBlockUuid: "59d7008c-3f9b-4a98-9ea3-ee0ee7637d18",
-      targetBlockUuid: "6e494e46-420f-4687-8f7a-c5382c4f219e",
+      sourceBlockUuid: "22222222-2222-4222-8222-000000000002",
+      targetBlockUuid: "22222222-2222-4222-8222-000000000007",
     },
   },
 } as Program;
 
-export const examplePrograms = [pidLoop, sineWave];
+const economizer = {
+  name: "Air-Side Economizer (Enthalpy)",
+  description:
+    "Compares outdoor and return air enthalpy. Free cooling is available whenever h_OA < h_RA. Drag the OAT/RH/RAT sliders to see the decision flip.",
+  blocks: {
+    "33333333-3333-4333-8333-000000000001": {
+      name: "Slider",
+      lib: "ui",
+      label: "OAT (°C)",
+      positions: { x: 40, y: 40 },
+      inputs: {
+        in: { value: 18, isConnected: false },
+        min: { value: -10, isConnected: false },
+        max: { value: 40, isConnected: false },
+        step: { value: 0.5, isConnected: false },
+      },
+      outputs: { out: { value: 18 } },
+    },
+    "33333333-3333-4333-8333-000000000002": {
+      name: "Slider",
+      lib: "ui",
+      label: "OA RH (%)",
+      positions: { x: 40, y: 130 },
+      inputs: {
+        in: { value: 50, isConnected: false },
+        min: { value: 0, isConnected: false },
+        max: { value: 100, isConnected: false },
+        step: { value: 1, isConnected: false },
+      },
+      outputs: { out: { value: 50 } },
+    },
+    "33333333-3333-4333-8333-000000000003": {
+      name: "Slider",
+      lib: "ui",
+      label: "RAT (°C)",
+      positions: { x: 40, y: 230 },
+      inputs: {
+        in: { value: 24, isConnected: false },
+        min: { value: 18, isConnected: false },
+        max: { value: 30, isConnected: false },
+        step: { value: 0.5, isConnected: false },
+      },
+      outputs: { out: { value: 24 } },
+    },
+    "33333333-3333-4333-8333-000000000004": {
+      name: "Slider",
+      lib: "ui",
+      label: "RA RH (%)",
+      positions: { x: 40, y: 320 },
+      inputs: {
+        in: { value: 50, isConnected: false },
+        min: { value: 20, isConnected: false },
+        max: { value: 80, isConnected: false },
+        step: { value: 1, isConnected: false },
+      },
+      outputs: { out: { value: 50 } },
+    },
+    "33333333-3333-4333-8333-000000000005": {
+      name: "Enthalpy",
+      lib: "core",
+      label: "Outdoor air",
+      positions: { x: 280, y: 70 },
+    },
+    "33333333-3333-4333-8333-000000000006": {
+      name: "Enthalpy",
+      lib: "core",
+      label: "Return air",
+      positions: { x: 280, y: 260 },
+    },
+    "33333333-3333-4333-8333-000000000007": {
+      name: "LessThan",
+      lib: "core",
+      label: "h_OA < h_RA?",
+      positions: { x: 520, y: 170 },
+    },
+    "33333333-3333-4333-8333-000000000008": {
+      name: "Led",
+      lib: "ui",
+      positions: { x: 740, y: 170 },
+      inputs: {
+        label: { value: "Free Cooling", isConnected: false },
+        color: { value: "#3ecf6b", isConnected: false },
+      },
+    },
+    "33333333-3333-4333-8333-000000000009": {
+      name: "MultiChart",
+      lib: "ui",
+      positions: { x: 740, y: 30 },
+      inputs: {
+        labelA: { value: "h_OA", isConnected: false },
+        labelB: { value: "h_RA", isConnected: false },
+      },
+    },
+    "33333333-3333-4333-8333-00000000000a": {
+      name: "Display",
+      lib: "ui",
+      positions: { x: 280, y: 200 },
+      inputs: {
+        unit: { value: "kJ/kg", isConnected: false },
+        label: { value: "h OA", isConnected: false },
+      },
+    },
+    "33333333-3333-4333-8333-00000000000b": {
+      name: "Display",
+      lib: "ui",
+      positions: { x: 280, y: 380 },
+      inputs: {
+        unit: { value: "kJ/kg", isConnected: false },
+        label: { value: "h RA", isConnected: false },
+      },
+    },
+  },
+  links: {
+    "33333333-3333-4333-8333-0000000000a1": {
+      sourceBlockPinName: "out",
+      targetBlockPinName: "t",
+      sourceBlockUuid: "33333333-3333-4333-8333-000000000001",
+      targetBlockUuid: "33333333-3333-4333-8333-000000000005",
+    },
+    "33333333-3333-4333-8333-0000000000a2": {
+      sourceBlockPinName: "out",
+      targetBlockPinName: "rh",
+      sourceBlockUuid: "33333333-3333-4333-8333-000000000002",
+      targetBlockUuid: "33333333-3333-4333-8333-000000000005",
+    },
+    "33333333-3333-4333-8333-0000000000a3": {
+      sourceBlockPinName: "out",
+      targetBlockPinName: "t",
+      sourceBlockUuid: "33333333-3333-4333-8333-000000000003",
+      targetBlockUuid: "33333333-3333-4333-8333-000000000006",
+    },
+    "33333333-3333-4333-8333-0000000000a4": {
+      sourceBlockPinName: "out",
+      targetBlockPinName: "rh",
+      sourceBlockUuid: "33333333-3333-4333-8333-000000000004",
+      targetBlockUuid: "33333333-3333-4333-8333-000000000006",
+    },
+    "33333333-3333-4333-8333-0000000000a5": {
+      sourceBlockPinName: "out",
+      targetBlockPinName: "in1",
+      sourceBlockUuid: "33333333-3333-4333-8333-000000000005",
+      targetBlockUuid: "33333333-3333-4333-8333-000000000007",
+    },
+    "33333333-3333-4333-8333-0000000000a6": {
+      sourceBlockPinName: "out",
+      targetBlockPinName: "in2",
+      sourceBlockUuid: "33333333-3333-4333-8333-000000000006",
+      targetBlockUuid: "33333333-3333-4333-8333-000000000007",
+    },
+    "33333333-3333-4333-8333-0000000000a7": {
+      sourceBlockPinName: "out",
+      targetBlockPinName: "in",
+      sourceBlockUuid: "33333333-3333-4333-8333-000000000007",
+      targetBlockUuid: "33333333-3333-4333-8333-000000000008",
+    },
+    "33333333-3333-4333-8333-0000000000a8": {
+      sourceBlockPinName: "out",
+      targetBlockPinName: "a",
+      sourceBlockUuid: "33333333-3333-4333-8333-000000000005",
+      targetBlockUuid: "33333333-3333-4333-8333-000000000009",
+    },
+    "33333333-3333-4333-8333-0000000000a9": {
+      sourceBlockPinName: "out",
+      targetBlockPinName: "b",
+      sourceBlockUuid: "33333333-3333-4333-8333-000000000006",
+      targetBlockUuid: "33333333-3333-4333-8333-000000000009",
+    },
+    "33333333-3333-4333-8333-0000000000aa": {
+      sourceBlockPinName: "out",
+      targetBlockPinName: "in",
+      sourceBlockUuid: "33333333-3333-4333-8333-000000000005",
+      targetBlockUuid: "33333333-3333-4333-8333-00000000000a",
+    },
+    "33333333-3333-4333-8333-0000000000ab": {
+      sourceBlockPinName: "out",
+      targetBlockPinName: "in",
+      sourceBlockUuid: "33333333-3333-4333-8333-000000000006",
+      targetBlockUuid: "33333333-3333-4333-8333-00000000000b",
+    },
+  },
+} as Program;
+
+const antiShortCycle = {
+  name: "Anti-Short-Cycle Compressor",
+  description:
+    "Toggle the call: OnDelay holds the compressor off until the call has been steady for 3 s; OffDelay keeps the cool-down lockout active for 10 s after the call drops.",
+  blocks: {
+    "44444444-4444-4444-8444-000000000001": {
+      name: "Checkbox",
+      lib: "ui",
+      label: "Cooling call",
+      positions: { x: 40, y: 100 },
+    },
+    "44444444-4444-4444-8444-000000000002": {
+      name: "OnDelay",
+      lib: "core",
+      label: "3 s warmup",
+      positions: { x: 260, y: 50 },
+      inputs: {
+        delay: { value: 3000, isConnected: false },
+      },
+    },
+    "44444444-4444-4444-8444-000000000003": {
+      name: "OffDelay",
+      lib: "core",
+      label: "10 s cool-down",
+      positions: { x: 260, y: 200 },
+      inputs: {
+        delay: { value: 10000, isConnected: false },
+      },
+    },
+    "44444444-4444-4444-8444-000000000004": {
+      name: "Led",
+      lib: "ui",
+      positions: { x: 510, y: 50 },
+      inputs: {
+        label: { value: "Compressor (3s warmup)", isConnected: false },
+        color: { value: "#3ecf6b", isConnected: false },
+      },
+    },
+    "44444444-4444-4444-8444-000000000005": {
+      name: "Led",
+      lib: "ui",
+      positions: { x: 510, y: 200 },
+      inputs: {
+        label: { value: "Cool-down (10s)", isConnected: false },
+        color: { value: "#f59e0b", isConnected: false },
+      },
+    },
+    "44444444-4444-4444-8444-000000000006": {
+      name: "Display",
+      lib: "ui",
+      positions: { x: 40, y: 220 },
+      inputs: {
+        label: { value: "Call", isConnected: false },
+      },
+    },
+  },
+  links: {
+    "44444444-4444-4444-8444-0000000000a1": {
+      sourceBlockPinName: "out",
+      targetBlockPinName: "in",
+      sourceBlockUuid: "44444444-4444-4444-8444-000000000001",
+      targetBlockUuid: "44444444-4444-4444-8444-000000000002",
+    },
+    "44444444-4444-4444-8444-0000000000a2": {
+      sourceBlockPinName: "out",
+      targetBlockPinName: "in",
+      sourceBlockUuid: "44444444-4444-4444-8444-000000000001",
+      targetBlockUuid: "44444444-4444-4444-8444-000000000003",
+    },
+    "44444444-4444-4444-8444-0000000000a3": {
+      sourceBlockPinName: "out",
+      targetBlockPinName: "in",
+      sourceBlockUuid: "44444444-4444-4444-8444-000000000002",
+      targetBlockUuid: "44444444-4444-4444-8444-000000000004",
+    },
+    "44444444-4444-4444-8444-0000000000a4": {
+      sourceBlockPinName: "out",
+      targetBlockPinName: "in",
+      sourceBlockUuid: "44444444-4444-4444-8444-000000000003",
+      targetBlockUuid: "44444444-4444-4444-8444-000000000005",
+    },
+    "44444444-4444-4444-8444-0000000000a5": {
+      sourceBlockPinName: "out",
+      targetBlockPinName: "in",
+      sourceBlockUuid: "44444444-4444-4444-8444-000000000001",
+      targetBlockUuid: "44444444-4444-4444-8444-000000000006",
+    },
+  },
+} as Program;
+
+export const examplePrograms = [datReset, coolingTower, economizer, antiShortCycle];

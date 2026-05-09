@@ -3,6 +3,7 @@
 	import BlockCommons from '../BlockCommons.svelte';
 	import { useEngine } from '$lib/Engine';
 	import type { Block } from '$lib/Block';
+	import { numericValue } from '$lib/utils';
 
 	interface Props {
 		data: { value: Block };
@@ -15,14 +16,15 @@
 	const inputKey = $derived(Object.keys(block.inputs)[0] ?? 'in');
 	const outputKey = $derived(Object.keys(block.outputs)[0] ?? 'out');
 
-	const numValue = $derived(Number(block.inputs.in.value ?? 0));
+	const numValue = $derived(numericValue(block.inputs.in.value) ?? 0);
 
-	const min = $derived(Number(block.inputs.min?.value ?? 0));
-	const max = $derived(Number(block.inputs.max?.value ?? 100));
-	const step = $derived(Number(block.inputs.step?.value ?? 1));
+	const min = $derived(numericValue(block.inputs.min?.value) ?? 0);
+	const max = $derived(numericValue(block.inputs.max?.value) ?? 100);
+	const step = $derived(numericValue(block.inputs.step?.value) ?? 1);
 
 	function onSliderInput(event: Event) {
 		const val = Number((event.target as HTMLInputElement).value);
+		block.inputs.in.value = val;
 		block.outputs.out.value = val;
 		command.writeBlockOutput(block.id, outputKey, val);
 	}
@@ -40,7 +42,7 @@
 				step={step}
 				value={numValue}
 				oninput={onSliderInput}
-				class="slider"
+				class="slider nodrag"
 			/>
 			<span class="slider-value">{numValue}</span>
 		</div>

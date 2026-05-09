@@ -216,6 +216,9 @@ export interface Program {
       name: string;
       lib: string;
 
+      /** User-supplied display label shown alongside the block-type name. */
+      label?: string;
+
       positions: {
         x: number;
         y: number;

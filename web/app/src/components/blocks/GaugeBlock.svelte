@@ -5,6 +5,7 @@
 	import BlockCommons from '../BlockCommons.svelte';
 	import { useEngine } from '$lib/Engine';
 	import type { Block } from '$lib/Block';
+	import { numericValue } from '$lib/utils';
 
 	interface Props {
 		data: { value: Block };
@@ -17,7 +18,7 @@
 	const inputKey = $derived(Object.keys(block.inputs)[0] ?? 'in');
 	const outputKey = $derived(Object.keys(block.outputs)[0] ?? 'out');
 
-	const numValue = $derived(Number(block.inputs.in.value ?? 0));
+	const numValue = $derived(numericValue(block.inputs.in.value) ?? 0);
 
 	// SVG knob parameters
 	const radius = 36;

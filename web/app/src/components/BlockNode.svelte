@@ -10,6 +10,10 @@
 	import TableBlock from './blocks/TableBlock.svelte';
 	import LabelBlock from './blocks/LabelBlock.svelte';
 	import SliderBlock from './blocks/SliderBlock.svelte';
+	import LedBlock from './blocks/LedBlock.svelte';
+	import BarBlock from './blocks/BarBlock.svelte';
+	import DisplayBlock from './blocks/DisplayBlock.svelte';
+	import MultiChartBlock from './blocks/MultiChartBlock.svelte';
 
 	interface Props {
 		data: { value: Block };
@@ -40,6 +44,14 @@
 	<LabelBlock {data} />
 {:else if block.desc.name === 'Slider'}
 	<SliderBlock {data} />
+{:else if block.desc.name === 'Led'}
+	<LedBlock {data} />
+{:else if block.desc.name === 'Bar'}
+	<BarBlock {data} />
+{:else if block.desc.name === 'Display'}
+	<DisplayBlock {data} />
+{:else if block.desc.name === 'MultiChart'}
+	<MultiChartBlock {data} />
 {:else}
 	<GenericBlock {data} />
 {/if}

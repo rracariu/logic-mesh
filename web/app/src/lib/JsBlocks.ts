@@ -130,6 +130,80 @@ const SliderBlock = defineBlock({
 	execute: async ([input]) => [input],
 });
 
+const LedBlock = defineBlock({
+	desc: {
+		name: 'Led',
+		dis: 'Led',
+		lib: 'ui',
+		ver: '0.0.1',
+		category: 'UI',
+		doc: 'Indicator lamp; lit when in is true. Optional label and color (hex/css).',
+	},
+	inputs: [
+		['in', z.boolean()],
+		['label', z.string()],
+		['color', z.string()],
+	] as const,
+	outputs: [],
+});
+
+const BarBlock = defineBlock({
+	desc: {
+		name: 'Bar',
+		dis: 'Bar',
+		lib: 'ui',
+		ver: '0.0.1',
+		category: 'UI',
+		doc: 'Vertical level bar for damper/valve position or any 0-100 quantity.',
+	},
+	inputs: [
+		['in', z.number()],
+		['min', z.number()],
+		['max', z.number()],
+		['label', z.string()],
+	] as const,
+	outputs: [],
+});
+
+const DisplayBlock = defineBlock({
+	desc: {
+		name: 'Display',
+		dis: 'Display',
+		lib: 'ui',
+		ver: '0.0.1',
+		category: 'UI',
+		doc: 'Numeric readout with optional label and unit suffix.',
+	},
+	inputs: [
+		['in', z.number()],
+		['unit', z.string()],
+		['label', z.string()],
+	] as const,
+	outputs: [],
+});
+
+const MultiChartBlock = defineBlock({
+	desc: {
+		name: 'MultiChart',
+		dis: 'MultiChart',
+		lib: 'ui',
+		ver: '0.0.1',
+		category: 'UI',
+		doc: 'Line chart with up to 4 overlaid numeric series (a, b, c, d) and per-series label inputs.',
+	},
+	inputs: [
+		['a', z.number()],
+		['b', z.number()],
+		['c', z.number()],
+		['d', z.number()],
+		['labelA', z.string()],
+		['labelB', z.string()],
+		['labelC', z.string()],
+		['labelD', z.string()],
+	] as const,
+	outputs: [],
+});
+
 export function registerBlocks(engine: BlocksEngine) {
 	InputBlock.register(engine);
 	CheckboxBlock.register(engine);
@@ -140,4 +214,8 @@ export function registerBlocks(engine: BlocksEngine) {
 	TableBlock.register(engine);
 	LabelBlock.register(engine);
 	SliderBlock.register(engine);
+	LedBlock.register(engine);
+	BarBlock.register(engine);
+	DisplayBlock.register(engine);
+	MultiChartBlock.register(engine);
 }

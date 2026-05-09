@@ -4,6 +4,7 @@
 	import Chart from 'chart.js/auto';
 	import BlockCommons from '../BlockCommons.svelte';
 	import type { Block } from '$lib/Block';
+	import { numericValue } from '$lib/utils';
 
 	interface Props {
 		data: { value: Block };
@@ -52,7 +53,8 @@
 				chartXAxis.push(count++);
 				chartXAxis = chartXAxis.slice(-10);
 
-				chartYAxis.push(curVal as number);
+				const num = numericValue(curVal);
+				chartYAxis.push(num == null ? NaN : num);
 				chartYAxis = chartYAxis.slice(-10);
 			}
 		}

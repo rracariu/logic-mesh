@@ -22,6 +22,9 @@ export function save(ops: { name: string; desc?: string; nodes: Node[]; edges: E
 			lib: desc.lib,
 			positions: { x: node.position.x, y: node.position.y },
 		};
+		if (data.label) {
+			program.blocks[node.id].label = data.label;
+		}
 
 		const curProgram = program.blocks[node.id];
 
@@ -71,6 +74,7 @@ export async function load(program: Program): Promise<{ nodes: Node[]; edges: Ed
 			data: {
 				name: block.name ?? '',
 				lib: block.lib ?? '',
+				label: block.label ?? '',
 				inputs: block.inputs ?? {},
 				outputs: block.outputs ?? {},
 			},

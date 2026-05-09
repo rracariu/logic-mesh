@@ -2,6 +2,7 @@
 	import { Handle, Position } from '@xyflow/svelte';
 	import BlockCommons from '../BlockCommons.svelte';
 	import type { Block } from '$lib/Block';
+	import { formatValue } from '$lib/utils';
 
 	interface Props {
 		data: { value: Block };
@@ -12,14 +13,7 @@
 	const block = $derived(data.value);
 	const inputKey = $derived(Object.keys(block.inputs)[0] ?? 'in');
 
-	const displayValue = $derived.by(() => {
-		const val = block.inputs.in.value;
-		if (val == null) return '-';
-		if (typeof val === 'number') return Intl.NumberFormat(undefined, { maximumFractionDigits: 4 }).format(val);
-		if (typeof val === 'boolean') return val ? 'true' : 'false';
-		if (typeof val === 'object') return JSON.stringify(val);
-		return String(val);
-	});
+	const displayValue = $derived(formatValue(block.inputs.in.value));
 </script>
 
 <BlockCommons data={block}>

@@ -168,6 +168,11 @@
 			const block = { value: blockValue };
 			blockInstances.set(node.id, block);
 
+			const loadedLabel = (node.data as { label?: string } | undefined)?.label;
+			if (typeof loadedLabel === 'string') {
+				block.value.label = loadedLabel;
+			}
+
 			for (const [name, e] of Object.entries((node.data as any).inputs ?? {})) {
 				const input = e as BlockPin;
 				if (block.value.inputs[name]) {

@@ -149,12 +149,14 @@
 			onLoad(examplePrograms[Number(v)]);
 		}}
 	>
-		<SelectTrigger class="w-40">
-			{curProgram?.name ?? 'Select a Program'}
+		<SelectTrigger class="w-64" title={curProgram?.name}>
+			<span class="truncate">{curProgram?.name ?? 'Select a Program'}</span>
 		</SelectTrigger>
-		<SelectContent>
+		<SelectContent class="min-w-64">
 			{#each examplePrograms as program, i}
-				<SelectItem value={String(i)}>{program.name}</SelectItem>
+				<SelectItem value={String(i)} title={program.name}>
+					<span class="truncate">{program.name}</span>
+				</SelectItem>
 			{/each}
 		</SelectContent>
 	</Select>
