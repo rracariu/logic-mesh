@@ -567,9 +567,166 @@ const antiShortCycle = {
   },
 } as Program;
 
+const outdoorLighting = {
+  name: "Outdoor Lighting (dusk-to-cutoff)",
+  description:
+    "Streetlight-style lighting: turns on at sunset (Sun.isDay = false) AND while a Schedule says we're in the active window (16:00–23:30 daily). Edit the lat/lon, tzOffset, and schedule to relocate.",
+  blocks: {
+    "55555555-5555-4555-8555-000000000001": {
+      name: "Sun",
+      lib: "core",
+      positions: { x: 36, y: 94 },
+      label: "NYC sun position",
+      inputs: {
+        lat: { value: 40.71, isConnected: false },
+        lon: { value: -74.01, isConnected: false },
+        tzOffset: { value: -300, isConnected: false },
+      },
+      outputs: {
+        sunrise: { value: 441.12 },
+        sunset: { value: 999.61 },
+        isDay: { value: false },
+      },
+    },
+    "55555555-5555-4555-8555-000000000002": {
+      name: "Schedule",
+      lib: "core",
+      positions: { x: 312, y: 343 },
+      label: "Active hours",
+      inputs: {
+        start: { value: "16:00", isConnected: false },
+        end: { value: "23:30", isConnected: false },
+        days: { value: "MTWRFSU", isConnected: false },
+        tzOffset: { value: -300, isConnected: false },
+      },
+      outputs: { occupied: { value: true } },
+    },
+    "55555555-5555-4555-8555-000000000003": {
+      name: "Not",
+      lib: "core",
+      positions: { x: 308, y: 85 },
+      label: "isNight",
+      inputs: { in: { value: false, isConnected: false } },
+      outputs: { out: { value: true } },
+    },
+    "55555555-5555-4555-8555-000000000004": {
+      name: "And",
+      lib: "core",
+      positions: { x: 516, y: 115 },
+      label: "Lights enable",
+      inputs: {
+        in1: { value: true, isConnected: false },
+        in2: { value: true, isConnected: false },
+      },
+      outputs: { out: { value: true } },
+    },
+    "55555555-5555-4555-8555-000000000005": {
+      name: "Led",
+      lib: "ui",
+      positions: { x: 729, y: 110 },
+      inputs: {
+        in: { value: true, isConnected: false },
+        label: { value: "Streetlight", isConnected: false },
+        color: { value: "#f59e0b", isConnected: false },
+      },
+    },
+    "55555555-5555-4555-8555-000000000006": {
+      name: "Display",
+      lib: "ui",
+      positions: { x: 37, y: -83 },
+      inputs: {
+        in: { value: 441.12, isConnected: false },
+        unit: { value: "min", isConnected: false },
+        label: { value: "Sunrise", isConnected: false },
+      },
+    },
+    "55555555-5555-4555-8555-000000000007": {
+      name: "Display",
+      lib: "ui",
+      positions: { x: 263, y: -87 },
+      inputs: {
+        in: { value: 999.61, isConnected: false },
+        unit: { value: "min", isConnected: false },
+        label: { value: "Sunset", isConnected: false },
+      },
+    },
+    "55555555-5555-4555-8555-000000000008": {
+      name: "Led",
+      lib: "ui",
+      positions: { x: 307, y: 203 },
+      inputs: {
+        in: { value: false, isConnected: false },
+        label: { value: "Daytime", isConnected: false },
+        color: { value: "#6b9eff", isConnected: false },
+      },
+    },
+    "55555555-5555-4555-8555-000000000009": {
+      name: "Led",
+      lib: "ui",
+      positions: { x: 604, y: 338 },
+      inputs: {
+        in: { value: true, isConnected: false },
+        label: { value: "Schedule active", isConnected: false },
+        color: { value: "#3ecf6b", isConnected: false },
+      },
+    },
+  },
+  links: {
+    "f4c45097-219a-4b7e-874c-b217e1ea1609": {
+      sourceBlockPinName: "isDay",
+      targetBlockPinName: "in",
+      sourceBlockUuid: "55555555-5555-4555-8555-000000000001",
+      targetBlockUuid: "55555555-5555-4555-8555-000000000003",
+    },
+    "d397b843-743e-4a8c-9638-b5ab9bfd835b": {
+      sourceBlockPinName: "out",
+      targetBlockPinName: "in1",
+      sourceBlockUuid: "55555555-5555-4555-8555-000000000003",
+      targetBlockUuid: "55555555-5555-4555-8555-000000000004",
+    },
+    "af3b1d2a-18be-45e1-931b-493fa7444656": {
+      sourceBlockPinName: "occupied",
+      targetBlockPinName: "in2",
+      sourceBlockUuid: "55555555-5555-4555-8555-000000000002",
+      targetBlockUuid: "55555555-5555-4555-8555-000000000004",
+    },
+    "79474e2a-3994-433b-af87-a5ea17c492c0": {
+      sourceBlockPinName: "out",
+      targetBlockPinName: "in",
+      sourceBlockUuid: "55555555-5555-4555-8555-000000000004",
+      targetBlockUuid: "55555555-5555-4555-8555-000000000005",
+    },
+    "b92b3cb4-bb69-493a-9bae-462396712461": {
+      sourceBlockPinName: "sunrise",
+      targetBlockPinName: "in",
+      sourceBlockUuid: "55555555-5555-4555-8555-000000000001",
+      targetBlockUuid: "55555555-5555-4555-8555-000000000006",
+    },
+    "a139d8a7-e2a3-4b23-ba76-cddf0c924c1f": {
+      sourceBlockPinName: "sunset",
+      targetBlockPinName: "in",
+      sourceBlockUuid: "55555555-5555-4555-8555-000000000001",
+      targetBlockUuid: "55555555-5555-4555-8555-000000000007",
+    },
+    "592dd10e-5d4b-4826-8e68-e4345068890a": {
+      sourceBlockPinName: "isDay",
+      targetBlockPinName: "in",
+      sourceBlockUuid: "55555555-5555-4555-8555-000000000001",
+      targetBlockUuid: "55555555-5555-4555-8555-000000000008",
+    },
+    "0a08fad5-7159-4bf3-87aa-99c0657147f3": {
+      sourceBlockPinName: "occupied",
+      targetBlockPinName: "in",
+      sourceBlockUuid: "55555555-5555-4555-8555-000000000002",
+      targetBlockUuid: "55555555-5555-4555-8555-000000000009",
+    },
+  },
+} as Program;
+
 export const examplePrograms = [
   datReset,
   coolingTower,
   economizer,
   antiShortCycle,
+  outdoorLighting,
 ];

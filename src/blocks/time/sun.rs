@@ -33,8 +33,9 @@ use crate::{blocks::InputImpl, blocks::OutputImpl};
 ///   and `sunrise` / `sunset` retain their previous values.
 ///
 /// Uses the Wikipedia "Sunrise equation" — a simplified NOAA formulation
-/// accurate to within a few minutes for typical latitudes. Refreshes once
-/// per minute.
+/// accurate to within a few minutes for typical latitudes. Polls once per
+/// second so the `isDay` transition lands within ~1 s of the actual
+/// sunrise/sunset; the underlying trig is cheap.
 #[block]
 #[derive(BlockProps, Debug)]
 #[category = "time"]
@@ -55,8 +56,10 @@ pub struct Sun {
 
 impl Block for Sun {
     async fn execute(&mut self) {
-        // Sunrise/sunset only meaningfully change at minute boundaries.
-        self.wait_on_inputs(Duration::from_millis(60_000)).await;
+        // Sunrise/sunset only meaningfully change at minute boundaries, but
+        // we poll at 1 s so the first output appears promptly after program
+        // load and `isDay` transitions are tight. The math is cheap.
+        self.wait_on_inputs(Duration::from_millis(1_000)).await;
 
         let lat = match input_as_number(&self.lat) {
             Some(n) => n.value,

@@ -15,6 +15,7 @@
 
 	import BlockNode from '../components/BlockNode.svelte';
 	import ToolBar from '../components/ToolBar.svelte';
+	import FitView from '../components/FitView.svelte';
 
 	import { blockInstance, type Block } from '$lib/Block';
 	import { useEngine } from '$lib/Engine';
@@ -27,6 +28,7 @@
 
 	let engineRunning = false;
 	let connSource: OnConnectStartParams | undefined;
+	let fitTrigger = $state(0);
 
 	onMount(() => {
 		if (!engineRunning) {
@@ -193,6 +195,7 @@
 
 		model.nodes = [...model.nodes, ...newNodes];
 		model.edges = [...model.edges, ...newEdges];
+		fitTrigger += 1;
 		toast.success('Program loaded');
 	}
 </script>
@@ -221,6 +224,7 @@
 			<Background patternColor="#aaa" gap={8} />
 			<Controls />
 			<MiniMap />
+			<FitView trigger={fitTrigger} />
 			<Panel position="bottom-center">
 				<ToolBar {blocks} onAddBlock={(desc) => model.addBlock(desc)} {onReset} {onCopy} {onPaste} {onLoad} />
 			</Panel>
