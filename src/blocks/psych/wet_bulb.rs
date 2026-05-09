@@ -55,9 +55,7 @@ impl Block for WetBulb {
 }
 
 fn stull(t_c: f64, rh: f64) -> f64 {
-    t_c * (0.151_977 * (rh + 8.313_659).sqrt()).atan()
-        + (t_c + rh).atan()
-        - (rh - 1.676_331).atan()
+    t_c * (0.151_977 * (rh + 8.313_659).sqrt()).atan() + (t_c + rh).atan() - (rh - 1.676_331).atan()
         + 0.003_918_38 * rh.powf(1.5) * (0.023_101 * rh).atan()
         - 4.686_035
 }

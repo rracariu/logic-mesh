@@ -127,11 +127,11 @@ fn compute_sun_times(now_utc_ms: i64, lat_deg: f64, lon_deg: f64, tz_offset_min:
     let m_deg = (357.5291 + 0.985_600_28 * j_star).rem_euclid(360.0);
     let m_rad = m_deg.to_radians();
 
-    let c_deg = 1.9148 * m_rad.sin()
-        + 0.0200 * (2.0 * m_rad).sin()
-        + 0.0003 * (3.0 * m_rad).sin();
+    let c_deg = 1.9148 * m_rad.sin() + 0.0200 * (2.0 * m_rad).sin() + 0.0003 * (3.0 * m_rad).sin();
 
-    let lambda_rad = (m_deg + c_deg + 180.0 + 102.9372).rem_euclid(360.0).to_radians();
+    let lambda_rad = (m_deg + c_deg + 180.0 + 102.9372)
+        .rem_euclid(360.0)
+        .to_radians();
 
     let j_transit = j_star + 0.0053 * m_rad.sin() - 0.0069 * (2.0 * lambda_rad).sin();
 
@@ -139,8 +139,8 @@ fn compute_sun_times(now_utc_ms: i64, lat_deg: f64, lon_deg: f64, tz_offset_min:
     let cos_decl = (1.0 - sin_decl * sin_decl).sqrt();
 
     let lat_rad = lat_deg.to_radians();
-    let cos_omega = ((-0.83_f64).to_radians().sin() - lat_rad.sin() * sin_decl)
-        / (lat_rad.cos() * cos_decl);
+    let cos_omega =
+        ((-0.83_f64).to_radians().sin() - lat_rad.sin() * sin_decl) / (lat_rad.cos() * cos_decl);
 
     if cos_omega > 1.0 {
         return SunState::PolarNight;
