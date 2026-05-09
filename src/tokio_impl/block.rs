@@ -22,34 +22,55 @@ impl<B: Block> InputReader for B {
     }
 
     async fn read_inputs_until_ready(&mut self) -> Option<usize> {
-        let dur = get_sleep_dur();
+        // Cap the polling cost when no input is reactive. `read_block_inputs`
+        // returns `None` only when the block has no connected inputs at all
+        // (e.g. during program load, before links are wired) or when every
+        // connected upstream channel has been closed. In both cases there is
+        // nothing to gain from polling at the per-cycle cadence — a new value
+        // can only arrive via an engine event that's orders of magnitude
+        // slower than a tight loop. So we back off exponentially from the
+        // configured sleep duration up to a 2 s cap, then reset on the next
+        // call once data flows again.
+        const MAX_BACKOFF_MS: u64 = 2000;
+        let mut backoff = get_sleep_dur();
         loop {
             let result = read_block_inputs(self).await;
             if result.is_some() {
                 return result;
             }
-            sleep_millis(dur).await;
+            sleep_millis(backoff).await;
+            backoff = (backoff.saturating_mul(2)).min(MAX_BACKOFF_MS);
         }
     }
 
     async fn wait_on_inputs(&mut self, timeout: Duration) -> Option<usize> {
+        // Wait up to `timeout`, returning early only when an input *actually*
+        // arrives. If `read_inputs` resolves immediately with `None` (no
+        // connected inputs, or every connected channel was closed), let the
+        // sleep branch be the throttle — otherwise periodic blocks would
+        // tight-loop and starve the executor.
+        //
+        // Earlier versions also slept the full timeout AGAIN after a real
+        // input arrived, which dragged every periodic block by its full
+        // polling window after each reaction. We don't do that anymore.
         let millis = timeout.as_millis() as u64;
-        let (result, index, _) = select_all([
+        let (result, _, _) = select_all([
             async {
                 sleep_millis(millis).await;
                 None
             }
             .boxed_local(),
-            async { self.read_inputs().await }.boxed_local(),
+            async {
+                match self.read_inputs().await {
+                    Some(idx) => Some(idx),
+                    // No-input case: pend forever so the sleep branch wins.
+                    None => std::future::pending::<Option<usize>>().await,
+                }
+            }
+            .boxed_local(),
         ])
         .await;
-
-        if index != 0 {
-            sleep_millis(millis).await;
-            None
-        } else {
-            result
-        }
+        result
     }
 }
 
