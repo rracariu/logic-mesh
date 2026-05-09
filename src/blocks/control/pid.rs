@@ -129,9 +129,8 @@ impl Block for Pid {
         self.integral = self.integral.clamp(clamp_lo, clamp_hi);
 
         // Filtered derivative on measurement.
-        self.derivative = -(bias * kd * (cur_value - self.last_pv)
-            + (bias - dt) * self.derivative)
-            / (bias + dt);
+        self.derivative =
+            -(bias * kd * (cur_value - self.last_pv) + (bias - dt) * self.derivative) / (bias + dt);
 
         let output = (proportional + self.integral + self.derivative).clamp(clamp_lo, clamp_hi);
 
