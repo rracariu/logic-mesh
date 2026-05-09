@@ -38,23 +38,14 @@ impl Block for LessThanEq {
 mod test {
 
     use crate::{
-        base::block::test_utils::write_block_inputs,
-        base::{block::Block, input::input_reader::InputReader},
-        blocks::logic::LessThanEq,
+        base::block::Block, base::block::test_utils::write_block_inputs, blocks::logic::LessThanEq,
     };
 
     #[tokio::test]
     async fn test_lte_block() {
         let mut block = LessThanEq::new();
 
-        for _ in write_block_inputs(&mut [
-            (&mut block.input1, 41.into()),
-            (&mut block.input2, 41.into()),
-        ])
-        .await
-        {
-            block.read_inputs().await;
-        }
+        write_block_inputs([(&mut block.input1, 41), (&mut block.input2, 41)]).await;
 
         block.execute().await;
         assert_eq!(block.out.value, true.into());

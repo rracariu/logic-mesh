@@ -55,7 +55,7 @@ mod test {
     async fn test_log10_block() {
         let mut block = Log10::new();
 
-        write_block_inputs(&mut [(&mut block.input, 2.into())]).await;
+        write_block_inputs([(&mut block.input, 2)]).await;
         block.execute().await;
 
         assert_matches!(

@@ -48,8 +48,7 @@ mod test {
     use libhaystack::val::Value;
 
     use crate::{
-        base::block::test_utils::write_block_inputs,
-        base::{block::Block, input::input_reader::InputReader},
+        base::block::Block, base::block::test_utils::write_block_inputs,
         blocks::logic::latch::Latch,
     };
 
@@ -57,14 +56,7 @@ mod test {
     async fn test_latch_false() {
         let mut block = Latch::new();
 
-        for _ in write_block_inputs(&mut [
-            (&mut block.input, 42.into()),
-            (&mut block.condition, false.into()),
-        ])
-        .await
-        {
-            block.read_inputs().await;
-        }
+        write_block_inputs([(&mut block.input, 42), (&mut block.condition, false.into())]).await;
 
         block.execute().await;
         assert_eq!(block.out.value, Value::Null);
@@ -74,14 +66,7 @@ mod test {
     async fn test_latch_true() {
         let mut block = Latch::new();
 
-        for _ in write_block_inputs(&mut [
-            (&mut block.input, 42.into()),
-            (&mut block.condition, true.into()),
-        ])
-        .await
-        {
-            block.read_inputs().await;
-        }
+        write_block_inputs([(&mut block.input, 42), (&mut block.condition, true.into())]).await;
 
         block.execute().await;
         assert_eq!(block.out.value, 42.into());

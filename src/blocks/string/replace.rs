@@ -57,10 +57,7 @@ mod test {
 
     use crate::{
         base::block::Block,
-        base::{
-            block::{BlockProps, test_utils::write_block_inputs},
-            input::input_reader::InputReader,
-        },
+        base::block::{BlockProps, test_utils::write_block_inputs},
         blocks::string::Replace,
     };
 
@@ -70,15 +67,12 @@ mod test {
 
         println!("block: {:?}", block.desc());
 
-        for _ in write_block_inputs(&mut [
-            (&mut block.input, "ana are mere".into()),
-            (&mut block.find, "ana".into()),
-            (&mut block.replace, "ile".into()),
+        write_block_inputs([
+            (&mut block.input, "ana are mere"),
+            (&mut block.find, "ana"),
+            (&mut block.replace, "ile"),
         ])
-        .await
-        {
-            block.read_inputs().await;
-        }
+        .await;
 
         block.execute().await;
 

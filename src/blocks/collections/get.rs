@@ -48,8 +48,7 @@ mod test {
     use libhaystack::{dict, val::Value};
 
     use crate::{
-        base::block::test_utils::write_block_inputs,
-        base::{block::Block, input::input_reader::InputReader},
+        base::block::Block, base::block::test_utils::write_block_inputs,
         blocks::collections::GetElement,
     };
 
@@ -57,45 +56,34 @@ mod test {
     async fn test_get_element_block() {
         let mut block = GetElement::new();
 
-        for _ in write_block_inputs(&mut [
-            (&mut block.input, (dict! {"a" => 1}).into()),
+        write_block_inputs([
+            (&mut block.input, Value::Dict(dict! {"a" => 1})),
             (&mut block.key, "a".into()),
         ])
-        .await
-        {
-            block.read_inputs().await;
-        }
+        .await;
 
         block.execute().await;
         assert_eq!(block.out.value, 1.into());
 
-        write_block_inputs(&mut [(&mut block.key, "x".into())]).await;
+        write_block_inputs([(&mut block.key, "x")]).await;
         block.execute().await;
         assert_eq!(block.out.value, Value::Null);
 
-        for _ in
-            write_block_inputs(&mut [(&mut block.input, "".into()), (&mut block.key, "a".into())])
-                .await
-        {
-            block.read_inputs().await;
-        }
+        write_block_inputs([(&mut block.input, ""), (&mut block.key, "a")]).await;
 
         block.execute().await;
         assert_eq!(block.out.value, Value::Null);
 
-        for _ in write_block_inputs(&mut [
-            (&mut block.input, (vec![1.into(), 2.into()]).into()),
+        write_block_inputs([
+            (&mut block.input, Value::List(vec![1.into(), 2.into()])),
             (&mut block.key, 1.into()),
         ])
-        .await
-        {
-            block.read_inputs().await;
-        }
+        .await;
 
         block.execute().await;
         assert_eq!(block.out.value, 2.into());
 
-        write_block_inputs(&mut [(&mut block.key, 100.into())]).await;
+        write_block_inputs([(&mut block.key, 100)]).await;
         block.execute().await;
         assert_eq!(block.out.value, Value::Null);
     }

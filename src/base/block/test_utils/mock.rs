@@ -33,6 +33,10 @@ impl Input for InputImpl {
         Box::pin(async { None })
     }
 
+    fn try_take(&mut self) -> Option<Value> {
+        None
+    }
+
     fn set_value(&mut self, _value: Value) {}
 }
 

@@ -53,7 +53,7 @@ mod test {
     async fn test_sin_block() {
         let mut block = Sin::new();
 
-        write_block_inputs(&mut [(&mut block.input, 90.into())]).await;
+        write_block_inputs([(&mut block.input, 90)]).await;
 
         block.execute().await;
 

@@ -46,7 +46,7 @@ mod test {
     async fn has_value_true() {
         let mut block = HasValue::new();
 
-        write_block_inputs(&mut [(&mut block.input, ("test").into())]).await;
+        write_block_inputs([(&mut block.input, "test")]).await;
 
         block.execute().await;
         assert_eq!(block.out.value, true.into());
@@ -56,7 +56,7 @@ mod test {
     async fn has_value_false() {
         let mut block = HasValue::new();
 
-        write_block_inputs(&mut [(&mut block.input, Value::Null)]).await;
+        write_block_inputs([(&mut block.input, Value::Null)]).await;
 
         block.execute().await;
         assert_eq!(block.out.value, false.into());

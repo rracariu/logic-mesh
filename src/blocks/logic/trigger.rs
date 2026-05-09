@@ -88,10 +88,10 @@ impl From<&str> for Op {
 #[cfg(test)]
 mod test {
 
+    use libhaystack::val::Value;
+
     use crate::{
-        base::block::test_utils::write_block_inputs,
-        base::{block::Block, input::input_reader::InputReader},
-        blocks::logic::Trigger,
+        base::block::Block, base::block::test_utils::write_block_inputs, blocks::logic::Trigger,
     };
 
     #[tokio::test]
@@ -99,9 +99,7 @@ mod test {
         let mut block = Trigger::new();
 
         // First connection: no previous state, output is false
-        for _ in write_block_inputs(&mut [(&mut block.input, true.into())]).await {
-            block.read_inputs().await;
-        }
+        write_block_inputs([(&mut block.input, true)]).await;
 
         block.execute().await;
         assert_eq!(block.out.value, false.into());
@@ -112,16 +110,12 @@ mod test {
         let mut block = Trigger::new();
 
         // First cycle: establish state
-        for _ in write_block_inputs(&mut [(&mut block.input, false.into())]).await {
-            block.read_inputs().await;
-        }
+        write_block_inputs([(&mut block.input, false)]).await;
         block.execute().await;
         assert_eq!(block.out.value, false.into());
 
         // Rising edge: false → true
-        for _ in write_block_inputs(&mut [(&mut block.input, true.into())]).await {
-            block.read_inputs().await;
-        }
+        write_block_inputs([(&mut block.input, true)]).await;
         block.execute().await;
         assert_eq!(block.out.value, true.into());
     }
@@ -131,22 +125,16 @@ mod test {
         let mut block = Trigger::new();
 
         // Establish state
-        for _ in write_block_inputs(&mut [(&mut block.input, false.into())]).await {
-            block.read_inputs().await;
-        }
+        write_block_inputs([(&mut block.input, false)]).await;
         block.execute().await;
 
         // Rising edge
-        for _ in write_block_inputs(&mut [(&mut block.input, true.into())]).await {
-            block.read_inputs().await;
-        }
+        write_block_inputs([(&mut block.input, true)]).await;
         block.execute().await;
         assert_eq!(block.out.value, true.into());
 
         // Same input, pulse resets
-        for _ in write_block_inputs(&mut [(&mut block.input, true.into())]).await {
-            block.read_inputs().await;
-        }
+        write_block_inputs([(&mut block.input, true)]).await;
         block.execute().await;
         assert_eq!(block.out.value, false.into());
     }
@@ -156,26 +144,20 @@ mod test {
         let mut block = Trigger::new();
 
         // Establish state at true
-        for _ in write_block_inputs(&mut [
-            (&mut block.input, true.into()),
+        write_block_inputs([
+            (&mut block.input, Value::make_true()),
             (&mut block.operation, "FallingEdge".into()),
         ])
-        .await
-        {
-            block.read_inputs().await;
-        }
+        .await;
         block.execute().await;
         assert_eq!(block.out.value, false.into());
 
         // Falling edge: true → false
-        for _ in write_block_inputs(&mut [
-            (&mut block.input, false.into()),
+        write_block_inputs([
+            (&mut block.input, Value::make_false()),
             (&mut block.operation, "FallingEdge".into()),
         ])
-        .await
-        {
-            block.read_inputs().await;
-        }
+        .await;
         block.execute().await;
         assert_eq!(block.out.value, true.into());
     }
@@ -185,15 +167,11 @@ mod test {
         let mut block = Trigger::new();
 
         // Establish state at true
-        for _ in write_block_inputs(&mut [(&mut block.input, true.into())]).await {
-            block.read_inputs().await;
-        }
+        write_block_inputs([(&mut block.input, true)]).await;
         block.execute().await;
 
         // Falling edge with RisingEdge mode: no pulse
-        for _ in write_block_inputs(&mut [(&mut block.input, false.into())]).await {
-            block.read_inputs().await;
-        }
+        write_block_inputs([(&mut block.input, false)]).await;
         block.execute().await;
         assert_eq!(block.out.value, false.into());
     }
@@ -203,37 +181,28 @@ mod test {
         let mut block = Trigger::new();
 
         // Establish state
-        for _ in write_block_inputs(&mut [
-            (&mut block.input, false.into()),
+        write_block_inputs([
+            (&mut block.input, Value::make_false()),
             (&mut block.operation, "RisingOrFallingEdge".into()),
         ])
-        .await
-        {
-            block.read_inputs().await;
-        }
+        .await;
         block.execute().await;
 
         // Rising edge
-        for _ in write_block_inputs(&mut [
-            (&mut block.input, true.into()),
+        write_block_inputs([
+            (&mut block.input, Value::make_true()),
             (&mut block.operation, "RisingOrFallingEdge".into()),
         ])
-        .await
-        {
-            block.read_inputs().await;
-        }
+        .await;
         block.execute().await;
         assert_eq!(block.out.value, true.into());
 
         // Falling edge
-        for _ in write_block_inputs(&mut [
-            (&mut block.input, false.into()),
+        write_block_inputs([
+            (&mut block.input, Value::make_false()),
             (&mut block.operation, "RisingOrFallingEdge".into()),
         ])
-        .await
-        {
-            block.read_inputs().await;
-        }
+        .await;
         block.execute().await;
         assert_eq!(block.out.value, true.into());
     }
@@ -242,14 +211,11 @@ mod test {
     async fn test_trigger_off() {
         let mut block = Trigger::new();
 
-        for _ in write_block_inputs(&mut [
-            (&mut block.input, true.into()),
+        write_block_inputs([
+            (&mut block.input, Value::make_true()),
             (&mut block.operation, "Off".into()),
         ])
-        .await
-        {
-            block.read_inputs().await;
-        }
+        .await;
         block.execute().await;
         assert_eq!(block.out.value, false.into());
     }

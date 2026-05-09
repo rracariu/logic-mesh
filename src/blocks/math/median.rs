@@ -78,25 +78,24 @@ impl Block for Median {
 mod test {
 
     use crate::base::block::test_utils::write_block_inputs;
-    use crate::base::input::input_reader::InputReader;
-    use crate::{base::block::Block, blocks::math::Median};
+    use crate::{base::block::Block, base::input::input_reader::InputReader, blocks::math::Median};
 
     #[tokio::test]
     async fn test_median_block() {
         let mut block = Median::new();
 
-        write_block_inputs(&mut [(block._inputs.get_mut(0).unwrap(), 1.into())]).await;
+        write_block_inputs([(block._inputs.get_mut(0).unwrap(), 1)]).await;
         block.read_inputs().await;
-        write_block_inputs(&mut [(block._inputs.get_mut(15).unwrap(), 9.into())]).await;
+        write_block_inputs([(block._inputs.get_mut(15).unwrap(), 9)]).await;
 
         block.execute().await;
         assert_eq!(block.out.value, 5.into());
 
-        write_block_inputs(&mut [(block._inputs.get_mut(1).unwrap(), 1.into())]).await;
+        write_block_inputs([(block._inputs.get_mut(1).unwrap(), 1)]).await;
         block.read_inputs().await;
-        write_block_inputs(&mut [(block._inputs.get_mut(2).unwrap(), 2.into())]).await;
+        write_block_inputs([(block._inputs.get_mut(2).unwrap(), 2)]).await;
         block.read_inputs().await;
-        write_block_inputs(&mut [(block._inputs.get_mut(3).unwrap(), 3.into())]).await;
+        write_block_inputs([(block._inputs.get_mut(3).unwrap(), 3)]).await;
 
         block.execute().await;
         assert_eq!(block.out.value, 2.into());

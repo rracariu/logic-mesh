@@ -64,9 +64,7 @@ mod test {
     };
 
     use crate::{
-        base::block::test_utils::write_block_inputs,
-        base::{block::Block, input::input_reader::InputReader},
-        blocks::psych::Dewpoint,
+        base::block::Block, base::block::test_utils::write_block_inputs, blocks::psych::Dewpoint,
     };
 
     fn approx(actual: f64, expected: f64, tol: f64) {
@@ -80,14 +78,7 @@ mod test {
 
     async fn run(t: f64, rh: f64) -> f64 {
         let mut block = Dewpoint::new();
-        for _ in write_block_inputs(&mut [
-            (&mut block.temperature, t.into()),
-            (&mut block.humidity, rh.into()),
-        ])
-        .await
-        {
-            block.read_inputs().await;
-        }
+        write_block_inputs([(&mut block.temperature, t), (&mut block.humidity, rh)]).await;
         block.execute().await;
         match block.out.value {
             Value::Number(n) => n.value,
@@ -121,17 +112,14 @@ mod test {
     async fn test_dewpoint_accepts_fahrenheit_input() {
         // 75°F = 23.89°C, 50% RH ≈ 12.8°C dewpoint
         let mut block = Dewpoint::new();
-        for _ in write_block_inputs(&mut [
+        write_block_inputs([
             (
                 &mut block.temperature,
-                Number::make_with_unit(75.0, &FAHRENHEIT).into(),
+                Number::make_with_unit(75.0, &FAHRENHEIT),
             ),
-            (&mut block.humidity, (50.0).into()),
+            (&mut block.humidity, 50.into()),
         ])
-        .await
-        {
-            block.read_inputs().await;
-        }
+        .await;
         block.execute().await;
         match block.out.value {
             Value::Number(n) => {

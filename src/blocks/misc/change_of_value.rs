@@ -60,8 +60,7 @@ impl Block for ChangeOfValue {
 mod test {
 
     use crate::{
-        base::block::test_utils::write_block_inputs,
-        base::{block::Block, input::input_reader::InputReader},
+        base::block::Block, base::block::test_utils::write_block_inputs,
         blocks::misc::ChangeOfValue,
     };
 
@@ -69,14 +68,7 @@ mod test {
     async fn test_cov_first_emit() {
         let mut block = ChangeOfValue::new();
 
-        for _ in write_block_inputs(&mut [
-            (&mut block.input, (50.0).into()),
-            (&mut block.delta, (1.0).into()),
-        ])
-        .await
-        {
-            block.read_inputs().await;
-        }
+        write_block_inputs([(&mut block.input, 50.0), (&mut block.delta, 1.0)]).await;
         block.execute().await;
         assert_eq!(block.out.value, (50.0).into());
     }
@@ -85,20 +77,11 @@ mod test {
     async fn test_cov_skips_small_change() {
         let mut block = ChangeOfValue::new();
 
-        for _ in write_block_inputs(&mut [
-            (&mut block.input, (50.0).into()),
-            (&mut block.delta, (1.0).into()),
-        ])
-        .await
-        {
-            block.read_inputs().await;
-        }
+        write_block_inputs([(&mut block.input, 50.0), (&mut block.delta, 1.0)]).await;
         block.execute().await;
 
         // Change less than delta → output should remain
-        for _ in write_block_inputs(&mut [(&mut block.input, (50.5).into())]).await {
-            block.read_inputs().await;
-        }
+        write_block_inputs([(&mut block.input, 50.5)]).await;
         block.execute().await;
         assert_eq!(block.out.value, (50.0).into());
     }
@@ -107,19 +90,10 @@ mod test {
     async fn test_cov_emits_on_large_change() {
         let mut block = ChangeOfValue::new();
 
-        for _ in write_block_inputs(&mut [
-            (&mut block.input, (50.0).into()),
-            (&mut block.delta, (1.0).into()),
-        ])
-        .await
-        {
-            block.read_inputs().await;
-        }
+        write_block_inputs([(&mut block.input, 50.0), (&mut block.delta, 1.0)]).await;
         block.execute().await;
 
-        for _ in write_block_inputs(&mut [(&mut block.input, (52.0).into())]).await {
-            block.read_inputs().await;
-        }
+        write_block_inputs([(&mut block.input, 52.0)]).await;
         block.execute().await;
         assert_eq!(block.out.value, (52.0).into());
     }

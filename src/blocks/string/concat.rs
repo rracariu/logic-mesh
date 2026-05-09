@@ -53,10 +53,7 @@ mod test {
 
     use crate::{
         base::block::test_utils::write_block_inputs,
-        base::{
-            block::{Block, BlockProps},
-            input::input_reader::InputReader,
-        },
+        base::block::{Block, BlockProps},
         blocks::string::Concat,
     };
 
@@ -64,9 +61,8 @@ mod test {
     async fn test_concat() {
         let mut block = Concat::new();
 
-        write_block_inputs(&mut [(block.inputs_mut()[0], "first ".into())]).await;
-        write_block_inputs(&mut [(block.inputs_mut()[1], "last".into())]).await;
-        block.read_inputs().await;
+        write_block_inputs([(block.inputs_mut()[0], "first ")]).await;
+        write_block_inputs([(block.inputs_mut()[1], "last")]).await;
 
         block.execute().await;
 

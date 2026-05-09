@@ -37,23 +37,14 @@ impl Block for NotEqual {
 mod test {
 
     use crate::{
-        base::block::test_utils::write_block_inputs,
-        base::{block::Block, input::input_reader::InputReader},
-        blocks::logic::NotEqual,
+        base::block::Block, base::block::test_utils::write_block_inputs, blocks::logic::NotEqual,
     };
 
     #[tokio::test]
     async fn test_neq_block() {
         let mut block = NotEqual::new();
 
-        for _ in write_block_inputs(&mut [
-            (&mut block.input1, ("true").into()),
-            (&mut block.input2, ("false").into()),
-        ])
-        .await
-        {
-            block.read_inputs().await;
-        }
+        write_block_inputs([(&mut block.input1, "true"), (&mut block.input2, "false")]).await;
 
         block.execute().await;
         assert_eq!(block.out.value, true.into());

@@ -47,7 +47,7 @@ mod test {
     async fn test_list_block() {
         let mut block = List::new();
 
-        write_block_inputs(&mut [(block.get_input_mut("in0").unwrap(), 45.into())]).await;
+        write_block_inputs([(block.get_input_mut("in0").unwrap(), 45)]).await;
         block.execute().await;
         assert_eq!(block.out.value, vec![45.into()].into());
     }

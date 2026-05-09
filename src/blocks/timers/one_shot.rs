@@ -75,7 +75,7 @@ mod test {
 
     use crate::{
         base::block::test_utils::write_block_inputs,
-        base::{block::Block, input::input_reader::InputReader, link::BaseLink},
+        base::{block::Block, link::BaseLink},
         blocks::timers::OneShot,
     };
 
@@ -91,14 +91,7 @@ mod test {
         let mut block = OneShot::new();
         link_out(&mut block);
 
-        for _ in write_block_inputs(&mut [
-            (&mut block.input, true.into()),
-            (&mut block.width, (1000).into()),
-        ])
-        .await
-        {
-            block.read_inputs().await;
-        }
+        write_block_inputs([(&mut block.input, true.into()), (&mut block.width, 1000.0)]).await;
         block.execute().await;
         // No prior false → no rising edge yet
         assert_eq!(block.out.value, false.into());
@@ -110,20 +103,19 @@ mod test {
         link_out(&mut block);
 
         // Establish low
-        for _ in write_block_inputs(&mut [
+        write_block_inputs([
             (&mut block.input, false.into()),
-            (&mut block.width, (3_600_000).into()),
+            (&mut block.width, (3_600_000.0)),
         ])
-        .await
-        {
-            block.read_inputs().await;
-        }
+        .await;
         block.execute().await;
 
         // Rising edge → pulse active for 1h
-        for _ in write_block_inputs(&mut [(&mut block.input, true.into())]).await {
-            block.read_inputs().await;
-        }
+        write_block_inputs([
+            (&mut block.input, true.into()),
+            (&mut block.width, 3_600_000.0),
+        ])
+        .await;
         block.execute().await;
         assert_eq!(block.out.value, true.into());
     }
@@ -133,19 +125,10 @@ mod test {
         let mut block = OneShot::new();
         link_out(&mut block);
 
-        for _ in write_block_inputs(&mut [
-            (&mut block.input, false.into()),
-            (&mut block.width, (0).into()),
-        ])
-        .await
-        {
-            block.read_inputs().await;
-        }
+        write_block_inputs([(&mut block.input, false.into()), (&mut block.width, 0.0)]).await;
         block.execute().await;
 
-        for _ in write_block_inputs(&mut [(&mut block.input, true.into())]).await {
-            block.read_inputs().await;
-        }
+        write_block_inputs([(&mut block.input, true)]).await;
         block.execute().await;
         // width=0 → elapsed >= width immediately → pulse closes same cycle
         assert_eq!(block.out.value, false.into());

@@ -7,9 +7,8 @@ use futures::future::select_all;
 use libhaystack::val::kind::HaystackKind;
 
 use super::sleep::sleep_millis;
-use crate::base::block::{BlockState, convert_value_kind};
-use crate::base::input::InputProps;
-use crate::base::{block::Block, input::input_reader::InputReader};
+use crate::base::block::{Block, BlockState, convert_value_kind};
+use crate::base::input::{InputProps, input_reader::InputReader};
 use crate::blocks::InputImpl;
 use crate::blocks::utils::get_sleep_dur;
 
@@ -74,53 +73,85 @@ impl<B: Block> InputReader for B {
     }
 }
 
-/// Reads all inputs and awaits for any of them to have data
-/// On the first input that has data, read the data and update
-/// the input's value.
+/// Reads all of the block's inputs, returning when at least one has a fresh
+/// value to expose. Drains *every* input that already has a pending update,
+/// not just one — so a multi-input block (PID, Reset, Enthalpy, …) sees a
+/// temporally-coherent snapshot per cycle rather than being walked one input
+/// at a time.
 ///
-/// If the input kind does not match the received Value kind, this would put the block in fault.
+/// Behavior:
+/// - If any connected input already has a fresh value, drain them all
+///   synchronously and return the index of the last one drained.
+/// - Otherwise, await `receiver()` on every connected input and, when one
+///   wakes up, drain again (the wait might have woken several at once).
+/// - Returns `None` only when the block has no connected inputs at all.
 ///
-/// # Returns
-/// The index of the input that was read with a valid value.
+/// Type-mismatched inputs are converted via [`convert_value_kind`]; if the
+/// conversion fails the block transitions to [`BlockState::Fault`].
 pub(crate) async fn read_block_inputs<B: Block>(block: &mut B) -> Option<usize> {
-    let mut inputs = block
-        .inputs_mut()
-        .into_iter()
-        .filter(|input| input.is_connected())
-        .collect::<Vec<_>>();
-
-    if inputs.is_empty() {
-        return None;
+    // Phase 1: drain anything already ready, no awaiting.
+    if let Some(idx) = drain_ready_inputs(block) {
+        return Some(idx);
     }
 
-    let (val, idx, _) = {
-        let input_futures = inputs
-            .iter_mut()
-            .map(|input| input.receiver())
-            .collect::<Vec<_>>();
-
-        select_all(input_futures).await
-    };
-
-    let value = val?;
-
-    if let Some(input) = inputs.get_mut(idx) {
-        let expected = *input.kind();
-        let actual = HaystackKind::from(&value);
-
-        if expected != HaystackKind::Null && expected != actual {
-            match convert_value_kind(value, expected, actual) {
-                Ok(value) => input.set_value(value),
-                Err(err) => {
-                    log::error!("Error converting value: {}", err);
-                    block.set_state(BlockState::Fault);
-                }
-            }
-        } else {
-            input.set_value(value);
+    // Phase 2: nothing was ready — await for at least one connected input
+    // to change. We collect a fresh `inputs_mut()` borrow inside a block so
+    // the futures (and their `&mut` borrows) are released before phase 3
+    // re-borrows the block.
+    {
+        let mut connected: Vec<_> = block
+            .inputs_mut()
+            .into_iter()
+            .filter(|i| i.is_connected())
+            .collect();
+        if connected.is_empty() {
+            return None;
         }
-    } else {
+        let futures: Vec<_> = connected.iter_mut().map(|i| i.receiver()).collect();
+        let _ = select_all(futures).await;
+    }
+
+    // Phase 3: drain everything that changed during the await — multiple
+    // inputs may have woken concurrently.
+    drain_ready_inputs(block)
+}
+
+/// Synchronously drain every input that has a fresh value. Returns the index
+/// of the last drained input (or `None` if nothing was ready). Faults the
+/// block if any value fails type conversion.
+fn drain_ready_inputs<B: Block>(block: &mut B) -> Option<usize> {
+    let mut last_idx = None;
+    let mut faulted = false;
+
+    {
+        let mut inputs = block.inputs_mut();
+        for (idx, input) in inputs.iter_mut().enumerate() {
+            if !input.is_connected() {
+                continue;
+            }
+            let Some(value) = input.try_take() else {
+                continue;
+            };
+
+            let expected = *input.kind();
+            let actual = HaystackKind::from(&value);
+            if expected != HaystackKind::Null && expected != actual {
+                match convert_value_kind(value, expected, actual) {
+                    Ok(v) => input.set_value(v),
+                    Err(err) => {
+                        log::error!("Error converting value: {}", err);
+                        faulted = true;
+                    }
+                }
+            } else {
+                input.set_value(value);
+            }
+            last_idx = Some(idx);
+        }
+    }
+
+    if faulted {
         block.set_state(BlockState::Fault);
     }
-    Some(idx)
+    last_idx
 }

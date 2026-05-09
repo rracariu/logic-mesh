@@ -53,7 +53,7 @@ mod test {
     async fn test_cos_block() {
         let mut block = Cos::new();
 
-        write_block_inputs(&mut [(&mut block.a, 0.into())]).await;
+        write_block_inputs([(&mut block.a, 0)]).await;
 
         block.execute().await;
 

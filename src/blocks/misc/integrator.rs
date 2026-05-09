@@ -81,7 +81,7 @@ mod test {
 
     use crate::{
         base::block::test_utils::write_block_inputs,
-        base::{block::Block, input::input_reader::InputReader, link::BaseLink},
+        base::{block::Block, link::BaseLink},
         blocks::misc::integrator::Integrator,
     };
 
@@ -97,15 +97,12 @@ mod test {
         let mut block = Integrator::new();
         link_out(&mut block);
 
-        for _ in write_block_inputs(&mut [
-            (&mut block.input, (1.0).into()),
-            (&mut block.reset, false.into()),
-            (&mut block.interval, (0).into()),
+        write_block_inputs([
+            (&mut block.input, 1.into()),
+            (&mut block.reset, Value::make_false()),
+            (&mut block.interval, 0.into()),
         ])
-        .await
-        {
-            block.read_inputs().await;
-        }
+        .await;
         block.execute().await;
         assert_eq!(block.out.value, (0.0_f64).into());
     }
@@ -116,22 +113,17 @@ mod test {
         link_out(&mut block);
 
         // First sample seeds last_time
-        for _ in write_block_inputs(&mut [
-            (&mut block.input, (10.0).into()),
-            (&mut block.reset, false.into()),
-            (&mut block.interval, (0).into()),
+        write_block_inputs([
+            (&mut block.input, 10.into()),
+            (&mut block.reset, Value::make_false()),
+            (&mut block.interval, 0.into()),
         ])
-        .await
-        {
-            block.read_inputs().await;
-        }
+        .await;
         block.execute().await;
 
         // Backdate last_time by 2s and re-execute
         block.last_time_ms = block.last_time_ms.saturating_sub(2000);
-        for _ in write_block_inputs(&mut [(&mut block.input, (10.0).into())]).await {
-            block.read_inputs().await;
-        }
+        write_block_inputs([(&mut block.input, 10)]).await;
         block.execute().await;
 
         if let Value::Number(n) = block.out.value {
@@ -148,20 +140,15 @@ mod test {
         link_out(&mut block);
         block.accumulator = 100.0;
 
-        for _ in write_block_inputs(&mut [
-            (&mut block.input, (0.0).into()),
+        write_block_inputs([
+            (&mut block.input, 0.into()),
             (&mut block.reset, false.into()),
-            (&mut block.interval, (0).into()),
+            (&mut block.interval, 0),
         ])
-        .await
-        {
-            block.read_inputs().await;
-        }
+        .await;
         block.execute().await;
 
-        for _ in write_block_inputs(&mut [(&mut block.reset, true.into())]).await {
-            block.read_inputs().await;
-        }
+        write_block_inputs([(&mut block.reset, true)]).await;
         block.execute().await;
         assert_eq!(block.accumulator, 0.0);
     }

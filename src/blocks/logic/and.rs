@@ -46,23 +46,14 @@ impl Block for And {
 mod test {
 
     use crate::{
-        base::block::test_utils::write_block_inputs,
-        base::{block::Block, input::input_reader::InputReader},
-        blocks::logic::And,
+        base::block::Block, base::block::test_utils::write_block_inputs, blocks::logic::And,
     };
 
     #[tokio::test]
     async fn test_and_block() {
         let mut block = And::new();
 
-        for _ in write_block_inputs(&mut [
-            (&mut block.input1, (0).into()),
-            (&mut block.input2, (true).into()),
-        ])
-        .await
-        {
-            block.read_inputs().await;
-        }
+        write_block_inputs([(&mut block.input1, 0.0), (&mut block.input2, (true).into())]).await;
 
         block.execute().await;
         assert_eq!(block.out.value, false.into());

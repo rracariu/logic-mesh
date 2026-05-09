@@ -51,23 +51,14 @@ impl Block for FlipFlop {
 mod test {
 
     use crate::{
-        base::block::test_utils::write_block_inputs,
-        base::{block::Block, input::input_reader::InputReader},
-        blocks::logic::FlipFlop,
+        base::block::Block, base::block::test_utils::write_block_inputs, blocks::logic::FlipFlop,
     };
 
     #[tokio::test]
     async fn test_flip_flop_set() {
         let mut block = FlipFlop::new();
 
-        for _ in write_block_inputs(&mut [
-            (&mut block.set, true.into()),
-            (&mut block.reset, false.into()),
-        ])
-        .await
-        {
-            block.read_inputs().await;
-        }
+        write_block_inputs([(&mut block.set, true), (&mut block.reset, false)]).await;
 
         block.execute().await;
         assert_eq!(block.out.value, true.into());
@@ -77,14 +68,7 @@ mod test {
     async fn test_flip_flop_reset() {
         let mut block = FlipFlop::new();
 
-        for _ in write_block_inputs(&mut [
-            (&mut block.set, false.into()),
-            (&mut block.reset, true.into()),
-        ])
-        .await
-        {
-            block.read_inputs().await;
-        }
+        write_block_inputs([(&mut block.set, false), (&mut block.reset, true)]).await;
 
         block.execute().await;
         assert_eq!(block.out.value, false.into());
@@ -95,14 +79,7 @@ mod test {
         let mut block = FlipFlop::new();
 
         // When both Set and Reset are true, Set takes priority
-        for _ in write_block_inputs(&mut [
-            (&mut block.set, true.into()),
-            (&mut block.reset, true.into()),
-        ])
-        .await
-        {
-            block.read_inputs().await;
-        }
+        write_block_inputs([(&mut block.set, true), (&mut block.reset, true)]).await;
 
         block.execute().await;
         assert_eq!(block.out.value, true.into());
@@ -113,27 +90,13 @@ mod test {
         let mut block = FlipFlop::new();
 
         // First set the flip-flop
-        for _ in write_block_inputs(&mut [
-            (&mut block.set, true.into()),
-            (&mut block.reset, false.into()),
-        ])
-        .await
-        {
-            block.read_inputs().await;
-        }
+        write_block_inputs([(&mut block.set, true), (&mut block.reset, false)]).await;
 
         block.execute().await;
         assert_eq!(block.out.value, true.into());
 
         // Both inputs false, should hold state
-        for _ in write_block_inputs(&mut [
-            (&mut block.set, false.into()),
-            (&mut block.reset, false.into()),
-        ])
-        .await
-        {
-            block.read_inputs().await;
-        }
+        write_block_inputs([(&mut block.set, false), (&mut block.reset, false)]).await;
 
         block.execute().await;
         assert_eq!(block.out.value, true.into());

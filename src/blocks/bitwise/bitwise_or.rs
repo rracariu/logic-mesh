@@ -36,30 +36,20 @@ impl Block for BitwiseOr {
 #[cfg(test)]
 mod test {
     use crate::{
-        base::block::Block,
-        base::{block::test_utils::write_block_inputs, input::input_reader::InputReader},
-        blocks::bitwise::BitwiseOr,
+        base::block::Block, base::block::test_utils::write_block_inputs, blocks::bitwise::BitwiseOr,
     };
 
     #[tokio::test]
-    async fn test_and_op() {
+    async fn test_or_op() {
         let mut block = BitwiseOr::new();
 
-        for _ in
-            write_block_inputs(&mut [(&mut block.in1, 5.into()), (&mut block.in2, 2.into())]).await
-        {
-            block.read_inputs().await;
-        }
+        write_block_inputs([(&mut block.in1, 5), (&mut block.in2, 2)]).await;
 
         block.execute().await;
 
         assert_eq!(block.out.value, (7).into());
 
-        for _ in
-            write_block_inputs(&mut [(&mut block.in1, 1.into()), (&mut block.in2, 0.into())]).await
-        {
-            block.read_inputs().await;
-        }
+        write_block_inputs([(&mut block.in1, 1), (&mut block.in2, 0)]).await;
 
         block.execute().await;
 

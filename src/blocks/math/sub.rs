@@ -49,20 +49,14 @@ impl Block for Sub {
 mod test {
 
     use crate::{
-        base::block::test_utils::write_block_inputs,
-        base::{block::Block, input::input_reader::InputReader},
-        blocks::math::Sub,
+        base::block::Block, base::block::test_utils::write_block_inputs, blocks::math::Sub,
     };
 
     #[tokio::test]
     async fn test_sub_block() {
         let mut block = Sub::new();
 
-        for _ in
-            write_block_inputs(&mut [(&mut block.a, 10.into()), (&mut block.b, 3.into())]).await
-        {
-            block.read_inputs().await;
-        }
+        write_block_inputs([(&mut block.a, 10), (&mut block.b, 3)]).await;
 
         block.execute().await;
         assert_eq!(block.out.value, 7.into());

@@ -137,7 +137,7 @@ mod test {
 
     use crate::{
         base::block::test_utils::write_block_inputs,
-        base::{block::Block, input::input_reader::InputReader, link::BaseLink},
+        base::{block::Block, link::BaseLink},
         blocks::control::TrimRespond,
     };
 
@@ -160,21 +160,18 @@ mod test {
         max: f64,
         initial: f64,
     ) {
-        for _ in write_block_inputs(&mut [
-            (&mut block.requests, requests.into()),
-            (&mut block.period, (0).into()),
-            (&mut block.ignore, ignore.into()),
-            (&mut block.trim, trim.into()),
-            (&mut block.respond, respond.into()),
-            (&mut block.max_change, max_change.into()),
-            (&mut block.min, min.into()),
-            (&mut block.max, max.into()),
-            (&mut block.initial, initial.into()),
+        write_block_inputs([
+            (&mut block.requests, requests),
+            (&mut block.period, 0.0),
+            (&mut block.ignore, ignore),
+            (&mut block.trim, trim),
+            (&mut block.respond, respond),
+            (&mut block.max_change, max_change),
+            (&mut block.min, min),
+            (&mut block.max, max),
+            (&mut block.initial, initial),
         ])
-        .await
-        {
-            block.read_inputs().await;
-        }
+        .await;
     }
 
     #[tokio::test]

@@ -53,7 +53,7 @@ mod test {
     async fn test_neg_block() {
         let mut block = Neg::new();
 
-        write_block_inputs(&mut [(&mut block.input, 42.into())]).await;
+        write_block_inputs([(&mut block.input, 42)]).await;
 
         block.execute().await;
 

@@ -2,8 +2,7 @@
 
 use std::pin::Pin;
 
-use futures::FutureExt;
-use tokio::sync::mpsc::channel;
+use tokio::sync::watch;
 
 use libhaystack::val::{Value, kind::HaystackKind};
 use uuid::Uuid;
@@ -29,7 +28,10 @@ impl InputImpl {
         block_id: Uuid,
         default: InputDefault,
     ) -> Self {
-        let (writer, reader) = channel::<Value>(32);
+        // Watch is a coalescing 1-slot channel: producers always succeed and
+        // overwrite; consumers always see the latest value. The seed
+        // `Value::Null` is what `borrow()` reports until the first real send.
+        let (writer, reader) = watch::channel::<Value>(Value::Null);
 
         Self {
             name: name.to_string(),
@@ -50,17 +52,54 @@ impl InputImpl {
 
 impl Input for InputImpl {
     fn receiver(&mut self) -> Pin<Box<dyn Future<Output = Option<Value>> + Send + '_>> {
-        self.reader.recv().boxed()
+        // Wait for the next change. We deliberately do NOT consume the value
+        // here: `changed()` marks the latest value as seen, so we re-arm via
+        // `mark_changed()` so that the subsequent `try_take()` in
+        // `drain_ready_inputs` actually surfaces it. Without re-arming, the
+        // value would be silently dropped — `read_block_inputs` discards the
+        // future result with `let _ = ...` and relies on `try_take` to
+        // surface the value.
+        Box::pin(async move {
+            match self.reader.changed().await {
+                Ok(()) => {
+                    self.reader.mark_changed();
+                    Some(self.reader.borrow().clone())
+                }
+                Err(_) => None,
+            }
+        })
+    }
+
+    fn try_take(&mut self) -> Option<Value> {
+        // Watch's `has_changed` returns `Err` only if every sender was
+        // dropped — treat that as "no fresh value" rather than propagating.
+        if self.reader.has_changed().unwrap_or(false) {
+            Some(self.reader.borrow_and_update().clone())
+        } else {
+            None
+        }
     }
 
     fn set_value(&mut self, value: Value) {
+        // Forward to all chained inputs. `send_if_modified` only notifies
+        // when the value actually changed, so identical re-emissions don't
+        // wake downstream blocks — see `Output::set` for the loop-quiescence
+        // rationale.
         for link in &mut self.links {
             if let Some(tx) = &link.tx {
-                if let Err(__) = tx.try_send(value.clone()) {
-                    link.state = LinkState::Error;
+                tx.send_if_modified(|current| {
+                    if *current != value {
+                        *current = value.clone();
+                        true
+                    } else {
+                        false
+                    }
+                });
+                link.state = if tx.is_closed() {
+                    LinkState::Error
                 } else {
-                    link.state = LinkState::Connected;
-                }
+                    LinkState::Connected
+                };
             }
         }
         self.val = Some(value);

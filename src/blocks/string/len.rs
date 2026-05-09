@@ -54,7 +54,7 @@ mod test {
     async fn test_sub() {
         let mut block = StrLen::new();
 
-        write_block_inputs(&mut [(&mut block.input, "ana are mere".into())]).await;
+        write_block_inputs([(&mut block.input, "ana are mere")]).await;
 
         block.execute().await;
 

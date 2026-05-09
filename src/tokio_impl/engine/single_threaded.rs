@@ -286,7 +286,7 @@ impl SingleThreadedEngine {
             if let Some(val) = source_input.get_value() {
                 target_input
                     .writer()
-                    .try_send(val.clone())
+                    .send(val.clone())
                     .map_err(|err| anyhow!(err))?;
             }
             reset_connected_inputs(target_block, &link_data.target_block_pin_name)?;
@@ -300,7 +300,7 @@ impl SingleThreadedEngine {
                 // Send the current value of the source output to the target input
                 target_input
                     .writer()
-                    .try_send(source_output.value().clone())
+                    .send(source_output.value().clone())
                     .map_err(|err| anyhow!(err))?;
             }
             reset_connected_inputs(target_block, &link_data.target_block_pin_name)?;
@@ -415,7 +415,7 @@ impl SingleThreadedEngine {
             target_block.get_input_mut(input_name).map(|input| {
                 let cnt = input.decrement_conn();
                 let value = input.get_value().cloned();
-                input.writer().try_send(value.unwrap_or_default()).ok();
+                input.writer().send(value.unwrap_or_default()).ok();
 
                 cnt
             })
@@ -486,7 +486,7 @@ fn reset_connected_inputs(target_block: &mut BlockPropsType, input_to_ignore: &s
     {
         target_input
             .writer()
-            .try_send(value.clone())
+            .send(value.clone())
             .map_err(|err| anyhow!(err))?;
     }
 

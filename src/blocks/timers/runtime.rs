@@ -84,7 +84,7 @@ mod test {
 
     use crate::{
         base::block::test_utils::write_block_inputs,
-        base::{block::Block, input::input_reader::InputReader, link::BaseLink},
+        base::{block::Block, link::BaseLink},
         blocks::timers::Runtime,
     };
 
@@ -100,14 +100,7 @@ mod test {
         let mut block = Runtime::new();
         link_out(&mut block);
 
-        for _ in write_block_inputs(&mut [
-            (&mut block.input, false.into()),
-            (&mut block.reset, false.into()),
-        ])
-        .await
-        {
-            block.read_inputs().await;
-        }
+        write_block_inputs([(&mut block.input, false), (&mut block.reset, false)]).await;
         block.execute().await;
         match block.out.value {
             Value::Number(n) => {
@@ -127,20 +120,11 @@ mod test {
         block.accumulated_ms = 3_600_000; // 1h
 
         // Establish reset=false baseline
-        for _ in write_block_inputs(&mut [
-            (&mut block.input, true.into()),
-            (&mut block.reset, false.into()),
-        ])
-        .await
-        {
-            block.read_inputs().await;
-        }
+        write_block_inputs([(&mut block.input, true), (&mut block.reset, false)]).await;
         block.execute().await;
 
         // Rising edge of reset → clears
-        for _ in write_block_inputs(&mut [(&mut block.reset, true.into())]).await {
-            block.read_inputs().await;
-        }
+        write_block_inputs([(&mut block.reset, true)]).await;
         block.execute().await;
         assert_eq!(block.accumulated_ms, 0);
         assert!(matches!(block.out.value, Value::Number(n) if n.value == 0.0));
@@ -151,14 +135,7 @@ mod test {
         let mut block = Runtime::new();
         link_out(&mut block);
 
-        for _ in write_block_inputs(&mut [
-            (&mut block.input, false.into()),
-            (&mut block.reset, false.into()),
-        ])
-        .await
-        {
-            block.read_inputs().await;
-        }
+        write_block_inputs([(&mut block.input, false), (&mut block.reset, false)]).await;
         block.execute().await;
         let first = block.accumulated_ms;
         block.execute().await;

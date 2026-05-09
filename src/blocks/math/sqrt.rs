@@ -54,7 +54,7 @@ mod test {
     async fn test_sqrt_block() {
         let mut block = Sqrt::new();
 
-        write_block_inputs(&mut [(&mut block.input, 4.into())]).await;
+        write_block_inputs([(&mut block.input, 4)]).await;
 
         block.execute().await;
 

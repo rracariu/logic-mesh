@@ -77,24 +77,21 @@ impl Block for LeadLag {
 #[cfg(test)]
 mod test {
 
+    use libhaystack::val::Value;
+
     use crate::{
-        base::block::test_utils::write_block_inputs,
-        base::{block::Block, input::input_reader::InputReader},
-        blocks::control::LeadLag,
+        base::block::Block, base::block::test_utils::write_block_inputs, blocks::control::LeadLag,
     };
 
     #[tokio::test]
     async fn test_leadlag_disable() {
         let mut block = LeadLag::new();
-        for _ in write_block_inputs(&mut [
-            (&mut block.enable, false.into()),
-            (&mut block.rotate, false.into()),
-            (&mut block.demand, (2.0).into()),
+        write_block_inputs([
+            (&mut block.enable, Value::make_false()),
+            (&mut block.rotate, Value::make_false()),
+            (&mut block.demand, 2.into()),
         ])
-        .await
-        {
-            block.read_inputs().await;
-        }
+        .await;
         block.execute().await;
         assert_eq!(block.out_a.value, false.into());
         assert_eq!(block.out_b.value, false.into());
@@ -103,15 +100,12 @@ mod test {
     #[tokio::test]
     async fn test_leadlag_demand_one_lead_only() {
         let mut block = LeadLag::new();
-        for _ in write_block_inputs(&mut [
-            (&mut block.enable, true.into()),
-            (&mut block.rotate, false.into()),
-            (&mut block.demand, (1.0).into()),
+        write_block_inputs([
+            (&mut block.enable, Value::make_true()),
+            (&mut block.rotate, Value::make_false()),
+            (&mut block.demand, 1.into()),
         ])
-        .await
-        {
-            block.read_inputs().await;
-        }
+        .await;
         block.execute().await;
         assert_eq!(block.out_a.value, true.into());
         assert_eq!(block.out_b.value, false.into());
@@ -120,15 +114,12 @@ mod test {
     #[tokio::test]
     async fn test_leadlag_demand_two_both_on() {
         let mut block = LeadLag::new();
-        for _ in write_block_inputs(&mut [
-            (&mut block.enable, true.into()),
-            (&mut block.rotate, false.into()),
-            (&mut block.demand, (2.0).into()),
+        write_block_inputs([
+            (&mut block.enable, Value::make_true()),
+            (&mut block.rotate, Value::make_false()),
+            (&mut block.demand, 2.into()),
         ])
-        .await
-        {
-            block.read_inputs().await;
-        }
+        .await;
         block.execute().await;
         assert_eq!(block.out_a.value, true.into());
         assert_eq!(block.out_b.value, true.into());
@@ -139,23 +130,18 @@ mod test {
         let mut block = LeadLag::new();
 
         // Lead is A initially with demand=1
-        for _ in write_block_inputs(&mut [
-            (&mut block.enable, true.into()),
-            (&mut block.rotate, false.into()),
-            (&mut block.demand, (1.0).into()),
+        write_block_inputs([
+            (&mut block.enable, Value::make_true()),
+            (&mut block.rotate, Value::make_false()),
+            (&mut block.demand, 1.into()),
         ])
-        .await
-        {
-            block.read_inputs().await;
-        }
+        .await;
         block.execute().await;
         assert_eq!(block.out_a.value, true.into());
         assert_eq!(block.out_b.value, false.into());
 
         // Rising edge on rotate → B becomes lead
-        for _ in write_block_inputs(&mut [(&mut block.rotate, true.into())]).await {
-            block.read_inputs().await;
-        }
+        write_block_inputs([(&mut block.rotate, true)]).await;
         block.execute().await;
         assert_eq!(block.out_a.value, false.into());
         assert_eq!(block.out_b.value, true.into());

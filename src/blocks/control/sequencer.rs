@@ -108,7 +108,7 @@ mod test {
 
     use crate::{
         base::block::test_utils::write_block_inputs,
-        base::{block::Block, input::input_reader::InputReader, link::BaseLink},
+        base::{block::Block, link::BaseLink},
         blocks::control::Sequencer,
     };
 
@@ -124,16 +124,13 @@ mod test {
         let mut block = Sequencer::new();
         link_out(&mut block);
 
-        for _ in write_block_inputs(&mut [
-            (&mut block.demand, (0.0).into()),
-            (&mut block.stages, (4.0).into()),
-            (&mut block.up_delay, (0).into()),
-            (&mut block.down_delay, (0).into()),
+        write_block_inputs([
+            (&mut block.demand, 0.0),
+            (&mut block.stages, 4.0),
+            (&mut block.up_delay, 0.0),
+            (&mut block.down_delay, 0.0),
         ])
-        .await
-        {
-            block.read_inputs().await;
-        }
+        .await;
         block.execute().await;
         assert_eq!(block.out.value, (0.0_f64).into());
     }
@@ -143,16 +140,13 @@ mod test {
         let mut block = Sequencer::new();
         link_out(&mut block);
 
-        for _ in write_block_inputs(&mut [
-            (&mut block.demand, (1.0).into()),
-            (&mut block.stages, (4.0).into()),
-            (&mut block.up_delay, (0).into()),
-            (&mut block.down_delay, (0).into()),
+        write_block_inputs([
+            (&mut block.demand, 1.0),
+            (&mut block.stages, 4.0),
+            (&mut block.up_delay, 0.0),
+            (&mut block.down_delay, 0.0),
         ])
-        .await
-        {
-            block.read_inputs().await;
-        }
+        .await;
 
         // First exec arms the timer, second exec advances by 1 stage.
         block.execute().await;
@@ -168,16 +162,13 @@ mod test {
         let mut block = Sequencer::new();
         link_out(&mut block);
 
-        for _ in write_block_inputs(&mut [
-            (&mut block.demand, (1.0).into()),
-            (&mut block.stages, (4.0).into()),
-            (&mut block.up_delay, (3_600_000).into()),
-            (&mut block.down_delay, (3_600_000).into()),
+        write_block_inputs([
+            (&mut block.demand, 1.0),
+            (&mut block.stages, 4.0),
+            (&mut block.up_delay, 3_600_000.0),
+            (&mut block.down_delay, 3_600_000.0),
         ])
-        .await
-        {
-            block.read_inputs().await;
-        }
+        .await;
         block.execute().await;
         block.execute().await;
         assert_eq!(block.current, 0);

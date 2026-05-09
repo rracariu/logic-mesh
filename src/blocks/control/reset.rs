@@ -93,24 +93,20 @@ impl Block for Reset {
 mod test {
 
     use crate::{
-        base::block::Block, base::block::test_utils::write_block_inputs,
-        base::input::input_reader::InputReader, blocks::control::Reset,
+        base::block::Block, base::block::test_utils::write_block_inputs, blocks::control::Reset,
     };
     use libhaystack::val::Value;
 
     async fn run(input: f64, in_min: f64, in_max: f64, out_min: f64, out_max: f64) -> f64 {
         let mut block = Reset::new();
-        for _ in write_block_inputs(&mut [
-            (&mut block.input, input.into()),
-            (&mut block.in_min, in_min.into()),
-            (&mut block.in_max, in_max.into()),
-            (&mut block.out_min, out_min.into()),
-            (&mut block.out_max, out_max.into()),
+        write_block_inputs([
+            (&mut block.input, input),
+            (&mut block.in_min, in_min),
+            (&mut block.in_max, in_max),
+            (&mut block.out_min, out_min),
+            (&mut block.out_max, out_max),
         ])
-        .await
-        {
-            block.read_inputs().await;
-        }
+        .await;
         block.execute().await;
         match block.out.value {
             Value::Number(n) => n.value,

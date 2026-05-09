@@ -255,7 +255,7 @@ pub async fn eval_block_impl<B: Block<Reader = ReaderImpl, Writer = WriterImpl>>
         }
 
         input_pins[i].increment_conn();
-        if input_pins[i].writer().try_send(input.clone()).is_ok() && i < inputs.len() - 1 {
+        if input_pins[i].writer().send(input.clone()).is_ok() && i < inputs.len() - 1 {
             block.read_inputs().await;
         }
     }

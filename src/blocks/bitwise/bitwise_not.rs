@@ -1,14 +1,12 @@
 // Copyright (c) 2022-2024, Radu Racariu.
 
-use libhaystack::val::Value;
-use uuid::Uuid;
-
-use crate::base::input::input_reader::InputReader;
 use crate::base::{
     block::{Block, BlockDesc, BlockProps, BlockState},
-    input::{Input, InputProps},
+    input::{Input, InputProps, input_reader::InputReader},
     output::Output,
 };
+use libhaystack::val::Value;
+use uuid::Uuid;
 
 use libhaystack::val::kind::HaystackKind;
 
@@ -43,10 +41,10 @@ mod test {
     };
 
     #[tokio::test]
-    async fn test_and_op() {
+    async fn test_not_op() {
         let mut block = BitwiseNot::new();
 
-        write_block_inputs(&mut [(&mut block.input, 2.into())]).await;
+        write_block_inputs([(&mut block.input, 2)]).await;
         block.execute().await;
 
         assert_eq!(block.out.value, (-3).into());

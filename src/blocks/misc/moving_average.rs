@@ -76,7 +76,7 @@ mod test {
 
     use crate::{
         base::block::test_utils::write_block_inputs,
-        base::{block::Block, input::input_reader::InputReader, link::BaseLink},
+        base::{block::Block, link::BaseLink},
         blocks::misc::moving_average::MovingAverage,
     };
 
@@ -92,15 +92,12 @@ mod test {
         let mut block = MovingAverage::new();
         link_out(&mut block);
 
-        for _ in write_block_inputs(&mut [
-            (&mut block.input, (10.0).into()),
-            (&mut block.window, (3.0).into()),
-            (&mut block.interval, (0).into()),
+        write_block_inputs([
+            (&mut block.input, 10),
+            (&mut block.window, 3),
+            (&mut block.interval, 0),
         ])
-        .await
-        {
-            block.read_inputs().await;
-        }
+        .await;
         block.execute().await;
         assert_eq!(block.out.value, (10.0).into());
     }
@@ -111,15 +108,12 @@ mod test {
         link_out(&mut block);
 
         for v in [10.0_f64, 20.0, 30.0] {
-            for _ in write_block_inputs(&mut [
-                (&mut block.input, v.into()),
-                (&mut block.window, (3.0).into()),
-                (&mut block.interval, (0).into()),
+            write_block_inputs([
+                (&mut block.input, v),
+                (&mut block.window, 3.0),
+                (&mut block.interval, 0.0),
             ])
-            .await
-            {
-                block.read_inputs().await;
-            }
+            .await;
             block.execute().await;
         }
 
@@ -137,15 +131,12 @@ mod test {
 
         // Window of 2 — only the last two samples count
         for v in [10.0_f64, 20.0, 30.0, 40.0] {
-            for _ in write_block_inputs(&mut [
-                (&mut block.input, v.into()),
-                (&mut block.window, (2.0).into()),
-                (&mut block.interval, (0).into()),
+            write_block_inputs([
+                (&mut block.input, v),
+                (&mut block.window, 2.0),
+                (&mut block.interval, 0.0),
             ])
-            .await
-            {
-                block.read_inputs().await;
-            }
+            .await;
             block.execute().await;
         }
 

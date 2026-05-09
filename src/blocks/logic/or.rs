@@ -46,23 +46,14 @@ impl Block for Or {
 mod test {
 
     use crate::{
-        base::block::test_utils::write_block_inputs,
-        base::{block::Block, input::input_reader::InputReader},
-        blocks::logic::Or,
+        base::block::Block, base::block::test_utils::write_block_inputs, blocks::logic::Or,
     };
 
     #[tokio::test]
     async fn test_or_block() {
         let mut block = Or::new();
 
-        for _ in write_block_inputs(&mut [
-            (&mut block.input1, (true).into()),
-            (&mut block.input2, (0).into()),
-        ])
-        .await
-        {
-            block.read_inputs().await;
-        }
+        write_block_inputs([(&mut block.input1, true.into()), (&mut block.input2, 0)]).await;
 
         block.execute().await;
         assert_eq!(block.out.value, true.into());

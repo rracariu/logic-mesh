@@ -75,9 +75,7 @@ mod test {
     };
 
     use crate::{
-        base::block::test_utils::write_block_inputs,
-        base::{block::Block, input::input_reader::InputReader},
-        blocks::psych::Enthalpy,
+        base::block::Block, base::block::test_utils::write_block_inputs, blocks::psych::Enthalpy,
     };
 
     fn approx(actual: f64, expected: f64, tol: f64) {
@@ -91,15 +89,12 @@ mod test {
 
     async fn run(t: f64, rh: f64, p: f64) -> f64 {
         let mut block = Enthalpy::new();
-        for _ in write_block_inputs(&mut [
-            (&mut block.temperature, t.into()),
-            (&mut block.humidity, rh.into()),
-            (&mut block.pressure, p.into()),
+        write_block_inputs([
+            (&mut block.temperature, t),
+            (&mut block.humidity, rh),
+            (&mut block.pressure, p),
         ])
-        .await
-        {
-            block.read_inputs().await;
-        }
+        .await;
         block.execute().await;
         match block.out.value {
             Value::Number(n) => n.value,
@@ -130,21 +125,18 @@ mod test {
     async fn test_enthalpy_accepts_fahrenheit_and_kpa() {
         // 75°F (≈ 23.89°C), 50% RH, 101.325 kPa → ≈ 47.4 kJ/kg
         let mut block = Enthalpy::new();
-        for _ in write_block_inputs(&mut [
+        write_block_inputs([
             (
                 &mut block.temperature,
-                Number::make_with_unit(75.0, &FAHRENHEIT).into(),
+                Number::make_with_unit(75.0, &FAHRENHEIT),
             ),
-            (&mut block.humidity, (50.0).into()),
+            (&mut block.humidity, 50.into()),
             (
                 &mut block.pressure,
                 Number::make_with_unit(101.325, &KILOPASCAL).into(),
             ),
         ])
-        .await
-        {
-            block.read_inputs().await;
-        }
+        .await;
         block.execute().await;
         match block.out.value {
             Value::Number(n) => {

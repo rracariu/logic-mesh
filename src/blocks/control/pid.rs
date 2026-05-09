@@ -148,7 +148,7 @@ mod test {
 
     use crate::{
         base::block::test_utils::write_block_inputs,
-        base::{block::Block, input::input_reader::InputReader, link::BaseLink},
+        base::{block::Block, link::BaseLink},
         blocks::control::Pid,
     };
 
@@ -174,17 +174,14 @@ mod test {
         let mut block = Pid::new();
         link_out(&mut block);
 
-        for _ in write_block_inputs(&mut [
-            (&mut block.interval, (1).into()),
-            (&mut block.sp, (50.0).into()),
-            (&mut block.kp, (0.5).into()),
-            (&mut block.ki, (0.0).into()),
-            (&mut block.kd, (0.0).into()),
+        write_block_inputs([
+            (&mut block.interval, 1.0),
+            (&mut block.sp, 50.0),
+            (&mut block.kp, 0.5),
+            (&mut block.ki, 0.0),
+            (&mut block.kd, 0.0),
         ])
-        .await
-        {
-            block.read_inputs().await;
-        }
+        .await;
 
         for _ in 0..100 {
             block.execute().await;
@@ -207,17 +204,14 @@ mod test {
         let mut block = Pid::new();
         link_out(&mut block);
 
-        for _ in write_block_inputs(&mut [
-            (&mut block.interval, (1).into()),
-            (&mut block.sp, (50.0).into()),
-            (&mut block.kp, (0.3).into()),
-            (&mut block.ki, (100.0).into()),
-            (&mut block.kd, (0.0).into()),
+        write_block_inputs([
+            (&mut block.interval, 1.0),
+            (&mut block.sp, 50.0),
+            (&mut block.kp, 0.3),
+            (&mut block.ki, 100.0),
+            (&mut block.kd, 0.0),
         ])
-        .await
-        {
-            block.read_inputs().await;
-        }
+        .await;
 
         for _ in 0..200 {
             block.execute().await;
@@ -239,17 +233,14 @@ mod test {
         let mut block = Pid::new();
         link_out(&mut block);
 
-        for _ in write_block_inputs(&mut [
-            (&mut block.interval, (1).into()),
-            (&mut block.sp, (50.0).into()),
-            (&mut block.kp, (0.0).into()),
-            (&mut block.ki, (0.0).into()),
-            (&mut block.kd, (0.0).into()),
+        write_block_inputs([
+            (&mut block.interval, 1.0),
+            (&mut block.sp, 50.0),
+            (&mut block.kp, 0.0),
+            (&mut block.ki, 0.0),
+            (&mut block.kd, 0.0),
         ])
-        .await
-        {
-            block.read_inputs().await;
-        }
+        .await;
 
         for _ in 0..10 {
             block.execute().await;

@@ -85,7 +85,7 @@ mod test {
     async fn test_priority_array_block() {
         let mut block = PriorityArray::new();
 
-        write_block_inputs(&mut [(&mut block.manual_life_safety, 100.into())]).await;
+        write_block_inputs([(&mut block.manual_life_safety, 100)]).await;
 
         block.execute().await;
         assert_eq!(block.out.value, 100.into());
@@ -95,9 +95,9 @@ mod test {
     async fn test_priority_array_min() {
         let mut block = PriorityArray::new();
 
-        write_block_inputs(&mut [
-            (&mut block.manual_life_safety, 100.into()),
-            (&mut block.manual_operator, 200.into()),
+        write_block_inputs([
+            (&mut block.manual_life_safety, 100),
+            (&mut block.manual_operator, 200),
         ])
         .await;
 
@@ -109,7 +109,7 @@ mod test {
     async fn test_priority_array_max() {
         let mut block = PriorityArray::new();
 
-        write_block_inputs(&mut [(&mut block.priority16, 200.into())]).await;
+        write_block_inputs([(&mut block.priority16, 200)]).await;
 
         block.execute().await;
         assert_eq!(block.out.value, 200.into());

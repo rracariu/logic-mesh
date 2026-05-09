@@ -1,5 +1,3 @@
-use std::ops::Range;
-
 use libhaystack::val::Value;
 
 use crate::{
@@ -10,21 +8,24 @@ use crate::{
 #[cfg(test)]
 pub mod mock;
 
-/// Writes the given values to the given inputs
-/// and returns the range of indices of the inputs that were written to.
-pub(crate) async fn write_block_inputs<'a>(
-    values: &'a mut [(
+/// Writes the given values to the given inputs as if they had arrived from
+/// connected upstream sources. Each input is marked connected (so the block
+/// will treat it as a real input) and the value is pushed through the
+/// underlying watch channel — a subsequent `block.read_inputs().await` (or
+/// the first `wait_on_inputs` inside the block's `execute()`) will drain
+/// every input in one pass, populating their `.val` fields.
+pub(crate) async fn write_block_inputs<'a, V, const N: usize>(
+    values: [(
         &'a mut dyn Input<Reader = ReaderImpl, Writer = WriterImpl>,
-        Value,
-    )],
-) -> Range<u32> {
-    for (input, value) in values.iter_mut() {
+        V,
+    ); N],
+) where
+    V: Into<Value>,
+{
+    for (input, value) in values {
         if !input.is_connected() {
             input.increment_conn();
         }
-
-        input.writer().try_send(value.clone()).unwrap();
+        input.writer().send(value.into()).unwrap();
     }
-
-    0..(values.len() - 1) as u32
 }

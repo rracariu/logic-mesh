@@ -63,20 +63,14 @@ mod test {
     use libhaystack::val::{Number, Value};
 
     use crate::{
-        base::block::test_utils::write_block_inputs,
-        base::{block::Block, input::input_reader::InputReader},
-        blocks::math::Max,
+        base::block::Block, base::block::test_utils::write_block_inputs, blocks::math::Max,
     };
 
     #[tokio::test]
     async fn test_max_block() {
         let mut block = Max::new();
 
-        for _ in
-            write_block_inputs(&mut [(&mut block.a, 8.into()), (&mut block.b, 42.into())]).await
-        {
-            block.read_inputs().await;
-        }
+        write_block_inputs([(&mut block.a, 8), (&mut block.b, 42)]).await;
 
         block.execute().await;
 

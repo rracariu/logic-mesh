@@ -38,21 +38,14 @@ impl Block for GreaterThan {
 mod test {
 
     use crate::{
-        base::block::test_utils::write_block_inputs,
-        base::{block::Block, input::input_reader::InputReader},
-        blocks::logic::GreaterThan,
+        base::block::Block, base::block::test_utils::write_block_inputs, blocks::logic::GreaterThan,
     };
 
     #[tokio::test]
     async fn test_gt_block() {
         let mut block = GreaterThan::new();
 
-        for _ in
-            write_block_inputs(&mut [(&mut block.input1, 3.into()), (&mut block.input2, 1.into())])
-                .await
-        {
-            block.read_inputs().await;
-        }
+        write_block_inputs([(&mut block.input1, 3), (&mut block.input2, 1)]).await;
 
         block.execute().await;
         assert_eq!(block.out.value, true.into());

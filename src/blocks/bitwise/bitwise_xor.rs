@@ -36,30 +36,21 @@ impl Block for BitwiseXor {
 #[cfg(test)]
 mod test {
     use crate::{
-        base::block::Block,
-        base::{block::test_utils::write_block_inputs, input::input_reader::InputReader},
+        base::block::Block, base::block::test_utils::write_block_inputs,
         blocks::bitwise::BitwiseXor,
     };
 
     #[tokio::test]
-    async fn test_and_op() {
+    async fn test_xor_op() {
         let mut block = BitwiseXor::new();
 
-        for _ in
-            write_block_inputs(&mut [(&mut block.in1, 2.into()), (&mut block.in2, 2.into())]).await
-        {
-            block.read_inputs().await;
-        }
+        write_block_inputs([(&mut block.in1, 2), (&mut block.in2, 2)]).await;
 
         block.execute().await;
 
         assert_eq!(block.out.value, (0).into());
 
-        for _ in
-            write_block_inputs(&mut [(&mut block.in1, 4.into()), (&mut block.in2, 2.into())]).await
-        {
-            block.read_inputs().await;
-        }
+        write_block_inputs([(&mut block.in1, 4), (&mut block.in2, 2)]).await;
 
         block.execute().await;
 

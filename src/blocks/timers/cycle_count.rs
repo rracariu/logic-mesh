@@ -59,9 +59,7 @@ impl Block for CycleCount {
 mod test {
 
     use crate::{
-        base::block::test_utils::write_block_inputs,
-        base::{block::Block, input::input_reader::InputReader},
-        blocks::timers::CycleCount,
+        base::block::Block, base::block::test_utils::write_block_inputs, blocks::timers::CycleCount,
     };
 
     #[tokio::test]
@@ -69,39 +67,24 @@ mod test {
         let mut block = CycleCount::new();
 
         // Establish low
-        for _ in write_block_inputs(&mut [
-            (&mut block.input, false.into()),
-            (&mut block.reset, false.into()),
-        ])
-        .await
-        {
-            block.read_inputs().await;
-        }
+        write_block_inputs([(&mut block.input, false), (&mut block.reset, false)]).await;
         block.execute().await;
         assert_eq!(block.out.value, (0.0_f64).into());
 
         // Rising edge → count = 1
-        for _ in write_block_inputs(&mut [(&mut block.input, true.into())]).await {
-            block.read_inputs().await;
-        }
+        write_block_inputs([(&mut block.input, true)]).await;
         block.execute().await;
         assert_eq!(block.out.value, (1.0_f64).into());
 
         // Holding true does not double-count
-        for _ in write_block_inputs(&mut [(&mut block.input, true.into())]).await {
-            block.read_inputs().await;
-        }
+        write_block_inputs([(&mut block.input, true)]).await;
         block.execute().await;
         assert_eq!(block.out.value, (1.0_f64).into());
 
         // Falling, then rising again → count = 2
-        for _ in write_block_inputs(&mut [(&mut block.input, false.into())]).await {
-            block.read_inputs().await;
-        }
+        write_block_inputs([(&mut block.input, false)]).await;
         block.execute().await;
-        for _ in write_block_inputs(&mut [(&mut block.input, true.into())]).await {
-            block.read_inputs().await;
-        }
+        write_block_inputs([(&mut block.input, true)]).await;
         block.execute().await;
         assert_eq!(block.out.value, (2.0_f64).into());
     }
@@ -111,19 +94,10 @@ mod test {
         let mut block = CycleCount::new();
         block.count = 42;
 
-        for _ in write_block_inputs(&mut [
-            (&mut block.input, false.into()),
-            (&mut block.reset, false.into()),
-        ])
-        .await
-        {
-            block.read_inputs().await;
-        }
+        write_block_inputs([(&mut block.input, false), (&mut block.reset, false)]).await;
         block.execute().await;
 
-        for _ in write_block_inputs(&mut [(&mut block.reset, true.into())]).await {
-            block.read_inputs().await;
-        }
+        write_block_inputs([(&mut block.reset, true)]).await;
         block.execute().await;
         assert_eq!(block.count, 0);
     }

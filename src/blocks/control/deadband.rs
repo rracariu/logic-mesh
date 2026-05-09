@@ -67,20 +67,16 @@ impl Block for Deadband {
 mod test {
 
     use crate::{
-        base::block::Block, base::block::test_utils::write_block_inputs,
-        base::input::input_reader::InputReader, blocks::control::Deadband,
+        base::block::Block, base::block::test_utils::write_block_inputs, blocks::control::Deadband,
     };
 
     async fn write_all(block: &mut Deadband, inp: f64, low: f64, high: f64) {
-        for _ in write_block_inputs(&mut [
-            (&mut block.input, inp.into()),
-            (&mut block.low, low.into()),
-            (&mut block.high, high.into()),
+        write_block_inputs([
+            (&mut block.input, inp),
+            (&mut block.low, low),
+            (&mut block.high, high),
         ])
-        .await
-        {
-            block.read_inputs().await;
-        }
+        .await;
     }
 
     #[tokio::test]

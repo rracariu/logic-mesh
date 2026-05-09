@@ -70,16 +70,17 @@ impl Block for Average {
 mod test {
 
     use crate::base::block::test_utils::write_block_inputs;
-    use crate::base::input::input_reader::InputReader;
-    use crate::{base::block::Block, blocks::math::Average};
+    use crate::{
+        base::block::Block, base::input::input_reader::InputReader, blocks::math::Average,
+    };
 
     #[tokio::test]
     async fn test_average_block() {
         let mut block = Average::new();
 
-        write_block_inputs(&mut [(block._inputs.get_mut(0).unwrap(), 1.into())]).await;
+        write_block_inputs([(block._inputs.get_mut(0).unwrap(), 1)]).await;
         block.read_inputs().await;
-        write_block_inputs(&mut [(block._inputs.get_mut(15).unwrap(), 9.into())]).await;
+        write_block_inputs([(block._inputs.get_mut(15).unwrap(), 9)]).await;
 
         block.execute().await;
         assert_eq!(block.out.value, 5.into());

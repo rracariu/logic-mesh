@@ -15,14 +15,13 @@ use wasm_bindgen_futures::JsFuture;
 use crate::base::block::desc::BlockRunCondition;
 use crate::base::block::{Block, BlockState, BlockStaticDesc};
 use crate::base::engine::Engine;
-use crate::base::input::input_reader::InputReader;
 
 use crate::blocks::registry::eval_block_impl;
 use crate::blocks::utils::get_sleep_dur;
 use crate::{
     base::{
         block::{BlockDesc, BlockProps},
-        input::{Input, InputProps},
+        input::{Input, InputProps, input_reader::InputReader},
         link::Link,
         output::{Output, OutputProps},
     },

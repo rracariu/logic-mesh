@@ -36,8 +36,7 @@ impl Block for BitwiseAnd {
 #[cfg(test)]
 mod test {
     use crate::{
-        base::block::Block,
-        base::{block::test_utils::write_block_inputs, input::input_reader::InputReader},
+        base::block::Block, base::block::test_utils::write_block_inputs,
         blocks::bitwise::BitwiseAnd,
     };
 
@@ -45,21 +44,13 @@ mod test {
     async fn test_and_op() {
         let mut block = BitwiseAnd::new();
 
-        for _ in
-            write_block_inputs(&mut [(&mut block.in1, 2.into()), (&mut block.in2, 2.into())]).await
-        {
-            block.read_inputs().await;
-        }
+        write_block_inputs([(&mut block.in1, 2), (&mut block.in2, 2)]).await;
 
         block.execute().await;
 
         assert_eq!(block.out.value, (2).into());
 
-        for _ in
-            write_block_inputs(&mut [(&mut block.in1, 1.into()), (&mut block.in2, 2.into())]).await
-        {
-            block.read_inputs().await;
-        }
+        write_block_inputs([(&mut block.in1, 1), (&mut block.in2, 2)]).await;
 
         block.execute().await;
 

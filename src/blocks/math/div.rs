@@ -48,20 +48,14 @@ mod test {
     use libhaystack::val::{Number, Value};
 
     use crate::{
-        base::block::test_utils::write_block_inputs,
-        base::{block::Block, input::input_reader::InputReader},
-        blocks::math::Div,
+        base::block::Block, base::block::test_utils::write_block_inputs, blocks::math::Div,
     };
 
     #[tokio::test]
     async fn test_div_block() {
         let mut block = Div::new();
 
-        for _ in
-            write_block_inputs(&mut [(&mut block.a, 42.into()), (&mut block.b, 2.into())]).await
-        {
-            block.read_inputs().await;
-        }
+        write_block_inputs([(&mut block.a, 42), (&mut block.b, 2)]).await;
 
         block.execute().await;
 

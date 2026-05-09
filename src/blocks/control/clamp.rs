@@ -65,21 +65,17 @@ mod test {
     use libhaystack::val::Value;
 
     use crate::{
-        base::block::Block, base::block::test_utils::write_block_inputs,
-        base::input::input_reader::InputReader, blocks::control::Clamp,
+        base::block::Block, base::block::test_utils::write_block_inputs, blocks::control::Clamp,
     };
 
     async fn run(input: f64, min: f64, max: f64) -> f64 {
         let mut block = Clamp::new();
-        for _ in write_block_inputs(&mut [
-            (&mut block.input, input.into()),
-            (&mut block.min, min.into()),
-            (&mut block.max, max.into()),
+        write_block_inputs([
+            (&mut block.input, input),
+            (&mut block.min, min),
+            (&mut block.max, max),
         ])
-        .await
-        {
-            block.read_inputs().await;
-        }
+        .await;
         block.execute().await;
         match block.out.value {
             Value::Number(n) => n.value,

@@ -24,13 +24,26 @@ impl Output for OutputImpl {
     }
 
     fn set(&mut self, value: Value) {
+        // Watch channels coalesce: each downstream receives the latest value;
+        // there is no queue and no drop-on-full failure mode. We use
+        // `send_if_modified` so writes that don't change the value don't wake
+        // downstream blocks — convergent feedback loops quiesce at their
+        // fixed point instead of busy-cycling forever.
         for link in &mut self.links {
             if let Some(tx) = &link.tx {
-                if let Err(__) = tx.try_send(value.clone()) {
-                    link.state = LinkState::Error;
+                tx.send_if_modified(|current| {
+                    if *current != value {
+                        *current = value.clone();
+                        true
+                    } else {
+                        false
+                    }
+                });
+                link.state = if tx.is_closed() {
+                    LinkState::Error
                 } else {
-                    link.state = LinkState::Connected;
-                }
+                    LinkState::Connected
+                };
             }
         }
         self.value = value;

@@ -52,12 +52,12 @@ mod test {
     async fn parse_true() {
         let mut block = ParseBool::new();
 
-        write_block_inputs(&mut [(&mut block.input, ("true").into())]).await;
+        write_block_inputs([(&mut block.input, "true")]).await;
 
         block.execute().await;
         assert_eq!(block.out.value, true.into());
 
-        write_block_inputs(&mut [(&mut block.input, ("T").into())]).await;
+        write_block_inputs([(&mut block.input, "T")]).await;
 
         block.execute().await;
         assert_eq!(block.out.value, true.into());
@@ -67,12 +67,12 @@ mod test {
     async fn parse_false() {
         let mut block = ParseBool::new();
 
-        write_block_inputs(&mut [(&mut block.input, ("false").into())]).await;
+        write_block_inputs([(&mut block.input, "false")]).await;
 
         block.execute().await;
         assert_eq!(block.out.value, false.into());
 
-        write_block_inputs(&mut [(&mut block.input, ("F").into())]).await;
+        write_block_inputs([(&mut block.input, "F")]).await;
 
         block.execute().await;
         assert_eq!(block.out.value, false.into());

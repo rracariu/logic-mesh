@@ -69,9 +69,7 @@ mod test {
     };
 
     use crate::{
-        base::block::test_utils::write_block_inputs,
-        base::{block::Block, input::input_reader::InputReader},
-        blocks::psych::WetBulb,
+        base::block::Block, base::block::test_utils::write_block_inputs, blocks::psych::WetBulb,
     };
 
     fn approx(actual: f64, expected: f64, tol: f64) {
@@ -108,14 +106,7 @@ mod test {
     #[tokio::test]
     async fn test_wet_bulb_block_emits_celsius() {
         let mut block = WetBulb::new();
-        for _ in write_block_inputs(&mut [
-            (&mut block.temperature, (24.0).into()),
-            (&mut block.humidity, (50.0).into()),
-        ])
-        .await
-        {
-            block.read_inputs().await;
-        }
+        write_block_inputs([(&mut block.temperature, 24.0), (&mut block.humidity, 50.0)]).await;
         block.execute().await;
         match block.out.value {
             Value::Number(n) => {
@@ -130,17 +121,14 @@ mod test {
     async fn test_wet_bulb_block_accepts_fahrenheit() {
         // 75 °F (≈ 23.89 °C) at 50 % RH → ~16.9 °C wet-bulb
         let mut block = WetBulb::new();
-        for _ in write_block_inputs(&mut [
+        write_block_inputs([
             (
                 &mut block.temperature,
-                Number::make_with_unit(75.0, &FAHRENHEIT).into(),
+                Number::make_with_unit(75.0, &FAHRENHEIT),
             ),
-            (&mut block.humidity, (50.0).into()),
+            (&mut block.humidity, 50.into()),
         ])
-        .await
-        {
-            block.read_inputs().await;
-        }
+        .await;
         block.execute().await;
         match block.out.value {
             Value::Number(n) => {

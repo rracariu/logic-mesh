@@ -51,21 +51,14 @@ mod test {
     use libhaystack::val::{Number, Value};
 
     use crate::{
-        base::block::test_utils::write_block_inputs,
-        base::{block::Block, input::input_reader::InputReader},
-        blocks::math::Pow,
+        base::block::Block, base::block::test_utils::write_block_inputs, blocks::math::Pow,
     };
 
     #[tokio::test]
     async fn test_pow_block() {
         let mut block = Pow::new();
 
-        for _ in
-            write_block_inputs(&mut [(&mut block.base, 4.into()), (&mut block.exponent, 4.into())])
-                .await
-        {
-            block.read_inputs().await;
-        }
+        write_block_inputs([(&mut block.base, 4), (&mut block.exponent, 4)]).await;
 
         block.execute().await;
 

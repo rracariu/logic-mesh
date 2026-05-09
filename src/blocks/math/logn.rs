@@ -54,7 +54,7 @@ mod test {
     async fn test_logn_block() {
         let mut block = Logn::new();
 
-        write_block_inputs(&mut [(&mut block.input, 2.into())]).await;
+        write_block_inputs([(&mut block.input, 2)]).await;
 
         block.execute().await;
 

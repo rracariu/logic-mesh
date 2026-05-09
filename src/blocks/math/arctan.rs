@@ -54,7 +54,7 @@ mod test {
     async fn test_arctan_block() {
         let mut block = ArcTan::new();
 
-        write_block_inputs(&mut [(&mut block.input, 0.into())]).await;
+        write_block_inputs([(&mut block.input, 0)]).await;
 
         block.execute().await;
 

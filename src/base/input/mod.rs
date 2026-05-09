@@ -21,6 +21,12 @@ pub trait Input: InputProps {
     /// Gets this input receiver which can be polled for data.
     fn receiver(&mut self) -> Pin<Box<dyn Future<Output = Option<Value>> + Send + '_>>;
 
+    /// Non-blocking peek: take the latest value if it has changed since the
+    /// last observation, returning `None` if nothing fresh is available. Used
+    /// by `read_block_inputs` to drain every input that has new data in a
+    /// single cycle, rather than one input per cycle.
+    fn try_take(&mut self) -> Option<Value>;
+
     /// Sets this input value
     fn set_value(&mut self, value: Value);
 }

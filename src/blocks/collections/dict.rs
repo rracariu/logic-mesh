@@ -51,7 +51,6 @@ impl Block for Dict {
 
 #[cfg(test)]
 mod test {
-    use crate::base::input::input_reader::InputReader;
     use crate::{
         base::block::Block, base::block::BlockProps, base::block::test_utils::write_block_inputs,
         blocks::collections::Dict as DictBlock,
@@ -62,9 +61,8 @@ mod test {
     async fn test_dict_block() {
         let mut block = DictBlock::new();
 
-        write_block_inputs(&mut [(block.inputs_mut()[0], vec!["a".into()].into())]).await;
-        write_block_inputs(&mut [(block.inputs_mut()[1], vec![200.into()].into())]).await;
-        block.read_inputs().await;
+        write_block_inputs([(block.inputs_mut()[0], vec!["a".into()])]).await;
+        write_block_inputs([(block.inputs_mut()[1], vec![200.into()])]).await;
 
         block.execute().await;
         assert_eq!(block.out.value, Value::Dict(dict! {"a" => 200}));

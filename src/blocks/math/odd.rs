@@ -49,7 +49,7 @@ mod test {
     async fn test_odd_block() {
         let mut block = Odd::new();
 
-        write_block_inputs(&mut [(&mut block.input, 8.into())]).await;
+        write_block_inputs([(&mut block.input, 8)]).await;
         block.execute().await;
 
         assert_matches!(
@@ -57,7 +57,7 @@ mod test {
             Value::Bool(Bool { value, .. }) if !value
         );
 
-        write_block_inputs(&mut [(&mut block.input, 9.into())]).await;
+        write_block_inputs([(&mut block.input, 9)]).await;
         block.execute().await;
 
         assert_matches!(

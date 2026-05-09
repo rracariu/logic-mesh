@@ -80,23 +80,19 @@ impl Block for Economizer {
 mod test {
 
     use crate::{
-        base::block::test_utils::write_block_inputs,
-        base::{block::Block, input::input_reader::InputReader},
+        base::block::Block, base::block::test_utils::write_block_inputs,
         blocks::control::Economizer,
     };
 
     async fn run(oa: f64, ra: f64, high: f64, deadband: f64) -> bool {
         let mut block = Economizer::new();
-        for _ in write_block_inputs(&mut [
-            (&mut block.oa, oa.into()),
-            (&mut block.ra, ra.into()),
-            (&mut block.high_limit, high.into()),
-            (&mut block.deadband, deadband.into()),
+        write_block_inputs([
+            (&mut block.oa, oa),
+            (&mut block.ra, ra),
+            (&mut block.high_limit, high),
+            (&mut block.deadband, deadband),
         ])
-        .await
-        {
-            block.read_inputs().await;
-        }
+        .await;
         block.execute().await;
         matches!(block.out.value, libhaystack::val::Value::Bool(b) if b.value)
     }
@@ -122,37 +118,28 @@ mod test {
     async fn test_economizer_holds_in_deadband() {
         let mut block = Economizer::new();
         // Drive on with a cool OA
-        for _ in write_block_inputs(&mut [
-            (&mut block.oa, (12.0).into()),
-            (&mut block.ra, (24.0).into()),
-            (&mut block.high_limit, (30.0).into()),
-            (&mut block.deadband, (2.0).into()),
+        write_block_inputs([
+            (&mut block.oa, 12.0),
+            (&mut block.ra, 24.0),
+            (&mut block.high_limit, 30.0),
+            (&mut block.deadband, 2.0),
         ])
-        .await
-        {
-            block.read_inputs().await;
-        }
+        .await;
         block.execute().await;
         assert!(matches!(block.out.value, libhaystack::val::Value::Bool(b) if b.value));
 
         // OA rises into the deadband window (between RA-2 and RA): hold ON
-        for _ in write_block_inputs(&mut [(&mut block.oa, (23.0).into())]).await {
-            block.read_inputs().await;
-        }
+        write_block_inputs([(&mut block.oa, 23.0)]).await;
         block.execute().await;
         assert!(matches!(block.out.value, libhaystack::val::Value::Bool(b) if b.value));
 
         // Cross above RA: trip OFF
-        for _ in write_block_inputs(&mut [(&mut block.oa, (24.5).into())]).await {
-            block.read_inputs().await;
-        }
+        write_block_inputs([(&mut block.oa, 24.5)]).await;
         block.execute().await;
         assert!(matches!(block.out.value, libhaystack::val::Value::Bool(b) if !b.value));
 
         // Drop back into the deadband: hold OFF
-        for _ in write_block_inputs(&mut [(&mut block.oa, (23.0).into())]).await {
-            block.read_inputs().await;
-        }
+        write_block_inputs([(&mut block.oa, 23.0)]).await;
         block.execute().await;
         assert!(matches!(block.out.value, libhaystack::val::Value::Bool(b) if !b.value));
     }

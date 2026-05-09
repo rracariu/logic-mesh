@@ -37,8 +37,7 @@ impl Block for GreaterThanEq {
 mod test {
 
     use crate::{
-        base::block::test_utils::write_block_inputs,
-        base::{block::Block, input::input_reader::InputReader},
+        base::block::Block, base::block::test_utils::write_block_inputs,
         blocks::logic::GreaterThanEq,
     };
 
@@ -46,14 +45,7 @@ mod test {
     async fn test_gte_block() {
         let mut block = GreaterThanEq::new();
 
-        for _ in write_block_inputs(&mut [
-            (&mut block.input1, 3.into()),
-            (&mut block.input2, (-3).into()),
-        ])
-        .await
-        {
-            block.read_inputs().await;
-        }
+        write_block_inputs([(&mut block.input1, 3), (&mut block.input2, -3)]).await;
 
         block.execute().await;
         assert_eq!(block.out.value, true.into());

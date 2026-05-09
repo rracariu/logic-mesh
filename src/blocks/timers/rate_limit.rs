@@ -96,7 +96,7 @@ mod test {
 
     use crate::{
         base::block::test_utils::write_block_inputs,
-        base::{block::Block, input::input_reader::InputReader, link::BaseLink},
+        base::{block::Block, link::BaseLink},
         blocks::timers::RateLimit,
     };
 
@@ -108,16 +108,13 @@ mod test {
             .links
             .push(BaseLink::new(uuid::Uuid::new_v4(), "test".to_string()));
 
-        for _ in write_block_inputs(&mut [
-            (&mut block.input, (100.0).into()),
-            (&mut block.rising, (10.0).into()),
-            (&mut block.falling, (10.0).into()),
-            (&mut block.interval, (0).into()),
+        write_block_inputs([
+            (&mut block.input, 100.0),
+            (&mut block.rising, 10.0),
+            (&mut block.falling, 10.0),
+            (&mut block.interval, 0.0),
         ])
-        .await
-        {
-            block.read_inputs().await;
-        }
+        .await;
 
         // First execution initializes output to input value
         block.execute().await;
@@ -133,31 +130,25 @@ mod test {
             .push(BaseLink::new(uuid::Uuid::new_v4(), "test".to_string()));
 
         // Initialize at 0
-        for _ in write_block_inputs(&mut [
-            (&mut block.input, (0.0).into()),
-            (&mut block.rising, (10.0).into()),
-            (&mut block.falling, (10.0).into()),
-            (&mut block.interval, (0).into()),
+        write_block_inputs([
+            (&mut block.input, 0.0),
+            (&mut block.rising, 10.0),
+            (&mut block.falling, 10.0),
+            (&mut block.interval, 0.0),
         ])
-        .await
-        {
-            block.read_inputs().await;
-        }
+        .await;
         block.execute().await;
         assert_eq!(block.out.value, (0.0).into());
 
         // Target jumps to 1000, but rate is 10/s and dt is near-zero
         // so output should barely move (be less than target)
-        for _ in write_block_inputs(&mut [
-            (&mut block.input, (1000.0).into()),
-            (&mut block.rising, (10.0).into()),
-            (&mut block.falling, (10.0).into()),
-            (&mut block.interval, (0).into()),
+        write_block_inputs([
+            (&mut block.input, 1000.0),
+            (&mut block.rising, 10.0),
+            (&mut block.falling, 10.0),
+            (&mut block.interval, 0.0),
         ])
-        .await
-        {
-            block.read_inputs().await;
-        }
+        .await;
         block.execute().await;
 
         if let Value::Number(n) = block.out.value {
@@ -177,29 +168,23 @@ mod test {
             .push(BaseLink::new(uuid::Uuid::new_v4(), "test".to_string()));
 
         // Initialize at 0
-        for _ in write_block_inputs(&mut [
-            (&mut block.input, (0.0).into()),
-            (&mut block.rising, (0.0).into()),
-            (&mut block.falling, (0.0).into()),
-            (&mut block.interval, (0).into()),
+        write_block_inputs([
+            (&mut block.input, 0.0),
+            (&mut block.rising, 0.0),
+            (&mut block.falling, 0.0),
+            (&mut block.interval, 0.0),
         ])
-        .await
-        {
-            block.read_inputs().await;
-        }
+        .await;
         block.execute().await;
 
         // With rate 0, should pass through directly regardless of dt
-        for _ in write_block_inputs(&mut [
-            (&mut block.input, (100.0).into()),
-            (&mut block.rising, (0.0).into()),
-            (&mut block.falling, (0.0).into()),
-            (&mut block.interval, (0).into()),
+        write_block_inputs([
+            (&mut block.input, 100.0),
+            (&mut block.rising, 0.0),
+            (&mut block.falling, 0.0),
+            (&mut block.interval, 0.0),
         ])
-        .await
-        {
-            block.read_inputs().await;
-        }
+        .await;
         block.execute().await;
         assert_eq!(block.out.value, (100.0).into());
     }
@@ -213,30 +198,24 @@ mod test {
             .push(BaseLink::new(uuid::Uuid::new_v4(), "test".to_string()));
 
         // Initialize at 50
-        for _ in write_block_inputs(&mut [
-            (&mut block.input, (50.0).into()),
-            (&mut block.rising, (10.0).into()),
-            (&mut block.falling, (10.0).into()),
-            (&mut block.interval, (0).into()),
+        write_block_inputs([
+            (&mut block.input, 50.0),
+            (&mut block.rising, 10.0),
+            (&mut block.falling, 10.0),
+            (&mut block.interval, 0.0),
         ])
-        .await
-        {
-            block.read_inputs().await;
-        }
+        .await;
         block.execute().await;
         assert_eq!(block.out.value, (50.0).into());
 
         // Same target, output should stay at 50
-        for _ in write_block_inputs(&mut [
-            (&mut block.input, (50.0).into()),
-            (&mut block.rising, (10.0).into()),
-            (&mut block.falling, (10.0).into()),
-            (&mut block.interval, (0).into()),
+        write_block_inputs([
+            (&mut block.input, 50.0),
+            (&mut block.rising, 10.0),
+            (&mut block.falling, 10.0),
+            (&mut block.interval, 0.0),
         ])
-        .await
-        {
-            block.read_inputs().await;
-        }
+        .await;
         block.execute().await;
         assert_eq!(block.out.value, (50.0).into());
     }

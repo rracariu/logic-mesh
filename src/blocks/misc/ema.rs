@@ -82,7 +82,7 @@ mod test {
 
     use crate::{
         base::block::test_utils::write_block_inputs,
-        base::{block::Block, input::input_reader::InputReader, link::BaseLink},
+        base::{block::Block, link::BaseLink},
         blocks::misc::ema::Ema,
     };
 
@@ -94,15 +94,12 @@ mod test {
             .links
             .push(BaseLink::new(uuid::Uuid::new_v4(), "test".to_string()));
 
-        for _ in write_block_inputs(&mut [
-            (&mut block.input, (50.0).into()),
-            (&mut block.alpha, (0.5).into()),
-            (&mut block.interval, (0).into()),
+        write_block_inputs([
+            (&mut block.input, 50.0),
+            (&mut block.alpha, 0.5),
+            (&mut block.interval, 0.0),
         ])
-        .await
-        {
-            block.read_inputs().await;
-        }
+        .await;
         block.execute().await;
         assert_eq!(block.out.value, (50.0).into());
     }
@@ -116,27 +113,21 @@ mod test {
             .push(BaseLink::new(uuid::Uuid::new_v4(), "test".to_string()));
 
         // Seed at 0
-        for _ in write_block_inputs(&mut [
-            (&mut block.input, (0.0).into()),
-            (&mut block.alpha, (0.5).into()),
-            (&mut block.interval, (0).into()),
+        write_block_inputs([
+            (&mut block.input, 0.0),
+            (&mut block.alpha, 0.5),
+            (&mut block.interval, 0.0),
         ])
-        .await
-        {
-            block.read_inputs().await;
-        }
+        .await;
         block.execute().await;
 
         // Step to 100; with alpha=0.5 the first post-seed sample lands at 50
-        for _ in write_block_inputs(&mut [
-            (&mut block.input, (100.0).into()),
-            (&mut block.alpha, (0.5).into()),
-            (&mut block.interval, (0).into()),
+        write_block_inputs([
+            (&mut block.input, 100.0),
+            (&mut block.alpha, 0.5),
+            (&mut block.interval, 0.0),
         ])
-        .await
-        {
-            block.read_inputs().await;
-        }
+        .await;
         block.execute().await;
 
         if let Value::Number(n) = block.out.value {
@@ -155,27 +146,21 @@ mod test {
             .push(BaseLink::new(uuid::Uuid::new_v4(), "test".to_string()));
 
         // Seed at 0
-        for _ in write_block_inputs(&mut [
-            (&mut block.input, (0.0).into()),
-            (&mut block.alpha, (1.0).into()),
-            (&mut block.interval, (0).into()),
+        write_block_inputs([
+            (&mut block.input, 0.0),
+            (&mut block.alpha, 1.0),
+            (&mut block.interval, 0.0),
         ])
-        .await
-        {
-            block.read_inputs().await;
-        }
+        .await;
         block.execute().await;
 
         // alpha=1 means no smoothing
-        for _ in write_block_inputs(&mut [
-            (&mut block.input, (42.0).into()),
-            (&mut block.alpha, (1.0).into()),
-            (&mut block.interval, (0).into()),
+        write_block_inputs([
+            (&mut block.input, 42.0),
+            (&mut block.alpha, 1.0),
+            (&mut block.interval, 0.0),
         ])
-        .await
-        {
-            block.read_inputs().await;
-        }
+        .await;
         block.execute().await;
         assert_eq!(block.out.value, (42.0).into());
     }

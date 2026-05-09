@@ -45,24 +45,21 @@ impl Block for Xor {
 #[cfg(test)]
 mod test {
 
+    use libhaystack::val::Value;
+
     use crate::{
-        base::block::test_utils::write_block_inputs,
-        base::{block::Block, input::input_reader::InputReader},
-        blocks::logic::Xor,
+        base::block::Block, base::block::test_utils::write_block_inputs, blocks::logic::Xor,
     };
 
     #[tokio::test]
     async fn test_xor_block() {
         let mut block = Xor::new();
 
-        for _ in write_block_inputs(&mut [
-            (&mut block.input1, (true).into()),
-            (&mut block.input2, (1).into()),
+        write_block_inputs([
+            (&mut block.input1, Value::make_true()),
+            (&mut block.input2, 1.into()),
         ])
-        .await
-        {
-            block.read_inputs().await;
-        }
+        .await;
 
         block.execute().await;
         assert_eq!(block.out.value, false.into());

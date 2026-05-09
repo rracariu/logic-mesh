@@ -37,23 +37,14 @@ impl Block for Equal {
 mod test {
 
     use crate::{
-        base::block::test_utils::write_block_inputs,
-        base::{block::Block, input::input_reader::InputReader},
-        blocks::logic::Equal,
+        base::block::Block, base::block::test_utils::write_block_inputs, blocks::logic::Equal,
     };
 
     #[tokio::test]
     async fn test_eq_block() {
         let mut block = Equal::new();
 
-        for _ in write_block_inputs(&mut [
-            (&mut block.input1, ("true").into()),
-            (&mut block.input2, ("true").into()),
-        ])
-        .await
-        {
-            block.read_inputs().await;
-        }
+        write_block_inputs([(&mut block.input1, "true"), (&mut block.input2, "true")]).await;
 
         block.execute().await;
         assert_eq!(block.out.value, true.into());

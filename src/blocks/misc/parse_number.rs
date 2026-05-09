@@ -54,7 +54,7 @@ mod test {
     async fn test_parse_number() {
         let mut block = ParseNumber::new();
 
-        write_block_inputs(&mut [(&mut block.input, ("33.5").into())]).await;
+        write_block_inputs([(&mut block.input, "33.5")]).await;
 
         block.execute().await;
         assert_eq!(block.out.value, 33.5.into());
@@ -64,7 +64,7 @@ mod test {
     async fn test_parse_number_unit() {
         let mut block = ParseNumber::new();
 
-        write_block_inputs(&mut [(&mut block.input, ("33.5F").into())]).await;
+        write_block_inputs([(&mut block.input, "33.5F")]).await;
 
         block.execute().await;
         assert_eq!(block.out.value, Value::make_number_unit(33.5, "F".into()));

@@ -49,9 +49,7 @@ mod test {
     use libhaystack::val::Value;
 
     use crate::{
-        base::block::test_utils::write_block_inputs,
-        base::{block::Block, input::input_reader::InputReader},
-        blocks::misc::SampleHold,
+        base::block::Block, base::block::test_utils::write_block_inputs, blocks::misc::SampleHold,
     };
 
     #[tokio::test]
@@ -59,39 +57,24 @@ mod test {
         let mut block = SampleHold::new();
 
         // Establish trigger=false
-        for _ in write_block_inputs(&mut [
-            (&mut block.input, (10.0).into()),
-            (&mut block.trigger, false.into()),
-        ])
-        .await
-        {
-            block.read_inputs().await;
-        }
+        write_block_inputs([(&mut block.input, 10), (&mut block.trigger, false.into())]).await;
         block.execute().await;
         assert_eq!(block.out.value, Value::Null);
 
         // Rising edge → captures 10
-        for _ in write_block_inputs(&mut [(&mut block.trigger, true.into())]).await {
-            block.read_inputs().await;
-        }
+        write_block_inputs([(&mut block.trigger, true)]).await;
         block.execute().await;
         assert_eq!(block.out.value, (10.0).into());
 
         // Input changes but trigger held high → still 10
-        for _ in write_block_inputs(&mut [(&mut block.input, (99.0).into())]).await {
-            block.read_inputs().await;
-        }
+        write_block_inputs([(&mut block.input, 99)]).await;
         block.execute().await;
         assert_eq!(block.out.value, (10.0).into());
 
         // Trigger drops, then rises again → captures 99
-        for _ in write_block_inputs(&mut [(&mut block.trigger, false.into())]).await {
-            block.read_inputs().await;
-        }
+        write_block_inputs([(&mut block.trigger, false)]).await;
         block.execute().await;
-        for _ in write_block_inputs(&mut [(&mut block.trigger, true.into())]).await {
-            block.read_inputs().await;
-        }
+        write_block_inputs([(&mut block.trigger, true)]).await;
         block.execute().await;
         assert_eq!(block.out.value, (99.0).into());
     }

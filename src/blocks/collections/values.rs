@@ -51,11 +51,11 @@ mod test {
     async fn test_values_block() {
         let mut block = Values::new();
 
-        write_block_inputs(&mut [(&mut block.input, (Dict::default()).into())]).await;
+        write_block_inputs([(&mut block.input, Dict::default())]).await;
         block.execute().await;
         assert_eq!(block.out.value, vec![].into());
 
-        write_block_inputs(&mut [(&mut block.input, (dict! {"a" => 1}).into())]).await;
+        write_block_inputs([(&mut block.input, dict! {"a" => 1})]).await;
         block.execute().await;
         assert_eq!(block.out.value, vec![1.into()].into());
     }

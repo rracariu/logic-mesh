@@ -51,23 +51,23 @@ mod test {
     async fn test_length_block() {
         let mut block = Length::new();
 
-        write_block_inputs(&mut [(&mut block.input, (Dict::default()).into())]).await;
+        write_block_inputs([(&mut block.input, Dict::default())]).await;
         block.execute().await;
         assert_eq!(block.out.value, 0.into());
 
-        write_block_inputs(&mut [(&mut block.input, (dict! {"a" => 1}).into())]).await;
+        write_block_inputs([(&mut block.input, dict! {"a" => 1})]).await;
         block.execute().await;
         assert_eq!(block.out.value, 1.into());
 
-        write_block_inputs(&mut [(&mut block.input, vec![1.into()].into())]).await;
+        write_block_inputs([(&mut block.input, vec![1.into()])]).await;
         block.execute().await;
         assert_eq!(block.out.value, 1.into());
 
-        write_block_inputs(&mut [(&mut block.input, vec![].into())]).await;
+        write_block_inputs([(&mut block.input, vec![])]).await;
         block.execute().await;
         assert_eq!(block.out.value, 0.into());
 
-        write_block_inputs(&mut [(&mut block.input, "ana are mere".into())]).await;
+        write_block_inputs([(&mut block.input, "ana are mere")]).await;
         block.execute().await;
         assert_eq!(block.out.value, 12.into());
     }

@@ -78,7 +78,7 @@ mod test {
 
     use crate::{
         base::block::test_utils::write_block_inputs,
-        base::{block::Block, input::input_reader::InputReader, link::BaseLink},
+        base::{block::Block, link::BaseLink},
         blocks::misc::derivative::Derivative,
     };
 
@@ -94,14 +94,7 @@ mod test {
         let mut block = Derivative::new();
         link_out(&mut block);
 
-        for _ in write_block_inputs(&mut [
-            (&mut block.input, (10.0).into()),
-            (&mut block.interval, (0).into()),
-        ])
-        .await
-        {
-            block.read_inputs().await;
-        }
+        write_block_inputs([(&mut block.input, 10), (&mut block.interval, 0)]).await;
         block.execute().await;
         assert_eq!(block.out.value, (0.0_f64).into());
     }
@@ -111,22 +104,13 @@ mod test {
         let mut block = Derivative::new();
         link_out(&mut block);
 
-        for _ in write_block_inputs(&mut [
-            (&mut block.input, (10.0).into()),
-            (&mut block.interval, (0).into()),
-        ])
-        .await
-        {
-            block.read_inputs().await;
-        }
+        write_block_inputs([(&mut block.input, 10), (&mut block.interval, 0)]).await;
         block.execute().await;
 
         // Force a known time delta
         block.last_time_ms = block.last_time_ms.saturating_sub(1000);
 
-        for _ in write_block_inputs(&mut [(&mut block.input, (20.0).into())]).await {
-            block.read_inputs().await;
-        }
+        write_block_inputs([(&mut block.input, 20.0)]).await;
         block.execute().await;
 
         // ~10 units / 1s — allow slop for the 1s elapsed during execute

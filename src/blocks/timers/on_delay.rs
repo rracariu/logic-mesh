@@ -67,7 +67,7 @@ mod test {
 
     use crate::{
         base::block::test_utils::write_block_inputs,
-        base::{block::Block, input::input_reader::InputReader, link::BaseLink},
+        base::{block::Block, link::BaseLink},
         blocks::timers::OnDelay,
     };
 
@@ -79,14 +79,7 @@ mod test {
             .links
             .push(BaseLink::new(uuid::Uuid::new_v4(), "test".to_string()));
 
-        for _ in write_block_inputs(&mut [
-            (&mut block.input, true.into()),
-            (&mut block.delay, (0).into()),
-        ])
-        .await
-        {
-            block.read_inputs().await;
-        }
+        write_block_inputs([(&mut block.input, true.into()), (&mut block.delay, 0)]).await;
         block.execute().await;
         assert_eq!(block.out.value, true.into());
     }
@@ -99,14 +92,7 @@ mod test {
             .links
             .push(BaseLink::new(uuid::Uuid::new_v4(), "test".to_string()));
 
-        for _ in write_block_inputs(&mut [
-            (&mut block.input, false.into()),
-            (&mut block.delay, (1000).into()),
-        ])
-        .await
-        {
-            block.read_inputs().await;
-        }
+        write_block_inputs([(&mut block.input, false.into()), (&mut block.delay, 1000)]).await;
         block.execute().await;
         assert_eq!(block.out.value, false.into());
     }
@@ -120,14 +106,11 @@ mod test {
             .push(BaseLink::new(uuid::Uuid::new_v4(), "test".to_string()));
 
         // 1 hour delay — won't have elapsed in test
-        for _ in write_block_inputs(&mut [
+        write_block_inputs([
             (&mut block.input, true.into()),
-            (&mut block.delay, (3_600_000).into()),
+            (&mut block.delay, 3_600_000),
         ])
-        .await
-        {
-            block.read_inputs().await;
-        }
+        .await;
         block.execute().await;
         assert_eq!(block.out.value, false.into());
     }
@@ -141,27 +124,21 @@ mod test {
             .push(BaseLink::new(uuid::Uuid::new_v4(), "test".to_string()));
 
         // Start the delay
-        for _ in write_block_inputs(&mut [
+        write_block_inputs([
             (&mut block.input, true.into()),
-            (&mut block.delay, (3_600_000).into()),
+            (&mut block.delay, 3_600_000),
         ])
-        .await
-        {
-            block.read_inputs().await;
-        }
+        .await;
         block.execute().await;
         assert_eq!(block.out.value, false.into());
         assert!(block.pending_since_ms > 0);
 
         // Input drops, timer resets
-        for _ in write_block_inputs(&mut [
+        write_block_inputs([
             (&mut block.input, false.into()),
-            (&mut block.delay, (3_600_000).into()),
+            (&mut block.delay, 3_600_000),
         ])
-        .await
-        {
-            block.read_inputs().await;
-        }
+        .await;
         block.execute().await;
         assert_eq!(block.out.value, false.into());
         assert_eq!(block.pending_since_ms, 0);

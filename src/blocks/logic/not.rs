@@ -44,7 +44,7 @@ mod test {
     async fn test_not_block() {
         let mut block = Not::new();
 
-        write_block_inputs(&mut [(&mut block.input, (true).into())]).await;
+        write_block_inputs([(&mut block.input, true)]).await;
 
         block.execute().await;
         assert_eq!(block.out.value, false.into());
