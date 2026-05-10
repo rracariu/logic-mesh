@@ -85,7 +85,7 @@
 	}
 </script>
 
-<div class="flex items-center gap-2 rounded-lg border bg-background px-3 py-2 shadow-md">
+<div class="flex flex-wrap items-center justify-center gap-2 rounded-lg border bg-background px-3 py-2 shadow-md max-w-[calc(100dvw-1rem)]">
 	<!-- Block selector dropdown -->
 	<DropdownMenu.Root onOpenChange={(open) => { if (!open) blockSearch = ''; }}>
 		<DropdownMenu.Trigger>
@@ -138,7 +138,7 @@
 		</DropdownMenu.Content>
 	</DropdownMenu.Root>
 
-	<Separator orientation="vertical" class="h-6" />
+	<Separator orientation="vertical" class="hidden h-6 sm:block" />
 
 	<!-- Program selector -->
 	<Select
@@ -149,7 +149,7 @@
 			onLoad(examplePrograms[Number(v)]);
 		}}
 	>
-		<SelectTrigger class="w-64" title={curProgram?.name}>
+		<SelectTrigger class="w-40 sm:w-64" title={curProgram?.name}>
 			<span class="truncate">{curProgram?.name ?? 'Select a Program'}</span>
 		</SelectTrigger>
 		<SelectContent class="min-w-64">
@@ -161,7 +161,7 @@
 		</SelectContent>
 	</Select>
 
-	<Separator orientation="vertical" class="h-6" />
+	<Separator orientation="vertical" class="hidden h-6 sm:block" />
 
 	<!-- Play/Pause -->
 	<Button variant="outline" size="icon" title="Pause/Resume execution" onclick={onPauseResume}>
@@ -172,7 +172,7 @@
 		{/if}
 	</Button>
 
-	<Separator orientation="vertical" class="h-6" />
+	<Separator orientation="vertical" class="hidden h-6 sm:block" />
 
 	<!-- Actions -->
 	<Button variant="outline" size="icon" title="New program" onclick={handleNew}>

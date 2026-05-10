@@ -200,14 +200,14 @@
 	}
 </script>
 
-<div class="flex h-screen w-screen overflow-hidden">
+<div class="flex h-dvh w-dvw overflow-hidden">
 	<div class="relative flex-1">
 		<SvelteFlow
 			bind:nodes={model.nodes}
 			bind:edges={model.edges}
 			{nodeTypes}
 			defaultEdgeOptions={{ type: 'smoothstep' }}
-			minZoom={1}
+			minZoom={0.2}
 			maxZoom={4}
 			elevateEdgesOnSelect={true}
 			onconnect={onConnect}
@@ -223,7 +223,7 @@
 		>
 			<Background patternColor="#aaa" gap={8} />
 			<Controls />
-			<MiniMap />
+			<MiniMap class="hidden sm:block" />
 			<FitView trigger={fitTrigger} />
 			<Panel position="bottom-center">
 				<ToolBar {blocks} onAddBlock={(desc) => model.addBlock(desc)} {onReset} {onCopy} {onPaste} {onLoad} />
