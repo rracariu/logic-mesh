@@ -315,7 +315,7 @@ mod test {
 
         schedule_block("Add", &mut eng).expect("Block");
 
-        assert!(eng.blocks().iter().any(|b| b.desc().name == "Add"));
+        assert!(eng.block_handles().iter().any(|b| b.desc().name == "Add"));
     }
 
     #[tokio::test]

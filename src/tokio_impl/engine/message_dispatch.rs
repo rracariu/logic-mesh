@@ -1,15 +1,16 @@
-// Copyright (c) 2022-2024, Radu Racariu.
+// Copyright (c) 2022-2026, Radu Racariu.
 
-use crate::base::block::connect::disconnect_link;
-use crate::base::engine::messages::BlockDefinition;
-use crate::base::engine::messages::BlockInputData;
-use crate::base::engine::messages::BlockOutputData;
+//! Engine-message dispatcher.
+//!
+//! Each `EngineMessage` arriving on the engine's external channel is
+//! translated into one (or more) per-block mailbox round-trips against the
+//! actor tasks owned by `SingleThreadedEngine`.
+
 use crate::base::engine::messages::EngineMessage;
 
 use crate::blocks::registry::get_block;
 use crate::single_threaded::Messages;
 use crate::single_threaded::SingleThreadedEngine;
-use libhaystack::val::Value;
 use uuid::Uuid;
 
 use super::eval_block;
@@ -40,6 +41,7 @@ pub(super) async fn dispatch_message(engine: &mut SingleThreadedEngine, msg: Mes
 
             let block_id = engine
                 .add_block(block_name, block_id, lib)
+                .await
                 .map_err(|err| err.to_string());
 
             reply_to_sender(engine, sender_uuid, EngineMessage::AddBlockRes(block_id));
@@ -50,59 +52,18 @@ pub(super) async fn dispatch_message(engine: &mut SingleThreadedEngine, msg: Mes
 
             let block_id = engine
                 .remove_block(&block_id)
+                .await
                 .map_err(|err| err.to_string());
             reply_to_sender(engine, sender_uuid, EngineMessage::RemoveBlockRes(block_id));
         }
 
         EngineMessage::InspectBlockReq(sender_uuid, block_uuid) => {
-            match engine.get_block_props_mut(&block_uuid) {
-                Some(block) => {
-                    let data = BlockDefinition {
-                        id: block.id().to_string(),
-                        name: block.name().to_string(),
-                        library: block.desc().library.clone(),
-                        inputs: block
-                            .inputs()
-                            .iter()
-                            .map(|input| {
-                                (
-                                    input.name().to_string(),
-                                    BlockInputData {
-                                        kind: input.kind().to_string(),
-                                        val: input.get_value().cloned().unwrap_or_default(),
-                                    },
-                                )
-                            })
-                            .collect(),
-                        outputs: block
-                            .outputs()
-                            .iter()
-                            .map(|output| {
-                                (
-                                    output.desc().name.to_string(),
-                                    BlockOutputData {
-                                        kind: output.desc().kind.to_string(),
-                                        val: output.value().clone(),
-                                    },
-                                )
-                            })
-                            .collect(),
-                    };
-
-                    reply_to_sender(
-                        engine,
-                        sender_uuid,
-                        EngineMessage::InspectBlockRes(Ok(data)),
-                    );
-                }
-                None => {
-                    reply_to_sender(
-                        engine,
-                        sender_uuid,
-                        EngineMessage::InspectBlockRes(Err("Block not found".into())),
-                    );
-                }
-            }
+            let response = engine.inspect_block(&block_uuid).await;
+            reply_to_sender(
+                engine,
+                sender_uuid,
+                EngineMessage::InspectBlockRes(response),
+            );
         }
 
         EngineMessage::EvaluateBlockReq(sender_uuid, name, inputs, lib) => {
@@ -124,24 +85,7 @@ pub(super) async fn dispatch_message(engine: &mut SingleThreadedEngine, msg: Mes
         }
 
         EngineMessage::WriteBlockOutputReq(sender_uuid, block_uuid, output_name, value) => {
-            let response: Result<Value, String>;
-
-            match engine.get_block_props_mut(&block_uuid) {
-                Some(block) => {
-                    if let Some(output) = block.get_output_mut(&output_name) {
-                        let prev = output.value().clone();
-                        output.set(value);
-
-                        response = Ok(prev);
-                    } else {
-                        response = Err("Output not found".to_string());
-                    }
-                }
-                None => {
-                    response = Err("Block not found".to_string());
-                }
-            }
-
+            let response = engine.write_output(&block_uuid, output_name, value).await;
             reply_to_sender(
                 engine,
                 sender_uuid,
@@ -150,25 +94,7 @@ pub(super) async fn dispatch_message(engine: &mut SingleThreadedEngine, msg: Mes
         }
 
         EngineMessage::WriteBlockInputReq(sender_uuid, block_uuid, input_name, value) => {
-            let response: Result<Option<Value>, String>;
-
-            match engine.get_block_props_mut(&block_uuid) {
-                Some(block) => {
-                    if let Some(input) = block.get_input_mut(&input_name) {
-                        let prev = input.get_value().cloned();
-
-                        input.set_value(value);
-
-                        response = Ok(prev);
-                    } else {
-                        response = Err("Input not found".to_string());
-                    }
-                }
-                None => {
-                    response = Err("Block not found".to_string());
-                }
-            }
-
+            let response = engine.write_input(&block_uuid, input_name, value).await;
             reply_to_sender(
                 engine,
                 sender_uuid,
@@ -199,36 +125,36 @@ pub(super) async fn dispatch_message(engine: &mut SingleThreadedEngine, msg: Mes
         EngineMessage::GetCurrentProgramReq(sender_uuid) => {
             log::debug!("GetCurrentProgramReq");
 
-            let program = engine.save_blocks_and_links();
+            let program = engine
+                .save_blocks_and_links()
+                .await
+                .map_err(|err| err.to_string());
 
             reply_to_sender(
                 engine,
                 sender_uuid,
-                EngineMessage::GetCurrentProgramRes(program.map_err(|err| err.to_string())),
+                EngineMessage::GetCurrentProgramRes(program),
             );
         }
 
         EngineMessage::ConnectBlocksReq(sender_uuid, link_data) => {
             log::debug!("ConnectBlocksReq: {:?}", link_data);
 
-            let res = engine.connect_blocks(&link_data);
-            reply_to_sender(
-                engine,
-                sender_uuid,
-                EngineMessage::ConnectBlocksRes(res.map_err(|err| err.to_string())),
-            );
+            let res = engine
+                .connect_blocks(&link_data)
+                .await
+                .map_err(|err| err.to_string());
+            reply_to_sender(engine, sender_uuid, EngineMessage::ConnectBlocksRes(res));
         }
 
         EngineMessage::RemoveLinkReq(sender_uuid, link_id) => {
             log::debug!("RemoveLinkReq: {:?}", link_id);
 
-            let res = engine.blocks_iter_mut().any(|block| {
-                disconnect_link(block, &link_id, |id, name| {
-                    engine.decrement_refresh_block_input(id, name)
-                })
-            });
-
-            reply_to_sender(engine, sender_uuid, EngineMessage::RemoveLinkRes(Ok(res)));
+            let res = engine
+                .disconnect_link_by_id(&link_id)
+                .await
+                .map_err(|err| err.to_string());
+            reply_to_sender(engine, sender_uuid, EngineMessage::RemoveLinkRes(res));
         }
 
         _ => unreachable!("Invalid message"),
