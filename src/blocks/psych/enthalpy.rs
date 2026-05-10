@@ -133,7 +133,7 @@ mod test {
             (&mut block.humidity, 50.into()),
             (
                 &mut block.pressure,
-                Number::make_with_unit(101.325, &KILOPASCAL).into(),
+                Number::make_with_unit(101.325, &KILOPASCAL),
             ),
         ])
         .await;

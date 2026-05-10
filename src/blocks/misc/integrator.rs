@@ -141,9 +141,9 @@ mod test {
         block.accumulator = 100.0;
 
         write_block_inputs([
-            (&mut block.input, 0.into()),
-            (&mut block.reset, false.into()),
-            (&mut block.interval, 0),
+            (&mut block.input, Value::from(0)),
+            (&mut block.reset, Value::from(false)),
+            (&mut block.interval, Value::from(0)),
         ])
         .await;
         block.execute().await;

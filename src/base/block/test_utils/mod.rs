@@ -14,9 +14,9 @@ pub mod mock;
 /// underlying watch channel — a subsequent `block.read_inputs().await` (or
 /// the first `wait_on_inputs` inside the block's `execute()`) will drain
 /// every input in one pass, populating their `.val` fields.
-pub(crate) async fn write_block_inputs<'a, V, const N: usize>(
+pub(crate) async fn write_block_inputs<V, const N: usize>(
     values: [(
-        &'a mut dyn Input<Reader = ReaderImpl, Writer = WriterImpl>,
+        &mut dyn Input<Reader = ReaderImpl, Writer = WriterImpl>,
         V,
     ); N],
 ) where
