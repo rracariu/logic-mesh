@@ -15,8 +15,10 @@ jobs:
         with:
           node-version: latest
 
+      - name: wasm-pack installer
+        run: curl https://wasm-bindgen.github.io/wasm-pack/installer/init.sh -sSf | sh
       - name: install
-        run: npm install -g wasm-pack && npm ci
+        run: npm ci
 
       - name: wasm-build
         run: npm run build --workspace=logic-mesh
