@@ -3,11 +3,7 @@
 //! [`SingleThreadedEngine`] — engine struct, lifecycle, and the
 //! synchronous + async API surface that messaging dispatch routes to.
 
-use std::{
-    cell::RefCell,
-    collections::BTreeMap,
-    rc::Rc,
-};
+use std::{cell::RefCell, collections::BTreeMap, rc::Rc};
 
 use anyhow::{Result, anyhow};
 use libhaystack::val::Value;
@@ -20,8 +16,8 @@ use tokio::{
 };
 use uuid::Uuid;
 
+use super::super::block_mailbox::{BLOCK_MAILBOX_CAP, BlockMailboxCmd};
 use super::actor::block_actor_task;
-use super::mailbox::{BLOCK_MAILBOX_CAP, BlockMailboxCmd};
 use crate::base::{
     block::{Block, BlockDesc},
     engine::{

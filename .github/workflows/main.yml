@@ -4,12 +4,15 @@ name: Build
 
 jobs:
   check:
-    name: Check
+    name: Check (${{ matrix.features == '' && 'default' || matrix.features }})
     runs-on: ubuntu-latest
     strategy:
       matrix:
         rust:
           - stable
+        features:
+          - ""
+          - "multi-threaded"
     steps:
       - name: Checkout sources
         uses: actions/checkout@v4
@@ -24,14 +27,18 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: check
+          args: ${{ matrix.features && format('--features {0}', matrix.features) || '' }}
 
   test:
-    name: Test Suite
+    name: Test Suite (${{ matrix.features == '' && 'default' || matrix.features }})
     runs-on: ubuntu-latest
     strategy:
       matrix:
         rust:
           - stable
+        features:
+          - ""
+          - "multi-threaded"
     steps:
       - name: Checkout sources
         uses: actions/checkout@v4
@@ -46,7 +53,7 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: test
-          args: --workspace
+          args: --workspace ${{ matrix.features && format('--features {0}', matrix.features) || '' }}
 
   fmt:
     name: Rustfmt
@@ -75,12 +82,15 @@ jobs:
           args: --all --check
 
   clippy:
-    name: Clippy
+    name: Clippy (${{ matrix.features == '' && 'default' || matrix.features }})
     runs-on: ubuntu-latest
     strategy:
       matrix:
         rust:
           - stable
+        features:
+          - ""
+          - "multi-threaded"
     steps:
       - name: Checkout sources
         uses: actions/checkout@v4
@@ -96,4 +106,4 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: clippy
-          args: -- -D warnings
+          args: ${{ matrix.features && format('--features {0}', matrix.features) || '' }} -- -D warnings

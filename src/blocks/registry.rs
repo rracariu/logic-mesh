@@ -107,7 +107,7 @@ macro_rules! register_blocks {
 					stringify!($block_name) => {
 						let block = <$block_name>::new();
 						let uuid = *block.id();
-						eng.schedule(block);
+						eng.schedule_send(block);
 						Ok(uuid)
 					}
 				)*
@@ -125,7 +125,7 @@ macro_rules! register_blocks {
 				$(
 					stringify!($block_name) => {
 						let block = <$block_name>::new_uuid(uuid);
-						eng.schedule(block);
+						eng.schedule_send(block);
 						Ok(uuid)
 					}
 				)*

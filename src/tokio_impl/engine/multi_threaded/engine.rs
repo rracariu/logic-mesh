@@ -1,16 +1,19 @@
-// Copyright (c) 2022-2025, Radu Racariu.
+// Copyright (c) 2022-2026, Radu Racariu.
 
+//! Multi-threaded engine.
 //!
-//! Multi-threaded engine implementation.
+//! Distributes blocks across worker threads in round-robin. Each worker
+//! runs its own current-thread tokio runtime hosting a `LocalSet`; block
+//! actor tasks live on those `LocalSet`s. The engine itself runs on
+//! whichever runtime called `run()` (typically the multi-threaded runtime
+//! the user chose at startup).
 //!
-//! Distributes blocks across worker threads, each running a single-threaded
-//! `LocalSet` executor. This provides true parallelism while keeping the
-//! block execution model identical to the single-threaded engine.
-//!
-//! Communication between the engine and workers uses channels,
-//! so no shared mutable state exists across threads.
+//! Shares the per-block mailbox protocol ([`super::super::block_mailbox`])
+//! with the single-threaded engine, so the actor task implementation is
+//! near-identical — the only MT-specific bits are watchers
+//! (`Arc<RwLock<...>>`) and the worker-thread plumbing.
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::BTreeMap;
 use std::sync::Arc;
 use std::thread;
 
@@ -24,100 +27,76 @@ use tokio::sync::{
 use tokio::task::LocalSet;
 use uuid::Uuid;
 
-use crate::{
-    base::{
-        block::{Block, BlockProps, BlockState},
-        engine::messages::{
-            BlockDefinition, BlockInputData, BlockOutputData, ChangeSource, EngineMessage,
-            WatchMessage,
-        },
-        program::data::{BlockData, LinkData},
-    },
-    blocks::registry::get_block,
-    tokio_impl::{ReaderImpl, WriterImpl},
+use super::super::block_mailbox::{BLOCK_MAILBOX_CAP, BlockMailboxCmd};
+use super::actor::{WatchersHandle, block_actor_task};
+use crate::base::{
+    block::{Block, BlockDesc},
+    engine::messages::{BlockDefinition, EngineMessage, WatchMessage},
+    program::data::{BlockData, LinkData},
 };
-
-use super::messages::BlockCommand;
-
+use crate::blocks::registry::get_block;
 use crate::tokio_impl::engine::schedule_block_on_engine_mt;
+use crate::tokio_impl::{ReaderImpl, WriterImpl};
 
-/// The concrete trait for the block properties
-type BlockPropsType = dyn BlockProps<Writer = WriterImpl, Reader = ReaderImpl>;
-
-/// The concrete type for the engine messages
+/// Concrete engine-message type.
 pub type Messages = EngineMessage<Sender<WatchMessage>>;
 
-/// A command sent from the engine to a worker thread.
+/// Engine-side handle for a scheduled block in the MT engine.
+///
+/// In addition to the usual id/name/lib/desc + mailbox sender, MT handles
+/// remember which worker thread the block lives on (round-robin assigned
+/// at scheduling time).
+pub struct BlockHandle {
+    id: Uuid,
+    name: String,
+    library: String,
+    desc: &'static BlockDesc,
+    worker_idx: usize,
+    mailbox: mpsc::Sender<BlockMailboxCmd>,
+}
+
+impl BlockHandle {
+    pub fn id(&self) -> &Uuid {
+        &self.id
+    }
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+    pub fn library(&self) -> &str {
+        &self.library
+    }
+    pub fn desc(&self) -> &'static BlockDesc {
+        self.desc
+    }
+    pub fn worker_idx(&self) -> usize {
+        self.worker_idx
+    }
+}
+
+/// Commands sent from the engine to a worker thread.
 enum WorkerCommand {
-    /// Schedule a new block on this worker's LocalSet.
-    /// The boxed closure captures the block and spawns it on the LocalSet.
+    /// Spawn a per-block actor task on the worker's `LocalSet`. The boxed
+    /// closure captures the block, its mailbox receiver, and a clone of
+    /// the watchers handle; on the worker side it spawns the actor task.
     Schedule(Box<dyn FnOnce(&mut WorkerState) + Send>),
-    /// Forward a block command to a specific block on this worker.
-    BlockCmd(Uuid, BlockCommand),
-    /// Shutdown the worker.
+    /// Worker should drain its `LocalSet` (best-effort) and exit.
     Shutdown,
 }
 
-/// State held by each worker thread.
 struct WorkerState {
     local: LocalSet,
-    /// Block properties accessed via UnsafeCell (same pattern as single-threaded engine)
-    block_props: BTreeMap<Uuid, std::rc::Rc<dyn AnyBlockProps>>,
-}
-
-/// Type-erased access to block properties (same as single-threaded engine).
-trait AnyBlockProps {
-    /// # Safety: caller must ensure no concurrent mutable access.
-    #[allow(clippy::mut_from_ref)]
-    unsafe fn props_mut(&self) -> &mut BlockPropsType;
-}
-
-impl<B: Block<Writer = WriterImpl, Reader = ReaderImpl> + 'static> AnyBlockProps
-    for SharedBlock<B>
-{
-    unsafe fn props_mut(&self) -> &mut BlockPropsType {
-        unsafe { &mut *self.cell.get() }
-    }
-}
-
-struct SharedBlock<B> {
-    cell: std::cell::UnsafeCell<B>,
-}
-
-impl<B> SharedBlock<B> {
-    fn new(block: B) -> Self {
-        Self {
-            cell: std::cell::UnsafeCell::new(block),
-        }
-    }
-
-    #[allow(clippy::mut_from_ref)]
-    unsafe fn get_mut(&self) -> &mut B {
-        unsafe { &mut *self.cell.get() }
-    }
 }
 
 /// Multi-threaded execution environment for blocks.
-///
-/// Distributes blocks across `N` worker threads in round-robin fashion.
-/// Each worker runs its own tokio `LocalSet`, providing the same
-/// single-threaded execution model per worker while enabling parallelism
-/// across workers.
 pub struct MultiThreadedEngine {
-    /// Worker command channels
     workers: Vec<Sender<WorkerCommand>>,
-    /// Maps block UUID to worker index
-    block_worker: BTreeMap<Uuid, usize>,
-    /// Round-robin counter for distributing blocks
+    handles: BTreeMap<Uuid, BlockHandle>,
+    pending_links: Vec<LinkData>,
     next_worker: usize,
-    /// Messaging channel used by external processes
     sender: Sender<Messages>,
-    /// Multi-producer single-consumer channel for receiving messages
     receiver: Receiver<Messages>,
-    /// Senders used to reply to issued commands
-    reply_senders: BTreeMap<Uuid, Sender<Messages>>,
-    /// Watchers for changes in block pins
-    watchers: Arc<RwLock<BTreeMap<Uuid, Sender<WatchMessage>>>>,
+    pub(in super::super) reply_senders: BTreeMap<Uuid, Sender<Messages>>,
+    pub(in super::super) watchers: WatchersHandle,
 }
 
 impl Default for MultiThreadedEngine {
@@ -126,130 +105,62 @@ impl Default for MultiThreadedEngine {
     }
 }
 
-impl MultiThreadedEngine {
-    /// Create a new multi-threaded engine with the given number of worker threads.
-    pub fn new(num_workers: usize) -> Self {
-        let num_workers = num_workers.max(1);
-        let (sender, receiver) = mpsc::channel(32);
+impl crate::base::engine::Engine for MultiThreadedEngine {
+    type Writer = WriterImpl;
+    type Reader = ReaderImpl;
+    type Channel = Sender<Messages>;
 
-        let mut workers = Vec::with_capacity(num_workers);
-
-        for _ in 0..num_workers {
-            let (cmd_tx, cmd_rx) = mpsc::channel::<WorkerCommand>(64);
-            workers.push(cmd_tx);
-
-            thread::spawn(move || {
-                let rt = tokio::runtime::Builder::new_current_thread()
-                    .enable_all()
-                    .build()
-                    .expect("Failed to create worker runtime");
-
-                rt.block_on(worker_loop(cmd_rx));
-            });
-        }
-
-        Self {
-            workers,
-            block_worker: BTreeMap::new(),
-            next_worker: 0,
-            sender,
-            receiver,
-            reply_senders: BTreeMap::new(),
-            watchers: Arc::default(),
-        }
-    }
-
-    /// Schedule a block for execution. The block must be `Send` to be moved
-    /// to a worker thread, but its `execute()` future does not need to be `Send`.
-    pub fn schedule<B: Block<Writer = WriterImpl, Reader = ReaderImpl> + Send + 'static>(
+    fn schedule<B: Block<Writer = Self::Writer, Reader = Self::Reader> + 'static>(
         &mut self,
-        block: B,
+        _block: B,
     ) {
-        let worker_idx = self.next_worker % self.workers.len();
-        self.next_worker += 1;
-
-        let block_id = *block.id();
-        self.block_worker.insert(block_id, worker_idx);
-
-        let watchers = self.watchers.clone();
-
-        // Send a closure that will schedule the block on the worker's LocalSet
-        let schedule_fn: Box<dyn FnOnce(&mut WorkerState) + Send> =
-            Box::new(move |state: &mut WorkerState| {
-                let shared = std::rc::Rc::new(SharedBlock::new(block));
-                let id = *unsafe { shared.get_mut() }.id();
-                state
-                    .block_props
-                    .insert(id, shared.clone() as std::rc::Rc<dyn AnyBlockProps>);
-
-                let watchers = watchers;
-                state.local.spawn_local(async move {
-                    let mut last_pin_values = BTreeMap::<String, Value>::new();
-                    loop {
-                        let block = unsafe { shared.get_mut() };
-                        block.execute().await;
-
-                        change_of_value_check(&watchers, block, &mut last_pin_values).await;
-
-                        if block.state() == BlockState::Terminated {
-                            break;
-                        }
-                    }
-                });
-            });
-
-        let _ = self.workers[worker_idx].try_send(WorkerCommand::Schedule(schedule_fn));
+        // The MT engine requires `Send` because the block crosses the
+        // worker-thread boundary. Use [`MultiThreadedEngine::schedule_send`]
+        // for the Send-bounded entry point; this trait method is here only
+        // to satisfy the `Engine` contract and panics if called.
+        panic!(
+            "MultiThreadedEngine::schedule (trait) requires `Send`; \
+             use the inherent `schedule_send` method instead"
+        );
     }
 
-    pub fn load_blocks_and_links(
-        &mut self,
-        blocks: &[BlockData],
-        links: &[LinkData],
-    ) -> Result<()> {
-        blocks.iter().try_for_each(|block| -> Result<()> {
-            let id = Uuid::try_from(block.id.as_str()).ok();
-            if id.is_none() {
-                return Err(anyhow!("Invalid block id"));
-            }
-
-            let block = get_block(&block.name, Some(block.lib.clone()))
+    fn load_blocks_and_links(&mut self, blocks: &[BlockData], links: &[LinkData]) -> Result<()> {
+        for block in blocks {
+            let id = Uuid::try_from(block.id.as_str()).map_err(|_| anyhow!("Invalid block id"))?;
+            let block_def = get_block(&block.name, Some(block.lib.clone()))
                 .ok_or_else(|| anyhow!("Block not found"))?;
-            schedule_block_on_engine_mt(&block.desc, id, self)?;
-
-            Ok(())
-        })?;
-
-        // Connect blocks - send commands to workers
+            schedule_block_on_engine_mt(&block_def.desc, Some(id), self)?;
+        }
         for link in links {
             self.connect_blocks_sync(link)?;
         }
-
         Ok(())
     }
 
-    pub async fn run(&mut self) {
+    async fn run(&mut self) {
+        // Process any links queued during configuration via the async
+        // mailbox path (worker tasks are already running).
+        let pending_links = std::mem::take(&mut self.pending_links);
+        for link in pending_links {
+            let _ = self.connect_blocks(&link).await;
+        }
+
         let mut is_paused = false;
         loop {
             let engine_msg = self.receiver.recv().await;
-
             if let Some(message) = engine_msg {
                 if matches!(message, EngineMessage::Shutdown) {
-                    // Shutdown all workers
                     for worker in &self.workers {
                         let _ = worker.send(WorkerCommand::Shutdown).await;
                     }
                     break;
                 } else if matches!(message, EngineMessage::Reset) {
-                    // Terminate all blocks
-                    for (&block_id, &worker_idx) in &self.block_worker {
-                        let _ = self.workers[worker_idx]
-                            .send(WorkerCommand::BlockCmd(
-                                block_id,
-                                BlockCommand::SetState(BlockState::Terminated),
-                            ))
-                            .await;
+                    let ids: Vec<Uuid> = self.handles.keys().copied().collect();
+                    for id in ids {
+                        if let Some(handle) = self.handles.remove(&id) {
+                            let _ = handle.mailbox.send(BlockMailboxCmd::Terminate).await;
+                        }
                     }
-                    self.block_worker.clear();
                     continue;
                 } else if matches!(message, EngineMessage::Pause) {
                     is_paused = true;
@@ -266,13 +177,100 @@ impl MultiThreadedEngine {
         }
     }
 
-    pub fn create_message_channel(
+    fn create_message_channel(
         &mut self,
         sender_id: Uuid,
-        sender_channel: Sender<Messages>,
-    ) -> Sender<Messages> {
+        sender_channel: Self::Channel,
+    ) -> Self::Channel {
         self.reply_senders.insert(sender_id, sender_channel);
         self.sender.clone()
+    }
+}
+
+impl MultiThreadedEngine {
+    /// Create a new multi-threaded engine with the given number of worker
+    /// threads. Each worker spins up its own current-thread tokio runtime.
+    pub fn new(num_workers: usize) -> Self {
+        let num_workers = num_workers.max(1);
+        let (sender, receiver) = mpsc::channel(32);
+        let mut workers = Vec::with_capacity(num_workers);
+
+        for _ in 0..num_workers {
+            let (cmd_tx, cmd_rx) = mpsc::channel::<WorkerCommand>(64);
+            workers.push(cmd_tx);
+
+            thread::spawn(move || {
+                let rt = tokio::runtime::Builder::new_current_thread()
+                    .enable_all()
+                    .build()
+                    .expect("Failed to create worker runtime");
+                rt.block_on(worker_loop(cmd_rx));
+            });
+        }
+
+        Self {
+            workers,
+            handles: BTreeMap::new(),
+            pending_links: Vec::new(),
+            next_worker: 0,
+            sender,
+            receiver,
+            reply_senders: BTreeMap::new(),
+            watchers: Arc::new(RwLock::new(BTreeMap::new())),
+        }
+    }
+
+    /// Schedule a block on the engine. The block must be `Send` so it can
+    /// be moved to a worker thread; once on the worker, the actor task's
+    /// future stays put on that worker's `LocalSet` and does not need to be
+    /// `Send`.
+    pub fn schedule_send<B>(&mut self, block: B)
+    where
+        B: Block<Writer = WriterImpl, Reader = ReaderImpl> + Send + 'static,
+    {
+        let worker_idx = self.next_worker % self.workers.len();
+        self.next_worker += 1;
+
+        let id = *block.id();
+        let name = block.name().to_string();
+        let library = block.desc().library.clone();
+        let desc: &'static BlockDesc = block.desc();
+        let (mailbox_tx, mailbox_rx) = mpsc::channel::<BlockMailboxCmd>(BLOCK_MAILBOX_CAP);
+
+        let handle = BlockHandle {
+            id,
+            name,
+            library,
+            desc,
+            worker_idx,
+            mailbox: mailbox_tx,
+        };
+        self.handles.insert(id, handle);
+
+        let watchers = self.watchers.clone();
+        let spawn_fn: Box<dyn FnOnce(&mut WorkerState) + Send> =
+            Box::new(move |state: &mut WorkerState| {
+                state
+                    .local
+                    .spawn_local(block_actor_task(block, mailbox_rx, watchers));
+            });
+
+        // Best-effort: if the worker is full or gone, the block is silently
+        // dropped. Mirrors the previous behaviour of this engine.
+        let _ = self.workers[worker_idx].try_send(WorkerCommand::Schedule(spawn_fn));
+    }
+
+    /// Returns sync metadata handles for every scheduled block.
+    pub fn block_handles(&self) -> Vec<&BlockHandle> {
+        self.handles.values().collect()
+    }
+
+    pub fn block_handle(&self, id: &Uuid) -> Option<&BlockHandle> {
+        self.handles.get(id)
+    }
+
+    fn mailbox(&self, id: &Uuid) -> Option<&mpsc::Sender<BlockMailboxCmd>> {
+        self.handles.get(id).map(|h| &h.mailbox)
     }
 
     pub fn add_block(
@@ -281,286 +279,436 @@ impl MultiThreadedEngine {
         block_id: Option<Uuid>,
         lib: Option<String>,
     ) -> Result<Uuid> {
-        let block =
+        let block_def =
             get_block(block_name.as_str(), lib).ok_or_else(|| anyhow!("Block not found"))?;
-        schedule_block_on_engine_mt(&block.desc, block_id, self)
+        schedule_block_on_engine_mt(&block_def.desc, block_id, self)
     }
 
-    pub fn remove_block(&mut self, block_id: &Uuid) -> Result<Uuid> {
-        let worker_idx = self
-            .block_worker
-            .get(block_id)
-            .ok_or_else(|| anyhow!("Block not found"))?;
+    /// Sync configuration-time link validation. Real wiring is deferred to
+    /// `run()` start (mailbox round-trips need the worker tasks running).
+    pub(super) fn connect_blocks_sync(&mut self, link_data: &LinkData) -> Result<LinkData> {
+        let source_id = Uuid::try_from(link_data.source_block_uuid.as_str())?;
+        let target_id = Uuid::try_from(link_data.target_block_uuid.as_str())?;
+        let source_handle = self
+            .block_handle(&source_id)
+            .ok_or_else(|| anyhow!("Source block '{}' not found", link_data.source_block_uuid))?;
+        let target_handle = self
+            .block_handle(&target_id)
+            .ok_or_else(|| anyhow!("Target block '{}' not found", link_data.target_block_uuid))?;
 
-        let _ = self.workers[*worker_idx].try_send(WorkerCommand::BlockCmd(
-            *block_id,
-            BlockCommand::SetState(BlockState::Terminated),
-        ));
+        let source_pin = link_data.source_block_pin_name.as_str();
+        let source_pin_exists = source_handle
+            .desc()
+            .outputs
+            .iter()
+            .any(|o| o.name == source_pin)
+            || source_handle
+                .desc()
+                .inputs
+                .iter()
+                .any(|i| i.name == source_pin);
+        if !source_pin_exists {
+            return Err(anyhow!(
+                "Source pin '{}' not found on block '{}'",
+                source_pin,
+                link_data.source_block_uuid
+            ));
+        }
 
-        // Remove links targeting this block from all other blocks
-        for (&other_id, &other_worker) in &self.block_worker {
-            if &other_id != block_id {
-                let _ = self.workers[other_worker].try_send(WorkerCommand::BlockCmd(
-                    other_id,
-                    BlockCommand::RemoveTargetBlockLinks(*block_id),
-                ));
+        let target_pin = link_data.target_block_pin_name.as_str();
+        let target_pin_exists = target_handle
+            .desc()
+            .inputs
+            .iter()
+            .any(|i| i.name == target_pin);
+        if !target_pin_exists {
+            return Err(anyhow!(
+                "Target input '{}' not found on block '{}'",
+                target_pin,
+                link_data.target_block_uuid
+            ));
+        }
+
+        let id = link_data
+            .id
+            .clone()
+            .unwrap_or_else(|| Uuid::new_v4().to_string());
+        self.pending_links.push(LinkData {
+            id: Some(id.clone()),
+            ..link_data.clone()
+        });
+        Ok(LinkData {
+            id: Some(id),
+            ..link_data.clone()
+        })
+    }
+
+    pub async fn inspect_block(&self, id: &Uuid) -> Result<BlockDefinition, String> {
+        let mailbox = self
+            .mailbox(id)
+            .ok_or_else(|| "Block not found".to_string())?;
+        let (tx, rx) = oneshot::channel();
+        mailbox
+            .send(BlockMailboxCmd::Inspect { reply: tx })
+            .await
+            .map_err(|_| "Block task gone".to_string())?;
+        rx.await.map_err(|_| "Block task dropped reply".to_string())
+    }
+
+    pub async fn write_input(
+        &self,
+        id: &Uuid,
+        name: String,
+        value: Value,
+    ) -> Result<Option<Value>, String> {
+        let mailbox = self
+            .mailbox(id)
+            .ok_or_else(|| "Block not found".to_string())?;
+        let (tx, rx) = oneshot::channel();
+        mailbox
+            .send(BlockMailboxCmd::WriteInput {
+                name,
+                value,
+                reply: tx,
+            })
+            .await
+            .map_err(|_| "Block task gone".to_string())?;
+        rx.await
+            .map_err(|_| "Block task dropped reply".to_string())?
+    }
+
+    pub async fn write_output(
+        &self,
+        id: &Uuid,
+        name: String,
+        value: Value,
+    ) -> Result<Value, String> {
+        let mailbox = self
+            .mailbox(id)
+            .ok_or_else(|| "Block not found".to_string())?;
+        let (tx, rx) = oneshot::channel();
+        mailbox
+            .send(BlockMailboxCmd::WriteOutput {
+                name,
+                value,
+                reply: tx,
+            })
+            .await
+            .map_err(|_| "Block task gone".to_string())?;
+        rx.await
+            .map_err(|_| "Block task dropped reply".to_string())?
+    }
+
+    pub async fn connect_blocks(&self, link_data: &LinkData) -> Result<LinkData> {
+        let source_id = Uuid::try_from(link_data.source_block_uuid.as_str())?;
+        let target_id = Uuid::try_from(link_data.target_block_uuid.as_str())?;
+
+        let source_mb = self
+            .mailbox(&source_id)
+            .ok_or_else(|| anyhow!("Source block '{}' not found", link_data.source_block_uuid))?;
+        let target_mb = self
+            .mailbox(&target_id)
+            .ok_or_else(|| anyhow!("Target block '{}' not found", link_data.target_block_uuid))?;
+
+        // Get the writer of the target input.
+        let (tx, rx) = oneshot::channel();
+        target_mb
+            .send(BlockMailboxCmd::GetInputWriter {
+                name: link_data.target_block_pin_name.clone(),
+                reply: tx,
+            })
+            .await
+            .map_err(|_| anyhow!("Target block task gone"))?;
+        let target_writer = rx
+            .await
+            .map_err(|_| anyhow!("Target block dropped reply"))?
+            .map_err(|e| anyhow!(e))?;
+
+        // Source pin: output or input?
+        let (has_tx, has_rx) = oneshot::channel();
+        source_mb
+            .send(BlockMailboxCmd::HasOutput {
+                name: link_data.source_block_pin_name.clone(),
+                reply: has_tx,
+            })
+            .await
+            .map_err(|_| anyhow!("Source block task gone"))?;
+        let is_output = has_rx
+            .await
+            .map_err(|_| anyhow!("Source block dropped reply"))?;
+
+        let (link_tx, link_rx) = oneshot::channel();
+        if is_output {
+            source_mb
+                .send(BlockMailboxCmd::AddOutputLink {
+                    output_name: link_data.source_block_pin_name.clone(),
+                    target_block_id: target_id,
+                    target_input_name: link_data.target_block_pin_name.clone(),
+                    target_writer: target_writer.clone(),
+                    reply: link_tx,
+                })
+                .await
+                .map_err(|_| anyhow!("Source block task gone"))?;
+        } else {
+            source_mb
+                .send(BlockMailboxCmd::AddInputLink {
+                    input_name: link_data.source_block_pin_name.clone(),
+                    target_block_id: target_id,
+                    target_input_name: link_data.target_block_pin_name.clone(),
+                    target_writer: target_writer.clone(),
+                    reply: link_tx,
+                })
+                .await
+                .map_err(|_| anyhow!("Source block task gone"))?;
+        }
+        let link_id = link_rx
+            .await
+            .map_err(|_| anyhow!("Source block dropped reply"))?
+            .map_err(|e| anyhow!(e))?;
+
+        // Increment connection count on target — without this,
+        // `drain_ready_inputs` skips the input.
+        let (inc_tx, inc_rx) = oneshot::channel();
+        target_mb
+            .send(BlockMailboxCmd::IncrementInput {
+                name: link_data.target_block_pin_name.clone(),
+                reply: inc_tx,
+            })
+            .await
+            .map_err(|_| anyhow!("Target block task gone"))?;
+        let _ = inc_rx.await;
+
+        // Seed the target input with the source's current value.
+        target_mb
+            .send(BlockMailboxCmd::SeedInputValue {
+                name: link_data.target_block_pin_name.clone(),
+                value: self
+                    .read_source_value(&source_id, &link_data.source_block_pin_name, is_output)
+                    .await
+                    .unwrap_or_default(),
+            })
+            .await
+            .map_err(|_| anyhow!("Target block task gone"))?;
+        // Refresh another connected input on the target so it re-cycles.
+        self.reset_connected_inputs(&target_id, &link_data.target_block_pin_name)
+            .await?;
+
+        Ok(LinkData {
+            id: Some(link_id.to_string()),
+            ..link_data.clone()
+        })
+    }
+
+    async fn read_source_value(
+        &self,
+        source_id: &Uuid,
+        source_pin: &str,
+        is_output: bool,
+    ) -> Option<Value> {
+        let mb = self.mailbox(source_id)?;
+        let (tx, rx) = oneshot::channel();
+        let cmd = if is_output {
+            BlockMailboxCmd::GetOutputValue {
+                name: source_pin.to_string(),
+                reply: tx,
+            }
+        } else {
+            BlockMailboxCmd::GetInputValue {
+                name: source_pin.to_string(),
+                reply: tx,
+            }
+        };
+        mb.send(cmd).await.ok()?;
+        rx.await.ok().flatten()
+    }
+
+    async fn reset_connected_inputs(&self, target_id: &Uuid, ignore_input: &str) -> Result<()> {
+        let inputs = match self.inspect_block(target_id).await {
+            Ok(def) => def.inputs,
+            Err(_) => return Ok(()),
+        };
+        if let Some((name, _data)) = inputs
+            .iter()
+            .find(|(name, _)| name.as_str() != ignore_input)
+            && let Some(mb) = self.mailbox(target_id)
+        {
+            let _ = mb
+                .send(BlockMailboxCmd::RefreshInput { name: name.clone() })
+                .await;
+        }
+        Ok(())
+    }
+
+    pub async fn remove_block(&mut self, block_id: &Uuid) -> Result<Uuid> {
+        let target_mb = self
+            .mailbox(block_id)
+            .ok_or_else(|| anyhow!("Block not found"))?
+            .clone();
+
+        // 1. DisconnectAll on the target to learn what to decrement.
+        let (tx, rx) = oneshot::channel();
+        target_mb
+            .send(BlockMailboxCmd::DisconnectAll { reply: tx })
+            .await
+            .map_err(|_| anyhow!("Block task gone"))?;
+        let targets = rx.await.map_err(|_| anyhow!("Block dropped reply"))?;
+        for (other_id, input_name) in targets {
+            if let Some(mb) = self.mailbox(&other_id) {
+                let (dec_tx, dec_rx) = oneshot::channel();
+                let _ = mb
+                    .send(BlockMailboxCmd::DecrementInput {
+                        name: input_name,
+                        reply: dec_tx,
+                    })
+                    .await;
+                let _ = dec_rx.await;
             }
         }
 
-        self.block_worker.remove(block_id);
+        // 2. Broadcast RemoveTargetBlockLinks to every other block.
+        let other_ids: Vec<Uuid> = self
+            .handles
+            .keys()
+            .copied()
+            .filter(|id| id != block_id)
+            .collect();
+        for other_id in other_ids {
+            if let Some(mb) = self.mailbox(&other_id) {
+                let (tx, rx) = oneshot::channel();
+                let _ = mb
+                    .send(BlockMailboxCmd::RemoveTargetBlockLinks {
+                        target_block_id: *block_id,
+                        reply: tx,
+                    })
+                    .await;
+                let _ = rx.await;
+            }
+        }
+
+        // 3. Terminate the block.
+        let _ = target_mb.send(BlockMailboxCmd::Terminate).await;
+        self.handles.remove(block_id);
+
         Ok(*block_id)
     }
 
-    /// Connect blocks synchronously (used during load_blocks_and_links).
-    fn connect_blocks_sync(&self, link_data: &LinkData) -> Result<LinkData> {
-        let source_block_uuid = Uuid::try_from(link_data.source_block_uuid.as_str())?;
-        let target_block_uuid = Uuid::try_from(link_data.target_block_uuid.as_str())?;
-
-        let target_worker = self
-            .block_worker
-            .get(&target_block_uuid)
-            .ok_or_else(|| anyhow!("Target block not found"))?;
-        let source_worker = self
-            .block_worker
-            .get(&source_block_uuid)
-            .ok_or_else(|| anyhow!("Source block not found"))?;
-
-        // Step 1: Get writer from target input
-        let (writer_tx, writer_rx) = oneshot::channel();
-        self.workers[*target_worker]
-            .try_send(WorkerCommand::BlockCmd(
-                target_block_uuid,
-                BlockCommand::GetInputWriter(link_data.target_block_pin_name.clone(), writer_tx),
-            ))
-            .map_err(|_| anyhow!("Failed to send GetInputWriter"))?;
-
-        let writer = writer_rx
-            .blocking_recv()
-            .map_err(|_| anyhow!("Failed to receive writer"))?
-            .map_err(|e| anyhow!(e))?;
-
-        // Step 2: Add link on source block
-        let (link_tx, link_rx) = oneshot::channel();
-        self.workers[*source_worker]
-            .try_send(WorkerCommand::BlockCmd(
-                source_block_uuid,
-                BlockCommand::AddOutputLink {
-                    output_name: link_data.source_block_pin_name.clone(),
-                    target_block_id: target_block_uuid,
-                    target_input_name: link_data.target_block_pin_name.clone(),
-                    writer,
-                    reply: link_tx,
-                },
-            ))
-            .map_err(|_| anyhow!("Failed to send AddOutputLink"))?;
-
-        let link_id = link_rx
-            .blocking_recv()
-            .map_err(|_| anyhow!("Failed to receive link response"))?
-            .map_err(|e| anyhow!(e))?;
-
-        Ok(LinkData {
-            id: Some(link_id.to_string()),
-            ..link_data.clone()
-        })
-    }
-
-    /// Connect blocks asynchronously.
-    async fn connect_blocks(&self, link_data: &LinkData) -> Result<LinkData> {
-        let source_block_uuid = Uuid::try_from(link_data.source_block_uuid.as_str())?;
-        let target_block_uuid = Uuid::try_from(link_data.target_block_uuid.as_str())?;
-
-        let target_worker = self
-            .block_worker
-            .get(&target_block_uuid)
-            .ok_or_else(|| anyhow!("Target block not found"))?;
-        let source_worker = self
-            .block_worker
-            .get(&source_block_uuid)
-            .ok_or_else(|| anyhow!("Source block not found"))?;
-
-        // Step 1: Get writer from target input
-        let (writer_tx, writer_rx) = oneshot::channel();
-        self.workers[*target_worker]
-            .send(WorkerCommand::BlockCmd(
-                target_block_uuid,
-                BlockCommand::GetInputWriter(link_data.target_block_pin_name.clone(), writer_tx),
-            ))
-            .await
-            .map_err(|_| anyhow!("Failed to send GetInputWriter"))?;
-
-        let writer = writer_rx
-            .await
-            .map_err(|_| anyhow!("Failed to receive writer"))?
-            .map_err(|e| anyhow!(e))?;
-
-        // Step 2: Add link on source block
-        let (link_tx, link_rx) = oneshot::channel();
-        self.workers[*source_worker]
-            .send(WorkerCommand::BlockCmd(
-                source_block_uuid,
-                BlockCommand::AddOutputLink {
-                    output_name: link_data.source_block_pin_name.clone(),
-                    target_block_id: target_block_uuid,
-                    target_input_name: link_data.target_block_pin_name.clone(),
-                    writer,
-                    reply: link_tx,
-                },
-            ))
-            .await
-            .map_err(|_| anyhow!("Failed to send AddOutputLink"))?;
-
-        let link_id = link_rx
-            .await
-            .map_err(|_| anyhow!("Failed to receive link response"))?
-            .map_err(|e| anyhow!(e))?;
-
-        Ok(LinkData {
-            id: Some(link_id.to_string()),
-            ..link_data.clone()
-        })
-    }
-
-    async fn save_blocks_and_links(&self) -> Result<(Vec<BlockData>, Vec<LinkData>)> {
+    pub async fn save_blocks_and_links(&self) -> Result<(Vec<BlockData>, Vec<LinkData>)> {
         let mut blocks = Vec::new();
         let mut links = Vec::new();
-
-        for (&block_id, &worker_idx) in &self.block_worker {
+        for handle in self.handles.values() {
             let (tx, rx) = oneshot::channel();
-            if self.workers[worker_idx]
-                .send(WorkerCommand::BlockCmd(
-                    block_id,
-                    BlockCommand::GetBlockData(tx),
-                ))
+            handle
+                .mailbox
+                .send(BlockMailboxCmd::GetBlockData { reply: tx })
                 .await
-                .is_ok()
-                && let Ok((block_data, block_links)) = rx.await
+                .map_err(|_| anyhow!("Block task gone"))?;
+            let (block_data, block_links) = rx.await.map_err(|_| anyhow!("Block dropped reply"))?;
+            blocks.push(block_data);
+            links.extend(block_links);
+        }
+        Ok((blocks, links))
+    }
+
+    pub async fn disconnect_link_by_id(&self, link_id: &Uuid) -> Result<bool> {
+        for handle in self.handles.values() {
+            let (tx, rx) = oneshot::channel();
+            if handle
+                .mailbox
+                .send(BlockMailboxCmd::DisconnectLink {
+                    link_id: *link_id,
+                    reply: tx,
+                })
+                .await
+                .is_err()
             {
-                blocks.push(block_data);
-                links.extend(block_links);
+                continue;
+            }
+            let targets = rx.await.map_err(|_| anyhow!("Block dropped reply"))?;
+            if !targets.is_empty() {
+                for (other_id, input_name) in targets {
+                    if let Some(mb) = self.mailbox(&other_id) {
+                        let (dec_tx, dec_rx) = oneshot::channel();
+                        let _ = mb
+                            .send(BlockMailboxCmd::DecrementInput {
+                                name: input_name,
+                                reply: dec_tx,
+                            })
+                            .await;
+                        let _ = dec_rx.await;
+                    }
+                }
+                return Ok(true);
             }
         }
+        Ok(false)
+    }
 
-        Ok((blocks, links))
+    fn reply_to_sender(&self, sender_uuid: Uuid, engine_message: Messages) {
+        for (sender_id, sender) in &self.reply_senders {
+            if sender_id != &sender_uuid {
+                continue;
+            }
+            let _ = sender.try_send(engine_message.clone());
+        }
     }
 
     async fn dispatch_message(&mut self, msg: Messages) {
         match msg {
             EngineMessage::AddBlockReq(sender_uuid, block_name, block_uuid, lib) => {
-                log::debug!(
-                    "Adding block: {}::{}",
-                    lib.clone().unwrap_or("core".into()),
-                    block_name,
-                );
-
                 let block_id = if let Some(uuid) = block_uuid {
                     match Uuid::parse_str(&uuid) {
                         Ok(uuid) => Some(uuid),
                         Err(_) => {
-                            self.reply_to_sender(
+                            return self.reply_to_sender(
                                 sender_uuid,
                                 EngineMessage::AddBlockRes(Err("Invalid UUID".into())),
                             );
-                            return;
                         }
                     }
                 } else {
                     None
                 };
-
-                let block_id = self
+                let res = self
                     .add_block(block_name, block_id, lib)
                     .map_err(|err| err.to_string());
-
-                self.reply_to_sender(sender_uuid, EngineMessage::AddBlockRes(block_id));
+                self.reply_to_sender(sender_uuid, EngineMessage::AddBlockRes(res));
             }
 
             EngineMessage::RemoveBlockReq(sender_uuid, block_id) => {
-                let block_id = self.remove_block(&block_id).map_err(|err| err.to_string());
-                self.reply_to_sender(sender_uuid, EngineMessage::RemoveBlockRes(block_id));
+                let res = self
+                    .remove_block(&block_id)
+                    .await
+                    .map_err(|err| err.to_string());
+                self.reply_to_sender(sender_uuid, EngineMessage::RemoveBlockRes(res));
             }
 
-            EngineMessage::InspectBlockReq(sender_uuid, block_uuid) => {
-                let response = if let Some(&worker_idx) = self.block_worker.get(&block_uuid) {
-                    let (tx, rx) = oneshot::channel();
-                    if self.workers[worker_idx]
-                        .send(WorkerCommand::BlockCmd(
-                            block_uuid,
-                            BlockCommand::Inspect(tx),
-                        ))
-                        .await
-                        .is_ok()
-                    {
-                        rx.await.unwrap_or(Err("Worker terminated".into()))
-                    } else {
-                        Err("Worker not available".into())
-                    }
-                } else {
-                    Err("Block not found".into())
-                };
-
-                self.reply_to_sender(sender_uuid, EngineMessage::InspectBlockRes(response));
+            EngineMessage::InspectBlockReq(sender_uuid, block_id) => {
+                let res = self.inspect_block(&block_id).await;
+                self.reply_to_sender(sender_uuid, EngineMessage::InspectBlockRes(res));
             }
 
             EngineMessage::EvaluateBlockReq(sender_uuid, name, inputs, lib) => {
                 let Some(block) = get_block(name.as_str(), lib) else {
-                    self.reply_to_sender(
+                    return self.reply_to_sender(
                         sender_uuid,
                         EngineMessage::EvaluateBlockRes(Err("Block not found".into())),
                     );
-                    return;
                 };
-
                 let response = crate::tokio_impl::engine::eval_block(&block.desc, inputs).await;
-
                 self.reply_to_sender(
                     sender_uuid,
                     EngineMessage::EvaluateBlockRes(response.map_err(|err| err.to_string())),
                 );
             }
 
-            EngineMessage::WriteBlockOutputReq(sender_uuid, block_uuid, output_name, value) => {
-                let response = if let Some(&worker_idx) = self.block_worker.get(&block_uuid) {
-                    let (tx, rx) = oneshot::channel();
-                    if self.workers[worker_idx]
-                        .send(WorkerCommand::BlockCmd(
-                            block_uuid,
-                            BlockCommand::WriteOutput(output_name, value, tx),
-                        ))
-                        .await
-                        .is_ok()
-                    {
-                        rx.await.unwrap_or(Err("Worker terminated".into()))
-                    } else {
-                        Err("Worker not available".into())
-                    }
-                } else {
-                    Err("Block not found".into())
-                };
-
-                self.reply_to_sender(sender_uuid, EngineMessage::WriteBlockOutputRes(response));
+            EngineMessage::WriteBlockOutputReq(sender_uuid, id, output_name, value) => {
+                let res = self.write_output(&id, output_name, value).await;
+                self.reply_to_sender(sender_uuid, EngineMessage::WriteBlockOutputRes(res));
             }
 
-            EngineMessage::WriteBlockInputReq(sender_uuid, block_uuid, input_name, value) => {
-                let response = if let Some(&worker_idx) = self.block_worker.get(&block_uuid) {
-                    let (tx, rx) = oneshot::channel();
-                    if self.workers[worker_idx]
-                        .send(WorkerCommand::BlockCmd(
-                            block_uuid,
-                            BlockCommand::WriteInput(input_name, value, tx),
-                        ))
-                        .await
-                        .is_ok()
-                    {
-                        rx.await.unwrap_or(Err("Worker terminated".into()))
-                    } else {
-                        Err("Worker not available".into())
-                    }
-                } else {
-                    Err("Block not found".into())
-                };
-
-                self.reply_to_sender(sender_uuid, EngineMessage::WriteBlockInputRes(response));
+            EngineMessage::WriteBlockInputReq(sender_uuid, id, input_name, value) => {
+                let res = self.write_input(&id, input_name, value).await;
+                self.reply_to_sender(sender_uuid, EngineMessage::WriteBlockInputRes(res));
             }
 
             EngineMessage::WatchBlockSubReq(sender_uuid, sender) => {
@@ -580,66 +728,42 @@ impl MultiThreadedEngine {
             }
 
             EngineMessage::GetCurrentProgramReq(sender_uuid) => {
-                let program = self.save_blocks_and_links().await;
-                self.reply_to_sender(
-                    sender_uuid,
-                    EngineMessage::GetCurrentProgramRes(program.map_err(|err| err.to_string())),
-                );
+                let res = self
+                    .save_blocks_and_links()
+                    .await
+                    .map_err(|err| err.to_string());
+                self.reply_to_sender(sender_uuid, EngineMessage::GetCurrentProgramRes(res));
             }
 
             EngineMessage::ConnectBlocksReq(sender_uuid, link_data) => {
-                let res = self.connect_blocks(&link_data).await;
-                self.reply_to_sender(
-                    sender_uuid,
-                    EngineMessage::ConnectBlocksRes(res.map_err(|err| err.to_string())),
-                );
+                let res = self
+                    .connect_blocks(&link_data)
+                    .await
+                    .map_err(|err| err.to_string());
+                self.reply_to_sender(sender_uuid, EngineMessage::ConnectBlocksRes(res));
             }
 
             EngineMessage::RemoveLinkReq(sender_uuid, link_id) => {
-                let mut found = false;
-                for (&block_id, &worker_idx) in &self.block_worker {
-                    let (tx, rx) = oneshot::channel();
-                    if self.workers[worker_idx]
-                        .send(WorkerCommand::BlockCmd(
-                            block_id,
-                            BlockCommand::RemoveLink(link_id, tx),
-                        ))
-                        .await
-                        .is_ok()
-                        && let Ok(true) = rx.await
-                    {
-                        found = true;
-                        break;
-                    }
-                }
-                self.reply_to_sender(sender_uuid, EngineMessage::RemoveLinkRes(Ok(found)));
+                let res = self
+                    .disconnect_link_by_id(&link_id)
+                    .await
+                    .map_err(|err| err.to_string());
+                self.reply_to_sender(sender_uuid, EngineMessage::RemoveLinkRes(res));
             }
 
             _ => unreachable!("Invalid message"),
         }
     }
-
-    fn reply_to_sender(&self, sender_uuid: Uuid, engine_message: Messages) {
-        for (sender_id, sender) in &self.reply_senders {
-            if sender_id != &sender_uuid {
-                continue;
-            }
-            let _ = sender.try_send(engine_message.clone());
-        }
-    }
 }
 
-/// The worker loop runs on a dedicated thread with its own current-thread tokio runtime.
 async fn worker_loop(mut cmd_rx: Receiver<WorkerCommand>) {
     let mut state = WorkerState {
-        local: tokio::task::LocalSet::new(),
-        block_props: BTreeMap::new(),
+        local: LocalSet::new(),
     };
 
     loop {
         let mut cmd = None;
-
-        // Run local tasks while waiting for commands
+        // Drive local tasks while waiting for the next worker command.
         state
             .local
             .run_until(async {
@@ -648,304 +772,8 @@ async fn worker_loop(mut cmd_rx: Receiver<WorkerCommand>) {
             .await;
 
         match cmd {
-            Some(WorkerCommand::Schedule(schedule_fn)) => {
-                schedule_fn(&mut state);
-            }
-            Some(WorkerCommand::BlockCmd(block_id, block_cmd)) => {
-                if let Some(shared) = state.block_props.get(&block_id) {
-                    // SAFETY: Single-threaded LocalSet, no concurrent access.
-                    let block = unsafe { shared.props_mut() };
-                    handle_block_command(block, block_cmd);
-                } else {
-                    // Block not found - send error responses for commands that expect replies
-                    send_error_reply(block_cmd);
-                }
-            }
-            Some(WorkerCommand::Shutdown) => {
-                // Terminate all blocks on this worker
-                for shared in state.block_props.values() {
-                    let block = unsafe { shared.props_mut() };
-                    block.set_state(BlockState::Terminated);
-                }
-                break;
-            }
-            None => break,
-        }
-    }
-}
-
-/// Handle a block command on the worker thread.
-fn handle_block_command(block: &mut BlockPropsType, cmd: BlockCommand) {
-    match cmd {
-        BlockCommand::Inspect(reply) => {
-            let data = BlockDefinition {
-                id: block.id().to_string(),
-                name: block.name().to_string(),
-                library: block.desc().library.clone(),
-                inputs: block
-                    .inputs()
-                    .iter()
-                    .map(|input| {
-                        (
-                            input.name().to_string(),
-                            BlockInputData {
-                                kind: input.kind().to_string(),
-                                val: input.get_value().cloned().unwrap_or_default(),
-                            },
-                        )
-                    })
-                    .collect(),
-                outputs: block
-                    .outputs()
-                    .iter()
-                    .map(|output| {
-                        (
-                            output.desc().name.to_string(),
-                            BlockOutputData {
-                                kind: output.desc().kind.to_string(),
-                                val: output.value().clone(),
-                            },
-                        )
-                    })
-                    .collect(),
-            };
-            let _ = reply.send(Ok(data));
-        }
-
-        BlockCommand::WriteOutput(output_name, value, reply) => {
-            let response = if let Some(output) = block.get_output_mut(&output_name) {
-                let prev = output.value().clone();
-                output.set(value);
-                Ok(prev)
-            } else {
-                Err("Output not found".to_string())
-            };
-            let _ = reply.send(response);
-        }
-
-        BlockCommand::WriteInput(input_name, value, reply) => {
-            let response = if let Some(input) = block.get_input_mut(&input_name) {
-                let prev = input.get_value().cloned();
-                input.set_value(value);
-                Ok(prev)
-            } else {
-                Err("Input not found".to_string())
-            };
-            let _ = reply.send(response);
-        }
-
-        BlockCommand::GetInputWriter(input_name, reply) => {
-            let response = if let Some(input) = block.get_input_mut(&input_name) {
-                Ok(input.writer().clone())
-            } else {
-                Err(format!("Input '{}' not found", input_name))
-            };
-            let _ = reply.send(response);
-        }
-
-        BlockCommand::AddOutputLink {
-            output_name,
-            target_block_id,
-            target_input_name,
-            writer,
-            reply,
-        } => {
-            let response = if let Some(output) = block.get_output_mut(&output_name) {
-                if output.links().iter().any(|link| {
-                    link.target_block_id() == &target_block_id
-                        && link.target_input() == target_input_name
-                }) {
-                    Err("Already connected".to_string())
-                } else {
-                    use crate::base::link::{BaseLink, LinkState};
-
-                    let mut link = BaseLink::new(target_block_id, target_input_name);
-                    let id = link.id;
-
-                    // Send current value before moving writer into link
-                    if output.value().has_value() {
-                        let _ = writer.try_send(output.value().clone());
-                    }
-
-                    link.tx = Some(writer);
-                    link.state = LinkState::Connected;
-                    output.add_link(link);
-                    Ok(id)
-                }
-            } else if let Some(input) = block.get_input_mut(&output_name) {
-                use crate::base::link::{BaseLink, LinkState};
-
-                let mut link = BaseLink::new(target_block_id, target_input_name);
-                let id = link.id;
-
-                if let Some(val) = input.get_value().cloned() {
-                    let _ = writer.try_send(val);
-                }
-
-                link.tx = Some(writer);
-                link.state = LinkState::Connected;
-                input.add_link(link);
-                Ok(id)
-            } else {
-                Err(format!("Pin '{}' not found", output_name))
-            };
-            let _ = reply.send(response);
-        }
-
-        BlockCommand::AddInputLink {
-            input_name,
-            target_block_id,
-            target_input_name,
-            writer,
-            reply,
-        } => {
-            let response = if let Some(input) = block.get_input_mut(&input_name) {
-                use crate::base::link::{BaseLink, LinkState};
-
-                let mut link = BaseLink::new(target_block_id, target_input_name);
-                let id = link.id;
-                link.tx = Some(writer);
-                link.state = LinkState::Connected;
-                input.add_link(link);
-                Ok(id)
-            } else {
-                Err(format!("Input '{}' not found", input_name))
-            };
-            let _ = reply.send(response);
-        }
-
-        BlockCommand::RemoveLink(link_id, reply) => {
-            let mut found = false;
-            for output in block.outputs_mut() {
-                if output.links().iter().any(|l| l.id() == &link_id) {
-                    output.remove_link_by_id(&link_id);
-                    found = true;
-                    break;
-                }
-            }
-            if !found {
-                for input in block.inputs_mut() {
-                    if input.links().iter().any(|l| l.id() == &link_id) {
-                        input.remove_link_by_id(&link_id);
-                        found = true;
-                        break;
-                    }
-                }
-            }
-            let _ = reply.send(found);
-        }
-
-        BlockCommand::RemoveTargetBlockLinks(target_block_id) => {
-            for output in block.outputs_mut() {
-                output.remove_target_block_links(&target_block_id);
-            }
-            for input in block.inputs_mut() {
-                input.remove_target_block_links(&target_block_id);
-            }
-        }
-
-        BlockCommand::GetBlockData(reply) => {
-            let block_data = BlockData {
-                id: block.id().to_string(),
-                name: block.name().to_string(),
-                dis: block.desc().dis.to_string(),
-                lib: block.desc().library.clone(),
-                category: block.desc().category.clone(),
-                ver: block.desc().ver.clone(),
-            };
-
-            let mut link_data = Vec::new();
-            for (pin_name, pin_links) in block.links() {
-                for link in pin_links {
-                    link_data.push(LinkData {
-                        id: Some(link.id().to_string()),
-                        source_block_pin_name: pin_name.to_string(),
-                        source_block_uuid: block.id().to_string(),
-                        target_block_pin_name: link.target_input().to_string(),
-                        target_block_uuid: link.target_block_id().to_string(),
-                    });
-                }
-            }
-
-            let _ = reply.send((block_data, link_data));
-        }
-
-        BlockCommand::SetState(state) => {
-            block.set_state(state);
-        }
-    }
-}
-
-/// Send error replies for commands that expect responses when block is not found.
-fn send_error_reply(cmd: BlockCommand) {
-    match cmd {
-        BlockCommand::Inspect(reply) => {
-            let _ = reply.send(Err("Block not found".into()));
-        }
-        BlockCommand::WriteOutput(_, _, reply) => {
-            let _ = reply.send(Err("Block not found".into()));
-        }
-        BlockCommand::WriteInput(_, _, reply) => {
-            let _ = reply.send(Err("Block not found".into()));
-        }
-        BlockCommand::GetInputWriter(_, reply) => {
-            let _ = reply.send(Err("Block not found".into()));
-        }
-        BlockCommand::AddOutputLink { reply, .. } => {
-            let _ = reply.send(Err("Block not found".into()));
-        }
-        BlockCommand::AddInputLink { reply, .. } => {
-            let _ = reply.send(Err("Block not found".into()));
-        }
-        BlockCommand::RemoveLink(_, reply) => {
-            let _ = reply.send(false);
-        }
-        BlockCommand::GetBlockData(_) => {}
-        BlockCommand::RemoveTargetBlockLinks(_) => {}
-        BlockCommand::SetState(_) => {}
-    }
-}
-
-/// Async change-of-value check that works with Arc<RwLock<>> watchers.
-async fn change_of_value_check<B: Block + 'static>(
-    notification_channels: &Arc<RwLock<BTreeMap<Uuid, Sender<WatchMessage>>>>,
-    block: &B,
-    last_pin_values: &mut BTreeMap<String, Value>,
-) {
-    if notification_channels.read().await.is_empty() {
-        if !last_pin_values.is_empty() {
-            last_pin_values.clear();
-        }
-        return;
-    }
-
-    let mut changes = HashMap::<String, ChangeSource>::new();
-
-    for output in block.outputs() {
-        let pin = output.desc().name.to_string();
-        let val = output.value();
-        if last_pin_values.get(&pin) != Some(val) {
-            changes.insert(pin.clone(), ChangeSource::Output(pin.clone(), val.clone()));
-            last_pin_values.insert(pin, val.clone());
-        }
-    }
-
-    for input in block.inputs() {
-        if let Some(val) = input.get_value() {
-            let pin = input.name().to_string();
-            if last_pin_values.get(&pin) != Some(val) {
-                changes.insert(pin.clone(), ChangeSource::Input(pin.clone(), val.clone()));
-                last_pin_values.insert(pin, val.clone());
-            }
-        }
-    }
-
-    if !changes.is_empty() {
-        for sender in notification_channels.read().await.values() {
-            let _ = sender.try_send(WatchMessage {
-                block_id: *block.id(),
-                changes: changes.clone(),
-            });
+            Some(WorkerCommand::Schedule(spawn_fn)) => spawn_fn(&mut state),
+            Some(WorkerCommand::Shutdown) | None => break,
         }
     }
 }
@@ -966,6 +794,7 @@ mod test {
     use base::engine::messages::EngineMessage::{InspectBlockReq, InspectBlockRes, Shutdown};
 
     use super::MultiThreadedEngine;
+    use base::engine::Engine;
     use tokio::sync::mpsc;
     use tokio::time::sleep;
     use uuid::Uuid;
@@ -1016,9 +845,9 @@ mod test {
             let _ = engine_sender.send(Shutdown).await;
         });
 
-        eng.schedule(add1);
-        eng.schedule(sine1);
-        eng.schedule(sine2);
+        eng.schedule_send(add1);
+        eng.schedule_send(sine1);
+        eng.schedule_send(sine2);
 
         eng.run().await;
     }

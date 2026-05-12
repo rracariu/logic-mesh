@@ -8,10 +8,8 @@
 //! command via [`handle_cmd`], which holds `&mut B` (the only mutable borrow
 //! of the block, period — no aliasing).
 
-use std::collections::BTreeMap;
-
 use libhaystack::val::Value;
-use tokio::sync::{mpsc, oneshot};
+use tokio::sync::oneshot;
 use uuid::Uuid;
 
 use crate::base::{
@@ -126,11 +124,6 @@ pub(super) enum BlockMailboxCmd {
 /// Mailbox capacity per block. 64 is more than enough for a UI session;
 /// engine commands are infrequent compared to the per-cycle polling.
 pub(super) const BLOCK_MAILBOX_CAP: usize = 64;
-
-/// Type alias for the watchers map (notification channels keyed by
-/// subscriber id).
-pub(super) type WatchersHandle =
-    std::rc::Rc<std::cell::RefCell<BTreeMap<Uuid, mpsc::Sender<crate::base::engine::messages::WatchMessage>>>>;
 
 /// Handle a single mailbox command against a block. Returns `true` if the
 /// command was [`BlockMailboxCmd::Terminate`] (signalling the actor task to

@@ -1,21 +1,25 @@
 // Copyright (c) 2022-2026, Radu Racariu.
 
-//! Per-block actor task.
+//! Per-block actor task for the multi-threaded engine.
 //!
-//! Each scheduled block lives in a task spawned via [`block_actor_task`].
-//! The task **owns the block by value** — there is no `Rc`, no `UnsafeCell`,
-//! and no aliasing. The task loop interleaves `block.execute()` with mailbox
-//! handling via `tokio::select!`; when a mailbox command arrives, the
-//! in-flight execute future is dropped (cancellation-safe — see the module
-//! docstring) and the command is handled before a fresh `execute()` is
-//! started.
+//! Same shape as the single-threaded variant: the actor task **owns the
+//! block by value** and `tokio::select!`s between `block.execute()` and a
+//! per-block mailbox. The MT-specific differences are:
+//!
+//! - The block is sent across thread boundaries (worker thread) once, then
+//!   stays put. `B: Send` is required at scheduling time, but the actor
+//!   future itself is `!Send` (runs on the worker's `LocalSet`).
+//! - Watchers are stored as `Arc<RwLock<...>>` (cross-worker visibility),
+//!   so the change-of-value check is async.
 
-use std::cell::RefCell;
 use std::collections::{BTreeMap, HashMap};
-use std::rc::Rc;
+use std::sync::Arc;
 
 use libhaystack::val::Value;
-use tokio::sync::{mpsc, mpsc::Sender};
+use tokio::sync::{
+    RwLock,
+    mpsc::{self, Sender},
+};
 use uuid::Uuid;
 
 use super::super::block_mailbox::{BlockMailboxCmd, handle_cmd};
@@ -25,11 +29,11 @@ use crate::base::{
 };
 use crate::tokio_impl::{ReaderImpl, WriterImpl};
 
-/// ST-side watchers handle: single-threaded, no thread-safety needed.
-pub(super) type WatchersHandle = Rc<RefCell<BTreeMap<Uuid, Sender<WatchMessage>>>>;
+/// MT-side watchers handle: cross-thread, async-locked.
+pub(super) type WatchersHandle = Arc<RwLock<BTreeMap<Uuid, Sender<WatchMessage>>>>;
 
-/// Per-block actor task. Owns the block by value; processes mailbox commands
-/// interleaved with `block.execute()` cycles.
+/// Per-block actor task. Owns the block by value; processes mailbox
+/// commands interleaved with `block.execute()` cycles.
 pub(super) async fn block_actor_task<B>(
     mut block: B,
     mut mailbox: mpsc::Receiver<BlockMailboxCmd>,
@@ -41,19 +45,14 @@ pub(super) async fn block_actor_task<B>(
     let mut terminated = false;
 
     while !terminated {
-        // Drive one step: either execute completes, or a mailbox cmd arrives
-        // (cancelling execute mid-await).
         terminated = run_one_step(&mut block, &mut mailbox).await;
 
-        change_of_value_check(&watchers, &block, &mut last_pin_values);
+        change_of_value_check(&watchers, &block, &mut last_pin_values).await;
 
         if block.state() == BlockState::Terminated {
             break;
         }
 
-        // Co-operative yield: prevents a tight-cycling block (e.g. a
-        // misconfigured periodic block with no awaits) from starving siblings
-        // on the same LocalSet.
         tokio::task::yield_now().await;
     }
 }
@@ -69,14 +68,11 @@ where
         tokio::pin!(execute_fut);
         tokio::select! {
             biased;
-            // Prefer mailbox so external commands aren't delayed by
-            // a block that's perpetually ready to execute.
             cmd = mailbox.recv() => {
                 cmd_to_handle = cmd;
             }
             () = &mut execute_fut => {}
         }
-        // execute_fut goes out of scope here — its borrow on block ends.
     }
 
     let Some(cmd) = cmd_to_handle else {
@@ -86,14 +82,12 @@ where
     handle_cmd(cmd, block).await
 }
 
-/// Detect changes on the block's pins relative to the previously-emitted
-/// snapshot and dispatch a `WatchMessage` to every subscribed watcher.
-fn change_of_value_check<B: Block + 'static>(
+async fn change_of_value_check<B: Block + 'static>(
     notification_channels: &WatchersHandle,
     block: &B,
     last_pin_values: &mut BTreeMap<String, Value>,
 ) {
-    if notification_channels.borrow().is_empty() {
+    if notification_channels.read().await.is_empty() {
         if !last_pin_values.is_empty() {
             last_pin_values.clear();
         }
@@ -102,28 +96,27 @@ fn change_of_value_check<B: Block + 'static>(
 
     let mut changes = HashMap::<String, ChangeSource>::new();
 
-    block.outputs().iter().for_each(|output| {
+    for output in block.outputs() {
         let pin = output.desc().name.to_string();
         let val = output.value();
         if last_pin_values.get(&pin) != Some(val) {
             changes.insert(pin.clone(), ChangeSource::Output(pin.clone(), val.clone()));
             last_pin_values.insert(pin, val.clone());
         }
-    });
+    }
 
-    block.inputs().iter().for_each(|input| {
-        let val = input.get_value();
-        if let Some(val) = val {
+    for input in block.inputs() {
+        if let Some(val) = input.get_value() {
             let pin = input.name().to_string();
             if last_pin_values.get(&pin) != Some(val) {
                 changes.insert(pin.clone(), ChangeSource::Input(pin.clone(), val.clone()));
                 last_pin_values.insert(pin, val.clone());
             }
         }
-    });
+    }
 
     if !changes.is_empty() {
-        for sender in notification_channels.borrow().values() {
+        for sender in notification_channels.read().await.values() {
             let _ = sender.try_send(WatchMessage {
                 block_id: *block.id(),
                 changes: changes.clone(),

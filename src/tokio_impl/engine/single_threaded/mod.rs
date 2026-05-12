@@ -40,7 +40,6 @@
 
 mod actor;
 mod engine;
-mod mailbox;
 
 pub use engine::{BlockHandle, Messages, SingleThreadedEngine};
 
