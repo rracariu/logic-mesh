@@ -20,7 +20,7 @@
 	import { blockInstance, type Block } from '$lib/Block';
 	import { useEngine } from '$lib/Engine';
 	import { model, blockInstances } from '$lib/model.svelte';
-	import { load, save } from '$lib/Program';
+	import { prepare, pushToEngine, save } from '$lib/Program';
 
 	const { engine, blocks, command, startWatch } = useEngine();
 
@@ -159,7 +159,14 @@
 	}
 
 	async function loadProgram(program: unknown) {
-		let { nodes: newNodes, edges: newEdges } = await load(program as Program);
+		// Phase 1 (sync): build nodes/edges from the program data and
+		// register every block instance in `blockInstances` BEFORE the
+		// engine receives any commands. Otherwise the first round of
+		// change-of-value notifications — fired while the engine is still
+		// processing the load — get dropped by the watcher callback
+		// (`blockInstances.get(id)` returns undefined).
+		const prog = program as Program;
+		let { nodes: newNodes, edges: newEdges } = prepare(prog);
 
 		newNodes = newNodes.map((node) => {
 			const desc =
@@ -196,6 +203,11 @@
 		model.nodes = [...model.nodes, ...newNodes];
 		model.edges = [...model.edges, ...newEdges];
 		fitTrigger += 1;
+
+		// Phase 2 (async): now that every block instance is registered,
+		// push the program into the engine.
+		await pushToEngine(prog);
+
 		toast.success('Program loaded');
 	}
 </script>
