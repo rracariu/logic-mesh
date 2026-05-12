@@ -16,7 +16,7 @@ jobs:
           node-version: latest
 
       - name: wasm-pack installer
-        run: curl https://wasm-bindgen.github.io/wasm-pack/installer/init.sh -sSf | sh
+        run: curl https://wasm-bindgen.github.io/wasm-pack/installer/init.sh -sSf | bash
       - name: install
         run: npm ci
 
