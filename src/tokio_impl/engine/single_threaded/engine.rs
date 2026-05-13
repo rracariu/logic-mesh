@@ -9,7 +9,7 @@ use anyhow::{Result, anyhow};
 use libhaystack::val::Value;
 use tokio::{
     sync::{
-        mpsc::{self, Receiver, Sender},
+        mpsc::{self, Receiver, Sender, UnboundedSender},
         oneshot,
     },
     task::LocalSet,
@@ -32,7 +32,11 @@ use crate::tokio_impl::engine::schedule_block_on_engine;
 use crate::tokio_impl::{ReaderImpl, WriterImpl};
 
 /// Concrete engine-message type.
-pub type Messages = EngineMessage<Sender<WatchMessage>>;
+///
+/// The watch-event sender is unbounded — see `wasm/engine_command.rs`
+/// `create_watch` for the rationale (fault notifications must not drop
+/// under burst load).
+pub type Messages = EngineMessage<UnboundedSender<WatchMessage>>;
 
 /// Engine-side handle for a scheduled block.
 ///
@@ -83,7 +87,7 @@ pub struct SingleThreadedEngine {
     pub(in super::super) reply_senders: BTreeMap<Uuid, Sender<Messages>>,
     /// Watchers for change-of-value notifications. Same visibility note as
     /// `reply_senders`.
-    pub(in super::super) watchers: Rc<RefCell<BTreeMap<Uuid, Sender<WatchMessage>>>>,
+    pub(in super::super) watchers: Rc<RefCell<BTreeMap<Uuid, UnboundedSender<WatchMessage>>>>,
 }
 
 impl Default for SingleThreadedEngine {

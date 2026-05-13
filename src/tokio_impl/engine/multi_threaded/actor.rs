@@ -18,7 +18,7 @@ use std::sync::Arc;
 use libhaystack::val::Value;
 use tokio::sync::{
     RwLock,
-    mpsc::{self, Sender},
+    mpsc::{self, UnboundedSender},
 };
 use uuid::Uuid;
 
@@ -29,7 +29,7 @@ use crate::base::engine::messages::{ChangeSource, WatchMessage};
 use crate::tokio_impl::{ReaderImpl, WriterImpl};
 
 /// MT-side watchers handle: cross-thread, async-locked.
-pub(super) type WatchersHandle = Arc<RwLock<BTreeMap<Uuid, Sender<WatchMessage>>>>;
+pub(super) type WatchersHandle = Arc<RwLock<BTreeMap<Uuid, UnboundedSender<WatchMessage>>>>;
 
 /// Per-block actor task. Owns the block by value; processes mailbox
 /// commands interleaved with `block.execute()` cycles.
@@ -153,8 +153,9 @@ async fn change_of_value_check<B: Block + 'static>(
     }
 
     if !changes.is_empty() || state != prev_state {
+        // Unbounded channel — see single_threaded/actor.rs rationale.
         for sender in notification_channels.read().await.values() {
-            let _ = sender.try_send(WatchMessage {
+            let _ = sender.send(WatchMessage {
                 block_id: *block.id(),
                 changes: changes.clone(),
                 state: state.clone(),

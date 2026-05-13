@@ -21,7 +21,7 @@ use anyhow::{Result, anyhow};
 use libhaystack::val::Value;
 use tokio::sync::{
     RwLock,
-    mpsc::{self, Receiver, Sender},
+    mpsc::{self, Receiver, Sender, UnboundedSender},
     oneshot,
 };
 use tokio::task::LocalSet;
@@ -39,7 +39,10 @@ use crate::tokio_impl::engine::schedule_block_on_engine_mt;
 use crate::tokio_impl::{ReaderImpl, WriterImpl};
 
 /// Concrete engine-message type.
-pub type Messages = EngineMessage<Sender<WatchMessage>>;
+///
+/// The watch-event sender is unbounded — see `wasm/engine_command.rs`
+/// `create_watch` for the rationale.
+pub type Messages = EngineMessage<UnboundedSender<WatchMessage>>;
 
 /// Engine-side handle for a scheduled block in the MT engine.
 ///

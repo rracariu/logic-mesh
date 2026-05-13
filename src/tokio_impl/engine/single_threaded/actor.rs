@@ -15,7 +15,7 @@ use std::collections::{BTreeMap, HashMap};
 use std::rc::Rc;
 
 use libhaystack::val::Value;
-use tokio::sync::{mpsc, mpsc::Sender};
+use tokio::sync::mpsc::{self, UnboundedSender};
 use uuid::Uuid;
 
 use super::super::block_mailbox::{BlockMailboxCmd, handle_cmd};
@@ -25,7 +25,7 @@ use crate::base::engine::messages::{ChangeSource, WatchMessage};
 use crate::tokio_impl::{ReaderImpl, WriterImpl};
 
 /// ST-side watchers handle: single-threaded, no thread-safety needed.
-pub(super) type WatchersHandle = Rc<RefCell<BTreeMap<Uuid, Sender<WatchMessage>>>>;
+pub(super) type WatchersHandle = Rc<RefCell<BTreeMap<Uuid, UnboundedSender<WatchMessage>>>>;
 
 /// Per-block actor task. Owns the block by value; processes mailbox commands
 /// interleaved with `block.execute()` cycles.
@@ -183,8 +183,11 @@ fn change_of_value_check<B: Block + 'static>(
     // Without the state-change check, a block entering Fault with no
     // value change (e.g., upstream stopped emitting) would be invisible.
     if !changes.is_empty() || state != prev_state {
+        // Unbounded channel: `send` is synchronous and only fails on
+        // receiver-dropped (channel closed). We ignore the error path
+        // because a dropped watcher means the UI tab closed.
         for sender in notification_channels.borrow().values() {
-            let _ = sender.try_send(WatchMessage {
+            let _ = sender.send(WatchMessage {
                 block_id: *block.id(),
                 changes: changes.clone(),
                 state: state.clone(),

@@ -5,7 +5,7 @@ use std::str::FromStr;
 use crate::base::program::data::LinkData;
 use crate::wasm::types::JsWatchNotification;
 
-use tokio::sync::mpsc::{self, Receiver, Sender};
+use tokio::sync::mpsc::{Receiver, Sender, unbounded_channel};
 use uuid::Uuid;
 use wasm_bindgen::JsValue;
 use wasm_bindgen::prelude::wasm_bindgen;
@@ -339,10 +339,18 @@ impl EngineCommand {
         }
     }
 
-    /// Creates a watch on block changes
+    /// Creates a watch on block changes.
+    ///
+    /// The engine→UI watch channel is **unbounded**. The producer rate is
+    /// capped by per-block execution cadence and the payload is tiny
+    /// (one `WatchMessage` per changed block per cycle); a bounded channel
+    /// (we had 32) was undersized for bursty loads — e.g., dozens of
+    /// blocks faulting simultaneously during program load — and silently
+    /// dropped fault notifications, which the UI is now load-bearing on
+    /// (red ring/edge rendering).
     #[wasm_bindgen(js_name = "createWatch")]
     pub async fn create_watch(&mut self, callback: &js_sys::Function) -> Result<(), String> {
-        let (sender, mut receiver) = mpsc::channel(32);
+        let (sender, mut receiver) = unbounded_channel();
 
         match self
             .sender
