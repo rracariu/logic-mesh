@@ -49,7 +49,7 @@ impl Block for Mod {
                     Ok(())
                 })
                 .or_else(|_| {
-                    self.set_state(BlockState::Fault);
+                    self.set_state(BlockState::fault("Modulus: unit conversion failed"));
                     Ok(())
                 });
         }

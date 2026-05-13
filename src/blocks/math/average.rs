@@ -43,7 +43,7 @@ impl Block for Average {
             .collect::<Vec<Number>>();
 
         if let Ok(numbers) = convert_units(&val) {
-            if self.state() != BlockState::Running {
+            if !matches!(self.state(), BlockState::Running) {
                 self.set_state(BlockState::Running);
             }
 
@@ -61,7 +61,7 @@ impl Block for Average {
 
             self.out.set((avg).into())
         } else {
-            self.set_state(BlockState::Fault);
+            self.set_state(BlockState::fault("Average: unit conversion failed"));
         }
     }
 }

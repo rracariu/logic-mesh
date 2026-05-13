@@ -38,7 +38,7 @@ impl Block for Sub {
                 Ok(res) => self.out.set(res.into()),
                 Err(e) => {
                     log::error!("Error while subtracting: {}", e);
-                    self.set_state(BlockState::Fault);
+                    self.set_state(BlockState::fault(format!("Sub: {}", e)));
                 }
             }
         }

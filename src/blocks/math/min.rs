@@ -49,7 +49,7 @@ impl Block for Min {
                     Ok(())
                 })
                 .or_else(|_| {
-                    self.set_state(BlockState::Fault);
+                    self.set_state(BlockState::fault("Min: unit conversion failed"));
                     Ok(())
                 });
         }

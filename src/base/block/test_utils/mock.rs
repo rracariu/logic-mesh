@@ -9,6 +9,7 @@ use std::pin::Pin;
 use uuid::Uuid;
 
 use crate::base::{
+    Status,
     input::{BaseInput, Input, InputProps},
     link::BaseLink,
     output::{BaseOutput, Output},
@@ -33,11 +34,15 @@ impl Input for InputImpl {
         Box::pin(async { None })
     }
 
-    fn try_take(&mut self) -> Option<Value> {
+    fn try_take(&mut self) -> Option<(Value, Status)> {
         None
     }
 
-    fn set_value(&mut self, _value: Value) {}
+    fn set_value(&mut self, _value: Value, _status: Status) {}
+
+    fn status(&self) -> Status {
+        Status::Ok
+    }
 }
 
 pub type OutputImpl = BaseOutput<BaseLink<String>>;
@@ -57,5 +62,9 @@ impl Output for OutputImpl {
 
     fn set(&mut self, _value: Value) {
         self.value = _value;
+    }
+
+    fn emit_status(&mut self, status: Status) {
+        self.effective_status = status;
     }
 }

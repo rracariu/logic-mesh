@@ -7,6 +7,7 @@
 use libhaystack::val::{Value, kind::HaystackKind};
 use uuid::Uuid;
 
+use crate::base::Status;
 use crate::base::link::{BaseLink, Link};
 
 use super::{InputProps, props::InputDefault};
@@ -28,6 +29,9 @@ pub struct BaseInput<Reader, Writer> {
     pub writer: Writer,
     /// The input value
     pub val: Option<Value>,
+    /// The status of the last value received on this input. Tracks the
+    /// producer's quality assertion across the watch channel.
+    pub status: Status,
     /// The input default values
     pub default: InputDefault,
     /// The links to other inputs
@@ -102,6 +106,7 @@ impl<Reader, Writer: Clone> InputProps for BaseInput<Reader, Writer> {
 
             if self.connection_count == 0 {
                 self.val = None;
+                self.status = Status::Ok;
             }
         }
 

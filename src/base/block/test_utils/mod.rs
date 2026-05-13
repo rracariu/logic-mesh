@@ -1,7 +1,7 @@
 use libhaystack::val::Value;
 
 use crate::{
-    base::input::Input,
+    base::{Status, input::Input},
     tokio_impl::{ReaderImpl, WriterImpl},
 };
 
@@ -23,6 +23,6 @@ pub(crate) async fn write_block_inputs<V, const N: usize>(
         if !input.is_connected() {
             input.increment_conn();
         }
-        input.writer().send(value.into()).unwrap();
+        input.writer().send((value.into(), Status::Ok)).unwrap();
     }
 }

@@ -102,9 +102,16 @@ impl From<BlockDesc> for JsBlockDesc {
 }
 
 #[derive(Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct JsWatchNotification {
     pub id: String,
     pub changes: Vec<JsWatchChange>,
+    /// Block's operational state at the time of the notification
+    /// (`running | fault | disabled | terminated`).
+    pub state: String,
+    /// Fault reason when `state == "fault"`, else `None`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub fault_reason: Option<String>,
 }
 
 #[derive(Default, Serialize, Deserialize)]
@@ -117,6 +124,8 @@ pub struct JsWatchChange {
 impl From<WatchMessage> for JsWatchNotification {
     fn from(msg: WatchMessage) -> Self {
         let block_id = msg.block_id.to_string();
+        let state = msg.state.label().to_string();
+        let fault_reason = msg.state.fault_reason().map(|s| s.to_string());
         let changes = msg
             .changes
             .into_iter()
@@ -136,6 +145,8 @@ impl From<WatchMessage> for JsWatchNotification {
         Self {
             id: block_id,
             changes,
+            state,
+            fault_reason,
         }
     }
 }

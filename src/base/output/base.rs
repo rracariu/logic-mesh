@@ -7,6 +7,7 @@
 use libhaystack::val::{Value, kind::HaystackKind};
 use uuid::Uuid;
 
+use crate::base::Status;
 use crate::base::link::Link;
 
 use super::{OutputProps, props::OutDesc};
@@ -18,6 +19,11 @@ pub struct BaseOutput<L: Link> {
     pub value: Value,
     pub links: Vec<L>,
     pub block_id: Uuid,
+    /// Status to pair with this output's value when it's emitted on the
+    /// watch channel. Managed by the actor task: set to `Fault` while the
+    /// owning block is in `BlockState::Fault`, restored to `Ok` on
+    /// recovery.
+    pub effective_status: Status,
 }
 
 /// The implementation of the OutputProps trait
@@ -77,6 +83,7 @@ impl<L: Link> BaseOutput<L> {
             value: Value::default(),
             links: Vec::new(),
             block_id,
+            effective_status: Status::Ok,
         }
     }
 

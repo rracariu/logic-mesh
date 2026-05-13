@@ -7,6 +7,7 @@ use libhaystack::val::Value;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+use crate::base::block::BlockState;
 use crate::base::program::data::{BlockData, LinkData};
 
 /// Block input properties
@@ -31,6 +32,13 @@ pub struct BlockDefinition {
     pub library: String,
     pub inputs: BTreeMap<String, BlockInputData>,
     pub outputs: BTreeMap<String, BlockOutputData>,
+    /// Short label for the block's operational state
+    /// (`running | fault | disabled | terminated`).
+    #[serde(default)]
+    pub state: String,
+    /// Fault reason when `state == "fault"`, else `None`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fault_reason: Option<String>,
 }
 
 /// Defines the source of a change
@@ -45,6 +53,9 @@ pub enum ChangeSource {
 pub struct WatchMessage {
     pub block_id: Uuid,
     pub changes: HashMap<String, ChangeSource>,
+    /// Block's operational state at the time the notification was sent.
+    /// Carries fault propagation visibility to the UI.
+    pub state: BlockState,
 }
 
 /// Messages that engine accepts

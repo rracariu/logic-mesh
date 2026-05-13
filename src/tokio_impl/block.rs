@@ -7,6 +7,7 @@ use futures::future::select_all;
 use libhaystack::val::kind::HaystackKind;
 
 use super::sleep::sleep_millis;
+use crate::base::Status;
 use crate::base::block::{Block, BlockState, convert_value_kind};
 use crate::base::input::{InputProps, input_reader::InputReader};
 use crate::blocks::InputImpl;
@@ -116,12 +117,18 @@ pub(crate) async fn read_block_inputs<B: Block>(block: &mut B) -> Option<usize> 
     drain_ready_inputs(block)
 }
 
-/// Synchronously drain every input that has a fresh value. Returns the index
-/// of the last drained input (or `None` if nothing was ready). Faults the
-/// block if any value fails type conversion.
+/// Synchronously drain every input that has a fresh payload. Returns the
+/// index of the last drained input (or `None` if nothing was ready).
+///
+/// Faults the block if:
+/// - any value fails type conversion (Phase 1: block-level fault), or
+/// - any drained payload carries [`Status::Fault`] — upstream fault
+///   propagation, the consumer enters Fault until the upstream recovers
+///   and pushes `Status::Ok` on a later cycle.
 fn drain_ready_inputs<B: Block>(block: &mut B) -> Option<usize> {
     let mut last_idx = None;
-    let mut faulted = false;
+    let mut conversion_fault: Option<String> = None;
+    let mut upstream_fault: Option<String> = None;
 
     {
         let mut inputs = block.inputs_mut();
@@ -129,29 +136,49 @@ fn drain_ready_inputs<B: Block>(block: &mut B) -> Option<usize> {
             if !input.is_connected() {
                 continue;
             }
-            let Some(value) = input.try_take() else {
+            let Some((value, status)) = input.try_take() else {
                 continue;
             };
 
             let expected = *input.kind();
             let actual = HaystackKind::from(&value);
-            if expected != HaystackKind::Null && expected != actual {
+            let converted = if expected != HaystackKind::Null && expected != actual {
                 match convert_value_kind(value, expected, actual) {
-                    Ok(v) => input.set_value(v),
+                    Ok(v) => v,
                     Err(err) => {
                         log::error!("Error converting value: {}", err);
-                        faulted = true;
+                        if conversion_fault.is_none() {
+                            conversion_fault = Some(format!(
+                                "type conversion failed on input {}: {}",
+                                input.name(),
+                                err
+                            ));
+                        }
+                        continue;
                     }
                 }
             } else {
-                input.set_value(value);
+                value
+            };
+
+            // Carry upstream status with the value into the input's cache
+            // and onward to any chained input links.
+            input.set_value(converted, status);
+
+            if status == Status::Fault && upstream_fault.is_none() {
+                upstream_fault = Some(format!("upstream fault on input {}", input.name()));
             }
+
             last_idx = Some(idx);
         }
     }
 
-    if faulted {
-        block.set_state(BlockState::Fault);
+    // Conversion failures take precedence — they're our own problem and
+    // more actionable for the user than "the thing feeding me is broken."
+    if let Some(reason) = conversion_fault {
+        block.set_state(BlockState::fault(reason));
+    } else if let Some(reason) = upstream_fault {
+        block.set_state(BlockState::fault(reason));
     }
     last_idx
 }

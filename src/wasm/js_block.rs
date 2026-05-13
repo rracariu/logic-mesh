@@ -69,7 +69,7 @@ impl JsBlock {
             desc,
             inputs,
             outputs,
-            state: BlockState::Stopped,
+            state: BlockState::Running,
             func,
         }
     }
@@ -106,12 +106,14 @@ impl JsBlock {
                         })
                         .unwrap_or_else(|err| {
                             log::error!("Failed to process the return of the JS function: {err}");
-                            self.set_state(BlockState::Fault);
+                            self.set_state(BlockState::fault(format!(
+                                "JS return processing failed: {err}"
+                            )));
                         });
                 }
                 Err(err) => {
                     log::error!("Failed to execute JS function block: {err:#?}");
-                    self.set_state(BlockState::Fault);
+                    self.set_state(BlockState::fault(format!("JS execute failed: {err:#?}")));
                 }
             }
         }
@@ -137,11 +139,11 @@ impl BlockProps for JsBlock {
 
     fn set_state(&mut self, state: BlockState) -> BlockState {
         self.state = state;
-        self.state
+        self.state.clone()
     }
 
     fn state(&self) -> BlockState {
-        self.state
+        self.state.clone()
     }
 
     fn get_input(
@@ -264,7 +266,9 @@ impl Block for JsBlock {
             }
             Err(err) => {
                 log::error!("Failed to serialize input values: {err}");
-                self.set_state(BlockState::Fault);
+                self.set_state(BlockState::fault(format!(
+                    "JS input serialization failed: {err}"
+                )));
             }
         }
     }

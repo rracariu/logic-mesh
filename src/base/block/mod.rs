@@ -17,14 +17,58 @@ use libhaystack::{
 };
 pub use props::BlockProps;
 
-/// Determines the state a block is in
-#[derive(Default, Debug, Clone, Copy, PartialEq)]
+/// Operational state a block is in.
+///
+/// Phase 1 fault propagation: `Fault` carries the reason so the engine and
+/// UI can show *why* the block isn't producing trustworthy output. Recovery
+/// is automatic — the actor task optimistically clears Fault at the start
+/// of each cycle and re-enters it only if drain or execute set it again.
+#[derive(Default, Debug, Clone, PartialEq)]
 pub enum BlockState {
+    /// Block is executing normally.
     #[default]
-    Stopped,
     Running,
-    Fault,
+    /// Block has detected an error condition. The reason describes the
+    /// proximate cause (upstream fault, type conversion failure,
+    /// block-specific computation failure). Downstream blocks that drain
+    /// a Fault-status value transition to Fault themselves.
+    Fault { reason: String },
+    /// Block exists but is intentionally not executing. Phase 1 doesn't
+    /// have a path that sets this; reserved for explicit user disable.
+    Disabled,
+    /// Block has been removed and the actor task is exiting.
     Terminated,
+}
+
+impl BlockState {
+    /// Construct a Fault state with the given reason.
+    pub fn fault(reason: impl Into<String>) -> Self {
+        BlockState::Fault {
+            reason: reason.into(),
+        }
+    }
+
+    pub fn is_fault(&self) -> bool {
+        matches!(self, BlockState::Fault { .. })
+    }
+
+    /// The fault reason, if in Fault state.
+    pub fn fault_reason(&self) -> Option<&str> {
+        match self {
+            BlockState::Fault { reason } => Some(reason.as_str()),
+            _ => None,
+        }
+    }
+
+    /// Short label suitable for UI / inspect output.
+    pub fn label(&self) -> &'static str {
+        match self {
+            BlockState::Running => "running",
+            BlockState::Fault { .. } => "fault",
+            BlockState::Disabled => "disabled",
+            BlockState::Terminated => "terminated",
+        }
+    }
 }
 
 pub trait Block: BlockConnect {
@@ -168,7 +212,7 @@ mod test {
         assert_eq!(test_block.desc().name, "Test");
         assert_eq!(test_block.desc().dis, "Test long name");
         assert_eq!(test_block.desc().library, "test");
-        assert_eq!(test_block.state(), BlockState::Stopped);
+        assert_eq!(test_block.state(), BlockState::Running);
         assert_eq!(test_block.inputs().len(), 17);
         assert_eq!(test_block.outputs().len(), 1);
 

@@ -9,10 +9,10 @@ use uuid::Uuid;
 
 use crate::{
     base::{
+        Status,
         input::{BaseInput, Input, InputDefault},
-        link::LinkState,
     },
-    tokio_impl::{ReaderImpl, WriterImpl},
+    tokio_impl::{PinPayload, ReaderImpl, WriterImpl},
 };
 
 pub type InputImpl = BaseInput<ReaderImpl, WriterImpl>;
@@ -30,8 +30,9 @@ impl InputImpl {
     ) -> Self {
         // Watch is a coalescing 1-slot channel: producers always succeed and
         // overwrite; consumers always see the latest value. The seed
-        // `Value::Null` is what `borrow()` reports until the first real send.
-        let (writer, reader) = watch::channel::<Value>(Value::Null);
+        // `(Value::Null, Status::Ok)` is what `borrow()` reports until the
+        // first real send.
+        let (writer, reader) = watch::channel::<PinPayload>((Value::Null, Status::Ok));
 
         Self {
             name: name.to_string(),
@@ -44,6 +45,7 @@ impl InputImpl {
             writer,
 
             val: Default::default(),
+            status: Status::Ok,
             default,
             links: Default::default(),
         }
@@ -63,14 +65,14 @@ impl Input for InputImpl {
             match self.reader.changed().await {
                 Ok(()) => {
                     self.reader.mark_changed();
-                    Some(self.reader.borrow().clone())
+                    Some(self.reader.borrow().0.clone())
                 }
                 Err(_) => None,
             }
         })
     }
 
-    fn try_take(&mut self) -> Option<Value> {
+    fn try_take(&mut self) -> Option<(Value, Status)> {
         // Watch's `has_changed` returns `Err` only if every sender was
         // dropped — treat that as "no fresh value" rather than propagating.
         if self.reader.has_changed().unwrap_or(false) {
@@ -80,29 +82,32 @@ impl Input for InputImpl {
         }
     }
 
-    fn set_value(&mut self, value: Value) {
+    fn set_value(&mut self, value: Value, status: Status) {
         // Forward to all chained inputs. `send_if_modified` only notifies
         // when the value actually changed, so identical re-emissions don't
         // wake downstream blocks — see `Output::set` for the loop-quiescence
-        // rationale.
+        // rationale. Status is part of the comparison so a producer's
+        // transition Ok→Fault wakes downstream even when the value is the
+        // same.
         for link in &mut self.links {
             if let Some(tx) = &link.tx {
                 tx.send_if_modified(|current| {
-                    if *current != value {
-                        *current = value.clone();
+                    if current.0 != value || current.1 != status {
+                        current.0 = value.clone();
+                        current.1 = status;
                         true
                     } else {
                         false
                     }
                 });
-                link.state = if tx.is_closed() {
-                    LinkState::Error
-                } else {
-                    LinkState::Connected
-                };
             }
         }
         self.val = Some(value);
+        self.status = status;
+    }
+
+    fn status(&self) -> Status {
+        self.status
     }
 }
 

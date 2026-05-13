@@ -45,7 +45,12 @@
 	}
 </script>
 
-<div class="node-container" style={isSelected ? 'box-shadow: 0 0 0 2px var(--primary);' : ''}>
+<div
+	class="node-container"
+	class:node-faulted={data.state === 'fault'}
+	title={data.faultReason ?? data.desc.doc}
+	style={isSelected ? 'box-shadow: 0 0 0 2px var(--primary);' : ''}
+>
 	<div class="node-header">
 		<span class="node-title-row">
 			<span class="node-title" title={data.desc.doc}>{data.desc.name}</span>
@@ -91,6 +96,15 @@
 		width: 100%;
 		border-radius: 5px;
 		overflow: hidden;
+	}
+
+	.node-faulted {
+		box-shadow: 0 0 0 2px #e0405b !important;
+	}
+
+	:global(.faulted-edge .svelte-flow__edge-path) {
+		stroke: #e0405b !important;
+		stroke-width: 2px;
 	}
 
 	.node-header {

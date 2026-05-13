@@ -43,7 +43,7 @@ impl Block for Median {
             .collect::<Vec<Number>>();
 
         if let Ok(mut numbers) = convert_units(&val) {
-            if self.state() != BlockState::Running {
+            if !matches!(self.state(), BlockState::Running) {
                 self.set_state(BlockState::Running);
             }
 
@@ -69,7 +69,7 @@ impl Block for Median {
 
             self.out.set(median.into());
         } else {
-            self.set_state(BlockState::Fault);
+            self.set_state(BlockState::fault("Median: unit conversion failed"));
         }
     }
 }

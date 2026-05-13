@@ -17,6 +17,6 @@ pub(super) async fn execute_impl<B: Block>(block: &mut B, calc: impl Fn(i64, i64
         block.outputs_mut()[0].set(Value::make_int(calc(in1.value as i64, in2.value as i64)));
         block.set_state(BlockState::Running);
     } else {
-        block.set_state(BlockState::Fault);
+        block.set_state(BlockState::fault("bitwise: non-numeric input"));
     }
 }

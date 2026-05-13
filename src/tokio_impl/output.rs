@@ -4,8 +4,9 @@ use libhaystack::val::Value;
 
 use crate::{
     base::{
+        Status,
         input::InputProps,
-        link::{BaseLink, LinkState},
+        link::BaseLink,
         output::{BaseOutput, Output},
     },
     tokio_impl::WriterImpl,
@@ -28,24 +29,44 @@ impl Output for OutputImpl {
         // there is no queue and no drop-on-full failure mode. We use
         // `send_if_modified` so writes that don't change the value don't wake
         // downstream blocks — convergent feedback loops quiesce at their
-        // fixed point instead of busy-cycling forever.
+        // fixed point instead of busy-cycling forever. Status is part of the
+        // payload comparison so an externally-managed status flip (set via
+        // [`Output::set_effective_status`] from the actor task) wakes
+        // downstream even when the value didn't change.
+        let status = self.effective_status;
         for link in &mut self.links {
             if let Some(tx) = &link.tx {
                 tx.send_if_modified(|current| {
-                    if *current != value {
-                        *current = value.clone();
+                    if current.0 != value || current.1 != status {
+                        current.0 = value.clone();
+                        current.1 = status;
                         true
                     } else {
                         false
                     }
                 });
-                link.state = if tx.is_closed() {
-                    LinkState::Error
-                } else {
-                    LinkState::Connected
-                };
             }
         }
         self.value = value;
+    }
+
+    fn emit_status(&mut self, status: Status) {
+        // Re-emit the current value with the new status. Updates effective
+        // status so subsequent `set(value)` calls keep using it.
+        self.effective_status = status;
+        let value = self.value.clone();
+        for link in &mut self.links {
+            if let Some(tx) = &link.tx {
+                tx.send_if_modified(|current| {
+                    if current.0 != value || current.1 != status {
+                        current.0 = value.clone();
+                        current.1 = status;
+                        true
+                    } else {
+                        false
+                    }
+                });
+            }
+        }
     }
 }

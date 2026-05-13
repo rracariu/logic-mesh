@@ -8,3 +8,6 @@ pub mod input;
 pub mod link;
 pub mod output;
 pub mod program;
+pub mod status;
+
+pub use status::Status;

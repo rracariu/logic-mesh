@@ -161,6 +161,17 @@ export interface BlockNotification {
      */
     value: {};
   }[];
+
+  /**
+   * The block's operational state at the time of the notification.
+   * Drives fault visualization on the UI.
+   */
+  state: "running" | "fault" | "disabled" | "terminated";
+
+  /**
+   * Optional reason associated with `state === "fault"`.
+   */
+  faultReason?: string;
 }
 
 export interface LinkData {

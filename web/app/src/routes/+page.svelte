@@ -37,7 +37,31 @@
 
 			startWatch((notification: BlockNotification) => {
 				const blockRef = blockInstances.get(notification.id);
-				if (!blockRef || !notification.changes.length) return;
+				if (!blockRef) return;
+
+				// Propagate the block's operational state. Mutating the
+				// proxied $state field re-renders BlockCommons (red ring on
+				// fault). Default to 'running' for safety if the engine
+				// sends an unrecognized state.
+				const nextState =
+					(notification.state as 'running' | 'fault' | 'disabled' | 'terminated') ?? 'running';
+				const prevState = blockRef.value.state;
+				blockRef.value.state = nextState;
+				blockRef.value.faultReason = notification.faultReason;
+
+				// When source state flips between fault and not-fault, refresh
+				// the edges originating from this block so the class-based
+				// styling updates.
+				if (prevState !== nextState) {
+					const isFault = nextState === 'fault';
+					model.edges = model.edges.map((e) =>
+						e.source === notification.id
+							? { ...e, className: isFault ? 'faulted-edge' : undefined }
+							: e
+					);
+				}
+
+				if (!notification.changes.length) return;
 
 				notification.changes.forEach((change) => {
 					if (change.source === 'input') {

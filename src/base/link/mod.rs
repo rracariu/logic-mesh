@@ -9,7 +9,10 @@ use uuid::Uuid;
 pub mod base;
 pub use base::BaseLink;
 
-/// The current link state
+/// The current link state. Phase 1 of fault propagation removed the
+/// `Error` variant — channel/transport failures now surface as a `Stale`
+/// status on the receiving input pin instead (see [`crate::base::Status`]).
+/// `Disconnected`/`Connected` track wiring state only.
 #[derive(Default, Debug, Clone, Copy, PartialEq)]
 pub enum LinkState {
     // The link is disconnected
@@ -17,8 +20,6 @@ pub enum LinkState {
     Disconnected,
     // The link is connected
     Connected,
-    // The link has an error
-    Error,
 }
 
 ///

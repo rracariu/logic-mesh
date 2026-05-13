@@ -57,8 +57,8 @@ impl Block for Add {
             });
 
         if has_err {
-            self.set_state(BlockState::Fault);
-        } else if self.state() != BlockState::Running {
+            self.set_state(BlockState::fault("Add: unit mismatch between inputs"));
+        } else if !matches!(self.state(), BlockState::Running) {
             self.set_state(BlockState::Running);
         }
 
@@ -83,14 +83,18 @@ mod test {
         {
             let in1 = block.get_input_mut("in0").unwrap();
             in1.increment_conn();
-            in1.writer().send(3.into()).unwrap();
+            in1.writer()
+                .send((3.into(), crate::base::Status::Ok))
+                .unwrap();
             block.read_inputs().await;
         }
 
         {
             let in16 = block.get_input_mut("in15").unwrap();
             in16.increment_conn();
-            in16.writer().send(3.into()).unwrap();
+            in16.writer()
+                .send((3.into(), crate::base::Status::Ok))
+                .unwrap();
         }
 
         block.execute().await;

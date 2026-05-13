@@ -10,6 +10,10 @@ export interface Block {
 	label: string;
 	inputs: { [key: string]: BlockPin };
 	outputs: { [key: string]: BlockPin };
+	/** Operational state from the engine. Drives fault-ring rendering. */
+	state: 'running' | 'fault' | 'disabled' | 'terminated';
+	/** Reason associated with `state === 'fault'`, if any. */
+	faultReason?: string;
 }
 
 /**
@@ -32,5 +36,7 @@ export function blockInstance(id: string, desc: BlockDesc): Block {
 		label: '',
 		inputs: toObj(desc.inputs),
 		outputs: toObj(desc.outputs),
+		state: 'running',
+		faultReason: undefined,
 	};
 }

@@ -13,6 +13,7 @@ use tokio::sync::oneshot;
 use uuid::Uuid;
 
 use crate::base::{
+    Status,
     block::{Block, BlockProps, BlockState},
     engine::messages::{BlockDefinition, BlockInputData, BlockOutputData},
     link::{BaseLink, LinkState},
@@ -141,7 +142,9 @@ where
             let result = match block.get_input_mut(&name) {
                 Some(input) => {
                     let prev = input.get_value().cloned();
-                    input.set_value(value);
+                    // External writes are always Ok status — they come from
+                    // the engine, not from a producer block.
+                    input.set_value(value, Status::Ok);
                     Ok(prev)
                 }
                 None => Err("Input not found".to_string()),
@@ -221,14 +224,15 @@ where
 
         BlockMailboxCmd::SeedInputValue { name, value } => {
             if let Some(input) = block.get_input_mut(&name) {
-                let _ = input.writer().send(value);
+                let _ = input.writer().send((value, Status::Ok));
             }
         }
 
         BlockMailboxCmd::RefreshInput { name } => {
             if let Some(input) = block.get_input_mut(&name) {
                 let value = input.get_value().cloned().unwrap_or_default();
-                let _ = input.writer().send(value);
+                let status = input.status();
+                let _ = input.writer().send((value, status));
             }
         }
 
@@ -285,6 +289,7 @@ where
 }
 
 fn snapshot_block_definition<B: BlockProps + ?Sized>(block: &B) -> BlockDefinition {
+    let state = block.state();
     BlockDefinition {
         id: block.id().to_string(),
         name: block.name().to_string(),
@@ -315,6 +320,8 @@ fn snapshot_block_definition<B: BlockProps + ?Sized>(block: &B) -> BlockDefiniti
                 )
             })
             .collect(),
+        fault_reason: state.fault_reason().map(|s| s.to_string()),
+        state: state.label().to_string(),
     }
 }
 

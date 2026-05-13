@@ -23,10 +23,9 @@ use tokio::sync::{
 use uuid::Uuid;
 
 use super::super::block_mailbox::{BlockMailboxCmd, handle_cmd};
-use crate::base::{
-    block::{Block, BlockState},
-    engine::messages::{ChangeSource, WatchMessage},
-};
+use crate::base::Status;
+use crate::base::block::{Block, BlockState};
+use crate::base::engine::messages::{ChangeSource, WatchMessage};
 use crate::tokio_impl::{ReaderImpl, WriterImpl};
 
 /// MT-side watchers handle: cross-thread, async-locked.
@@ -42,18 +41,54 @@ pub(super) async fn block_actor_task<B>(
     B: Block<Writer = WriterImpl, Reader = ReaderImpl> + 'static,
 {
     let mut last_pin_values = BTreeMap::<String, Value>::new();
+    let mut last_state = BlockState::Running;
     let mut terminated = false;
 
     while !terminated {
+        // Optimistic recovery — see single_threaded::actor for rationale.
+        if block.state().is_fault() {
+            block.set_state(BlockState::Running);
+        }
+
         terminated = run_one_step(&mut block, &mut mailbox).await;
 
-        change_of_value_check(&watchers, &block, &mut last_pin_values).await;
+        let current_state = block.state();
+        propagate_status(&current_state, &last_state, &mut block);
 
-        if block.state() == BlockState::Terminated {
+        change_of_value_check(
+            &watchers,
+            &block,
+            &mut last_pin_values,
+            &current_state,
+            &last_state,
+        )
+        .await;
+
+        last_state = current_state;
+
+        if matches!(block.state(), BlockState::Terminated) {
             break;
         }
 
         tokio::task::yield_now().await;
+    }
+}
+
+fn propagate_status<B>(current: &BlockState, previous: &BlockState, block: &mut B)
+where
+    B: Block<Writer = WriterImpl, Reader = ReaderImpl> + 'static,
+{
+    let now_fault = current.is_fault();
+    let was_fault = previous.is_fault();
+
+    if now_fault {
+        for output in block.outputs_mut() {
+            output.emit_status(Status::Fault);
+        }
+    } else if was_fault {
+        for output in block.outputs_mut() {
+            output.emit_status(Status::Ok);
+        }
     }
 }
 
@@ -86,6 +121,8 @@ async fn change_of_value_check<B: Block + 'static>(
     notification_channels: &WatchersHandle,
     block: &B,
     last_pin_values: &mut BTreeMap<String, Value>,
+    state: &BlockState,
+    prev_state: &BlockState,
 ) {
     if notification_channels.read().await.is_empty() {
         if !last_pin_values.is_empty() {
@@ -115,11 +152,12 @@ async fn change_of_value_check<B: Block + 'static>(
         }
     }
 
-    if !changes.is_empty() {
+    if !changes.is_empty() || state != prev_state {
         for sender in notification_channels.read().await.values() {
             let _ = sender.try_send(WatchMessage {
                 block_id: *block.id(),
                 changes: changes.clone(),
+                state: state.clone(),
             });
         }
     }

@@ -87,7 +87,7 @@ pub(super) fn block_props_impl(ast: &syn::DeriveInput) -> TokenStream {
             pub fn new_uuid(uuid: Uuid) -> Self {
                 Self {
                     id: uuid,
-                    state: BlockState::Stopped,
+                    state: BlockState::Running,
                     #block_field_init
                     #outputs_field_init,
                     #block_defined_init
@@ -115,12 +115,12 @@ pub(super) fn block_props_impl(ast: &syn::DeriveInput) -> TokenStream {
             }
 
             fn state(&self) -> BlockState {
-                self.state
+                self.state.clone()
             }
 
             fn set_state(&mut self, state: BlockState) -> BlockState {
                 self.state = state;
-                self.state
+                self.state.clone()
             }
 
             fn inputs(&self) -> Vec<&dyn Input<Reader = Self::Reader, Writer = Self::Writer>> {

@@ -58,8 +58,8 @@ impl Block for Random {
             .unwrap_or(100);
 
         if min > max {
-            self.set_state(BlockState::Fault);
-        } else if self.state() == BlockState::Fault {
+            self.set_state(BlockState::fault("Random: min > max"));
+        } else if self.state().is_fault() {
             self.set_state(BlockState::Running);
         }
 

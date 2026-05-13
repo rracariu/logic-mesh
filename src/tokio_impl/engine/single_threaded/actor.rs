@@ -19,10 +19,9 @@ use tokio::sync::{mpsc, mpsc::Sender};
 use uuid::Uuid;
 
 use super::super::block_mailbox::{BlockMailboxCmd, handle_cmd};
-use crate::base::{
-    block::{Block, BlockState},
-    engine::messages::{ChangeSource, WatchMessage},
-};
+use crate::base::Status;
+use crate::base::block::{Block, BlockState};
+use crate::base::engine::messages::{ChangeSource, WatchMessage};
 use crate::tokio_impl::{ReaderImpl, WriterImpl};
 
 /// ST-side watchers handle: single-threaded, no thread-safety needed.
@@ -38,16 +37,49 @@ pub(super) async fn block_actor_task<B>(
     B: Block<Writer = WriterImpl, Reader = ReaderImpl> + 'static,
 {
     let mut last_pin_values = BTreeMap::<String, Value>::new();
+    let mut last_state = BlockState::Running;
     let mut terminated = false;
 
     while !terminated {
+        // Optimistic recovery: if the previous cycle left the block in
+        // Fault, clear back to Running before drain/execute. If the
+        // upstream fault persists or the block re-faults during execute,
+        // drain or execute will re-set Fault on this cycle; otherwise the
+        // block recovers naturally and the end-of-cycle `emit_status(Ok)`
+        // broadcasts the recovery.
+        //
+        // We deliberately do NOT reset each output's `effective_status`
+        // here. Doing so would mean `output.set(value)` calls inside
+        // `execute()` emit `(value, Ok)` even when the block is about to
+        // re-enter Fault this same cycle — a non-conservative status
+        // flicker that can mask a fault. Keeping `effective_status`
+        // sticky between cycles means: while in Fault, value updates ride
+        // out as `(value, Fault)`; on recovery, `emit_status(Ok)` at the
+        // end of the recovery cycle is the single authoritative flip.
+        if block.state().is_fault() {
+            block.set_state(BlockState::Running);
+        }
+
         // Drive one step: either execute completes, or a mailbox cmd arrives
         // (cancelling execute mid-await).
         terminated = run_one_step(&mut block, &mut mailbox).await;
 
-        change_of_value_check(&watchers, &block, &mut last_pin_values);
+        // Propagate state changes to output statuses. emit_status is a no-op
+        // on the wire when nothing changed (send_if_modified comparison).
+        let current_state = block.state();
+        propagate_status(&current_state, &last_state, &mut block);
 
-        if block.state() == BlockState::Terminated {
+        change_of_value_check(
+            &watchers,
+            &block,
+            &mut last_pin_values,
+            &current_state,
+            &last_state,
+        );
+
+        last_state = current_state;
+
+        if matches!(block.state(), BlockState::Terminated) {
             break;
         }
 
@@ -55,6 +87,27 @@ pub(super) async fn block_actor_task<B>(
         // misconfigured periodic block with no awaits) from starving siblings
         // on the same LocalSet.
         tokio::task::yield_now().await;
+    }
+}
+
+/// Push status updates to every output when the block's state changes
+/// between Fault and not-Fault. Recovery (Fault → Running) also re-emits
+/// `Ok` so consumers see the recovery even if the value didn't change.
+fn propagate_status<B>(current: &BlockState, previous: &BlockState, block: &mut B)
+where
+    B: Block<Writer = WriterImpl, Reader = ReaderImpl> + 'static,
+{
+    let now_fault = current.is_fault();
+    let was_fault = previous.is_fault();
+
+    if now_fault {
+        for output in block.outputs_mut() {
+            output.emit_status(Status::Fault);
+        }
+    } else if was_fault {
+        for output in block.outputs_mut() {
+            output.emit_status(Status::Ok);
+        }
     }
 }
 
@@ -86,12 +139,16 @@ where
     handle_cmd(cmd, block).await
 }
 
-/// Detect changes on the block's pins relative to the previously-emitted
-/// snapshot and dispatch a `WatchMessage` to every subscribed watcher.
+/// Detect changes on the block's pins and/or state relative to the
+/// previously-emitted snapshot and dispatch a `WatchMessage` to every
+/// subscribed watcher. The current `BlockState` rides on every emitted
+/// message so the UI can render Fault state alongside the pin updates.
 fn change_of_value_check<B: Block + 'static>(
     notification_channels: &WatchersHandle,
     block: &B,
     last_pin_values: &mut BTreeMap<String, Value>,
+    state: &BlockState,
+    prev_state: &BlockState,
 ) {
     if notification_channels.borrow().is_empty() {
         if !last_pin_values.is_empty() {
@@ -122,11 +179,15 @@ fn change_of_value_check<B: Block + 'static>(
         }
     });
 
-    if !changes.is_empty() {
+    // Emit when either a pin value changed OR the block's state did.
+    // Without the state-change check, a block entering Fault with no
+    // value change (e.g., upstream stopped emitting) would be invisible.
+    if !changes.is_empty() || state != prev_state {
         for sender in notification_channels.borrow().values() {
             let _ = sender.try_send(WatchMessage {
                 block_id: *block.id(),
                 changes: changes.clone(),
+                state: state.clone(),
             });
         }
     }
