@@ -530,7 +530,12 @@ impl SingleThreadedEngine {
 
     /// Re-arm any other connected inputs on the target block by re-sending
     /// their cached values, so the block re-cycles after a new link is
-    /// added. Mirrors the original `reset_connected_inputs` helper.
+    /// added.
+    ///
+    /// Skips unconnected inputs — refreshing them is a no-op
+    /// (`drain_ready_inputs` filters by `is_connected`) and the mailbox
+    /// round-trip would be wasted. `is_connected` rides on the
+    /// `Inspect` snapshot since Q4/A3.
     async fn reset_connected_inputs(&self, target_id: &Uuid, ignore_input: &str) -> Result<()> {
         let inputs = match self.inspect_block(target_id).await {
             Ok(def) => def.inputs,
@@ -538,7 +543,7 @@ impl SingleThreadedEngine {
         };
         if let Some((name, _data)) = inputs
             .iter()
-            .find(|(name, _)| name.as_str() != ignore_input)
+            .find(|(name, data)| name.as_str() != ignore_input && data.is_connected)
         {
             let mb = self.mailbox(target_id);
             if let Some(mb) = mb {

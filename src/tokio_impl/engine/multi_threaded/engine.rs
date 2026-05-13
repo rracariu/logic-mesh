@@ -551,6 +551,8 @@ impl MultiThreadedEngine {
         rx.await.ok().flatten()
     }
 
+    /// MT mirror of the ST helper — see its doc for the
+    /// `is_connected` filter rationale.
     async fn reset_connected_inputs(&self, target_id: &Uuid, ignore_input: &str) -> Result<()> {
         let inputs = match self.inspect_block(target_id).await {
             Ok(def) => def.inputs,
@@ -558,7 +560,7 @@ impl MultiThreadedEngine {
         };
         if let Some((name, _data)) = inputs
             .iter()
-            .find(|(name, _)| name.as_str() != ignore_input)
+            .find(|(name, data)| name.as_str() != ignore_input && data.is_connected)
             && let Some(mb) = self.mailbox(target_id)
         {
             let _ = mb
