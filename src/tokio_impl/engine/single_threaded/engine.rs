@@ -24,7 +24,10 @@ use crate::base::{
         Engine,
         messages::{BlockDefinition, EngineMessage, WatchMessage},
     },
-    program::data::{BlockData, LinkData},
+    program::{
+        Program,
+        data::{LinkData, PinValue, Position, ProgramBlock},
+    },
 };
 use crate::blocks::registry::get_block;
 use crate::tokio_impl::engine::message_dispatch::dispatch_message;
@@ -47,8 +50,25 @@ pub struct BlockHandle {
     id: Uuid,
     name: String,
     library: String,
-    desc: &'static BlockDesc,
+    /// Owned clone of the block's descriptor.
+    ///
+    /// We clone instead of borrowing `&'static BlockDesc` because for
+    /// JS blocks the descriptor lives inside the block instance — and
+    /// the instance gets moved into its actor task at schedule time,
+    /// invalidating any borrowed pointer. Native (Rust) blocks back
+    /// their descriptor with a `LazyLock<BlockDesc>` so a `&'static`
+    /// would be sound for them, but we use a single uniform owned shape
+    /// to avoid an unsafe trait split. The clone happens once per
+    /// block at schedule time.
+    desc: BlockDesc,
     mailbox: mpsc::Sender<BlockMailboxCmd>,
+    /// UI display label. Pure passthrough metadata — the engine never
+    /// reads it. Stored here so `save_program` can round-trip it without
+    /// the UI layer being the canonical store.
+    label: Option<String>,
+    /// UI position. Same role as `label`: pure passthrough so headless
+    /// save/load preserves the layout.
+    position: Option<Position>,
 }
 
 impl BlockHandle {
@@ -61,8 +81,14 @@ impl BlockHandle {
     pub fn library(&self) -> &str {
         &self.library
     }
-    pub fn desc(&self) -> &'static BlockDesc {
-        self.desc
+    pub fn desc(&self) -> &BlockDesc {
+        &self.desc
+    }
+    pub fn label(&self) -> Option<&str> {
+        self.label.as_deref()
+    }
+    pub fn position(&self) -> Option<Position> {
+        self.position
     }
 }
 
@@ -108,7 +134,10 @@ impl Engine for SingleThreadedEngine {
         let id = *block.id();
         let name = block.name().to_string();
         let library = block.desc().library.clone();
-        let desc: &'static BlockDesc = block.desc();
+        // Clone the desc into the handle BEFORE moving `block` into the
+        // actor task. JS blocks' "static" desc actually lives inside the
+        // block instance; borrowing it across the move is UB.
+        let desc: BlockDesc = block.desc().clone();
         let (mailbox_tx, mailbox_rx) = mpsc::channel::<BlockMailboxCmd>(BLOCK_MAILBOX_CAP);
 
         let handle = BlockHandle {
@@ -117,6 +146,8 @@ impl Engine for SingleThreadedEngine {
             library,
             desc,
             mailbox: mailbox_tx,
+            label: None,
+            position: None,
         };
         self.handles.insert(id, handle);
 
@@ -125,16 +156,22 @@ impl Engine for SingleThreadedEngine {
             .spawn_local(block_actor_task(block, mailbox_rx, watchers));
     }
 
-    fn load_blocks_and_links(&mut self, blocks: &[BlockData], links: &[LinkData]) -> Result<()> {
-        for block in blocks {
-            let id = Uuid::try_from(block.id.as_str()).map_err(|_| anyhow!("Invalid block id"))?;
-            let block_def = get_block(&block.name, Some(block.lib.clone()))
-                .ok_or_else(|| anyhow!("Block not found"))?;
+    fn schedule_program_blocks(&mut self, program: &Program) -> Result<()> {
+        for (uuid_str, pb) in &program.blocks {
+            let id = Uuid::try_from(uuid_str.as_str())
+                .map_err(|_| anyhow!("Invalid block uuid: {}", uuid_str))?;
+            let block_def = get_block(&pb.name, Some(pb.lib.clone()))
+                .ok_or_else(|| anyhow!("Block not found: {}::{}", pb.lib, pb.name))?;
             schedule_block_on_engine(&block_def.desc, Some(id), self)?;
+            // Record UI metadata on the handle so it round-trips on save.
+            if let Some(handle) = self.handles.get_mut(&id) {
+                handle.label = pb.label.clone();
+                handle.position = pb.positions;
+            }
         }
         // Wiring is async (mailbox round-trips); validate sync and queue
         // for processing at `run()` start.
-        for link in links {
+        for link in program.links.values() {
             self.connect_blocks_sync(link)?;
         }
         Ok(())
@@ -567,21 +604,154 @@ impl SingleThreadedEngine {
         Ok(*block_id)
     }
 
-    pub(crate) async fn save_blocks_and_links(&self) -> Result<(Vec<BlockData>, Vec<LinkData>)> {
-        let mut blocks = Vec::new();
-        let mut links = Vec::new();
-        for handle in self.handles.values() {
-            let (tx, rx) = oneshot::channel();
+    /// Snapshot the full program: every scheduled block with its UI
+    /// metadata + current pin values, plus every link. This is the
+    /// canonical save format — round-trips through `load_program`.
+    pub(crate) async fn save_program(&self) -> Result<Program> {
+        let mut blocks = std::collections::BTreeMap::new();
+        let mut links = std::collections::BTreeMap::new();
+
+        for (id, handle) in &self.handles {
+            // Pull dynamic state (pin values + per-input connectedness)
+            // via `Inspect`.
+            let (insp_tx, insp_rx) = oneshot::channel();
             handle
                 .mailbox
-                .send(BlockMailboxCmd::GetBlockData { reply: tx })
+                .send(BlockMailboxCmd::Inspect { reply: insp_tx })
                 .await
                 .map_err(|_| anyhow!("Block task gone"))?;
-            let (block_data, block_links) = rx.await.map_err(|_| anyhow!("Block dropped reply"))?;
-            blocks.push(block_data);
-            links.extend(block_links);
+            let definition = insp_rx
+                .await
+                .map_err(|_| anyhow!("Block dropped reply"))?;
+
+            // Pull outgoing links via `GetBlockData`.
+            let (data_tx, data_rx) = oneshot::channel();
+            handle
+                .mailbox
+                .send(BlockMailboxCmd::GetBlockData { reply: data_tx })
+                .await
+                .map_err(|_| anyhow!("Block task gone"))?;
+            let (_block_data, block_links) = data_rx
+                .await
+                .map_err(|_| anyhow!("Block dropped reply"))?;
+
+            let inputs = definition
+                .inputs
+                .into_iter()
+                .map(|(name, data)| {
+                    (
+                        name,
+                        PinValue {
+                            value: data.val,
+                            is_connected: data.is_connected,
+                        },
+                    )
+                })
+                .collect();
+            let outputs = definition
+                .outputs
+                .into_iter()
+                .map(|(name, data)| {
+                    (
+                        name,
+                        PinValue {
+                            value: data.val,
+                            is_connected: false,
+                        },
+                    )
+                })
+                .collect();
+
+            blocks.insert(
+                id.to_string(),
+                ProgramBlock {
+                    name: handle.name.clone(),
+                    lib: handle.library.clone(),
+                    label: handle.label.clone(),
+                    positions: handle.position,
+                    inputs,
+                    outputs,
+                },
+            );
+
+            for link in block_links {
+                let link_id = link
+                    .id
+                    .clone()
+                    .unwrap_or_else(|| Uuid::new_v4().to_string());
+                links.insert(link_id, link);
+            }
         }
-        Ok((blocks, links))
+
+        Ok(Program {
+            name: None,
+            description: None,
+            blocks,
+            links,
+        })
+    }
+
+    /// Atomically load a full [`Program`]: schedule every block, wire
+    /// every link, push initial input/output values, and store UI
+    /// metadata. Idempotent re-entry (engine should be empty or the
+    /// caller should reset it first via `Reset`).
+    ///
+    /// Must be called from within the engine `run()` context (the actor
+    /// tasks need to be live to handle the WriteInput/Output mailbox
+    /// cmds). When invoked through the engine message channel
+    /// (`LoadProgramReq`), this is automatic.
+    pub(crate) async fn load_program(&mut self, program: Program) -> Result<()> {
+        // Sync: schedule blocks + queue links. After this the per-block
+        // actor tasks have been spawned and the link wiring is queued
+        // for processing by `connect_blocks` calls below.
+        self.schedule_program_blocks(&program)?;
+
+        // Wire each queued link asynchronously (mailbox round-trips
+        // between source and target blocks).
+        let pending_links = std::mem::take(&mut self.pending_links);
+        for link in pending_links {
+            self.connect_blocks(&link).await?;
+        }
+
+        // Push each block's saved input/output values.
+        for (uuid_str, pb) in &program.blocks {
+            let id = Uuid::try_from(uuid_str.as_str())?;
+            for (name, pin) in &pb.inputs {
+                if hasinitialvalue(&pin.value) {
+                    let _ = self
+                        .write_input(&id, name.clone(), pin.value.clone())
+                        .await;
+                }
+            }
+            for (name, pin) in &pb.outputs {
+                if hasinitialvalue(&pin.value) {
+                    let _ = self
+                        .write_output(&id, name.clone(), pin.value.clone())
+                        .await;
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Mutator for UI-metadata sidecar fields. Used by the message
+    /// dispatch path when an external caller wants to update a label /
+    /// position without going through a full program reload.
+    pub fn set_block_metadata(
+        &mut self,
+        id: &Uuid,
+        label: Option<String>,
+        position: Option<Position>,
+    ) {
+        if let Some(handle) = self.handles.get_mut(id) {
+            if let Some(l) = label {
+                handle.label = Some(l);
+            }
+            if let Some(p) = position {
+                handle.position = Some(p);
+            }
+        }
     }
 
     pub(crate) async fn disconnect_link_by_id(&self, link_id: &Uuid) -> Result<bool> {
@@ -618,4 +788,19 @@ impl SingleThreadedEngine {
         }
         Ok(false)
     }
+}
+
+/// Filter for "this is a real saved value, not a placeholder."
+/// Examples sometimes annotate a computed output pin with `{}` purely
+/// as a UI hint that the pin exists. Loading that verbatim would push
+/// an empty Dict into the wasm value, which then propagates through
+/// connected links to Number-typed downstream pins and faults their
+/// drain.
+///
+/// Mirrors the JS-side `hasInitialValue` filter in `Program.ts`.
+fn hasinitialvalue(value: &Value) -> bool {
+    use libhaystack::val::Value::*;
+    !matches!(value, Null)
+        && !matches!(value, Dict(d) if d.is_empty())
+        && !matches!(value, List(l) if l.is_empty())
 }

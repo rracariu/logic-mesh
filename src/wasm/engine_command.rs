@@ -2,6 +2,7 @@
 
 use std::str::FromStr;
 
+use crate::base::program::Program;
 use crate::base::program::data::LinkData;
 use crate::wasm::types::JsWatchNotification;
 
@@ -250,8 +251,31 @@ impl EngineCommand {
         }
     }
 
-    /// Get the current running engine program.
-    /// The program contains the scheduled blocks, their properties, and their links.
+    /// Atomically load a full program (blocks + links + pin values +
+    /// UI metadata) into the engine. Replaces the previous JS-side
+    /// `addBlock` + `createLink` + `writeBlockInput` chain. The engine
+    /// is expected to be empty (call `resetEngine` first if reloading).
+    #[wasm_bindgen(js_name = "loadProgram")]
+    pub async fn load_program(&mut self, program: JsValue) -> Result<(), String> {
+        let program: Program = serde_wasm_bindgen::from_value(program)
+            .map_err(|err| format!("Invalid program payload: {err}"))?;
+        match self
+            .sender
+            .send(EngineMessage::LoadProgramReq(self.uuid, program))
+            .await
+        {
+            Ok(_) => match self.receiver.recv().await {
+                Some(EngineMessage::LoadProgramRes(res)) => res,
+                Some(_) => Err("Invalid response".to_string()),
+                None => Err("Failed to receive message".to_string()),
+            },
+            Err(_) => Err("Failed to send message".to_string()),
+        }
+    }
+
+    /// Get the current running engine program in the canonical save
+    /// format (Program struct serialized as JSON). Round-trips through
+    /// `loadProgram` without re-assembly.
     #[wasm_bindgen(js_name = "getProgram")]
     pub async fn get_program(&mut self) -> Result<JsValue, String> {
         match self

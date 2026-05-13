@@ -126,7 +126,7 @@ pub(super) async fn dispatch_message(engine: &mut SingleThreadedEngine, msg: Mes
             log::debug!("GetCurrentProgramReq");
 
             let program = engine
-                .save_blocks_and_links()
+                .save_program()
                 .await
                 .map_err(|err| err.to_string());
 
@@ -135,6 +135,21 @@ pub(super) async fn dispatch_message(engine: &mut SingleThreadedEngine, msg: Mes
                 sender_uuid,
                 EngineMessage::GetCurrentProgramRes(program),
             );
+        }
+
+        EngineMessage::LoadProgramReq(sender_uuid, program) => {
+            log::debug!(
+                "LoadProgramReq: {} blocks, {} links",
+                program.blocks.len(),
+                program.links.len()
+            );
+
+            let res = engine
+                .load_program(program)
+                .await
+                .map_err(|err| err.to_string());
+
+            reply_to_sender(engine, sender_uuid, EngineMessage::LoadProgramRes(res));
         }
 
         EngineMessage::ConnectBlocksReq(sender_uuid, link_data) => {

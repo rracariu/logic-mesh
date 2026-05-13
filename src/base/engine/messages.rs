@@ -8,13 +8,19 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::base::block::BlockState;
-use crate::base::program::data::{BlockData, LinkData};
+use crate::base::program::{Program, data::LinkData};
 
 /// Block input properties
 #[derive(Default, Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
 pub struct BlockInputData {
     pub kind: String,
     pub val: Value,
+    /// True if this input is wired up (i.e. its `connection_count > 0`).
+    /// Surfaced so `save_program` can round-trip pin connectedness
+    /// alongside the value.
+    #[serde(default)]
+    pub is_connected: bool,
 }
 
 /// Block output properties
@@ -80,7 +86,13 @@ pub enum EngineMessage<WatchEventSender: Clone> {
     WatchBlockUnsubRes(Result<Uuid, &'static str>),
 
     GetCurrentProgramReq(Uuid),
-    GetCurrentProgramRes(Result<(Vec<BlockData>, Vec<LinkData>), String>),
+    GetCurrentProgramRes(Result<Program, String>),
+
+    /// Atomically load a full `Program` (blocks, links, pin values, UI
+    /// metadata) into the engine. Replaces the multi-call JS chain of
+    /// `addBlock` + `createLink` + `writeBlockInput` per block.
+    LoadProgramReq(Uuid, Program),
+    LoadProgramRes(Result<(), String>),
 
     InspectBlockReq(Uuid, Uuid),
     InspectBlockRes(Result<BlockDefinition, String>),

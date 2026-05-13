@@ -303,6 +303,7 @@ fn snapshot_block_definition<B: BlockProps + ?Sized>(block: &B) -> BlockDefiniti
                     BlockInputData {
                         kind: input.kind().to_string(),
                         val: input.get_value().cloned().unwrap_or_default(),
+                        is_connected: input.is_connected(),
                     },
                 )
             })

@@ -101,45 +101,17 @@ export function prepare(program: Program): { nodes: Node[]; edges: Edge[] } {
 }
 
 /**
- * Push the program into the wasm engine: addBlock, createLink, write
- * initial values. Call AFTER `prepare()` + registering the block
- * instances so change-of-value notifications fired during the load have
- * a registered destination.
+ * Push the program into the wasm engine in a single atomic call.
+ *
+ * The Rust engine accepts a full `Program` (blocks + links + pin values
+ * + UI metadata) via `loadProgram` and handles scheduling, wiring, and
+ * value writes internally — no JS-side `addBlock` / `createLink` /
+ * `writeBlockInput` chain. Call AFTER `prepare()` + registering the
+ * block instances so change-of-value notifications fired during the
+ * load have a registered destination.
  */
 export async function pushToEngine(program: Program): Promise<void> {
-	for (const blockUuid in program.blocks) {
-		const block = program.blocks[blockUuid];
-		const id = await command.addBlock(block.name, blockUuid, block.lib);
-		if (blockUuid !== id) {
-			throw new Error(`Block uuid mismatch: ${blockUuid} !== ${id}`);
-		}
-	}
-
-	for (const linkId in program.links) {
-		const link = program.links[linkId];
-		await command.createLink(
-			link.sourceBlockUuid,
-			link.targetBlockUuid,
-			link.sourceBlockPinName,
-			link.targetBlockPinName
-		);
-	}
-
-	for (const blockUuid in program.blocks) {
-		const block = program.blocks[blockUuid];
-
-		for (const [name, input] of Object.entries(block.inputs ?? {})) {
-			if (hasInitialValue(input.value)) {
-				await command.writeBlockInput(blockUuid, name, input.value);
-			}
-		}
-
-		for (const [name, output] of Object.entries(block.outputs ?? {})) {
-			if (hasInitialValue(output.value)) {
-				await command.writeBlockOutput(blockUuid, name, output.value);
-			}
-		}
-	}
+	await command.loadProgram(program);
 }
 
 /**
@@ -153,21 +125,4 @@ export async function load(program: Program): Promise<{ nodes: Node[]; edges: Ed
 	const { nodes, edges } = prepare(program);
 	await pushToEngine(program);
 	return { nodes, edges };
-}
-
-/**
- * Treat empty objects/arrays as placeholders, not real initial values.
- *
- * Examples typically annotate a computed output pin with `value: {}` purely
- * as a UI hint that the pin exists. Loading that verbatim would push an
- * empty `Dict` into the wasm input/output, which then propagates through
- * connected links to Number-typed downstream pins and faults their drain
- * (Cannot convert Dict to Number). It also overwrites any value the block
- * has already computed for that pin.
- */
-function hasInitialValue(val: unknown): boolean {
-	if (val == null) return false;
-	if (typeof val !== 'object') return true;
-	if (Array.isArray(val)) return val.length > 0;
-	return Object.keys(val as object).length > 0;
 }

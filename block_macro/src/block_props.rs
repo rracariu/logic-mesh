@@ -110,7 +110,7 @@ pub(super) fn block_props_impl(ast: &syn::DeriveInput) -> TokenStream {
                 &self.desc().name
             }
 
-            fn desc(&self) -> &'static BlockDesc {
+            fn desc(&self) -> &BlockDesc {
                 <Self as crate::base::block::BlockStaticDesc>::desc()
             }
 

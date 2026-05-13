@@ -6,10 +6,7 @@
 
 use anyhow::Result;
 
-use super::{
-    block::Block,
-    program::data::{BlockData, LinkData},
-};
+use super::{block::Block, program::Program};
 
 pub mod messages;
 
@@ -31,9 +28,12 @@ pub trait Engine {
         block: B,
     );
 
-    /// Load the blocks and links into the engine.
-    /// This operation should be performed before the engine is run.
-    fn load_blocks_and_links(&mut self, blocks: &[BlockData], links: &[LinkData]) -> Result<()>;
+    /// Synchronously schedule the blocks and validate-and-queue the links
+    /// from a [`Program`]. This is the pre-run setup half of program
+    /// loading; it does NOT push input/output constant values (which
+    /// requires the actor loop to be running — see `load_program` on the
+    /// inherent engine impls for the full async path).
+    fn schedule_program_blocks(&mut self, program: &Program) -> Result<()>;
 
     /// Runs the event loop of this engine
     /// an execute the blocks that where scheduled

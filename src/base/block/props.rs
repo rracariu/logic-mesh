@@ -27,7 +27,7 @@ pub trait BlockProps {
     fn name(&self) -> &str;
 
     /// Block's static description
-    fn desc(&self) -> &'static BlockDesc;
+    fn desc(&self) -> &BlockDesc;
 
     /// Blocks state
     fn state(&self) -> BlockState;

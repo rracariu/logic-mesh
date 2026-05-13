@@ -31,8 +31,14 @@ use super::super::block_mailbox::{BLOCK_MAILBOX_CAP, BlockMailboxCmd};
 use super::actor::{WatchersHandle, block_actor_task};
 use crate::base::{
     block::{Block, BlockDesc},
-    engine::messages::{BlockDefinition, EngineMessage, WatchMessage},
-    program::data::{BlockData, LinkData},
+    engine::{
+        Engine,
+        messages::{BlockDefinition, EngineMessage, WatchMessage},
+    },
+    program::{
+        Program,
+        data::{LinkData, PinValue, Position, ProgramBlock},
+    },
 };
 use crate::blocks::registry::get_block;
 use crate::tokio_impl::engine::schedule_block_on_engine_mt;
@@ -53,9 +59,15 @@ pub struct BlockHandle {
     id: Uuid,
     name: String,
     library: String,
-    desc: &'static BlockDesc,
+    /// Owned clone of the block's descriptor — see the ST
+    /// `BlockHandle::desc` doc for the rationale (JS blocks).
+    desc: BlockDesc,
     worker_idx: usize,
     mailbox: mpsc::Sender<BlockMailboxCmd>,
+    /// See ST `BlockHandle::label`.
+    label: Option<String>,
+    /// See ST `BlockHandle::position`.
+    position: Option<Position>,
 }
 
 impl BlockHandle {
@@ -68,11 +80,17 @@ impl BlockHandle {
     pub fn library(&self) -> &str {
         &self.library
     }
-    pub fn desc(&self) -> &'static BlockDesc {
-        self.desc
+    pub fn desc(&self) -> &BlockDesc {
+        &self.desc
     }
     pub fn worker_idx(&self) -> usize {
         self.worker_idx
+    }
+    pub fn label(&self) -> Option<&str> {
+        self.label.as_deref()
+    }
+    pub fn position(&self) -> Option<Position> {
+        self.position
     }
 }
 
@@ -127,14 +145,19 @@ impl crate::base::engine::Engine for MultiThreadedEngine {
         );
     }
 
-    fn load_blocks_and_links(&mut self, blocks: &[BlockData], links: &[LinkData]) -> Result<()> {
-        for block in blocks {
-            let id = Uuid::try_from(block.id.as_str()).map_err(|_| anyhow!("Invalid block id"))?;
-            let block_def = get_block(&block.name, Some(block.lib.clone()))
-                .ok_or_else(|| anyhow!("Block not found"))?;
+    fn schedule_program_blocks(&mut self, program: &Program) -> Result<()> {
+        for (uuid_str, pb) in &program.blocks {
+            let id = Uuid::try_from(uuid_str.as_str())
+                .map_err(|_| anyhow!("Invalid block uuid: {}", uuid_str))?;
+            let block_def = get_block(&pb.name, Some(pb.lib.clone()))
+                .ok_or_else(|| anyhow!("Block not found: {}::{}", pb.lib, pb.name))?;
             schedule_block_on_engine_mt(&block_def.desc, Some(id), self)?;
+            if let Some(handle) = self.handles.get_mut(&id) {
+                handle.label = pb.label.clone();
+                handle.position = pb.positions;
+            }
         }
-        for link in links {
+        for link in program.links.values() {
             self.connect_blocks_sync(link)?;
         }
         Ok(())
@@ -237,7 +260,8 @@ impl MultiThreadedEngine {
         let id = *block.id();
         let name = block.name().to_string();
         let library = block.desc().library.clone();
-        let desc: &'static BlockDesc = block.desc();
+        // See the ST engine's `schedule` for why we clone here.
+        let desc: BlockDesc = block.desc().clone();
         let (mailbox_tx, mailbox_rx) = mpsc::channel::<BlockMailboxCmd>(BLOCK_MAILBOX_CAP);
 
         let handle = BlockHandle {
@@ -247,6 +271,8 @@ impl MultiThreadedEngine {
             desc,
             worker_idx,
             mailbox: mailbox_tx,
+            label: None,
+            position: None,
         };
         self.handles.insert(id, handle);
 
@@ -595,21 +621,115 @@ impl MultiThreadedEngine {
         Ok(*block_id)
     }
 
-    pub async fn save_blocks_and_links(&self) -> Result<(Vec<BlockData>, Vec<LinkData>)> {
-        let mut blocks = Vec::new();
-        let mut links = Vec::new();
-        for handle in self.handles.values() {
-            let (tx, rx) = oneshot::channel();
+    /// MT mirror of [`super::super::single_threaded::engine::SingleThreadedEngine::save_program`].
+    pub async fn save_program(&self) -> Result<Program> {
+        let mut blocks = std::collections::BTreeMap::new();
+        let mut links = std::collections::BTreeMap::new();
+
+        for (id, handle) in &self.handles {
+            let (insp_tx, insp_rx) = oneshot::channel();
             handle
                 .mailbox
-                .send(BlockMailboxCmd::GetBlockData { reply: tx })
+                .send(BlockMailboxCmd::Inspect { reply: insp_tx })
                 .await
                 .map_err(|_| anyhow!("Block task gone"))?;
-            let (block_data, block_links) = rx.await.map_err(|_| anyhow!("Block dropped reply"))?;
-            blocks.push(block_data);
-            links.extend(block_links);
+            let definition = insp_rx
+                .await
+                .map_err(|_| anyhow!("Block dropped reply"))?;
+
+            let (data_tx, data_rx) = oneshot::channel();
+            handle
+                .mailbox
+                .send(BlockMailboxCmd::GetBlockData { reply: data_tx })
+                .await
+                .map_err(|_| anyhow!("Block task gone"))?;
+            let (_block_data, block_links) =
+                data_rx.await.map_err(|_| anyhow!("Block dropped reply"))?;
+
+            let inputs = definition
+                .inputs
+                .into_iter()
+                .map(|(name, data)| {
+                    (
+                        name,
+                        PinValue {
+                            value: data.val,
+                            is_connected: data.is_connected,
+                        },
+                    )
+                })
+                .collect();
+            let outputs = definition
+                .outputs
+                .into_iter()
+                .map(|(name, data)| {
+                    (
+                        name,
+                        PinValue {
+                            value: data.val,
+                            is_connected: false,
+                        },
+                    )
+                })
+                .collect();
+
+            blocks.insert(
+                id.to_string(),
+                ProgramBlock {
+                    name: handle.name.clone(),
+                    lib: handle.library.clone(),
+                    label: handle.label.clone(),
+                    positions: handle.position,
+                    inputs,
+                    outputs,
+                },
+            );
+
+            for link in block_links {
+                let link_id = link
+                    .id
+                    .clone()
+                    .unwrap_or_else(|| Uuid::new_v4().to_string());
+                links.insert(link_id, link);
+            }
         }
-        Ok((blocks, links))
+
+        Ok(Program {
+            name: None,
+            description: None,
+            blocks,
+            links,
+        })
+    }
+
+    /// MT mirror of [`super::super::single_threaded::engine::SingleThreadedEngine::load_program`].
+    pub async fn load_program(&mut self, program: Program) -> Result<()> {
+        self.schedule_program_blocks(&program)?;
+
+        let pending_links = std::mem::take(&mut self.pending_links);
+        for link in pending_links {
+            self.connect_blocks(&link).await?;
+        }
+
+        for (uuid_str, pb) in &program.blocks {
+            let id = Uuid::try_from(uuid_str.as_str())?;
+            for (name, pin) in &pb.inputs {
+                if hasinitialvalue_mt(&pin.value) {
+                    let _ = self
+                        .write_input(&id, name.clone(), pin.value.clone())
+                        .await;
+                }
+            }
+            for (name, pin) in &pb.outputs {
+                if hasinitialvalue_mt(&pin.value) {
+                    let _ = self
+                        .write_output(&id, name.clone(), pin.value.clone())
+                        .await;
+                }
+            }
+        }
+
+        Ok(())
     }
 
     pub async fn disconnect_link_by_id(&self, link_id: &Uuid) -> Result<bool> {
@@ -731,11 +851,16 @@ impl MultiThreadedEngine {
             }
 
             EngineMessage::GetCurrentProgramReq(sender_uuid) => {
+                let res = self.save_program().await.map_err(|err| err.to_string());
+                self.reply_to_sender(sender_uuid, EngineMessage::GetCurrentProgramRes(res));
+            }
+
+            EngineMessage::LoadProgramReq(sender_uuid, program) => {
                 let res = self
-                    .save_blocks_and_links()
+                    .load_program(program)
                     .await
                     .map_err(|err| err.to_string());
-                self.reply_to_sender(sender_uuid, EngineMessage::GetCurrentProgramRes(res));
+                self.reply_to_sender(sender_uuid, EngineMessage::LoadProgramRes(res));
             }
 
             EngineMessage::ConnectBlocksReq(sender_uuid, link_data) => {
@@ -785,6 +910,14 @@ fn num_cpus() -> usize {
     thread::available_parallelism()
         .map(|n| n.get())
         .unwrap_or(4)
+}
+
+/// MT-side mirror of the ST `hasinitialvalue` helper.
+fn hasinitialvalue_mt(value: &Value) -> bool {
+    use libhaystack::val::Value::*;
+    !matches!(value, Null)
+        && !matches!(value, Dict(d) if d.is_empty())
+        && !matches!(value, List(l) if l.is_empty())
 }
 
 #[cfg(test)]
