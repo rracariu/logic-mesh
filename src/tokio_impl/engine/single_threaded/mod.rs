@@ -226,10 +226,7 @@ mod tests {
                         let pos = saved0.positions.expect("position survives");
                         assert!((pos.x - 10.0).abs() < f64::EPSILON);
                         // Input constant round-trips.
-                        let in0 = saved0
-                            .inputs
-                            .get("in0")
-                            .expect("in0 survives");
+                        let in0 = saved0.inputs.get("in0").expect("in0 survives");
                         assert_eq!(in0.value, 42.into());
 
                         // The wired link survives. After connect, target
@@ -240,10 +237,7 @@ mod tests {
                             .blocks
                             .get(&add1_uuid.to_string())
                             .expect("second block round-trips");
-                        let target_in0 = saved1
-                            .inputs
-                            .get("in0")
-                            .expect("target input present");
+                        let target_in0 = saved1.inputs.get("in0").expect("target input present");
                         assert!(
                             target_in0.is_connected,
                             "wired target input should report is_connected=true"

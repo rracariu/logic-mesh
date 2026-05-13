@@ -635,9 +635,7 @@ impl MultiThreadedEngine {
                 .send(BlockMailboxCmd::Inspect { reply: insp_tx })
                 .await
                 .map_err(|_| anyhow!("Block task gone"))?;
-            let definition = insp_rx
-                .await
-                .map_err(|_| anyhow!("Block dropped reply"))?;
+            let definition = insp_rx.await.map_err(|_| anyhow!("Block dropped reply"))?;
 
             let (data_tx, data_rx) = oneshot::channel();
             handle
@@ -717,9 +715,7 @@ impl MultiThreadedEngine {
             let id = Uuid::try_from(uuid_str.as_str())?;
             for (name, pin) in &pb.inputs {
                 if hasinitialvalue_mt(&pin.value) {
-                    let _ = self
-                        .write_input(&id, name.clone(), pin.value.clone())
-                        .await;
+                    let _ = self.write_input(&id, name.clone(), pin.value.clone()).await;
                 }
             }
             for (name, pin) in &pb.outputs {

@@ -625,9 +625,7 @@ impl SingleThreadedEngine {
                 .send(BlockMailboxCmd::Inspect { reply: insp_tx })
                 .await
                 .map_err(|_| anyhow!("Block task gone"))?;
-            let definition = insp_rx
-                .await
-                .map_err(|_| anyhow!("Block dropped reply"))?;
+            let definition = insp_rx.await.map_err(|_| anyhow!("Block dropped reply"))?;
 
             // Pull outgoing links via `GetBlockData`.
             let (data_tx, data_rx) = oneshot::channel();
@@ -636,9 +634,8 @@ impl SingleThreadedEngine {
                 .send(BlockMailboxCmd::GetBlockData { reply: data_tx })
                 .await
                 .map_err(|_| anyhow!("Block task gone"))?;
-            let (_block_data, block_links) = data_rx
-                .await
-                .map_err(|_| anyhow!("Block dropped reply"))?;
+            let (_block_data, block_links) =
+                data_rx.await.map_err(|_| anyhow!("Block dropped reply"))?;
 
             let inputs = definition
                 .inputs
@@ -723,9 +720,7 @@ impl SingleThreadedEngine {
             let id = Uuid::try_from(uuid_str.as_str())?;
             for (name, pin) in &pb.inputs {
                 if hasinitialvalue(&pin.value) {
-                    let _ = self
-                        .write_input(&id, name.clone(), pin.value.clone())
-                        .await;
+                    let _ = self.write_input(&id, name.clone(), pin.value.clone()).await;
                 }
             }
             for (name, pin) in &pb.outputs {

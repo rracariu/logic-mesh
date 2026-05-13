@@ -12,9 +12,7 @@
 
 pub mod data;
 
-pub use data::{
-    BlockData, LinkData, PinValue, Position, Program, ProgramBlock, ProgramMeta,
-};
+pub use data::{BlockData, LinkData, PinValue, Position, Program, ProgramBlock, ProgramMeta};
 
 #[cfg(test)]
 mod test {
@@ -72,12 +70,7 @@ mod test {
             .schedule_program_blocks(&program)
             .expect("schedule blocks");
 
-        assert!(
-            engine
-                .block_handles()
-                .iter()
-                .all(|b| b.name() == "Add")
-        );
+        assert!(engine.block_handles().iter().all(|b| b.name() == "Add"));
     }
 
     #[test]
@@ -166,9 +159,7 @@ mod test {
             .expect("schedule blocks");
 
         let handle = engine
-            .block_handle(
-                &uuid::Uuid::parse_str("00000000-0000-0000-0000-000000000000").unwrap(),
-            )
+            .block_handle(&uuid::Uuid::parse_str("00000000-0000-0000-0000-000000000000").unwrap())
             .expect("handle");
         assert_eq!(handle.label(), Some("Demand sum"));
         let pos = handle.position().expect("position stored");

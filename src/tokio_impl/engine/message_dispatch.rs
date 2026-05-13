@@ -125,10 +125,7 @@ pub(super) async fn dispatch_message(engine: &mut SingleThreadedEngine, msg: Mes
         EngineMessage::GetCurrentProgramReq(sender_uuid) => {
             log::debug!("GetCurrentProgramReq");
 
-            let program = engine
-                .save_program()
-                .await
-                .map_err(|err| err.to_string());
+            let program = engine.save_program().await.map_err(|err| err.to_string());
 
             reply_to_sender(
                 engine,
