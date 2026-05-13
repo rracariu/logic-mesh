@@ -9,17 +9,6 @@ use uuid::Uuid;
 
 use crate::base::link::{BaseLink, Link};
 
-/// A default set of values for an `Input`
-#[derive(Debug, Default)]
-pub struct InputDefault {
-    /// The default value
-    pub val: Value,
-    /// The default minimum value
-    pub min: Value,
-    /// The default maximum value
-    pub max: Value,
-}
-
 /// Defines the basic properties of a Block Input
 pub trait InputProps {
     /// The input's read type
@@ -68,9 +57,6 @@ pub trait InputProps {
 
     /// Remove all links from this input
     fn remove_all_links(&mut self);
-
-    /// This input's defaults
-    fn default(&self) -> &InputDefault;
 
     /// Get a reference to this input reader type
     fn reader(&mut self) -> &mut Self::Reader;

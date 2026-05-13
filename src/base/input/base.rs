@@ -10,7 +10,7 @@ use uuid::Uuid;
 use crate::base::Status;
 use crate::base::link::{BaseLink, Link};
 
-use super::{InputProps, props::InputDefault};
+use super::InputProps;
 
 /// The base input type
 #[derive(Debug, Default)]
@@ -32,8 +32,6 @@ pub struct BaseInput<Reader, Writer> {
     /// The status of the last value received on this input. Tracks the
     /// producer's quality assertion across the watch channel.
     pub status: Status,
-    /// The input default values
-    pub default: InputDefault,
     /// The links to other inputs
     pub links: Vec<BaseLink<Writer>>,
 }
@@ -77,10 +75,6 @@ impl<Reader, Writer: Clone> InputProps for BaseInput<Reader, Writer> {
 
     fn remove_all_links(&mut self) {
         self.links.clear()
-    }
-
-    fn default(&self) -> &InputDefault {
-        &self.default
     }
 
     fn reader(&mut self) -> &mut Self::Reader {

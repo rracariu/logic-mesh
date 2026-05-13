@@ -10,7 +10,7 @@ use uuid::Uuid;
 use crate::{
     base::{
         Status,
-        input::{BaseInput, Input, InputDefault},
+        input::{BaseInput, Input},
     },
     tokio_impl::{PinPayload, ReaderImpl, WriterImpl},
 };
@@ -19,15 +19,6 @@ pub type InputImpl = BaseInput<ReaderImpl, WriterImpl>;
 
 impl InputImpl {
     pub fn new(name: &str, kind: HaystackKind, block_id: Uuid) -> Self {
-        Self::new_with_default(name, kind, block_id, Default::default())
-    }
-
-    pub fn new_with_default(
-        name: &str,
-        kind: HaystackKind,
-        block_id: Uuid,
-        default: InputDefault,
-    ) -> Self {
         // Watch is a coalescing 1-slot channel: producers always succeed and
         // overwrite; consumers always see the latest value. The seed
         // `(Value::Null, Status::Ok)` is what `borrow()` reports until the
@@ -46,7 +37,6 @@ impl InputImpl {
 
             val: Default::default(),
             status: Status::Ok,
-            default,
             links: Default::default(),
         }
     }
@@ -83,6 +73,17 @@ impl Input for InputImpl {
     }
 
     fn set_value(&mut self, value: Value, status: Status) {
+        // Early-return on no-op: if neither value nor status changed
+        // relative to this input's cached state, every chained channel
+        // already has the same payload — `send_if_modified` would be a
+        // no-op on each, but we still pay for the value clones in the
+        // closure capture. Skip the loop entirely. This makes the
+        // semantics explicit: `set_value` only propagates on actual
+        // change.
+        if self.val.as_ref() == Some(&value) && self.status == status {
+            return;
+        }
+
         // Forward to all chained inputs. `send_if_modified` only notifies
         // when the value actually changed, so identical re-emissions don't
         // wake downstream blocks — see `Output::set` for the loop-quiescence
@@ -113,25 +114,14 @@ impl Input for InputImpl {
 
 #[cfg(test)]
 mod test {
-    use libhaystack::val::{Value, kind::HaystackKind};
+    use libhaystack::val::kind::HaystackKind;
     use uuid::Uuid;
-
-    use crate::base::input::InputDefault;
 
     use super::InputImpl;
 
     #[test]
     fn test_input_init() {
-        let input = InputImpl::new_with_default(
-            "test",
-            HaystackKind::Bool,
-            Uuid::new_v4(),
-            InputDefault {
-                val: 0.into(),
-                min: Value::Null,
-                max: Value::Null,
-            },
-        );
+        let input = InputImpl::new("test", HaystackKind::Bool, Uuid::new_v4());
 
         assert_eq!(input.name, "test");
         assert_eq!(input.kind, HaystackKind::Bool);

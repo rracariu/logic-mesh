@@ -16,7 +16,7 @@ pub mod input_reader;
 pub mod props;
 
 pub use base::BaseInput;
-pub use props::{InputDefault, InputProps};
+pub use props::InputProps;
 
 /// The input trait
 pub trait Input: InputProps {
