@@ -33,7 +33,7 @@ export function defineBlock<I extends TupleType, O extends TupleType>(config: {
   desc: BlockDetails;
   inputs: I;
   outputs: O;
-  execute?: (inputs: InferType<I>) => Promise<unknown[] | undefined>;
+  execute?: (inputs: InferType<I>) => Promise<InferType<O> | undefined>;
 }) {
   const { execute: executeFn, ...blockConfig } = config;
 
@@ -42,7 +42,7 @@ export function defineBlock<I extends TupleType, O extends TupleType>(config: {
       super(blockConfig);
     }
 
-    override execute(inputs: InferType<I>): Promise<unknown[] | undefined> {
+    override execute(inputs: InferType<I>): Promise<InferType<O> | undefined> {
       if (executeFn) return executeFn(inputs);
       throw new Error("Not implemented");
     }

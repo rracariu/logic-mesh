@@ -6,7 +6,7 @@ use uuid::Uuid;
 
 use crate::base::{
     block::{Block, BlockDesc, BlockProps, BlockState},
-    input::{Input, InputProps, input_reader::InputReader},
+    input::{InputProps, input_reader::InputReader},
     output::Output,
 };
 use crate::blocks::utils::{input_as_number, input_as_number_in};

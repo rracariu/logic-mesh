@@ -123,23 +123,23 @@ pub(super) fn block_props_impl(ast: &syn::DeriveInput) -> TokenStream {
                 self.state.clone()
             }
 
-            fn inputs(&self) -> Vec<&dyn Input<Reader = Self::Reader, Writer = Self::Writer>> {
+            fn inputs(&self) -> Vec<&(dyn crate::base::block::BlockInput<Self::Reader, Self::Writer> + Send)> {
                 #inputs_refs
             }
 
-            fn inputs_mut(&mut self) -> Vec<&mut dyn Input<Reader = Self::Reader, Writer = Self::Writer>> {
+            fn inputs_mut(&mut self) -> Vec<&mut (dyn crate::base::block::BlockInput<Self::Reader, Self::Writer> + Send)> {
                 #inputs_mut_refs
             }
 
-            fn outputs_mut(&mut self) -> Vec<&mut dyn Output<Writer = Self::Writer>> {
+            fn outputs_mut(&mut self) -> Vec<&mut (dyn crate::base::block::BlockOutput<Self::Writer> + Send)> {
                 #outputs_mut_ref
             }
 
-            fn outputs(&self) -> Vec<&dyn Output<Writer = Self::Writer>> {
+            fn outputs(&self) -> Vec<&(dyn crate::base::block::BlockOutput<Self::Writer> + Send)> {
                 #outputs_ref
             }
 
-            fn links(&self) -> Vec<(&str, Vec<&dyn crate::base::link::Link>)> {
+            fn links(&self) -> Vec<(&str, Vec<&(dyn crate::base::link::Link + Send)>)> {
                 let mut res = Vec::new();
 
                 self.inputs().iter().for_each(|input| res.push((input.name(), input.links())));
@@ -335,14 +335,14 @@ fn create_input_members_ref(
 
         if has_block_defined_inputs {
             quote! {
-                let mut inputs = vec![ #(&#borrow self.#input_field as &#borrow dyn Input<Reader = Self::Reader, Writer = Self::Writer>),* ];
-                inputs.extend(self._inputs.#iter().map(|input| input as &#borrow dyn Input<Reader = Self::Reader, Writer = Self::Writer>));
+                let mut inputs = vec![ #(&#borrow self.#input_field as &#borrow (dyn crate::base::block::BlockInput<Self::Reader, Self::Writer> + Send)),* ];
+                inputs.extend(self._inputs.#iter().map(|input| input as &#borrow (dyn crate::base::block::BlockInput<Self::Reader, Self::Writer> + Send)));
 
                 inputs
             }
         } else {
             quote! {
-                vec![ #(&#borrow self.#input_field),* ]
+                vec![ #(&#borrow self.#input_field as &#borrow (dyn crate::base::block::BlockInput<Self::Reader, Self::Writer> + Send)),* ]
             }
         }
     }
@@ -372,7 +372,7 @@ fn create_outputs_member_ref(
         };
 
         quote! {
-            vec![ #(&#borrow self.#output_fields),* ]
+            vec![ #(&#borrow self.#output_fields as &#borrow (dyn crate::base::block::BlockOutput<Self::Writer> + Send)),* ]
         }
     }
 }

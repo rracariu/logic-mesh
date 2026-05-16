@@ -36,8 +36,11 @@ pub struct BaseInput<Reader, Writer> {
     pub links: Vec<BaseLink<Writer>>,
 }
 
-/// Implements the `InputProps` trait for `BaseInput`
-impl<Reader, Writer: Clone> InputProps for BaseInput<Reader, Writer> {
+/// Implements the `InputProps` trait for `BaseInput`.
+///
+/// `Writer: Send` is required so the link list can return
+/// `Vec<&(dyn Link + Send)>` — see the [`InputProps::links`] doc.
+impl<Reader, Writer: Clone + Send> InputProps for BaseInput<Reader, Writer> {
     type Reader = Reader;
     type Writer = Writer;
 
@@ -57,8 +60,8 @@ impl<Reader, Writer: Clone> InputProps for BaseInput<Reader, Writer> {
         self.connection_count > 0
     }
 
-    fn links(&self) -> Vec<&dyn Link> {
-        self.links.iter().map(|l| l as &dyn Link).collect()
+    fn links(&self) -> Vec<&(dyn Link + Send)> {
+        self.links.iter().map(|l| l as &(dyn Link + Send)).collect()
     }
 
     fn add_link(&mut self, link: BaseLink<Self::Writer>) {

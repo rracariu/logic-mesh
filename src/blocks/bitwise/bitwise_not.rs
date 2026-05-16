@@ -2,8 +2,7 @@
 
 use crate::base::{
     block::{Block, BlockDesc, BlockProps, BlockState},
-    input::{Input, InputProps, input_reader::InputReader},
-    output::Output,
+    input::{InputProps, input_reader::InputReader},
 };
 use libhaystack::val::Value;
 use uuid::Uuid;

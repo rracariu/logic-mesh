@@ -4,8 +4,7 @@ use uuid::Uuid;
 
 use crate::base::{
     block::{Block, BlockDesc, BlockProps, BlockState},
-    input::{Input, InputProps},
-    output::Output,
+    input::InputProps,
 };
 
 use libhaystack::val::kind::HaystackKind;

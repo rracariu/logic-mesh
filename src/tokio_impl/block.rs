@@ -2,7 +2,6 @@
 
 use std::time::Duration;
 
-use futures::FutureExt;
 use futures::future::select_all;
 use libhaystack::val::kind::HaystackKind;
 
@@ -53,24 +52,28 @@ impl<B: Block> InputReader for B {
         // Earlier versions also slept the full timeout AGAIN after a real
         // input arrived, which dragged every periodic block by its full
         // polling window after each reaction. We don't do that anymore.
+        //
+        // Implementation note: we use `tokio::select!` rather than
+        // `select_all([fut.boxed_local(), ...])` so the resulting future
+        // inherits `Send` from the bodies. With `boxed_local()` the whole
+        // thing was `!Send`, which forced the MT engine onto per-worker
+        // `LocalSet`s. Now it can ride directly on `tokio::spawn`.
         let millis = timeout.as_millis() as u64;
-        let (result, _, _) = select_all([
-            async {
-                sleep_millis(millis).await;
-                None
-            }
-            .boxed_local(),
-            async {
-                match self.read_inputs().await {
-                    Some(idx) => Some(idx),
-                    // No-input case: pend forever so the sleep branch wins.
-                    None => std::future::pending::<Option<usize>>().await,
+        tokio::select! {
+            _ = sleep_millis(millis) => None,
+            result = async {
+                loop {
+                    match self.read_inputs().await {
+                        Some(idx) => return Some(idx),
+                        // No connected inputs — pend forever so the sleep
+                        // arm wins. A bare `pending::<()>()` here would
+                        // make the arm `!Send` on some toolchains; the
+                        // explicit type annotation keeps inference happy.
+                        None => std::future::pending::<()>().await,
+                    }
                 }
-            }
-            .boxed_local(),
-        ])
-        .await;
-        result
+            } => result,
+        }
     }
 }
 

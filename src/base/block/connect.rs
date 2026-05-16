@@ -328,7 +328,7 @@ where
 }
 
 fn link_id_for_input<I: InputProps + ?Sized>(
-    links: Vec<&dyn Link>,
+    links: Vec<&(dyn Link + Send)>,
     target_input: &I,
 ) -> Option<Uuid> {
     links
@@ -347,8 +347,7 @@ mod test {
 
     use crate::base::{
         block::{Block, BlockDesc, BlockProps, BlockState, connect::disconnect_block},
-        input::{Input, InputProps},
-        output::Output,
+        input::InputProps,
     };
 
     use super::BlockConnect;

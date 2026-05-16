@@ -10,8 +10,28 @@ use crate::base::{input::Input, link::Link, output::Output};
 
 use super::{BlockState, desc::BlockDesc};
 
+/// Trait-alias shorthand for "an [`Input`] with reader/writer types
+/// pinned to `R` and `W`". Lets `BlockProps` return-position types stay
+/// readable instead of repeating
+/// `Input<Reader = Self::Reader, Writer = Self::Writer>` everywhere.
+/// Auto-implemented for any matching `Input`; `?Sized` so it works in
+/// trait-object positions.
+pub trait BlockInput<R, W: Clone>: Input<Reader = R, Writer = W> {}
+impl<R, W: Clone, T: ?Sized + Input<Reader = R, Writer = W>> BlockInput<R, W> for T {}
+
+/// Trait-alias shorthand for "an [`Output`] with writer type pinned to
+/// `W`". Same role as [`BlockInput`] — keeps signatures terse.
+pub trait BlockOutput<W: Clone>: Output<Writer = W> {}
+impl<W: Clone, T: ?Sized + Output<Writer = W>> BlockOutput<W> for T {}
+
 /// Defines the the Block properties
 /// that are common to all blocks.
+///
+/// Trait-object returns carry a `+ Send` bound so they can be held
+/// across `.await` points in actor futures running on tokio's
+/// multi-threaded runtime (see [`crate::tokio_impl::engine::multi_threaded`]).
+/// Concrete impls in this crate (`BaseInput`, `BaseOutput`, the
+/// mocks) are already `Send`, so the bound is satisfied transparently.
 pub trait BlockProps {
     /// The block's read type
     /// This is the type used to read from the block's inputs
@@ -36,13 +56,13 @@ pub trait BlockProps {
     fn set_state(&mut self, state: BlockState) -> BlockState;
 
     /// List all the block inputs
-    fn inputs(&self) -> Vec<&dyn Input<Reader = Self::Reader, Writer = Self::Writer>>;
+    fn inputs(&self) -> Vec<&(dyn BlockInput<Self::Reader, Self::Writer> + Send)>;
 
     /// Get block input by name
     fn get_input(
         &self,
         name: &str,
-    ) -> Option<&dyn Input<Reader = Self::Reader, Writer = Self::Writer>> {
+    ) -> Option<&(dyn BlockInput<Self::Reader, Self::Writer> + Send)> {
         self.inputs().iter().find(|i| i.name() == name).cloned()
     }
 
@@ -50,31 +70,36 @@ pub trait BlockProps {
     fn get_input_mut(
         &mut self,
         name: &str,
-    ) -> Option<&mut dyn Input<Reader = Self::Reader, Writer = Self::Writer>> {
+    ) -> Option<&mut (dyn BlockInput<Self::Reader, Self::Writer> + Send)> {
         self.inputs_mut().into_iter().find(|i| i.name() == name)
     }
 
     /// List all the block inputs
-    fn inputs_mut(&mut self) -> Vec<&mut dyn Input<Reader = Self::Reader, Writer = Self::Writer>>;
+    fn inputs_mut(
+        &mut self,
+    ) -> Vec<&mut (dyn BlockInput<Self::Reader, Self::Writer> + Send)>;
 
     /// The block outputs
-    fn outputs(&self) -> Vec<&dyn Output<Writer = Self::Writer>>;
+    fn outputs(&self) -> Vec<&(dyn BlockOutput<Self::Writer> + Send)>;
 
     /// Get block output by name
-    fn get_output(&self, name: &str) -> Option<&dyn Output<Writer = Self::Writer>> {
+    fn get_output(&self, name: &str) -> Option<&(dyn BlockOutput<Self::Writer> + Send)> {
         self.outputs().iter().find(|i| i.name() == name).cloned()
     }
 
     /// Get block mutable output by name
-    fn get_output_mut(&mut self, name: &str) -> Option<&mut dyn Output<Writer = Self::Writer>> {
+    fn get_output_mut(
+        &mut self,
+        name: &str,
+    ) -> Option<&mut (dyn BlockOutput<Self::Writer> + Send)> {
         self.outputs_mut().into_iter().find(|i| i.name() == name)
     }
 
     /// Mutable reference to the block's output
-    fn outputs_mut(&mut self) -> Vec<&mut dyn Output<Writer = Self::Writer>>;
+    fn outputs_mut(&mut self) -> Vec<&mut (dyn BlockOutput<Self::Writer> + Send)>;
 
     /// List all the links this block has
-    fn links(&self) -> Vec<(&str, Vec<&dyn crate::base::link::Link>)>;
+    fn links(&self) -> Vec<(&str, Vec<&(dyn crate::base::link::Link + Send)>)>;
 
     /// Remove a link from the link collection
     fn remove_link(&mut self, link: &dyn Link) {

@@ -2,20 +2,28 @@
 
 //! Multi-threaded engine.
 //!
-//! Distributes blocks across worker threads in round-robin. Each worker
-//! runs its own current-thread tokio runtime hosting a `LocalSet`; block
-//! actor tasks live on those `LocalSet`s. The engine itself runs on
-//! whichever runtime called `run()` (typically the multi-threaded runtime
-//! the user chose at startup).
+//! Block actor tasks are spawned directly onto the caller's tokio
+//! multi-threaded runtime via [`tokio::spawn`]. The runtime's
+//! work-stealing scheduler decides which worker thread runs each task
+//! and can migrate them between threads — block actor futures are
+//! [`Send`] by construction (trait-method returns carry `+ Send`; see
+//! [`crate::base::block::BlockProps`]).
 //!
 //! Shares the per-block mailbox protocol ([`super::super::block_mailbox`])
 //! with the single-threaded engine, so the actor task implementation is
 //! near-identical — the only MT-specific bits are watchers
-//! (`Arc<RwLock<...>>`) and the worker-thread plumbing.
+//! (`Arc<RwLock<...>>`) and the cross-thread mailbox semantics, both of
+//! which already work over `tokio::spawn`.
+//!
+//! ## Runtime requirement
+//!
+//! The engine assumes it is running inside a tokio multi-thread runtime
+//! (`#[tokio::main(flavor = "multi_thread")]` or a manually-constructed
+//! `Runtime::new`). It does not create worker threads or runtimes of its
+//! own — that's the caller's responsibility.
 
 use std::collections::BTreeMap;
 use std::sync::Arc;
-use std::thread;
 
 use anyhow::{Result, anyhow};
 use libhaystack::val::Value;
@@ -24,7 +32,6 @@ use tokio::sync::{
     mpsc::{self, Receiver, Sender, UnboundedSender},
     oneshot,
 };
-use tokio::task::LocalSet;
 use uuid::Uuid;
 
 use super::super::block_mailbox::{BLOCK_MAILBOX_CAP, BlockMailboxCmd};
@@ -42,7 +49,7 @@ use crate::base::{
 };
 use crate::blocks::registry::get_block;
 use crate::tokio_impl::engine::schedule_block_on_engine_mt;
-use crate::tokio_impl::{ReaderImpl, WriterImpl};
+use crate::tokio_impl::{MtBlock, ReaderImpl, WriterImpl};
 
 /// Concrete engine-message type.
 ///
@@ -52,9 +59,10 @@ pub type Messages = EngineMessage<UnboundedSender<WatchMessage>>;
 
 /// Engine-side handle for a scheduled block in the MT engine.
 ///
-/// In addition to the usual id/name/lib/desc + mailbox sender, MT handles
-/// remember which worker thread the block lives on (round-robin assigned
-/// at scheduling time).
+/// Same shape as the ST handle. Notably it no longer carries a
+/// `worker_idx` — the tokio MT runtime is free to migrate the actor
+/// task between worker threads via work-stealing, so a fixed pinning
+/// would be misleading.
 pub struct BlockHandle {
     id: Uuid,
     name: String,
@@ -62,7 +70,6 @@ pub struct BlockHandle {
     /// Owned clone of the block's descriptor — see the ST
     /// `BlockHandle::desc` doc for the rationale (JS blocks).
     desc: BlockDesc,
-    worker_idx: usize,
     mailbox: mpsc::Sender<BlockMailboxCmd>,
     /// See ST `BlockHandle::label`.
     label: Option<String>,
@@ -83,9 +90,6 @@ impl BlockHandle {
     pub fn desc(&self) -> &BlockDesc {
         &self.desc
     }
-    pub fn worker_idx(&self) -> usize {
-        self.worker_idx
-    }
     pub fn label(&self) -> Option<&str> {
         self.label.as_deref()
     }
@@ -94,26 +98,10 @@ impl BlockHandle {
     }
 }
 
-/// Commands sent from the engine to a worker thread.
-enum WorkerCommand {
-    /// Spawn a per-block actor task on the worker's `LocalSet`. The boxed
-    /// closure captures the block, its mailbox receiver, and a clone of
-    /// the watchers handle; on the worker side it spawns the actor task.
-    Schedule(Box<dyn FnOnce(&mut WorkerState) + Send>),
-    /// Worker should drain its `LocalSet` (best-effort) and exit.
-    Shutdown,
-}
-
-struct WorkerState {
-    local: LocalSet,
-}
-
 /// Multi-threaded execution environment for blocks.
 pub struct MultiThreadedEngine {
-    workers: Vec<Sender<WorkerCommand>>,
     handles: BTreeMap<Uuid, BlockHandle>,
     pending_links: Vec<LinkData>,
-    next_worker: usize,
     sender: Sender<Messages>,
     receiver: Receiver<Messages>,
     pub(in super::super) reply_senders: BTreeMap<Uuid, Sender<Messages>>,
@@ -122,7 +110,7 @@ pub struct MultiThreadedEngine {
 
 impl Default for MultiThreadedEngine {
     fn default() -> Self {
-        Self::new(num_cpus())
+        Self::new()
     }
 }
 
@@ -164,8 +152,10 @@ impl crate::base::engine::Engine for MultiThreadedEngine {
     }
 
     async fn run(&mut self) {
-        // Process any links queued during configuration via the async
-        // mailbox path (worker tasks are already running).
+        // Process any links queued during configuration. Actor tasks are
+        // already live on the tokio MT runtime by this point (they were
+        // spawned at `schedule_send` time), so the mailbox round-trips
+        // resolve immediately.
         let pending_links = std::mem::take(&mut self.pending_links);
         for link in pending_links {
             let _ = self.connect_blocks(&link).await;
@@ -176,8 +166,16 @@ impl crate::base::engine::Engine for MultiThreadedEngine {
             let engine_msg = self.receiver.recv().await;
             if let Some(message) = engine_msg {
                 if matches!(message, EngineMessage::Shutdown) {
-                    for worker in &self.workers {
-                        let _ = worker.send(WorkerCommand::Shutdown).await;
+                    // Tell every actor task to terminate. Dropping the
+                    // mailbox senders would also cause the tasks to
+                    // notice via `mailbox.recv() -> None`, but explicit
+                    // termination is faster and lets the actor record
+                    // `BlockState::Terminated` for any in-flight watcher.
+                    let ids: Vec<Uuid> = self.handles.keys().copied().collect();
+                    for id in ids {
+                        if let Some(handle) = self.handles.remove(&id) {
+                            let _ = handle.mailbox.send(BlockMailboxCmd::Terminate).await;
+                        }
                     }
                     break;
                 } else if matches!(message, EngineMessage::Reset) {
@@ -214,31 +212,15 @@ impl crate::base::engine::Engine for MultiThreadedEngine {
 }
 
 impl MultiThreadedEngine {
-    /// Create a new multi-threaded engine with the given number of worker
-    /// threads. Each worker spins up its own current-thread tokio runtime.
-    pub fn new(num_workers: usize) -> Self {
-        let num_workers = num_workers.max(1);
+    /// Create a new multi-threaded engine. The engine itself does not
+    /// own worker threads — actor tasks are spawned onto whichever
+    /// tokio multi-thread runtime the engine is running inside of.
+    pub fn new() -> Self {
         let (sender, receiver) = mpsc::channel(32);
-        let mut workers = Vec::with_capacity(num_workers);
-
-        for _ in 0..num_workers {
-            let (cmd_tx, cmd_rx) = mpsc::channel::<WorkerCommand>(64);
-            workers.push(cmd_tx);
-
-            thread::spawn(move || {
-                let rt = tokio::runtime::Builder::new_current_thread()
-                    .enable_all()
-                    .build()
-                    .expect("Failed to create worker runtime");
-                rt.block_on(worker_loop(cmd_rx));
-            });
-        }
 
         Self {
-            workers,
             handles: BTreeMap::new(),
             pending_links: Vec::new(),
-            next_worker: 0,
             sender,
             receiver,
             reply_senders: BTreeMap::new(),
@@ -246,17 +228,18 @@ impl MultiThreadedEngine {
         }
     }
 
-    /// Schedule a block on the engine. The block must be `Send` so it can
-    /// be moved to a worker thread; once on the worker, the actor task's
-    /// future stays put on that worker's `LocalSet` and does not need to be
-    /// `Send`.
+    /// Schedule a block on the engine. The block must be `Send + 'static`
+    /// because the actor task is handed to [`tokio::spawn`], where the
+    /// runtime is free to migrate it between worker threads.
+    ///
+    /// Must be called from within a tokio multi-thread runtime context
+    /// (`#[tokio::main(flavor = "multi_thread")]`, `Runtime::block_on`,
+    /// or an already-spawned task on such a runtime). Calling this
+    /// outside a runtime panics — that's a `tokio::spawn` invariant.
     pub fn schedule_send<B>(&mut self, block: B)
     where
-        B: Block<Writer = WriterImpl, Reader = ReaderImpl> + Send + 'static,
+        B: MtBlock + 'static,
     {
-        let worker_idx = self.next_worker % self.workers.len();
-        self.next_worker += 1;
-
         let id = *block.id();
         let name = block.name().to_string();
         let library = block.desc().library.clone();
@@ -269,7 +252,6 @@ impl MultiThreadedEngine {
             name,
             library,
             desc,
-            worker_idx,
             mailbox: mailbox_tx,
             label: None,
             position: None,
@@ -277,16 +259,7 @@ impl MultiThreadedEngine {
         self.handles.insert(id, handle);
 
         let watchers = self.watchers.clone();
-        let spawn_fn: Box<dyn FnOnce(&mut WorkerState) + Send> =
-            Box::new(move |state: &mut WorkerState| {
-                state
-                    .local
-                    .spawn_local(block_actor_task(block, mailbox_rx, watchers));
-            });
-
-        // Best-effort: if the worker is full or gone, the block is silently
-        // dropped. Mirrors the previous behaviour of this engine.
-        let _ = self.workers[worker_idx].try_send(WorkerCommand::Schedule(spawn_fn));
+        tokio::spawn(block_actor_task(block, mailbox_rx, watchers));
     }
 
     /// Returns sync metadata handles for every scheduled block.
@@ -882,34 +855,6 @@ impl MultiThreadedEngine {
     }
 }
 
-async fn worker_loop(mut cmd_rx: Receiver<WorkerCommand>) {
-    let mut state = WorkerState {
-        local: LocalSet::new(),
-    };
-
-    loop {
-        let mut cmd = None;
-        // Drive local tasks while waiting for the next worker command.
-        state
-            .local
-            .run_until(async {
-                cmd = cmd_rx.recv().await;
-            })
-            .await;
-
-        match cmd {
-            Some(WorkerCommand::Schedule(spawn_fn)) => spawn_fn(&mut state),
-            Some(WorkerCommand::Shutdown) | None => break,
-        }
-    }
-}
-
-fn num_cpus() -> usize {
-    thread::available_parallelism()
-        .map(|n| n.get())
-        .unwrap_or(4)
-}
-
 /// MT-side mirror of the ST `hasinitialvalue` helper.
 fn hasinitialvalue_mt(value: &Value) -> bool {
     use libhaystack::val::Value::*;
@@ -952,7 +897,7 @@ mod test {
             .connect_output("out", add1.inputs_mut()[1])
             .expect("Connected");
 
-        let mut eng = MultiThreadedEngine::new(2);
+        let mut eng = MultiThreadedEngine::new();
 
         let (sender, mut receiver) = mpsc::channel(32);
         let channel_id = Uuid::new_v4();

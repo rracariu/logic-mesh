@@ -15,7 +15,7 @@ use libhaystack::{
     encoding::zinc,
     val::{Bool, Number, Str, Value, kind::HaystackKind},
 };
-pub use props::BlockProps;
+pub use props::{BlockInput, BlockOutput, BlockProps};
 
 /// Operational state a block is in.
 ///
@@ -71,6 +71,23 @@ impl BlockState {
     }
 }
 
+/// A block: a unit of dataflow logic that reacts to its inputs and
+/// produces output values.
+///
+/// On native targets we declare `execute` as returning an `impl Future
+/// + Send`. That promise lets the multi-threaded engine spawn block
+/// actor tasks directly via [`tokio::spawn`], which requires the
+/// future be `Send`. Macro-generated native blocks all satisfy this.
+///
+/// On `wasm32` (single-threaded by definition), we drop the `Send`
+/// requirement so `JsBlock` — whose `func: js_sys::Function` is
+/// `!Send` — can still implement the trait.
+#[cfg(not(target_arch = "wasm32"))]
+pub trait Block: BlockConnect {
+    fn execute(&mut self) -> impl std::future::Future<Output = ()> + Send;
+}
+
+#[cfg(target_arch = "wasm32")]
 pub trait Block: BlockConnect {
     #[allow(async_fn_in_trait)]
     async fn execute(&mut self);
@@ -178,8 +195,7 @@ mod test {
 
     use crate::base::{
         block::{Block, BlockDesc, BlockProps, BlockState},
-        input::{Input, InputProps},
-        output::Output,
+        input::InputProps,
     };
 
     use super::test_utils::mock::{InputImpl, OutputImpl};

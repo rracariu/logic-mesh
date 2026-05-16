@@ -7,7 +7,7 @@ use uuid::Uuid;
 use crate::base::output::props::OutputProps;
 use crate::base::{
     block::{Block, BlockDesc, BlockProps, BlockState},
-    input::{Input, InputProps, input_reader::InputReader},
+    input::{InputProps, input_reader::InputReader},
     output::Output,
 };
 use crate::blocks::utils::{get_sleep_dur, input_to_millis_or_default};

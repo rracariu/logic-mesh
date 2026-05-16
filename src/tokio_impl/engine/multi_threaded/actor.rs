@@ -26,7 +26,7 @@ use super::super::block_mailbox::{BlockMailboxCmd, handle_cmd};
 use crate::base::Status;
 use crate::base::block::{Block, BlockState};
 use crate::base::engine::messages::{ChangeSource, WatchMessage};
-use crate::tokio_impl::{ReaderImpl, WriterImpl};
+use crate::tokio_impl::MtBlock;
 
 /// MT-side watchers handle: cross-thread, async-locked.
 pub(super) type WatchersHandle = Arc<RwLock<BTreeMap<Uuid, UnboundedSender<WatchMessage>>>>;
@@ -38,7 +38,7 @@ pub(super) async fn block_actor_task<B>(
     mut mailbox: mpsc::Receiver<BlockMailboxCmd>,
     watchers: WatchersHandle,
 ) where
-    B: Block<Writer = WriterImpl, Reader = ReaderImpl> + 'static,
+    B: MtBlock + 'static,
 {
     let mut last_pin_values = BTreeMap::<String, Value>::new();
     let mut last_state = BlockState::Running;
@@ -76,7 +76,7 @@ pub(super) async fn block_actor_task<B>(
 
 fn propagate_status<B>(current: &BlockState, previous: &BlockState, block: &mut B)
 where
-    B: Block<Writer = WriterImpl, Reader = ReaderImpl> + 'static,
+    B: MtBlock + 'static,
 {
     let now_fault = current.is_fault();
     let was_fault = previous.is_fault();
@@ -95,7 +95,7 @@ where
 /// Drive the block one step. Returns `true` if the actor task should exit.
 async fn run_one_step<B>(block: &mut B, mailbox: &mut mpsc::Receiver<BlockMailboxCmd>) -> bool
 where
-    B: Block<Writer = WriterImpl, Reader = ReaderImpl> + 'static,
+    B: MtBlock + 'static,
 {
     let mut cmd_to_handle: Option<BlockMailboxCmd> = None;
     {

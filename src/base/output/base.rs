@@ -26,8 +26,11 @@ pub struct BaseOutput<L: Link> {
     pub effective_status: Status,
 }
 
-/// The implementation of the OutputProps trait
-impl<L: Link> OutputProps for BaseOutput<L> {
+/// The implementation of the OutputProps trait.
+///
+/// `L: Send` is required so the link list can return
+/// `Vec<&(dyn Link + Send)>` — see the [`OutputProps::links`] doc.
+impl<L: Link + Send> OutputProps for BaseOutput<L> {
     fn desc(&self) -> &OutDesc {
         &self.desc
     }
@@ -44,8 +47,11 @@ impl<L: Link> OutputProps for BaseOutput<L> {
         !self.links.is_empty()
     }
 
-    fn links(&self) -> Vec<&dyn Link> {
-        self.links.iter().map(|link| link as &dyn Link).collect()
+    fn links(&self) -> Vec<&(dyn Link + Send)> {
+        self.links
+            .iter()
+            .map(|link| link as &(dyn Link + Send))
+            .collect()
     }
 
     /// Remove a link by id from this output

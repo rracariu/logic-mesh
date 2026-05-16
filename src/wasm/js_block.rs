@@ -21,7 +21,7 @@ use crate::blocks::utils::get_sleep_dur;
 use crate::{
     base::{
         block::{BlockDesc, BlockProps},
-        input::{Input, InputProps, input_reader::InputReader},
+        input::{InputProps, input_reader::InputReader},
         link::Link,
         output::{Output, OutputProps},
     },
@@ -149,7 +149,7 @@ impl BlockProps for JsBlock {
     fn get_input(
         &self,
         name: &str,
-    ) -> Option<&dyn Input<Reader = Self::Reader, Writer = Self::Writer>> {
+    ) -> Option<&(dyn crate::base::block::BlockInput<Self::Reader, Self::Writer> + Send)> {
         self.inputs
             .iter()
             .find(|input| input.name() == name)
@@ -159,36 +159,46 @@ impl BlockProps for JsBlock {
     fn get_input_mut(
         &mut self,
         name: &str,
-    ) -> Option<&mut dyn Input<Reader = Self::Reader, Writer = Self::Writer>> {
+    ) -> Option<&mut (dyn crate::base::block::BlockInput<Self::Reader, Self::Writer> + Send)> {
         self.inputs
             .iter_mut()
             .find(|input| input.name() == name)
             .map(|input| input as _)
     }
 
-    fn get_output(&self, name: &str) -> Option<&dyn Output<Writer = Self::Writer>> {
+    fn get_output(
+        &self,
+        name: &str,
+    ) -> Option<&(dyn crate::base::block::BlockOutput<Self::Writer> + Send)> {
         self.outputs
             .iter()
             .find(|output| output.name() == name)
             .map(|output| output as _)
     }
 
-    fn get_output_mut(&mut self, name: &str) -> Option<&mut dyn Output<Writer = Self::Writer>> {
+    fn get_output_mut(
+        &mut self,
+        name: &str,
+    ) -> Option<&mut (dyn crate::base::block::BlockOutput<Self::Writer> + Send)> {
         self.outputs
             .iter_mut()
             .find(|output| output.name() == name)
             .map(|output| output as _)
     }
 
-    fn inputs(&self) -> Vec<&dyn Input<Reader = Self::Reader, Writer = Self::Writer>> {
+    fn inputs(
+        &self,
+    ) -> Vec<&(dyn crate::base::block::BlockInput<Self::Reader, Self::Writer> + Send)> {
         self.inputs.iter().map(|input| input as _).collect()
     }
 
-    fn inputs_mut(&mut self) -> Vec<&mut dyn Input<Reader = Self::Reader, Writer = Self::Writer>> {
+    fn inputs_mut(
+        &mut self,
+    ) -> Vec<&mut (dyn crate::base::block::BlockInput<Self::Reader, Self::Writer> + Send)> {
         self.inputs.iter_mut().map(|input| input as _).collect()
     }
 
-    fn links(&self) -> Vec<(&str, Vec<&dyn Link>)> {
+    fn links(&self) -> Vec<(&str, Vec<&(dyn Link + Send)>)> {
         let mut res = Vec::new();
 
         self.inputs()
@@ -200,11 +210,13 @@ impl BlockProps for JsBlock {
         res
     }
 
-    fn outputs(&self) -> Vec<&dyn Output<Writer = Self::Writer>> {
+    fn outputs(&self) -> Vec<&(dyn crate::base::block::BlockOutput<Self::Writer> + Send)> {
         self.outputs.iter().map(|output| output as _).collect()
     }
 
-    fn outputs_mut(&mut self) -> Vec<&mut dyn Output<Writer = Self::Writer>> {
+    fn outputs_mut(
+        &mut self,
+    ) -> Vec<&mut (dyn crate::base::block::BlockOutput<Self::Writer> + Send)> {
         self.outputs.iter_mut().map(|output| output as _).collect()
     }
 
