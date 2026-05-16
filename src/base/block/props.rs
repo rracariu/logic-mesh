@@ -75,9 +75,7 @@ pub trait BlockProps {
     }
 
     /// List all the block inputs
-    fn inputs_mut(
-        &mut self,
-    ) -> Vec<&mut (dyn BlockInput<Self::Reader, Self::Writer> + Send)>;
+    fn inputs_mut(&mut self) -> Vec<&mut (dyn BlockInput<Self::Reader, Self::Writer> + Send)>;
 
     /// The block outputs
     fn outputs(&self) -> Vec<&(dyn BlockOutput<Self::Writer> + Send)>;
