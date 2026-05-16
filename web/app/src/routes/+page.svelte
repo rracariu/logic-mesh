@@ -21,6 +21,7 @@
 	import { useEngine } from '$lib/Engine';
 	import { model, blockInstances } from '$lib/model.svelte';
 	import { prepare, pushToEngine, save } from '$lib/Program';
+	import { clipboardHasContent, clipboardRead, clipboardWrite } from '$lib/Clipboard';
 
 	const { engine, blocks, command, startWatch } = useEngine();
 
@@ -82,6 +83,36 @@
 		}
 
 		const handleKeyDown = (event: KeyboardEvent) => {
+			// Don't intercept when the user is typing into a form control.
+			const target = event.target as HTMLElement | null;
+			if (
+				target &&
+				(target.tagName === 'INPUT' ||
+					target.tagName === 'TEXTAREA' ||
+					target.isContentEditable)
+			) {
+				return;
+			}
+
+			const mod = event.metaKey || event.ctrlKey;
+
+			if (mod && (event.key === 'c' || event.key === 'C')) {
+				const selected = model.nodes.filter((n) => n.selected);
+				if (selected.length) {
+					event.preventDefault();
+					clipboardWrite(selected, model.edges);
+				}
+				return;
+			}
+
+			if (mod && (event.key === 'v' || event.key === 'V')) {
+				if (clipboardHasContent()) {
+					event.preventDefault();
+					void pasteSelection();
+				}
+				return;
+			}
+
 			if (event.key === 'Delete') {
 				if (model.currentBlock) {
 					model.removeBlock(model.currentBlock.id);
@@ -180,6 +211,95 @@
 		onReset()
 			.then(async () => await loadProgram(program))
 			.catch((err) => toast.error(`Load failed: ${err}`));
+	}
+
+	async function pasteSelection() {
+		const clip = clipboardRead();
+		if (!clip) return;
+
+		// Deselect anything that was selected so the just-pasted nodes
+		// become the new selection.
+		model.nodes = model.nodes.map((n) =>
+			n.selected ? { ...n, selected: false } : n
+		);
+
+		const OFFSET = 40;
+		const idMap = new Map<string, string>();
+		const newNodes = [];
+
+		for (const cn of clip.nodes) {
+			const newId = await command.addBlock(cn.desc.name, undefined, cn.desc.lib);
+			idMap.set(cn.originalId, newId);
+
+			const blockValue = $state(blockInstance(newId, cn.desc));
+			blockValue.label = cn.label;
+
+			// Only restore values for inputs that were NOT connected upstream.
+			// Connected inputs get their value from the recreated link (or
+			// fall back to the block default when the source wasn't copied).
+			for (const [name, pin] of Object.entries(cn.inputs)) {
+				if (
+					blockValue.inputs[name] &&
+					pin.value !== undefined &&
+					pin.value !== null &&
+					!pin.isConnected
+				) {
+					blockValue.inputs[name].value = pin.value;
+					await command.writeBlockInput(newId, name, pin.value);
+				}
+			}
+
+			const block = { value: blockValue };
+			blockInstances.set(newId, block);
+
+			newNodes.push({
+				id: newId,
+				type: 'custom',
+				position: { x: cn.position.x + OFFSET, y: cn.position.y + OFFSET },
+				data: block,
+				selected: true,
+			});
+		}
+
+		const newEdges = [];
+		for (const ce of clip.edges) {
+			const newSource = idMap.get(ce.source);
+			const newTarget = idMap.get(ce.target);
+			if (!newSource || !newTarget) continue;
+
+			const linkData = await command.createLink(
+				newSource,
+				newTarget,
+				ce.sourceHandle,
+				ce.targetHandle
+			);
+
+			const sourceBlock = blockInstances.get(newSource);
+			if (sourceBlock) {
+				const out = sourceBlock.value.outputs[ce.sourceHandle];
+				if (out) out.isConnected = true;
+			}
+			const targetBlock = blockInstances.get(newTarget);
+			if (targetBlock) {
+				const inp = targetBlock.value.inputs[ce.targetHandle];
+				if (inp) inp.isConnected = true;
+			}
+
+			newEdges.push({
+				id: crypto.randomUUID(),
+				source: newSource,
+				target: newTarget,
+				sourceHandle: ce.sourceHandle,
+				targetHandle: ce.targetHandle,
+				type: 'smoothstep',
+				data: linkData,
+			});
+		}
+
+		model.nodes = [...model.nodes, ...newNodes];
+		model.edges = [...model.edges, ...newEdges];
+		model.currentBlock = newNodes[0];
+		model.currentEdge = undefined;
 	}
 
 	async function loadProgram(program: unknown) {
