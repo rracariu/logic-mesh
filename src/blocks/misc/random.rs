@@ -59,6 +59,10 @@ impl Block for Random {
 
         if min > max {
             self.set_state(BlockState::fault("Random: min > max"));
+            return;
+        } else if (min..max).is_empty() {
+            self.set_state(BlockState::fault("Random: min == max"));
+            return;
         } else if self.state().is_fault() {
             self.set_state(BlockState::Running);
         }
