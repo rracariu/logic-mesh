@@ -69,24 +69,24 @@ mod test {
         // Establish low
         write_block_inputs([(&mut block.input, false), (&mut block.reset, false)]).await;
         block.execute().await;
-        assert_eq!(block.out.value, (0.0_f64).into());
+        assert_eq!(block.out.value, 0.into());
 
         // Rising edge → count = 1
         write_block_inputs([(&mut block.input, true)]).await;
         block.execute().await;
-        assert_eq!(block.out.value, (1.0_f64).into());
+        assert_eq!(block.out.value, 1.into());
 
         // Holding true does not double-count
         write_block_inputs([(&mut block.input, true)]).await;
         block.execute().await;
-        assert_eq!(block.out.value, (1.0_f64).into());
+        assert_eq!(block.out.value, 1.into());
 
         // Falling, then rising again → count = 2
         write_block_inputs([(&mut block.input, false)]).await;
         block.execute().await;
         write_block_inputs([(&mut block.input, true)]).await;
         block.execute().await;
-        assert_eq!(block.out.value, (2.0_f64).into());
+        assert_eq!(block.out.value, 2.into());
     }
 
     #[tokio::test]

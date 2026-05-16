@@ -99,7 +99,7 @@ mod test {
         ])
         .await;
         block.execute().await;
-        assert_eq!(block.out.value, (10.0).into());
+        assert_eq!(block.out.value, 10.into());
     }
 
     #[tokio::test]

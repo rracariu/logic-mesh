@@ -54,7 +54,7 @@ impl Block for Derivative {
             self.initialized = true;
             self.last_value = v;
             self.last_time_ms = now;
-            self.out.set((0.0_f64).into());
+            self.out.set(0.into());
             return;
         }
 
@@ -96,7 +96,7 @@ mod test {
 
         write_block_inputs([(&mut block.input, 10), (&mut block.interval, 0)]).await;
         block.execute().await;
-        assert_eq!(block.out.value, (0.0_f64).into());
+        assert_eq!(block.out.value, 0.into());
     }
 
     #[tokio::test]

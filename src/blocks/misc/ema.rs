@@ -101,7 +101,7 @@ mod test {
         ])
         .await;
         block.execute().await;
-        assert_eq!(block.out.value, (50.0).into());
+        assert_eq!(block.out.value, 50.into());
     }
 
     #[tokio::test]
@@ -162,6 +162,6 @@ mod test {
         ])
         .await;
         block.execute().await;
-        assert_eq!(block.out.value, (42.0).into());
+        assert_eq!(block.out.value, 42.into());
     }
 }

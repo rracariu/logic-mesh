@@ -132,7 +132,7 @@ mod test {
         ])
         .await;
         block.execute().await;
-        assert_eq!(block.out.value, (0.0_f64).into());
+        assert_eq!(block.out.value, 0.0.into());
     }
 
     #[tokio::test]

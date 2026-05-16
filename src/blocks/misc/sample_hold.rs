@@ -64,18 +64,18 @@ mod test {
         // Rising edge → captures 10
         write_block_inputs([(&mut block.trigger, true)]).await;
         block.execute().await;
-        assert_eq!(block.out.value, (10.0).into());
+        assert_eq!(block.out.value, 10.into());
 
         // Input changes but trigger held high → still 10
         write_block_inputs([(&mut block.input, 99)]).await;
         block.execute().await;
-        assert_eq!(block.out.value, (10.0).into());
+        assert_eq!(block.out.value, 10.into());
 
         // Trigger drops, then rises again → captures 99
         write_block_inputs([(&mut block.trigger, false)]).await;
         block.execute().await;
         write_block_inputs([(&mut block.trigger, true)]).await;
         block.execute().await;
-        assert_eq!(block.out.value, (99.0).into());
+        assert_eq!(block.out.value, 99.into());
     }
 }

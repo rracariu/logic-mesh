@@ -180,7 +180,7 @@ mod test {
         link_out(&mut block);
         drive(&mut block, 0.0, 2.0, -0.05, 0.05, 0.5, 0.0, 2.0, 0.5).await;
         block.execute().await;
-        assert_eq!(block.out.value, (0.5_f64).into());
+        assert_eq!(block.out.value, 0.5.into());
     }
 
     #[tokio::test]

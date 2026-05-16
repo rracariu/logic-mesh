@@ -70,7 +70,7 @@ mod test {
 
         write_block_inputs([(&mut block.input, 50.0), (&mut block.delta, 1.0)]).await;
         block.execute().await;
-        assert_eq!(block.out.value, (50.0).into());
+        assert_eq!(block.out.value, 50.into());
     }
 
     #[tokio::test]
@@ -83,7 +83,7 @@ mod test {
         // Change less than delta → output should remain
         write_block_inputs([(&mut block.input, 50.5)]).await;
         block.execute().await;
-        assert_eq!(block.out.value, (50.0).into());
+        assert_eq!(block.out.value, 50.into());
     }
 
     #[tokio::test]
@@ -95,6 +95,6 @@ mod test {
 
         write_block_inputs([(&mut block.input, 52.0)]).await;
         block.execute().await;
-        assert_eq!(block.out.value, (52.0).into());
+        assert_eq!(block.out.value, 52.into());
     }
 }

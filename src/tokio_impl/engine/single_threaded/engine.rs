@@ -160,7 +160,7 @@ impl Engine for SingleThreadedEngine {
         for (uuid_str, pb) in &program.blocks {
             let id = Uuid::try_from(uuid_str.as_str())
                 .map_err(|_| anyhow!("Invalid block uuid: {}", uuid_str))?;
-            let block_def = get_block(&pb.name, Some(pb.lib.clone()))
+            let block_def = get_block(&pb.name, Some(&pb.lib))
                 .ok_or_else(|| anyhow!("Block not found: {}::{}", pb.lib, pb.name))?;
             schedule_block_on_engine(&block_def.desc, Some(id), self)?;
             // Record UI metadata on the handle so it round-trips on save.
@@ -332,7 +332,7 @@ impl SingleThreadedEngine {
         &mut self,
         block_name: String,
         block_id: Option<Uuid>,
-        lib: Option<String>,
+        lib: Option<&str>,
     ) -> Result<Uuid> {
         let block_def =
             get_block(block_name.as_str(), lib).ok_or_else(|| anyhow!("Block not found"))?;

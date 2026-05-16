@@ -47,12 +47,12 @@ mod test {
 
         block.execute().await;
 
-        assert_eq!(block.out.value, (2).into());
+        assert_eq!(block.out.value, 2.into());
 
         write_block_inputs([(&mut block.in1, 1), (&mut block.in2, 2)]).await;
 
         block.execute().await;
 
-        assert_eq!(block.out.value, (0).into());
+        assert_eq!(block.out.value, 0.into());
     }
 }

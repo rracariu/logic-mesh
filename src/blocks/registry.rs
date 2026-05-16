@@ -169,23 +169,23 @@ include!(concat!(env!("OUT_DIR"), "/block_registry.rs"));
 /// - name: The name of the block to get
 /// # Returns
 /// A boxed block
-pub fn make(name: &str, lib: Option<String>) -> Option<Box<DynBlockProps>> {
+pub fn make(name: &str, lib: Option<&str>) -> Option<Box<DynBlockProps>> {
     let entry = get_block(name, lib)?;
     entry.make.map(|make| make())
 }
 
 /// Get a block entry from the registry
-pub fn get_block(name: &str, lib: Option<String>) -> Option<BlockEntry> {
+pub fn get_block(name: &str, lib: Option<&str>) -> Option<BlockEntry> {
     let reg = BLOCKS.lock().expect("Block registry is locked");
-    let lib = lib.unwrap_or_else(|| "core".to_string());
+    let lib = lib.unwrap_or("core");
 
-    let reg = reg.get(&lib)?;
+    let reg = reg.get(lib)?;
     reg.get(name).cloned()
 }
 
 /// Get a core block
 pub fn get_core_block(name: &str) -> Option<BlockEntry> {
-    get_block(name, Some("core".to_string()))
+    get_block(name, Some("core"))
 }
 
 /// Get all block descriptions from the registry

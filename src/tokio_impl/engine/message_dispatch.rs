@@ -40,7 +40,7 @@ pub(super) async fn dispatch_message(engine: &mut SingleThreadedEngine, msg: Mes
             };
 
             let block_id = engine
-                .add_block(block_name, block_id, lib)
+                .add_block(block_name, block_id, lib.as_deref())
                 .await
                 .map_err(|err| err.to_string());
 
@@ -67,7 +67,7 @@ pub(super) async fn dispatch_message(engine: &mut SingleThreadedEngine, msg: Mes
         }
 
         EngineMessage::EvaluateBlockReq(sender_uuid, name, inputs, lib) => {
-            let Some(block) = get_block(name.as_str(), lib) else {
+            let Some(block) = get_block(name.as_str(), lib.as_deref()) else {
                 return reply_to_sender(
                     engine,
                     sender_uuid,

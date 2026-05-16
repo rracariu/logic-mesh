@@ -45,6 +45,8 @@ impl Block for And {
 #[cfg(test)]
 mod test {
 
+    use libhaystack::val::Value;
+
     use crate::{
         base::block::Block, base::block::test_utils::write_block_inputs, blocks::logic::And,
     };
@@ -53,7 +55,11 @@ mod test {
     async fn test_and_block() {
         let mut block = And::new();
 
-        write_block_inputs([(&mut block.input1, 0.0), (&mut block.input2, (true).into())]).await;
+        write_block_inputs([
+            (&mut block.input1, 0.into()),
+            (&mut block.input2, Value::make_true()),
+        ])
+        .await;
 
         block.execute().await;
         assert_eq!(block.out.value, false.into());

@@ -57,7 +57,7 @@ impl Block for Integrator {
         if rising_reset {
             self.accumulator = 0.0;
             self.last_time_ms = now;
-            self.out.set((0.0_f64).into());
+            self.out.set(0.into());
             return;
         }
 
@@ -104,7 +104,7 @@ mod test {
         ])
         .await;
         block.execute().await;
-        assert_eq!(block.out.value, (0.0_f64).into());
+        assert_eq!(block.out.value, 0.into());
     }
 
     #[tokio::test]

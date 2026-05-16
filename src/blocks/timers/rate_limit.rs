@@ -118,7 +118,7 @@ mod test {
 
         // First execution initializes output to input value
         block.execute().await;
-        assert_eq!(block.out.value, (100.0).into());
+        assert_eq!(block.out.value, 100.into());
     }
 
     #[tokio::test]
@@ -138,7 +138,7 @@ mod test {
         ])
         .await;
         block.execute().await;
-        assert_eq!(block.out.value, (0.0).into());
+        assert_eq!(block.out.value, 0.into());
 
         // Target jumps to 1000, but rate is 10/s and dt is near-zero
         // so output should barely move (be less than target)
@@ -186,7 +186,7 @@ mod test {
         ])
         .await;
         block.execute().await;
-        assert_eq!(block.out.value, (100.0).into());
+        assert_eq!(block.out.value, 100.into());
     }
 
     #[tokio::test]
@@ -206,7 +206,7 @@ mod test {
         ])
         .await;
         block.execute().await;
-        assert_eq!(block.out.value, (50.0).into());
+        assert_eq!(block.out.value, 50.into());
 
         // Same target, output should stay at 50
         write_block_inputs([
@@ -217,6 +217,6 @@ mod test {
         ])
         .await;
         block.execute().await;
-        assert_eq!(block.out.value, (50.0).into());
+        assert_eq!(block.out.value, 50.into());
     }
 }
