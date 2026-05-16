@@ -18,31 +18,29 @@
 		"test:watch": "vitest"
 	},
 	"files": [
-		"dist/",
-		"src/"
+		"dist/"
 	],
 	"module": "dist/index.js",
-	"types": "src/index.ts",
+	"types": "./dist/index.d.ts",
 	"exports": {
 		".": {
-			"types": "./src/index.ts",
+			"types": "./dist/index.d.ts",
 			"import": "./dist/index.js"
 		}
 	},
 	"sideEffects": [
 		"./dist/index.js",
-		"./dist/logic_mesh.js",
-		"./dist/snippets/*"
+		"./dist/logic_mesh.js"
 	],
 	"dependencies": {
-		"zod": "^4.3.6"
+		"zod": "^4.4.3"
 	},
 	"devDependencies": {
-		"typescript": "^5.9.3",
-		"vitest": "^4.0.18"
+		"typescript": "^6.0.3",
+		"vitest": "^4.1.6"
 	},
 	"keywords": [
-		"logic",
+		"dataflow",
 		"control",
 		"reactive",
 		"wasm",

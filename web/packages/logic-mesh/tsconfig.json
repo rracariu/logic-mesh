@@ -4,6 +4,8 @@
 		"module": "ES2022",
 		"moduleResolution": "bundler",
 		"declaration": true,
+		"outDir": "./dist",
+		"rootDir": "./src",
 		"rootDirs": [
 			"./src",
 			"./dist"
@@ -13,7 +15,5 @@
 	},
 	"include": [
 		"src/**/*.ts",
-		"dist/**/*.d.ts",
-		"dist/**/*.js",
 	]
 }
