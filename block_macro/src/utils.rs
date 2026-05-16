@@ -1,7 +1,7 @@
 // Copyright (c) 2022-2023, Radu Racariu.
 
 use std::collections::BTreeMap;
-use syn::{Attribute, Lit, Meta, NestedMeta, Type, TypePath};
+use syn::{Attribute, Expr, ExprLit, Lit, Meta, Type, TypePath};
 
 ///
 /// Extract the block field names and their types.
@@ -51,16 +51,15 @@ pub(super) fn get_block_attributes(ast: &syn::DeriveInput) -> BTreeMap<String, S
     ast.attrs
         .iter()
         .filter_map(|attr| {
-            if let Ok(Meta::NameValue(nv)) = attr.parse_meta() {
-                if let Some(id) = nv.path.get_ident() {
-                    if let Lit::Str(val) = nv.lit {
-                        Some((id.to_string(), val.value()))
-                    } else {
-                        None
-                    }
-                } else {
-                    None
-                }
+            let Meta::NameValue(nv) = &attr.meta else {
+                return None;
+            };
+            let id = nv.path.get_ident()?;
+            if let Expr::Lit(ExprLit {
+                lit: Lit::Str(val), ..
+            }) = &nv.value
+            {
+                Some((id.to_string(), val.value()))
             } else {
                 None
             }
@@ -90,7 +89,7 @@ pub(super) fn get_block_input_attribute(ast: &syn::DeriveInput) -> BTreeMap<Stri
 
     ast.attrs
         .iter()
-        .filter(|attr| matches!(attr.path.get_ident(), Some(id) if id == "input"))
+        .filter(|attr| matches!(attr.path().get_ident(), Some(id) if id == "input"))
         .for_each(|attr| get_attribute_props(attr, &mut attrs));
 
     attrs
@@ -100,25 +99,27 @@ pub(super) fn get_block_input_attribute(ast: &syn::DeriveInput) -> BTreeMap<Stri
 /// Extract the attribute props for an helper attribute
 ///
 fn get_attribute_props(input_attr: &syn::Attribute, attrs: &mut BTreeMap<String, String>) {
-    if let Ok(Meta::List(list)) = input_attr.parse_meta() {
-        list.nested.iter().for_each(|e| {
-            if let NestedMeta::Meta(Meta::NameValue(name_value)) = e {
-                if let Some(id) = name_value.path.get_ident() {
-                    match &name_value.lit {
-                        Lit::Str(lit) => {
-                            attrs.insert(id.to_string(), lit.value());
-                        }
-
-                        Lit::Int(lit) => {
-                            attrs.insert(id.to_string(), lit.to_string());
-                        }
-
-                        _ => (),
-                    }
-                }
-            }
-        })
+    if !matches!(&input_attr.meta, Meta::List(_)) {
+        return;
     }
+    let _ = input_attr.parse_nested_meta(|meta| {
+        let Some(id) = meta.path.get_ident() else {
+            return Ok(());
+        };
+        let Ok(lit) = meta.value().and_then(|v| v.parse::<Lit>()) else {
+            return Ok(());
+        };
+        match lit {
+            Lit::Str(lit) => {
+                attrs.insert(id.to_string(), lit.value());
+            }
+            Lit::Int(lit) => {
+                attrs.insert(id.to_string(), lit.to_string());
+            }
+            _ => {}
+        }
+        Ok(())
+    });
 }
 
 fn field_type_is(ty: &TypePath, field_type: &str) -> bool {
@@ -136,7 +137,7 @@ fn field_type_is(ty: &TypePath, field_type: &str) -> bool {
 }
 
 fn filed_attribute_is(attr: &Attribute, field_type: &str) -> bool {
-    attr.path
+    attr.path()
         .get_ident()
         .filter(|id| id.to_string().as_str() == field_type)
         .is_some()
