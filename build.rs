@@ -48,11 +48,6 @@ fn main() {
                 .to_string_lossy()
                 .into_owned();
 
-            // Skip mod.rs
-            if file_name == "mod" {
-                continue;
-            }
-
             if let Some(struct_name) = find_block_struct(&file_path) {
                 category_blocks.push((file_name, struct_name));
             }
