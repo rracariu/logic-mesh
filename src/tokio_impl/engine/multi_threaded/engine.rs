@@ -137,7 +137,7 @@ impl crate::base::engine::Engine for MultiThreadedEngine {
         for (uuid_str, pb) in &program.blocks {
             let id = Uuid::try_from(uuid_str.as_str())
                 .map_err(|_| anyhow!("Invalid block uuid: {}", uuid_str))?;
-            let block_def = get_block(&pb.name, Some(pb.lib.clone()))
+            let block_def = get_block(&pb.name, Some(pb.lib.as_str()))
                 .ok_or_else(|| anyhow!("Block not found: {}::{}", pb.lib, pb.name))?;
             schedule_block_on_engine_mt(&block_def.desc, Some(id), self)?;
             if let Some(handle) = self.handles.get_mut(&id) {
@@ -281,8 +281,8 @@ impl MultiThreadedEngine {
         block_id: Option<Uuid>,
         lib: Option<String>,
     ) -> Result<Uuid> {
-        let block_def =
-            get_block(block_name.as_str(), lib).ok_or_else(|| anyhow!("Block not found"))?;
+        let block_def = get_block(block_name.as_str(), lib.as_deref())
+            .ok_or_else(|| anyhow!("Block not found"))?;
         schedule_block_on_engine_mt(&block_def.desc, block_id, self)
     }
 
@@ -782,7 +782,7 @@ impl MultiThreadedEngine {
             }
 
             EngineMessage::EvaluateBlockReq(sender_uuid, name, inputs, lib) => {
-                let Some(block) = get_block(name.as_str(), lib) else {
+                let Some(block) = get_block(name.as_str(), lib.as_deref()) else {
                     return self.reply_to_sender(
                         sender_uuid,
                         EngineMessage::EvaluateBlockRes(Err("Block not found".into())),
