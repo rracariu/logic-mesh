@@ -1,49 +1,59 @@
 {
-	"name": "logic-mesh",
-	"collaborators": [
-		"Radu Racariu <radu.racariu@gmail.com>"
-	],
-	"description": "Control logic engine using event based and reactive blocks written in Rust.",
-	"version": "0.9.0",
-	"license": "BSD-3-Clause",
-	"repository": {
-		"type": "git",
-		"url": "https://github.com/rracariu/logic-mesh"
-	},
-	"scripts": {
-		"build": "wasm-pack build --release --out-dir web/packages/logic-mesh/pkg ../../.. && npm run build:prepare && tsc",
-		"build:dev": "wasm-pack build --dev --out-dir web/packages/logic-mesh/pkg ../../.. && npm run build:prepare && tsc",
-		"build:prepare": "mkdir -p dist && mv ./pkg/*.js ./pkg/*.ts ./pkg/*.wasm ./dist/ && npm version $(node -p \"require('./pkg/package.json').version\") --allow-same-version && rm -rf ./pkg",
-		"test": "vitest run",
-		"test:watch": "vitest"
-	},
-	"files": [
-		"dist/"
-	],
-	"module": "dist/index.js",
-	"types": "./dist/index.d.ts",
-	"exports": {
-		".": {
-			"types": "./dist/index.d.ts",
-			"import": "./dist/index.js"
-		}
-	},
-	"sideEffects": [
-		"./dist/index.js",
-		"./dist/logic_mesh.js"
-	],
-	"dependencies": {
-		"zod": "^4.4.3"
-	},
-	"devDependencies": {
-		"typescript": "^6.0.3",
-		"vitest": "^4.1.6"
-	},
-	"keywords": [
-		"dataflow",
-		"control",
-		"reactive",
-		"wasm",
-		"low-code"
-	]
+  "name": "logic-mesh",
+  "collaborators": [
+    "Radu Racariu <radu.racariu@gmail.com>"
+  ],
+  "description": "Control logic engine using event based and reactive blocks written in Rust.",
+  "version": "0.9.0",
+  "type": "module",
+  "license": "BSD-3-Clause",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/rracariu/logic-mesh"
+  },
+  "scripts": {
+    "build": "wasm-pack build --release --out-dir web/packages/logic-mesh/pkg ../../.. && npm run build:prepare && tsc",
+    "build:dev": "wasm-pack build --dev --out-dir web/packages/logic-mesh/pkg ../../.. && npm run build:prepare && tsc",
+    "build:prepare": "mkdir -p dist && mv ./pkg/*.js ./pkg/*.ts ./pkg/*.wasm ./dist/ && npm version $(node -p \"require('./pkg/package.json').version\") --allow-same-version && rm -rf ./pkg",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "files": [
+    "dist/"
+  ],
+  "module": "dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "sideEffects": [
+    "./dist/index.js",
+    "./dist/logic_mesh.js"
+  ],
+  "dependencies": {
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.4.0",
+    "eslint-config-prettier": "^9",
+    "globals": "^15",
+    "prettier": "^3",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8",
+    "vitest": "^4.1.6"
+  },
+  "keywords": [
+    "dataflow",
+    "control",
+    "reactive",
+    "wasm",
+    "low-code"
+  ]
 }

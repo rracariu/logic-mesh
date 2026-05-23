@@ -1,5 +1,5 @@
-import type { BlockDesc, Kind } from "./index";
-import type { BlocksEngine } from "./logic_mesh";
+import type { BlockDesc, Kind } from './index';
+import type { BlocksEngine } from './logic_mesh';
 import {
   z,
   ZodArray,
@@ -12,7 +12,7 @@ import {
   ZodString,
   type ZodType,
   ZodUnknown,
-} from "zod";
+} from 'zod';
 
 type InferType<T> = {
   -readonly [K in keyof T]: z.infer<ExtractZodType<T[K]>>;
@@ -21,7 +21,7 @@ type ExtractZodType<T> = T extends readonly [string, infer U extends ZodType]
   ? U
   : never;
 
-type BlockDetails = Omit<BlockDesc, "inputs" | "outputs" | "implementation">;
+type BlockDetails = Omit<BlockDesc, 'inputs' | 'outputs' | 'implementation'>;
 type TupleType = readonly (readonly [string, ZodType])[];
 
 /**
@@ -44,7 +44,7 @@ export function defineBlock<I extends TupleType, O extends TupleType>(config: {
 
     override execute(inputs: InferType<I>): Promise<InferType<O> | undefined> {
       if (executeFn) return executeFn(inputs);
-      throw new Error("Not implemented");
+      throw new Error('Not implemented');
     }
 
     static register(engine: BlocksEngine) {
@@ -85,7 +85,7 @@ export class TypedBlock<I extends TupleType, O extends TupleType> {
     this.outputTypes = outputs.map(([, type]) => type) as InferType<O>;
 
     const blockDescription = desc as BlockDesc;
-    blockDescription.implementation = "external";
+    blockDescription.implementation = 'external';
 
     blockDescription.inputs = this.inputs.map((name, i) => ({
       name,
@@ -101,17 +101,17 @@ export class TypedBlock<I extends TupleType, O extends TupleType> {
   }
 
   execute([..._inputs]: InferType<I>): Promise<unknown[] | undefined> {
-    throw new Error("Not implemented");
+    throw new Error('Not implemented');
   }
 
   static register(_engine: BlocksEngine) {
-    throw new Error("Not implemented");
+    throw new Error('Not implemented');
   }
 
   async executeImpl(inputs: InferType<I>) {
     // Validate inputs
     if (inputs.length !== this.inputs.length) {
-      throw new Error("Invalid number of inputs");
+      throw new Error('Invalid number of inputs');
     }
 
     this.inputs.map((_, i) => {
@@ -127,7 +127,7 @@ export class TypedBlock<I extends TupleType, O extends TupleType> {
 
     // Validate outputs
     if (res.length !== this.outputs.length) {
-      throw new Error("Invalid number of outputs");
+      throw new Error('Invalid number of outputs');
     }
 
     this.outputs.forEach((_, i) => {
@@ -141,7 +141,7 @@ export class TypedBlock<I extends TupleType, O extends TupleType> {
 
   zodToKind(kind: ZodType | undefined): Kind {
     if (kind === undefined) {
-      throw new Error("Unspecified kind");
+      throw new Error('Unspecified kind');
     }
 
     if (kind instanceof ZodOptional) {
@@ -149,19 +149,19 @@ export class TypedBlock<I extends TupleType, O extends TupleType> {
     }
 
     if (kind instanceof ZodBoolean) {
-      return "bool";
+      return 'bool';
     } else if (kind instanceof ZodNumber) {
-      return "number";
+      return 'number';
     } else if (kind instanceof ZodString) {
-      return "str";
+      return 'str';
     } else if (kind instanceof ZodEnum) {
-      return "str";
+      return 'str';
     } else if (kind instanceof ZodArray) {
-      return "list";
+      return 'list';
     } else if (kind instanceof ZodObject) {
-      return "dict";
+      return 'dict';
     } else if (kind instanceof ZodUnknown) {
-      return "null";
+      return 'null';
     } else if (kind instanceof ZodDefault) {
       return this.zodToKind(kind.def.innerType as ZodType);
     } else {

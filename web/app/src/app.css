@@ -1,165 +1,171 @@
-@import "tailwindcss";
-@import "tw-animate-css";
+@import 'tailwindcss';
+@import 'tw-animate-css';
 @import '@xyflow/svelte/dist/style.css';
 
 @custom-variant dark (&:is(.dark *));
 
 :root {
-	--background: hsl(0 0% 100%);
-	--foreground: hsl(222.2 84% 4.9%);
-	--card: hsl(0 0% 100%);
-	--card-foreground: hsl(222.2 84% 4.9%);
-	--popover: hsl(0 0% 100%);
-	--popover-foreground: hsl(222.2 84% 4.9%);
-	--primary: hsl(221.2 83.2% 53.3%);
-	--primary-foreground: hsl(210 40% 98%);
-	--secondary: hsl(210 40% 96.1%);
-	--secondary-foreground: hsl(222.2 47.4% 11.2%);
-	--muted: hsl(210 40% 96.1%);
-	--muted-foreground: hsl(215.4 16.3% 46.9%);
-	--accent: hsl(210 40% 96.1%);
-	--accent-foreground: hsl(222.2 47.4% 11.2%);
-	--destructive: hsl(0 84.2% 60.2%);
-	--destructive-foreground: hsl(210 40% 98%);
-	--border: hsl(214.3 31.8% 91.4%);
-	--input: hsl(214.3 31.8% 91.4%);
-	--ring: hsl(221.2 83.2% 53.3%);
-	--radius: 0.5rem;
+  --background: hsl(0 0% 100%);
+  --foreground: hsl(222.2 84% 4.9%);
+  --card: hsl(0 0% 100%);
+  --card-foreground: hsl(222.2 84% 4.9%);
+  --popover: hsl(0 0% 100%);
+  --popover-foreground: hsl(222.2 84% 4.9%);
+  --primary: hsl(221.2 83.2% 53.3%);
+  --primary-foreground: hsl(210 40% 98%);
+  --secondary: hsl(210 40% 96.1%);
+  --secondary-foreground: hsl(222.2 47.4% 11.2%);
+  --muted: hsl(210 40% 96.1%);
+  --muted-foreground: hsl(215.4 16.3% 46.9%);
+  --accent: hsl(210 40% 96.1%);
+  --accent-foreground: hsl(222.2 47.4% 11.2%);
+  --destructive: hsl(0 84.2% 60.2%);
+  --destructive-foreground: hsl(210 40% 98%);
+  --border: hsl(214.3 31.8% 91.4%);
+  --input: hsl(214.3 31.8% 91.4%);
+  --ring: hsl(221.2 83.2% 53.3%);
+  --radius: 0.5rem;
 }
 
 .dark {
-	--background: hsl(222.2 84% 4.9%);
-	--foreground: hsl(210 40% 98%);
-	--card: hsl(222.2 84% 4.9%);
-	--card-foreground: hsl(210 40% 98%);
-	--popover: hsl(222.2 84% 4.9%);
-	--popover-foreground: hsl(210 40% 98%);
-	--primary: hsl(217.2 91.2% 59.8%);
-	--primary-foreground: hsl(222.2 47.4% 11.2%);
-	--secondary: hsl(217.2 32.6% 17.5%);
-	--secondary-foreground: hsl(210 40% 98%);
-	--muted: hsl(217.2 32.6% 17.5%);
-	--muted-foreground: hsl(215 20.2% 65.1%);
-	--accent: hsl(217.2 32.6% 17.5%);
-	--accent-foreground: hsl(210 40% 98%);
-	--destructive: hsl(0 62.8% 30.6%);
-	--destructive-foreground: hsl(210 40% 98%);
-	--border: hsl(217.2 32.6% 17.5%);
-	--input: hsl(217.2 32.6% 17.5%);
-	--ring: hsl(224.3 76.3% 48%);
+  --background: hsl(222.2 84% 4.9%);
+  --foreground: hsl(210 40% 98%);
+  --card: hsl(222.2 84% 4.9%);
+  --card-foreground: hsl(210 40% 98%);
+  --popover: hsl(222.2 84% 4.9%);
+  --popover-foreground: hsl(210 40% 98%);
+  --primary: hsl(217.2 91.2% 59.8%);
+  --primary-foreground: hsl(222.2 47.4% 11.2%);
+  --secondary: hsl(217.2 32.6% 17.5%);
+  --secondary-foreground: hsl(210 40% 98%);
+  --muted: hsl(217.2 32.6% 17.5%);
+  --muted-foreground: hsl(215 20.2% 65.1%);
+  --accent: hsl(217.2 32.6% 17.5%);
+  --accent-foreground: hsl(210 40% 98%);
+  --destructive: hsl(0 62.8% 30.6%);
+  --destructive-foreground: hsl(210 40% 98%);
+  --border: hsl(217.2 32.6% 17.5%);
+  --input: hsl(217.2 32.6% 17.5%);
+  --ring: hsl(224.3 76.3% 48%);
 }
 
 @theme inline {
-	--radius-sm: calc(var(--radius) - 4px);
-	--radius-md: calc(var(--radius) - 2px);
-	--radius-lg: var(--radius);
-	--radius-xl: calc(var(--radius) + 4px);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
 
-	--color-background: var(--background);
-	--color-foreground: var(--foreground);
-	--color-card: var(--card);
-	--color-card-foreground: var(--card-foreground);
-	--color-popover: var(--popover);
-	--color-popover-foreground: var(--popover-foreground);
-	--color-primary: var(--primary);
-	--color-primary-foreground: var(--primary-foreground);
-	--color-secondary: var(--secondary);
-	--color-secondary-foreground: var(--secondary-foreground);
-	--color-muted: var(--muted);
-	--color-muted-foreground: var(--muted-foreground);
-	--color-accent: var(--accent);
-	--color-accent-foreground: var(--accent-foreground);
-	--color-destructive: var(--destructive);
-	--color-destructive-foreground: var(--destructive-foreground);
-	--color-border: var(--border);
-	--color-input: var(--input);
-	--color-ring: var(--ring);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
 }
 
 @layer base {
-	* {
-		@apply border-border;
-	}
-	body {
-		@apply bg-background text-foreground;
-		font-size: 14px;
-	}
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-size: 14px;
+  }
 }
 
 /* XY Flow node styles */
 .svelte-flow__node-custom {
-	font-size: smaller;
-	border: 1px solid var(--border);
-	padding: 0px;
-	border-radius: 5px;
-	background: linear-gradient(180deg, var(--background) 0%, var(--muted) 100%);
-	display: flex;
-	flex-direction: column;
-	justify-content: space-between;
-	align-items: stretch;
-	gap: 0px;
-	max-width: 400px;
-	min-width: 8em;
+  font-size: smaller;
+  border: 1px solid var(--border);
+  padding: 0px;
+  border-radius: 5px;
+  background: linear-gradient(180deg, var(--background) 0%, var(--muted) 100%);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  align-items: stretch;
+  gap: 0px;
+  max-width: 400px;
+  min-width: 8em;
 }
 
 @custom-variant data-open {
-	&:where([data-state="open"]), &:where([data-open]:not([data-open="false"])) {
-		@slot;
-	}
+  &:where([data-state='open']),
+  &:where([data-open]:not([data-open='false'])) {
+    @slot;
+  }
 }
 
 @custom-variant data-closed {
-	&:where([data-state="closed"]), &:where([data-closed]:not([data-closed="false"])) {
-		@slot;
-	}
+  &:where([data-state='closed']),
+  &:where([data-closed]:not([data-closed='false'])) {
+    @slot;
+  }
 }
 
 @custom-variant data-checked {
-	&:where([data-state="checked"]), &:where([data-checked]:not([data-checked="false"])) {
-		@slot;
-	}
+  &:where([data-state='checked']),
+  &:where([data-checked]:not([data-checked='false'])) {
+    @slot;
+  }
 }
 
 @custom-variant data-unchecked {
-	&:where([data-state="unchecked"]), &:where([data-unchecked]:not([data-unchecked="false"])) {
-		@slot;
-	}
+  &:where([data-state='unchecked']),
+  &:where([data-unchecked]:not([data-unchecked='false'])) {
+    @slot;
+  }
 }
 
 @custom-variant data-selected {
-	&:where([data-selected]) {
-		@slot;
-	}
+  &:where([data-selected]) {
+    @slot;
+  }
 }
 
 @custom-variant data-disabled {
-	&:where([data-disabled="true"]), &:where([data-disabled]:not([data-disabled="false"])) {
-		@slot;
-	}
+  &:where([data-disabled='true']),
+  &:where([data-disabled]:not([data-disabled='false'])) {
+    @slot;
+  }
 }
 
 @custom-variant data-active {
-	&:where([data-state="active"]), &:where([data-active]:not([data-active="false"])) {
-		@slot;
-	}
+  &:where([data-state='active']),
+  &:where([data-active]:not([data-active='false'])) {
+    @slot;
+  }
 }
 
 @custom-variant data-horizontal {
-	&:where([data-orientation="horizontal"]) {
-		@slot;
-	}
+  &:where([data-orientation='horizontal']) {
+    @slot;
+  }
 }
 
 @custom-variant data-vertical {
-	&:where([data-orientation="vertical"]) {
-		@slot;
-	}
+  &:where([data-orientation='vertical']) {
+    @slot;
+  }
 }
 
 @utility no-scrollbar {
-	-ms-overflow-style: none;
-	scrollbar-width: none;
-	&::-webkit-scrollbar {
-		display: none;
-	}
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
 }

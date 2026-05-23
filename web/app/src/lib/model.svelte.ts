@@ -15,49 +15,52 @@ export const blockInstances = new Map<string, { value: Block }>();
  * @xyflow/svelte v1 requires $state.raw for nodes/edges (immutable array replacements).
  */
 class FlowModel {
-	nodes = $state.raw<Node[]>([]);
-	edges = $state.raw<Edge[]>([]);
-	currentBlock = $state<Node | undefined>(undefined);
-	currentEdge = $state<Edge | undefined>(undefined);
+  nodes = $state.raw<Node[]>([]);
+  edges = $state.raw<Edge[]>([]);
+  currentBlock = $state<Node | undefined>(undefined);
+  currentEdge = $state<Edge | undefined>(undefined);
 
-	async addBlock(desc: BlockDesc): Promise<Block> {
-		const id = await command.addBlock(desc.name, undefined, desc.lib);
-		// Wrap in $state so pin value mutations are reactive
-		const blockValue = $state(blockInstance(id, desc));
-		const block = { value: blockValue };
+  async addBlock(desc: BlockDesc): Promise<Block> {
+    const id = await command.addBlock(desc.name, undefined, desc.lib);
+    // Wrap in $state so pin value mutations are reactive
+    const blockValue = $state(blockInstance(id, desc));
+    const block = { value: blockValue };
 
-		const position = this.currentBlock
-			? {
-					x: (this.currentBlock.position.x || 0) + (this.currentBlock.measured?.width ?? 200) + 50,
-					y: (this.currentBlock.position.y || 0),
-				}
-			: { x: 250, y: 5 };
+    const position = this.currentBlock
+      ? {
+          x:
+            (this.currentBlock.position.x || 0) +
+            (this.currentBlock.measured?.width ?? 200) +
+            50,
+          y: this.currentBlock.position.y || 0,
+        }
+      : { x: 250, y: 5 };
 
-		this.nodes = [...this.nodes, { id, type: 'custom', position, data: block }];
-		blockInstances.set(id, block);
-		this.currentBlock = this.nodes.find((n) => n.id === id);
+    this.nodes = [...this.nodes, { id, type: 'custom', position, data: block }];
+    blockInstances.set(id, block);
+    this.currentBlock = this.nodes.find((n) => n.id === id);
 
-		return block.value;
-	}
+    return block.value;
+  }
 
-	removeBlock(id: string) {
-		this.nodes = this.nodes.filter((n) => n.id !== id);
-		this.edges = this.edges.filter((e) => e.source !== id && e.target !== id);
-		command.removeBlock(id);
-		blockInstances.delete(id);
-	}
+  removeBlock(id: string) {
+    this.nodes = this.nodes.filter((n) => n.id !== id);
+    this.edges = this.edges.filter((e) => e.source !== id && e.target !== id);
+    command.removeBlock(id);
+    blockInstances.delete(id);
+  }
 
-	removeEdgeById(id: string) {
-		this.edges = this.edges.filter((e) => e.id !== id);
-	}
+  removeEdgeById(id: string) {
+    this.edges = this.edges.filter((e) => e.id !== id);
+  }
 
-	clearAll() {
-		this.nodes = [];
-		this.edges = [];
-		blockInstances.clear();
-		this.currentBlock = undefined;
-		this.currentEdge = undefined;
-	}
+  clearAll() {
+    this.nodes = [];
+    this.edges = [];
+    blockInstances.clear();
+    this.currentBlock = undefined;
+    this.currentEdge = undefined;
+  }
 }
 
 export const model = new FlowModel();

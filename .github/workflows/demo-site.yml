@@ -20,8 +20,18 @@ jobs:
       - name: install
         run: npm ci
 
+      - name: format check
+        run: |
+          npm run format:check --workspace=logic-mesh
+          npm run format:check --workspace=web-app
+
       - name: wasm-build
         run: npm run build --workspace=logic-mesh
+
+      - name: lint
+        run: |
+          npm run lint --workspace=logic-mesh
+          npm run lint --workspace=web-app
 
       - name: build
         run: npm run build --workspace=web-app

@@ -1,57 +1,57 @@
 <script lang="ts">
-	import type { Block } from '$lib/Block';
-	import GenericBlock from './blocks/GenericBlock.svelte';
-	import InputBlock from './blocks/InputBlock.svelte';
-	import CheckboxBlock from './blocks/CheckboxBlock.svelte';
-	import ChartBlock from './blocks/ChartBlock.svelte';
-	import GaugeBlock from './blocks/GaugeBlock.svelte';
-	import ButtonBlock from './blocks/ButtonBlock.svelte';
-	import ComboBoxBlock from './blocks/ComboBoxBlock.svelte';
-	import TableBlock from './blocks/TableBlock.svelte';
-	import LabelBlock from './blocks/LabelBlock.svelte';
-	import SliderBlock from './blocks/SliderBlock.svelte';
-	import LedBlock from './blocks/LedBlock.svelte';
-	import BarBlock from './blocks/BarBlock.svelte';
-	import DisplayBlock from './blocks/DisplayBlock.svelte';
-	import MultiChartBlock from './blocks/MultiChartBlock.svelte';
+  import type { Block } from '$lib/Block';
+  import GenericBlock from './blocks/GenericBlock.svelte';
+  import InputBlock from './blocks/InputBlock.svelte';
+  import CheckboxBlock from './blocks/CheckboxBlock.svelte';
+  import ChartBlock from './blocks/ChartBlock.svelte';
+  import GaugeBlock from './blocks/GaugeBlock.svelte';
+  import ButtonBlock from './blocks/ButtonBlock.svelte';
+  import ComboBoxBlock from './blocks/ComboBoxBlock.svelte';
+  import TableBlock from './blocks/TableBlock.svelte';
+  import LabelBlock from './blocks/LabelBlock.svelte';
+  import SliderBlock from './blocks/SliderBlock.svelte';
+  import LedBlock from './blocks/LedBlock.svelte';
+  import BarBlock from './blocks/BarBlock.svelte';
+  import DisplayBlock from './blocks/DisplayBlock.svelte';
+  import MultiChartBlock from './blocks/MultiChartBlock.svelte';
 
-	interface Props {
-		data: { value: Block };
-	}
+  interface Props {
+    data: { value: Block };
+  }
 
-	let { data }: Props = $props();
+  let { data }: Props = $props();
 
-	const block = $derived(data.value);
+  const block = $derived(data.value);
 </script>
 
 {#if block.desc.implementation === 'native'}
-	<GenericBlock {data} />
+  <GenericBlock {data} />
 {:else if block.desc.name === 'Input'}
-	<InputBlock {data} />
+  <InputBlock {data} />
 {:else if block.desc.name === 'Checkbox'}
-	<CheckboxBlock {data} />
+  <CheckboxBlock {data} />
 {:else if block.desc.name === 'Chart'}
-	<ChartBlock {data} />
+  <ChartBlock {data} />
 {:else if block.desc.name === 'Gauge'}
-	<GaugeBlock {data} />
+  <GaugeBlock {data} />
 {:else if block.desc.name === 'Button'}
-	<ButtonBlock {data} />
+  <ButtonBlock {data} />
 {:else if block.desc.name === 'ComboBox'}
-	<ComboBoxBlock {data} />
+  <ComboBoxBlock {data} />
 {:else if block.desc.name === 'Table'}
-	<TableBlock {data} />
+  <TableBlock {data} />
 {:else if block.desc.name === 'Label'}
-	<LabelBlock {data} />
+  <LabelBlock {data} />
 {:else if block.desc.name === 'Slider'}
-	<SliderBlock {data} />
+  <SliderBlock {data} />
 {:else if block.desc.name === 'Led'}
-	<LedBlock {data} />
+  <LedBlock {data} />
 {:else if block.desc.name === 'Bar'}
-	<BarBlock {data} />
+  <BarBlock {data} />
 {:else if block.desc.name === 'Display'}
-	<DisplayBlock {data} />
+  <DisplayBlock {data} />
 {:else if block.desc.name === 'MultiChart'}
-	<MultiChartBlock {data} />
+  <MultiChartBlock {data} />
 {:else}
-	<GenericBlock {data} />
+  <GenericBlock {data} />
 {/if}

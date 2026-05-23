@@ -1,28 +1,28 @@
-export { BlocksEngine, initEngine, EngineCommand } from "./logic_mesh.js";
-export { defineBlock, TypedBlock } from "./TypedBlock";
+export { BlocksEngine, initEngine, EngineCommand } from './logic_mesh.js';
+export { defineBlock, TypedBlock } from './TypedBlock';
 
 /**
  * The kind of the block pin.
  */
 export type Kind =
-  | "null"
-  | "remove"
-  | "marker"
-  | "na"
-  | "bool"
-  | "number"
-  | "str"
-  | "uri"
-  | "ref"
-  | "symbol"
-  | "date"
-  | "time"
-  | "dateTime"
-  | "coord"
-  | "xstr"
-  | "list"
-  | "dict"
-  | "grid";
+  | 'null'
+  | 'remove'
+  | 'marker'
+  | 'na'
+  | 'bool'
+  | 'number'
+  | 'str'
+  | 'uri'
+  | 'ref'
+  | 'symbol'
+  | 'date'
+  | 'time'
+  | 'dateTime'
+  | 'coord'
+  | 'xstr'
+  | 'list'
+  | 'dict'
+  | 'grid';
 
 /**
  * A block that is implemented in JS
@@ -112,7 +112,7 @@ export interface BlockDesc {
   /**
    * The block implementation
    */
-  implementation: "native" | "external";
+  implementation: 'native' | 'external';
 
   /**
    * The block inputs
@@ -132,7 +132,7 @@ export interface BlockDesc {
    *
    * Default: 'change'
    */
-  runCondition?: "change" | "always";
+  runCondition?: 'change' | 'always';
 }
 
 /**
@@ -166,7 +166,7 @@ export interface BlockNotification {
    * The block's operational state at the time of the notification.
    * Drives fault visualization on the UI.
    */
-  state: "running" | "fault" | "disabled" | "terminated";
+  state: 'running' | 'fault' | 'disabled' | 'terminated';
 
   /**
    * Optional reason associated with `state === "fault"`.

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from "svelte";
+  import { onMount } from 'svelte';
   import {
     SvelteFlow,
     Controls,
@@ -8,24 +8,24 @@
     Panel,
     type Connection,
     type OnConnectStartParams,
-  } from "@xyflow/svelte";
+  } from '@xyflow/svelte';
 
-  import { toast } from "$lib/components/ui/sonner";
-  import type { BlockNotification, BlockPin, Program } from "logic-mesh";
+  import { toast } from '$lib/components/ui/sonner';
+  import type { BlockNotification, BlockPin, Program } from 'logic-mesh';
 
-  import BlockNode from "../components/BlockNode.svelte";
-  import ToolBar from "../components/ToolBar.svelte";
-  import FitView from "../components/FitView.svelte";
+  import BlockNode from '../components/BlockNode.svelte';
+  import ToolBar from '../components/ToolBar.svelte';
+  import FitView from '../components/FitView.svelte';
 
-  import { blockInstance, type Block } from "$lib/Block";
-  import { useEngine } from "$lib/Engine";
-  import { model, blockInstances } from "$lib/model.svelte";
-  import { prepare, pushToEngine, save } from "$lib/Program";
+  import { blockInstance } from '$lib/Block';
+  import { useEngine } from '$lib/Engine';
+  import { model, blockInstances } from '$lib/model.svelte';
+  import { prepare, pushToEngine, save } from '$lib/Program';
   import {
     clipboardHasContent,
     clipboardRead,
     clipboardWrite,
-  } from "$lib/Clipboard";
+  } from '$lib/Clipboard';
 
   const { engine, blocks, command, startWatch } = useEngine();
 
@@ -50,10 +50,10 @@
         // sends an unrecognized state.
         const nextState =
           (notification.state as
-            | "running"
-            | "fault"
-            | "disabled"
-            | "terminated") ?? "running";
+            | 'running'
+            | 'fault'
+            | 'disabled'
+            | 'terminated') ?? 'running';
         const prevState = blockRef.value.state;
         blockRef.value.state = nextState;
         blockRef.value.faultReason = notification.faultReason;
@@ -62,10 +62,10 @@
         // the edges originating from this block so the class-based
         // styling updates.
         if (prevState !== nextState) {
-          const isFault = nextState === "fault";
+          const isFault = nextState === 'fault';
           model.edges = model.edges.map((e) =>
             e.source === notification.id
-              ? { ...e, className: isFault ? "faulted-edge" : undefined }
+              ? { ...e, className: isFault ? 'faulted-edge' : undefined }
               : e,
           );
         }
@@ -73,7 +73,7 @@
         if (!notification.changes.length) return;
 
         notification.changes.forEach((change) => {
-          if (change.source === "input") {
+          if (change.source === 'input') {
             model.edges = model.edges.map((e) =>
               e.target === blockRef.value.id && e.targetHandle === change.name
                 ? { ...e, animated: true }
@@ -81,7 +81,7 @@
             );
           }
           const pins =
-            change.source === "input"
+            change.source === 'input'
               ? blockRef.value.inputs
               : blockRef.value.outputs;
           if (pins[change.name]) {
@@ -97,8 +97,8 @@
       const target = event.target as HTMLElement | null;
       if (
         target &&
-        (target.tagName === "INPUT" ||
-          target.tagName === "TEXTAREA" ||
+        (target.tagName === 'INPUT' ||
+          target.tagName === 'TEXTAREA' ||
           target.isContentEditable)
       ) {
         return;
@@ -106,7 +106,7 @@
 
       const mod = event.metaKey || event.ctrlKey;
 
-      if (mod && (event.key === "c" || event.key === "C")) {
+      if (mod && (event.key === 'c' || event.key === 'C')) {
         const selected = model.nodes.filter((n) => n.selected);
         if (selected.length) {
           event.preventDefault();
@@ -115,7 +115,7 @@
         return;
       }
 
-      if (mod && (event.key === "v" || event.key === "V")) {
+      if (mod && (event.key === 'v' || event.key === 'V')) {
         if (clipboardHasContent()) {
           event.preventDefault();
           void pasteSelection();
@@ -124,8 +124,8 @@
       }
     };
 
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
   });
 
   // onconnectstart in v1: (event, params) => void
@@ -139,7 +139,7 @@
   async function onConnect(conn: Connection) {
     if (!connSource) return;
 
-    if (connSource.handleType === "target") {
+    if (connSource.handleType === 'target') {
       conn = {
         source: conn.target,
         target: conn.source,
@@ -152,8 +152,8 @@
     const data = await command.createLink(
       conn.source,
       conn.target,
-      conn.sourceHandle ?? "",
-      conn.targetHandle ?? "",
+      conn.sourceHandle ?? '',
+      conn.targetHandle ?? '',
     );
 
     if (data) {
@@ -167,16 +167,16 @@
       if (link) {
         const sourceBlock = blockInstances.get(conn.source);
         if (sourceBlock) {
-          const inp = sourceBlock.value.inputs[conn.sourceHandle ?? ""];
+          const inp = sourceBlock.value.inputs[conn.sourceHandle ?? ''];
           if (inp) inp.isConnected = true;
-          const out = sourceBlock.value.outputs[conn.sourceHandle ?? ""];
+          const out = sourceBlock.value.outputs[conn.sourceHandle ?? ''];
           if (out) out.isConnected = true;
         }
         const targetBlock = blockInstances.get(conn.target);
         if (targetBlock) {
-          const inp = targetBlock.value.inputs[conn.targetHandle ?? ""];
+          const inp = targetBlock.value.inputs[conn.targetHandle ?? ''];
           if (inp) inp.isConnected = true;
-          const out = targetBlock.value.outputs[conn.targetHandle ?? ""];
+          const out = targetBlock.value.outputs[conn.targetHandle ?? ''];
           if (out) out.isConnected = true;
         }
         link.data = data;
@@ -192,16 +192,16 @@
 
   function onCopy() {
     const program = save({
-      name: "program",
+      name: 'program',
       nodes: model.nodes,
       edges: model.edges,
     });
     const json = JSON.stringify(program, (_, value) => {
-      if (typeof value === "number") return parseFloat(value.toFixed(2));
+      if (typeof value === 'number') return parseFloat(value.toFixed(2));
       return value;
     });
     navigator.clipboard.writeText(json);
-    toast.success("Program copied to clipboard");
+    toast.success('Program copied to clipboard');
   }
 
   function onPaste() {
@@ -264,7 +264,7 @@
 
       newNodes.push({
         id: newId,
-        type: "custom",
+        type: 'custom',
         position: { x: cn.position.x + OFFSET, y: cn.position.y + OFFSET },
         data: block,
         selected: true,
@@ -301,7 +301,7 @@
         target: newTarget,
         sourceHandle: ce.sourceHandle,
         targetHandle: ce.targetHandle,
-        type: "smoothstep",
+        type: 'smoothstep',
         data: linkData,
       });
     }
@@ -332,7 +332,7 @@
       blockInstances.set(node.id, block);
 
       const loadedLabel = (node.data as { label?: string } | undefined)?.label;
-      if (typeof loadedLabel === "string") {
+      if (typeof loadedLabel === 'string') {
         block.value.label = loadedLabel;
       }
 
@@ -364,7 +364,7 @@
     // push the program into the engine.
     await pushToEngine(prog);
 
-    toast.success("Program loaded");
+    toast.success('Program loaded');
   }
 </script>
 
@@ -374,7 +374,7 @@
       bind:nodes={model.nodes}
       bind:edges={model.edges}
       {nodeTypes}
-      defaultEdgeOptions={{ type: "smoothstep" }}
+      defaultEdgeOptions={{ type: 'smoothstep' }}
       minZoom={0.2}
       maxZoom={4}
       elevateEdgesOnSelect={true}

@@ -4,13 +4,13 @@ import { defineConfig } from 'vite';
 import wasm from 'vite-plugin-wasm';
 
 export default defineConfig({
-	plugins: [tailwindcss(), wasm(), sveltekit()],
-	build: {
-		target: 'esnext',
-	},
-	server: {
-		fs: {
-			allow: ['module'],
-		},
-	},
+  plugins: [tailwindcss(), wasm(), sveltekit()],
+  build: {
+    target: 'esnext',
+  },
+  server: {
+    fs: {
+      allow: ['module'],
+    },
+  },
 });

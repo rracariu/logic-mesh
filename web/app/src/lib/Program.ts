@@ -1,59 +1,69 @@
 import type { Edge, Node } from '@xyflow/svelte';
-import type { BlockPin, Program } from 'logic-mesh';
+import type { Program } from 'logic-mesh';
 import type { Block } from './Block';
 import { useEngine } from './Engine';
 
 const { command } = useEngine();
 
-export function save(ops: { name: string; desc?: string; nodes: Node[]; edges: Edge[] }): Program {
-	const program: Program = {
-		name: ops.name,
-		description: ops.desc,
-	} as Program;
+export function save(ops: {
+  name: string;
+  desc?: string;
+  nodes: Node[];
+  edges: Edge[];
+}): Program {
+  const program: Program = {
+    name: ops.name,
+    description: ops.desc,
+  } as Program;
 
-	ops.nodes.forEach((node) => {
-		const blockRef = node.data as { value: Block };
-		const data = blockRef.value;
-		const { desc } = data;
+  ops.nodes.forEach((node) => {
+    const blockRef = node.data as { value: Block };
+    const data = blockRef.value;
+    const { desc } = data;
 
-		program.blocks = program.blocks || {};
-		program.blocks[node.id] = {
-			name: desc.name,
-			lib: desc.lib,
-			positions: { x: node.position.x, y: node.position.y },
-		};
-		if (data.label) {
-			program.blocks[node.id].label = data.label;
-		}
+    program.blocks = program.blocks || {};
+    program.blocks[node.id] = {
+      name: desc.name,
+      lib: desc.lib,
+      positions: { x: node.position.x, y: node.position.y },
+    };
+    if (data.label) {
+      program.blocks[node.id].label = data.label;
+    }
 
-		const curProgram = program.blocks[node.id];
+    const curProgram = program.blocks[node.id];
 
-		Object.entries(data.inputs).forEach(([name, input]) => {
-			if (input.value != null) {
-				curProgram.inputs = curProgram.inputs || {};
-				curProgram.inputs[name] = { value: input.value, isConnected: input.isConnected };
-			}
-		});
+    Object.entries(data.inputs).forEach(([name, input]) => {
+      if (input.value != null) {
+        curProgram.inputs = curProgram.inputs || {};
+        curProgram.inputs[name] = {
+          value: input.value,
+          isConnected: input.isConnected,
+        };
+      }
+    });
 
-		Object.entries(data.outputs).forEach(([name, output]) => {
-			if (output.value != null) {
-				curProgram.outputs = curProgram.outputs || {};
-				curProgram.outputs[name] = { value: output.value };
-			}
-		});
-	});
+    Object.entries(data.outputs).forEach(([name, output]) => {
+      if (output.value != null) {
+        curProgram.outputs = curProgram.outputs || {};
+        curProgram.outputs[name] = { value: output.value };
+      }
+    });
+  });
 
-	ops.edges.forEach((edge) => {
-		program.links = program.links || {};
-		program.links[(edge.data as { id?: string } | undefined)?.id ?? crypto.randomUUID()] = {
-			sourceBlockPinName: edge.sourceHandle ?? '',
-			targetBlockPinName: edge.targetHandle ?? '',
-			sourceBlockUuid: edge.source,
-			targetBlockUuid: edge.target,
-		};
-	});
+  ops.edges.forEach((edge) => {
+    program.links = program.links || {};
+    program.links[
+      (edge.data as { id?: string } | undefined)?.id ?? crypto.randomUUID()
+    ] = {
+      sourceBlockPinName: edge.sourceHandle ?? '',
+      targetBlockPinName: edge.targetHandle ?? '',
+      sourceBlockUuid: edge.source,
+      targetBlockUuid: edge.target,
+    };
+  });
 
-	return program;
+  return program;
 }
 
 /**
@@ -67,37 +77,37 @@ export function save(ops: { name: string; desc?: string; nodes: Node[]; edges: E
  * callback can't find the block id yet.
  */
 export function prepare(program: Program): { nodes: Node[]; edges: Edge[] } {
-	const nodes: Node[] = [];
-	const edges: Edge[] = [];
+  const nodes: Node[] = [];
+  const edges: Edge[] = [];
 
-	for (const blockUuid in program.blocks) {
-		const block = program.blocks[blockUuid];
-		nodes.push({
-			id: blockUuid,
-			type: 'custom',
-			position: { x: block.positions?.x ?? 0, y: block.positions?.y ?? 0 },
-			data: {
-				name: block.name ?? '',
-				lib: block.lib ?? '',
-				label: block.label ?? '',
-				inputs: block.inputs ?? {},
-				outputs: block.outputs ?? {},
-			},
-		});
-	}
+  for (const blockUuid in program.blocks) {
+    const block = program.blocks[blockUuid];
+    nodes.push({
+      id: blockUuid,
+      type: 'custom',
+      position: { x: block.positions?.x ?? 0, y: block.positions?.y ?? 0 },
+      data: {
+        name: block.name ?? '',
+        lib: block.lib ?? '',
+        label: block.label ?? '',
+        inputs: block.inputs ?? {},
+        outputs: block.outputs ?? {},
+      },
+    });
+  }
 
-	for (const linkId in program.links) {
-		const link = program.links[linkId];
-		edges.push({
-			id: linkId,
-			source: link.sourceBlockUuid,
-			target: link.targetBlockUuid,
-			sourceHandle: link.sourceBlockPinName,
-			targetHandle: link.targetBlockPinName,
-		});
-	}
+  for (const linkId in program.links) {
+    const link = program.links[linkId];
+    edges.push({
+      id: linkId,
+      source: link.sourceBlockUuid,
+      target: link.targetBlockUuid,
+      sourceHandle: link.sourceBlockPinName,
+      targetHandle: link.targetBlockPinName,
+    });
+  }
 
-	return { nodes, edges };
+  return { nodes, edges };
 }
 
 /**
@@ -111,7 +121,7 @@ export function prepare(program: Program): { nodes: Node[]; edges: Edge[] } {
  * load have a registered destination.
  */
 export async function pushToEngine(program: Program): Promise<void> {
-	await command.loadProgram(program);
+  await command.loadProgram(program);
 }
 
 /**
@@ -121,8 +131,10 @@ export async function pushToEngine(program: Program): Promise<void> {
  * first round of COV notifications, call `prepare` and `pushToEngine`
  * separately and register your instances between them.
  */
-export async function load(program: Program): Promise<{ nodes: Node[]; edges: Edge[] }> {
-	const { nodes, edges } = prepare(program);
-	await pushToEngine(program);
-	return { nodes, edges };
+export async function load(
+  program: Program,
+): Promise<{ nodes: Node[]; edges: Edge[] }> {
+  const { nodes, edges } = prepare(program);
+  await pushToEngine(program);
+  return { nodes, edges };
 }
