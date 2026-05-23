@@ -157,9 +157,11 @@ export interface BlockNotification {
      */
     source: string;
     /**
-     * The value that was changed on this pin
+     * The value that was changed on this pin. The shape is
+     * Haystack-encoded JSON; consumers narrow as needed (e.g.
+     * `typeof value === 'number'` for a numeric pin).
      */
-    value: {};
+    value: unknown;
   }[];
 
   /**

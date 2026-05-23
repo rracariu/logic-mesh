@@ -141,7 +141,7 @@
           </div>
         {/if}
       {:else}
-        {#each categories as category, i}
+        {#each categories as category, i (category)}
           {#if i > 0}
             <DropdownMenu.Separator />
           {/if}
@@ -177,7 +177,7 @@
       <span class="truncate">{curProgram?.name ?? 'Select a Program'}</span>
     </SelectTrigger>
     <SelectContent class="min-w-64">
-      {#each examplePrograms as program, i}
+      {#each examplePrograms as program, i (program.name ?? i)}
         <SelectItem value={String(i)} title={program.name}>
           <span class="truncate">{program.name}</span>
         </SelectItem>

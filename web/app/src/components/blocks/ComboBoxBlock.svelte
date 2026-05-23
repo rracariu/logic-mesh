@@ -89,7 +89,7 @@
           {selected ?? 'Select...'}
         </Select.Trigger>
         <Select.Content>
-          {#each items as item}
+          {#each items as item (item)}
             <Select.Item value={item} label={item} />
           {/each}
         </Select.Content>

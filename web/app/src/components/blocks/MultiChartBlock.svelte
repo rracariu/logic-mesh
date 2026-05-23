@@ -114,7 +114,7 @@
 <BlockCommons data={block}>
   <div class="multichart-body">
     <div class="pin-stack">
-      {#each seriesKeys as key, i}
+      {#each seriesKeys as key, i (key)}
         <div class="pin-row">
           <Handle
             id={key}
@@ -125,7 +125,7 @@
           <span class="pin-name" style:color={colors[i]}>{key}</span>
         </div>
       {/each}
-      {#each labelKeys as key}
+      {#each labelKeys as key (key)}
         <div class="pin-row pin-row-label">
           <Handle
             id={key}

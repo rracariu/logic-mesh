@@ -54,7 +54,7 @@
         if (!blockSearch.length) manualOpen = v;
       }}
     >
-      {#each categories as category}
+      {#each categories as category (category)}
         <AccordionItem value={category}>
           <AccordionTrigger>{capitalize(category)}</AccordionTrigger>
           <AccordionContent>

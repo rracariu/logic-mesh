@@ -57,7 +57,7 @@
 
 <BlockCommons data={block}>
   <!-- Outputs (right-aligned) -->
-  {#each Object.entries(block.outputs) as [name, output]}
+  {#each Object.entries(block.outputs) as [name, output] (name)}
     <div class="pin-row pin-row-output">
       <span class="pin-name">{name}</span>
       <span class="pin-value"
@@ -79,7 +79,7 @@
   {/if}
 
   <!-- Inputs (left-aligned) -->
-  {#each Object.entries(inputPins) as [name, input]}
+  {#each Object.entries(inputPins) as [name, input] (name)}
     <div class="pin-row pin-row-input">
       <Handle
         id={input.name}

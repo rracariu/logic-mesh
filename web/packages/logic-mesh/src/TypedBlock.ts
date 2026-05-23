@@ -48,7 +48,13 @@ export function defineBlock<I extends TupleType, O extends TupleType>(config: {
     }
 
     static register(engine: BlocksEngine) {
-      const executor = new (this as any)();
+      // `this` here is the anonymous class produced by `defineBlock`.
+      // Cast to its construct signature so we can `new` it without
+      // falling back to `any` — the runtime shape matches the
+      // `TypedBlock<I, O>` instance type by construction (we just
+      // declared the class as `class extends TypedBlock<I, O>`).
+      const Ctor = this as unknown as new () => TypedBlock<I, O>;
+      const executor = new Ctor();
       if (executeFn) {
         engine.registerBlock(executor.desc, () =>
           executor.executeImpl.bind(executor),

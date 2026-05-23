@@ -49,7 +49,7 @@ It bundles a UI block set (`Slider`, `Gauge`, `Bar`, `Display`, `Led`, `Chart`, 
 
 ```toml
 [dependencies]
-logic-mesh = "0.5"
+logic-mesh = "1.0"
 ```
 
 Wire two sine waves into an adder and run them:

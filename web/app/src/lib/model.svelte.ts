@@ -1,12 +1,16 @@
 import type { Edge, Node } from '@xyflow/svelte';
 import type { BlockDesc } from 'logic-mesh';
+import { SvelteMap } from 'svelte/reactivity';
 import { blockInstance, type Block } from './Block';
 import { useEngine } from './Engine';
 
 const { command } = useEngine();
 
-// Registry of live block instances keyed by node id
-export const blockInstances = new Map<string, { value: Block }>();
+// Registry of live block instances keyed by node id. `SvelteMap` rather
+// than a plain `Map` so the registry itself is a reactive source —
+// callers that iterate or check membership inside `$derived`/`$effect`
+// re-run when blocks are added/removed.
+export const blockInstances = new SvelteMap<string, { value: Block }>();
 
 /**
  * Central reactive model for the flow.

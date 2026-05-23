@@ -64,7 +64,7 @@
         <span class="col-action"></span>
       </div>
 
-      {#each rows as row, i}
+      {#each rows as row, i (i)}
         <div class="table-row">
           <Input
             value={row.key}

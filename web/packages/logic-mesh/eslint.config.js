@@ -32,12 +32,11 @@ export default ts.config(
           caughtErrorsIgnorePattern: '^_',
         },
       ],
-      // The wasm-bridge type definitions use `any` and `{}` to model
-      // the loose JSON / haystack shapes flowing in from Rust.
-      // Tightening these requires reshaping the public TS surface;
-      // surface as warnings for now.
-      '@typescript-eslint/no-explicit-any': 'warn',
-      '@typescript-eslint/no-empty-object-type': 'warn',
+      // Hard errors. Test-side `any` is allowed via a file-level
+      // disable in `test/TypedBlock.test.ts` (negative-path tests
+      // need wrong-shape inputs).
+      '@typescript-eslint/no-explicit-any': 'error',
+      '@typescript-eslint/no-empty-object-type': 'error',
     },
   },
   {

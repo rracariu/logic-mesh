@@ -132,9 +132,12 @@ impl BlockProps for JsBlock {
         &self.desc.name
     }
 
-    fn desc(&self) -> &'static BlockDesc {
-        let local: *const BlockDesc = &self.desc;
-        unsafe { &*local }
+    fn desc(&self) -> &BlockDesc {
+        // Natural `&self` borrow. Earlier versions returned an
+        // `unsafe { &*local } as &'static BlockDesc` to satisfy a
+        // trait that wanted `&'static`; the trait was relaxed to
+        // `&BlockDesc` so the unsafe extension is no longer needed.
+        &self.desc
     }
 
     fn set_state(&mut self, state: BlockState) -> BlockState {

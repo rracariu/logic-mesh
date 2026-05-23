@@ -11,7 +11,24 @@
   } from '@xyflow/svelte';
 
   import { toast } from '$lib/components/ui/sonner';
-  import type { BlockNotification, BlockPin, Program } from 'logic-mesh';
+  import type {
+    BlockDesc,
+    BlockNotification,
+    BlockPin,
+    Program,
+  } from 'logic-mesh';
+
+  // Shape of the `node.data` slot produced by `prepare()` from a saved
+  // `Program`. Mirrors `data: { name, lib, label?, inputs?, outputs? }`
+  // in `lib/Program.ts`. Typed here so the loader can stop reaching
+  // through `any`.
+  type ProgramNodeData = {
+    name: string;
+    lib: string;
+    label?: string;
+    inputs?: Record<string, BlockPin>;
+    outputs?: Record<string, BlockPin>;
+  };
 
   import BlockNode from '../components/BlockNode.svelte';
   import ToolBar from '../components/ToolBar.svelte';
@@ -230,6 +247,9 @@
     );
 
     const OFFSET = 40;
+    // Local function-scoped lookup, never reactive — `SvelteMap` would
+    // be wasted overhead here.
+    // eslint-disable-next-line svelte/prefer-svelte-reactivity
     const idMap = new Map<string, string>();
     const newNodes = [];
 
@@ -323,30 +343,32 @@
     let { nodes: newNodes, edges: newEdges } = prepare(prog);
 
     newNodes = newNodes.map((node) => {
+      const data = node.data as ProgramNodeData;
+      // Fall back to using `data` as a partial `BlockDesc` if the
+      // registry doesn't know the block name (e.g. loading a program
+      // that references a block from a missing library). The cast is
+      // structurally lossy — only the fields `blockInstance` reads
+      // matter for what happens next — so we use `unknown` first to
+      // make the lossiness explicit.
       const desc =
-        blocks.find((b) => b.name === (node.data as { name: string }).name) ??
-        (node.data as any);
+        blocks.find((b) => b.name === data.name) ??
+        (data as unknown as BlockDesc);
       // Wrap in $state so pin value mutations are reactive
-      const blockValue = $state(blockInstance(node.id, desc as any));
+      const blockValue = $state(blockInstance(node.id, desc));
       const block = { value: blockValue };
       blockInstances.set(node.id, block);
 
-      const loadedLabel = (node.data as { label?: string } | undefined)?.label;
-      if (typeof loadedLabel === 'string') {
-        block.value.label = loadedLabel;
+      if (typeof data.label === 'string') {
+        block.value.label = data.label;
       }
 
-      for (const [name, e] of Object.entries((node.data as any).inputs ?? {})) {
-        const input = e as BlockPin;
+      for (const [name, input] of Object.entries(data.inputs ?? {})) {
         if (block.value.inputs[name]) {
           block.value.inputs[name].value = input.value;
           block.value.inputs[name].isConnected = input.isConnected;
         }
       }
-      for (const [name, e] of Object.entries(
-        (node.data as any).outputs ?? {},
-      )) {
-        const output = e as BlockPin;
+      for (const [name, output] of Object.entries(data.outputs ?? {})) {
         if (block.value.outputs[name]) {
           block.value.outputs[name].value = output.value;
         }

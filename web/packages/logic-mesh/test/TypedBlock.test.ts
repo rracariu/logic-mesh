@@ -1,3 +1,9 @@
+// Tests for TypedBlock deliberately bypass the TS type checker in
+// several places: they pass wrong-shape arrays to `executeImpl`, mock
+// the `BlocksEngine`, and intentionally return mistyped tuples to
+// exercise runtime validation guards. Disabling `no-explicit-any`
+// here lets those negative-path assertions stay readable.
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import { defineBlock } from '../src/TypedBlock';

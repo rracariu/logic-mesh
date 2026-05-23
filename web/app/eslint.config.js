@@ -43,22 +43,13 @@ export default ts.config(
           caughtErrorsIgnorePattern: '^_',
         },
       ],
-      // The program-loading path consumes untyped JSON; tightening
-      // these to error would require landing the type-narrowing work
-      // alongside this lint setup. Surface as warnings for now so
-      // they're visible in CI without blocking the initial green.
-      '@typescript-eslint/no-explicit-any': 'warn',
-      // New in `eslint-plugin-svelte` v3:
-      //   - `require-each-key` is a perf hint, not a correctness one;
-      //     most of our `{#each}` lists are short and replace-in-place.
-      //   - `prefer-svelte-reactivity` would flip our internal lookup
-      //     `Map`s (e.g. `blockInstances`) to `SvelteMap`s. They aren't
-      //     used as reactive sources today (consumers `get` on demand
-      //     rather than `$derived`-ing the whole map), so the warning
-      //     is defensive rather than load-bearing.
-      // Both are real cleanups, just not for this PR.
-      'svelte/require-each-key': 'warn',
-      'svelte/prefer-svelte-reactivity': 'warn',
+      // Hard errors. New code must keep this surface clean. Existing
+      // intentional `any`/`Map` cases are tagged with inline
+      // `eslint-disable-next-line` comments at the call site (see
+      // `pasteSelection` in +page.svelte) so they're visible.
+      '@typescript-eslint/no-explicit-any': 'error',
+      'svelte/require-each-key': 'error',
+      'svelte/prefer-svelte-reactivity': 'error',
     },
   },
   {
