@@ -73,6 +73,21 @@ wasm-opt = ["-Oz", "--enable-bulk-memory", "--enable-nontrapping-float-to-int"]
 [dev-dependencies]
 wasm-bindgen-test = "^0.3"
 assert_matches = "^1.5"
+# For the `tui_runner` example only.
+ratatui = "^0.30"
+crossterm = "^0.29"
+serde_json = "^1.0"
+
+[[example]]
+name = "minimal"
+# No special features; runs on the default ST engine via a hand-driven
+# execute loop, no scheduler needed.
+
+[[example]]
+name = "tui_runner"
+# Uses `MultiThreadedEngine` so the engine.run() task can be spawned
+# via `tokio::spawn` while ratatui drives the main thread.
+required-features = ["multi-threaded"]
 
 [profile.release]
 opt-level = "z"
