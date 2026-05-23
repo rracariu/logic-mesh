@@ -33,9 +33,22 @@ use crate::{blocks::InputImpl, blocks::OutputImpl};
 ///   and `sunrise` / `sunset` retain their previous values.
 ///
 /// Uses the Wikipedia "Sunrise equation" — a simplified NOAA formulation
-/// accurate to within a few minutes for typical latitudes. Polls once per
-/// second so the `isDay` transition lands within ~1 s of the actual
-/// sunrise/sunset; the underlying trig is cheap.
+/// accurate to within a few minutes for typical latitudes.
+///
+/// ## Timing
+///
+/// The first execute emits as soon as the inputs are available (no
+/// startup wait). Subsequent executes align to the next wall-clock
+/// minute boundary, so multiple `Sun` blocks (or repeated program
+/// loads of the same program) stay phase-aligned. Editing `lat`,
+/// `lon`, or `tzOffset` wakes the block immediately for a fresh
+/// compute — `wait_on_inputs` returns early on any input change.
+///
+/// Trade-off vs. the previous 1-second polling: `isDay` transitions
+/// can now lag up to ~60 s behind the actual sunrise/sunset wall-
+/// clock time. The underlying sunrise equation is itself only
+/// accurate to ±a few minutes, so this is well within the model's
+/// own error bars and fine for lighting / scheduling use cases.
 #[block]
 #[derive(BlockProps, Debug)]
 #[category = "time"]
@@ -52,22 +65,45 @@ pub struct Sun {
     pub sunset: OutputImpl,
     #[output(name = "isDay", kind = "Bool")]
     pub is_day: OutputImpl,
+    /// First-execute marker. Cleared via `BlockState::Default` (false)
+    /// when the block is constructed; set after a successful emit so
+    /// subsequent cycles use the minute-boundary cadence.
+    initialized: bool,
 }
 
 impl Block for Sun {
     async fn execute(&mut self) {
-        // Sunrise/sunset only meaningfully change at minute boundaries, but
-        // we poll at 1 s so the first output appears promptly after program
-        // load and `isDay` transitions are tight. The math is cheap.
-        self.wait_on_inputs(Duration::from_millis(1_000)).await;
+        // Cadence:
+        // - First execute: skip the wait entirely, compute now.
+        // - Subsequent executes: wait until the next wall-clock
+        //   minute boundary. `wait_on_inputs` also returns early on
+        //   any input change, so coord/tz edits get an immediate
+        //   recompute.
+        if self.initialized {
+            let now_ms = current_time_millis() as i64;
+            let until_next_minute_ms = (60_000 - now_ms.rem_euclid(60_000)) as u64;
+            self.wait_on_inputs(Duration::from_millis(until_next_minute_ms))
+                .await;
+        }
 
         let lat = match input_as_number(&self.lat) {
             Some(n) => n.value,
-            None => return,
+            None => {
+                // Inputs not yet populated — typically only seen if
+                // execute fires before `load_program` has issued its
+                // WriteInput commands. A brief back-off avoids
+                // tight-looping while we wait for the constants to
+                // land. The next cycle will retry.
+                self.wait_on_inputs(Duration::from_millis(250)).await;
+                return;
+            }
         };
         let lon = match input_as_number(&self.lon) {
             Some(n) => n.value,
-            None => return,
+            None => {
+                self.wait_on_inputs(Duration::from_millis(250)).await;
+                return;
+            }
         };
         let tz_offset_min = input_as_number_in(&self.tz_offset, &MINUTE)
             .map(|v| v as i64)
@@ -100,6 +136,10 @@ impl Block for Sun {
                 self.is_day.set(Bool { value: false }.into());
             }
         }
+
+        // Mark initialized only after a successful emit so the very
+        // first compute can't be skipped to the next minute boundary.
+        self.initialized = true;
     }
 }
 
