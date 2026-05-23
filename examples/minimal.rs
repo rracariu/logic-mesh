@@ -38,10 +38,8 @@ async fn main() {
 
     let mut adder = Add::new();
 
-    connect_output(&mut sine_fast.out, adder.inputs_mut()[0])
-        .expect("wire sine_fast -> adder.in0");
-    connect_output(&mut sine_slow.out, adder.inputs_mut()[1])
-        .expect("wire sine_slow -> adder.in1");
+    connect_output(&mut sine_fast.out, adder.inputs_mut()[0]).expect("wire sine_fast -> adder.in0");
+    connect_output(&mut sine_slow.out, adder.inputs_mut()[1]).expect("wire sine_slow -> adder.in1");
 
     println!("cycle | sine_fast |  sine_slow |   sum");
     println!("------+-----------+------------+----------");

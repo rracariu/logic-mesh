@@ -27,9 +27,7 @@ use std::time::{Duration, Instant};
 use crossterm::{
     event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode},
     execute,
-    terminal::{
-        EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode,
-    },
+    terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
 use libhaystack::val::Value;
 use ratatui::{
@@ -176,10 +174,7 @@ fn apply_watch_message(rows: &mut BTreeMap<Uuid, BlockRow>, msg: WatchMessage) {
     }
 }
 
-fn draw(
-    terminal: &mut Terminal<Backend>,
-    rows: &BTreeMap<Uuid, BlockRow>,
-) -> anyhow::Result<()> {
+fn draw(terminal: &mut Terminal<Backend>, rows: &BTreeMap<Uuid, BlockRow>) -> anyhow::Result<()> {
     terminal.draw(|f| {
         let chunks = Layout::default()
             .direction(Direction::Vertical)
@@ -255,10 +250,7 @@ fn fmt_value(v: &Value) -> String {
     }
 }
 
-async fn expect_reply<R: std::fmt::Debug>(
-    rx: &mut mpsc::Receiver<R>,
-    what: &str,
-) {
+async fn expect_reply<R: std::fmt::Debug>(rx: &mut mpsc::Receiver<R>, what: &str) {
     if let Some(msg) = rx.recv().await {
         // We don't actually need to match on the response variant here
         // — the engine replies once per request and we drain to keep
