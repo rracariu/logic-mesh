@@ -868,6 +868,7 @@ mod test {
     use std::time::Duration;
 
     use crate::base;
+    use crate::base::program::data::LinkData;
     use crate::blocks::{math::Add, misc::SineWave};
     use base::block::{BlockConnect, BlockProps};
     use base::engine::messages::EngineMessage::{InspectBlockReq, InspectBlockRes, Shutdown};
@@ -929,5 +930,96 @@ mod test {
         eng.schedule_send(sine2);
 
         eng.run().await;
+    }
+
+    /// Regression test for the reported "Bar still receives values after
+    /// link delete" bug. Verifies at the engine level that:
+    ///   1. A link can be created via the async API.
+    ///   2. Writing the source's output reaches the target's cached input.
+    ///   3. After `disconnect_link_by_id`, the target stops seeing new
+    ///      values from the source (the source's `output.links` no longer
+    ///      contains a sender to the target's watch channel) AND the
+    ///      target's input `is_connected` flips to false.
+    ///
+    /// If this test passes, the engine-level disconnect is correct and the
+    /// reported UI symptom must be coming from the JS side (most likely
+    /// `removeLink` being called with the wrong / missing link id).
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn disconnect_link_severs_dataflow() {
+        let mut eng = MultiThreadedEngine::new();
+
+        let block_a = Add::new();
+        let a_uuid = *block_a.id();
+        let block_b = Add::new();
+        let b_uuid = *block_b.id();
+
+        eng.schedule_send(block_a);
+        eng.schedule_send(block_b);
+
+        // Wire A.out -> B.in0 via the engine's async API (same path the
+        // wasm bridge takes for `createLink`).
+        let link_request = LinkData {
+            id: None,
+            source_block_uuid: a_uuid.to_string(),
+            target_block_uuid: b_uuid.to_string(),
+            source_block_pin_name: "out".to_string(),
+            target_block_pin_name: "in0".to_string(),
+        };
+        let link_data = eng
+            .connect_blocks(&link_request)
+            .await
+            .expect("connect_blocks");
+        let link_id =
+            Uuid::parse_str(link_data.id.as_ref().expect("link id")).expect("link id is uuid");
+
+        // Push 42 through A.out. Wait long enough for A's actor to handle
+        // the WriteOutput mailbox cmd (pushes to A.out.links -> B.in0
+        // watch channel) and for B's actor to drain its input on the next
+        // execute cycle.
+        let _ = eng
+            .write_output(&a_uuid, "out".to_string(), 42.into())
+            .await;
+        sleep(Duration::from_millis(150)).await;
+
+        let snap = eng.inspect_block(&b_uuid).await.expect("inspect B");
+        let in0_before = snap.inputs.get("in0").expect("B has in0");
+        assert_eq!(
+            in0_before.val,
+            42.into(),
+            "B.in0 should see 42 before disconnect, got {:?}",
+            in0_before.val
+        );
+        assert!(
+            in0_before.is_connected,
+            "B.in0 should report is_connected=true before disconnect"
+        );
+
+        // Disconnect.
+        let removed = eng
+            .disconnect_link_by_id(&link_id)
+            .await
+            .expect("disconnect_link_by_id");
+        assert!(removed, "disconnect_link_by_id should report it removed the link");
+
+        // Push a new value through A.out. If the link is properly severed,
+        // A.out.links no longer contains a sender to B's channel, so the
+        // value never reaches B and B.in0.val stays at 42.
+        let _ = eng
+            .write_output(&a_uuid, "out".to_string(), 99.into())
+            .await;
+        sleep(Duration::from_millis(150)).await;
+
+        let snap = eng.inspect_block(&b_uuid).await.expect("inspect B after");
+        let in0_after = snap.inputs.get("in0").expect("B has in0");
+        assert_ne!(
+            in0_after.val,
+            99.into(),
+            "after disconnect, B.in0 should NOT have received 99; got {:?}",
+            in0_after.val
+        );
+        assert!(
+            !in0_after.is_connected,
+            "after disconnect, B.in0 should report is_connected=false"
+        );
     }
 }
