@@ -999,7 +999,10 @@ mod test {
             .disconnect_link_by_id(&link_id)
             .await
             .expect("disconnect_link_by_id");
-        assert!(removed, "disconnect_link_by_id should report it removed the link");
+        assert!(
+            removed,
+            "disconnect_link_by_id should report it removed the link"
+        );
 
         // Push a new value through A.out. If the link is properly severed,
         // A.out.links no longer contains a sender to B's channel, so the
