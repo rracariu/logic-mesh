@@ -193,8 +193,8 @@ pub fn list_registered_blocks() -> Vec<BlockDesc> {
     let reg = BLOCKS.lock().expect("Block registry is locked");
 
     let mut blocks = Vec::new();
-    for (_, lib) in reg.iter() {
-        for (_, block) in lib.iter() {
+    for lib in reg.values() {
+        for block in lib.values() {
             blocks.push(block.desc.clone());
         }
     }

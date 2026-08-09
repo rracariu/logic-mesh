@@ -2,18 +2,12 @@
 
 use std::time::Duration;
 
-use uuid::Uuid;
-
 use crate::base::output::props::OutputProps;
-use crate::base::{
-    block::{Block, BlockDesc, BlockProps, BlockState},
-    input::{InputProps, input_reader::InputReader},
-    output::Output,
-};
+use crate::base::{block::Block, input::input_reader::InputReader, output::Output};
 use crate::blocks::utils::{input_as_number, input_to_millis_or_default};
 
 use libhaystack::units::Unit;
-use libhaystack::val::{Number, kind::HaystackKind};
+use libhaystack::val::Number;
 
 use crate::{blocks::InputImpl, blocks::OutputImpl};
 

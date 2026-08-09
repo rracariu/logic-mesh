@@ -1,17 +1,11 @@
 // Copyright (c) 2022-2026, Radu Racariu.
 
-use uuid::Uuid;
-
 use crate::base::output::props::OutputProps;
-use crate::base::{
-    block::{Block, BlockDesc, BlockProps, BlockState},
-    input::{InputProps, input_reader::InputReader},
-    output::Output,
-};
+use crate::base::{block::Block, input::input_reader::InputReader, output::Output};
 use crate::blocks::utils::{input_as_float_or_default, input_to_millis_or_default};
 use crate::tokio_impl::sleep::current_time_millis;
 
-use libhaystack::val::{Value, kind::HaystackKind};
+use libhaystack::val::Value;
 
 use crate::{blocks::InputImpl, blocks::OutputImpl};
 

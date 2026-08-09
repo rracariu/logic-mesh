@@ -1,16 +1,14 @@
 // Copyright (c) 2022-2023, Radu Racariu.
 
-use uuid::Uuid;
-
 use crate::base::{
-    block::{Block, BlockDesc, BlockProps, BlockState},
-    input::{InputProps, input_reader::InputReader},
+    block::{Block, BlockProps},
+    input::input_reader::InputReader,
     output::Output,
 };
 
-use libhaystack::val::{Number, Value, kind::HaystackKind};
+use libhaystack::val::{Number, Value};
 
-use crate::{blocks::InputImpl, blocks::OutputImpl};
+use crate::blocks::OutputImpl;
 
 /// Performs a multiplication of multiple numbers from the 16 inputs
 /// this block has.

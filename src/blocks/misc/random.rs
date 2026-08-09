@@ -4,19 +4,17 @@ use std::time::Duration;
 
 use rand::Rng;
 
-use uuid::Uuid;
-
 use crate::base::output::props::OutputProps;
 use crate::{
     base::{
-        block::{Block, BlockDesc, BlockProps, BlockState},
-        input::{InputProps, input_reader::InputReader},
+        block::{Block, BlockProps, BlockState},
+        input::input_reader::InputReader,
         output::Output,
     },
     blocks::utils::{input_as_number, input_to_millis_or_default},
 };
 
-use libhaystack::val::{Value, kind::HaystackKind};
+use libhaystack::val::Value;
 
 use crate::blocks::{InputImpl, OutputImpl};
 

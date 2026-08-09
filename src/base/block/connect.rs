@@ -343,18 +343,14 @@ fn link_id_for_input<I: InputProps + ?Sized>(
 #[cfg(test)]
 mod test {
 
-    use uuid::Uuid;
-
     use crate::base::{
-        block::{Block, BlockDesc, BlockProps, BlockState, connect::disconnect_block},
+        block::{Block, BlockProps, connect::disconnect_block},
         input::InputProps,
     };
 
     use super::BlockConnect;
 
-    use crate::base::block::test_utils::mock::{InputImpl, OutputImpl};
-
-    use libhaystack::val::kind::HaystackKind;
+    use crate::blocks::{InputImpl, OutputImpl};
 
     #[block]
     #[derive(BlockProps, Debug)]
