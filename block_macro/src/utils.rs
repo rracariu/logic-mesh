@@ -122,6 +122,9 @@ fn get_attribute_props(input_attr: &syn::Attribute, attrs: &mut BTreeMap<String,
     });
 }
 
+// Input/output fields are detected by the bare type ident, so block structs
+// must declare them as unqualified `InputImpl`/`OutputImpl` (get_ident()
+// returns None for qualified paths like `logic_mesh::blocks::InputImpl`).
 fn field_type_is(ty: &TypePath, field_type: &str) -> bool {
     let it: String = match field_type {
         "input" => "InputImpl",

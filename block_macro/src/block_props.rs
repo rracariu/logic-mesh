@@ -80,14 +80,14 @@ pub(super) fn block_props_impl(ast: &syn::DeriveInput) -> TokenStream {
         // Generated constructors
         impl #block_ident {
             pub fn new() -> Self {
-                let uuid = Uuid::new_v4();
+                let uuid = ::logic_mesh::Uuid::new_v4();
                 Self::new_uuid(uuid)
             }
 
-            pub fn new_uuid(uuid: Uuid) -> Self {
+            pub fn new_uuid(uuid: ::logic_mesh::Uuid) -> Self {
                 Self {
                     id: uuid,
-                    state: BlockState::Running,
+                    state: ::logic_mesh::base::block::BlockState::Running,
                     #block_field_init
                     #outputs_field_init,
                     #block_defined_init
@@ -98,11 +98,11 @@ pub(super) fn block_props_impl(ast: &syn::DeriveInput) -> TokenStream {
 
         // Implementation of the BlockProps trait
         // using the attributes
-        impl BlockProps for #block_ident {
-            type Reader = <InputImpl as InputProps>::Reader;
-            type Writer = <InputImpl as InputProps>::Writer;
+        impl ::logic_mesh::base::block::BlockProps for #block_ident {
+            type Reader = <::logic_mesh::blocks::InputImpl as ::logic_mesh::base::input::InputProps>::Reader;
+            type Writer = <::logic_mesh::blocks::InputImpl as ::logic_mesh::base::input::InputProps>::Writer;
 
-            fn id(&self) -> &Uuid {
+            fn id(&self) -> &::logic_mesh::Uuid {
                 &self.id
             }
 
@@ -110,36 +110,36 @@ pub(super) fn block_props_impl(ast: &syn::DeriveInput) -> TokenStream {
                 &self.desc().name
             }
 
-            fn desc(&self) -> &BlockDesc {
-                <Self as crate::base::block::BlockStaticDesc>::desc()
+            fn desc(&self) -> &::logic_mesh::base::block::BlockDesc {
+                <Self as ::logic_mesh::base::block::BlockStaticDesc>::desc()
             }
 
-            fn state(&self) -> BlockState {
+            fn state(&self) -> ::logic_mesh::base::block::BlockState {
                 self.state.clone()
             }
 
-            fn set_state(&mut self, state: BlockState) -> BlockState {
+            fn set_state(&mut self, state: ::logic_mesh::base::block::BlockState) -> ::logic_mesh::base::block::BlockState {
                 self.state = state;
                 self.state.clone()
             }
 
-            fn inputs(&self) -> Vec<&(dyn crate::base::block::BlockInput<Self::Reader, Self::Writer> + Send)> {
+            fn inputs(&self) -> Vec<&(dyn ::logic_mesh::base::block::BlockInput<Self::Reader, Self::Writer> + Send)> {
                 #inputs_refs
             }
 
-            fn inputs_mut(&mut self) -> Vec<&mut (dyn crate::base::block::BlockInput<Self::Reader, Self::Writer> + Send)> {
+            fn inputs_mut(&mut self) -> Vec<&mut (dyn ::logic_mesh::base::block::BlockInput<Self::Reader, Self::Writer> + Send)> {
                 #inputs_mut_refs
             }
 
-            fn outputs_mut(&mut self) -> Vec<&mut (dyn crate::base::block::BlockOutput<Self::Writer> + Send)> {
+            fn outputs_mut(&mut self) -> Vec<&mut (dyn ::logic_mesh::base::block::BlockOutput<Self::Writer> + Send)> {
                 #outputs_mut_ref
             }
 
-            fn outputs(&self) -> Vec<&(dyn crate::base::block::BlockOutput<Self::Writer> + Send)> {
+            fn outputs(&self) -> Vec<&(dyn ::logic_mesh::base::block::BlockOutput<Self::Writer> + Send)> {
                 #outputs_ref
             }
 
-            fn links(&self) -> Vec<(&str, Vec<&(dyn crate::base::link::Link + Send)>)> {
+            fn links(&self) -> Vec<(&str, Vec<&(dyn ::logic_mesh::base::link::Link + Send)>)> {
                 let mut res = Vec::new();
 
                 self.inputs().iter().for_each(|input| res.push((input.name(), input.links())));
@@ -147,7 +147,7 @@ pub(super) fn block_props_impl(ast: &syn::DeriveInput) -> TokenStream {
                 res
             }
 
-            fn remove_link_by_id(&mut self, link_uuid: &Uuid) {
+            fn remove_link_by_id(&mut self, link_uuid: &::logic_mesh::Uuid) {
                 self.inputs_mut().iter_mut().for_each(|input| input.remove_link_by_id(link_uuid));
                 self.outputs_mut().iter_mut().for_each(|out| out.remove_link_by_id(link_uuid))
             }
@@ -160,15 +160,11 @@ pub(super) fn block_props_impl(ast: &syn::DeriveInput) -> TokenStream {
 
         // Implementation of the BlockDesc trait
         // using the attributes
-        impl crate::base::block::BlockStaticDesc for #block_ident {
-            fn desc() -> &'static BlockDesc {
-                static DESC: std::sync::LazyLock<BlockDesc> = std::sync::LazyLock::new(|| {
-                    use crate::base::block::desc::BlockDesc;
-                    use crate::base::block::desc::BlockPin;
-                    use crate::base::block::desc::BlockImplementation;
-
-                    let desc = BlockDesc {
-                        implementation: BlockImplementation::Native,
+        impl ::logic_mesh::base::block::BlockStaticDesc for #block_ident {
+            fn desc() -> &'static ::logic_mesh::base::block::BlockDesc {
+                static DESC: std::sync::LazyLock<::logic_mesh::base::block::BlockDesc> = std::sync::LazyLock::new(|| {
+                    let desc = ::logic_mesh::base::block::BlockDesc {
+                        implementation: ::logic_mesh::base::block::desc::BlockImplementation::Native,
                         run_condition: None,
                         #(#block_prop_names : #block_prop_values.to_string(),)*
                         #out_desc,
@@ -209,7 +205,7 @@ fn create_block_input_fields_init(
         });
 
         quote! {
-            #(#input_field: InputImpl::new(#input_name, HaystackKind::#kind, uuid.clone())),*
+            #(#input_field: ::logic_mesh::blocks::InputImpl::new(#input_name, ::logic_mesh::HaystackKind::#kind, uuid.clone())),*
         }
     }
 }
@@ -273,7 +269,7 @@ fn create_block_defined_input_init(
         let names = (0..count).map(|i| format!("{name}{i}"));
 
         quote! {
-            _inputs: vec![ #(InputImpl::new(#names, HaystackKind::#kind, uuid.clone())),* ],
+            _inputs: vec![ #(::logic_mesh::blocks::InputImpl::new(#names, ::logic_mesh::HaystackKind::#kind, uuid.clone())),* ],
         }
     }
 }
@@ -298,7 +294,7 @@ fn create_block_outputs_field_init(
         });
 
         quote! {
-            #(#out_field: OutputImpl::new_named(#output_name, HaystackKind::#kind, uuid)),*
+            #(#out_field: ::logic_mesh::blocks::OutputImpl::new_named(#output_name, ::logic_mesh::HaystackKind::#kind, uuid)),*
         }
     }
 }
@@ -335,14 +331,14 @@ fn create_input_members_ref(
 
         if has_block_defined_inputs {
             quote! {
-                let mut inputs = vec![ #(&#borrow self.#input_field as &#borrow (dyn crate::base::block::BlockInput<Self::Reader, Self::Writer> + Send)),* ];
-                inputs.extend(self._inputs.#iter().map(|input| input as &#borrow (dyn crate::base::block::BlockInput<Self::Reader, Self::Writer> + Send)));
+                let mut inputs = vec![ #(&#borrow self.#input_field as &#borrow (dyn ::logic_mesh::base::block::BlockInput<Self::Reader, Self::Writer> + Send)),* ];
+                inputs.extend(self._inputs.#iter().map(|input| input as &#borrow (dyn ::logic_mesh::base::block::BlockInput<Self::Reader, Self::Writer> + Send)));
 
                 inputs
             }
         } else {
             quote! {
-                vec![ #(&#borrow self.#input_field as &#borrow (dyn crate::base::block::BlockInput<Self::Reader, Self::Writer> + Send)),* ]
+                vec![ #(&#borrow self.#input_field as &#borrow (dyn ::logic_mesh::base::block::BlockInput<Self::Reader, Self::Writer> + Send)),* ]
             }
         }
     }
@@ -372,7 +368,7 @@ fn create_outputs_member_ref(
         };
 
         quote! {
-            vec![ #(&#borrow self.#output_fields as &#borrow (dyn crate::base::block::BlockOutput<Self::Writer> + Send)),* ]
+            vec![ #(&#borrow self.#output_fields as &#borrow (dyn ::logic_mesh::base::block::BlockOutput<Self::Writer> + Send)),* ]
         }
     }
 }
@@ -410,8 +406,8 @@ fn create_input_desc(
     let block_defined_inputs = (0..count).map(|i| format!("{name}{i}"));
 
     quote! {
-        inputs: vec![#(BlockPin { name: #input_field_names.to_string(), kind: HaystackKind::#input_field_kinds },)*
-        #(BlockPin { name: #block_defined_inputs.to_string(), kind: HaystackKind::#kind },)*],
+        inputs: vec![#(::logic_mesh::base::block::BlockPin { name: #input_field_names.to_string(), kind: ::logic_mesh::HaystackKind::#input_field_kinds },)*
+        #(::logic_mesh::base::block::BlockPin { name: #block_defined_inputs.to_string(), kind: ::logic_mesh::HaystackKind::#kind },)*],
     }
 }
 
@@ -428,7 +424,7 @@ fn create_output_desc(
         .map(|(_, props)| format_ident!("{}", props.get("kind").cloned().unwrap_or("Null".into())));
 
     quote! {
-        outputs: vec![#(BlockPin { name: #output_names.to_string(), kind: HaystackKind::#output_kinds },)*]
+        outputs: vec![#(::logic_mesh::base::block::BlockPin { name: #output_names.to_string(), kind: ::logic_mesh::HaystackKind::#output_kinds },)*]
     }
 }
 

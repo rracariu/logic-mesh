@@ -16,6 +16,12 @@ use proc_macro::TokenStream;
 
 /// The `block` attribute macro
 /// This macro is used to derive the `Block` trait for a struct
+///
+/// The generated code references items via `::logic_mesh::...` paths, so the
+/// `logic-mesh` crate must be a dependency named `logic_mesh` (not renamed).
+/// Input and output fields must be declared with the unqualified type names
+/// `InputImpl` and `OutputImpl`, imported as
+/// `use logic_mesh::blocks::{InputImpl, OutputImpl};`.
 #[allow(clippy::let_and_return)]
 #[proc_macro_attribute]
 pub fn block(_args: TokenStream, input: TokenStream) -> TokenStream {
@@ -28,6 +34,10 @@ pub fn block(_args: TokenStream, input: TokenStream) -> TokenStream {
 
 /// The `block_props` attribute macro
 /// This macro is used to derive the `BlockProps` trait for a struct
+///
+/// See the [`block`] macro docs for the requirements the expansion places on
+/// the using crate (`logic_mesh` dependency name, bare `InputImpl`/`OutputImpl`
+/// field types).
 #[allow(clippy::let_and_return)]
 #[proc_macro_derive(BlockProps, attributes(dis, library, category, input, output))]
 pub fn block_props(input: TokenStream) -> TokenStream {

@@ -18,14 +18,16 @@ pub(super) fn block_impl(input: TokenStream) -> TokenStream {
         syn::Data::Struct(ref mut struct_data) => {
             if let syn::Fields::Named(fields) = &mut struct_data.fields {
                 // Add the `id` member
-                fields
-                    .named
-                    .push(syn::Field::parse_named.parse2(quote! { id: Uuid }).unwrap());
+                fields.named.push(
+                    syn::Field::parse_named
+                        .parse2(quote! { id: ::logic_mesh::Uuid })
+                        .unwrap(),
+                );
 
                 // Add the `state` member
                 fields.named.push(
                     syn::Field::parse_named
-                        .parse2(quote! { state: BlockState })
+                        .parse2(quote! { state: ::logic_mesh::base::block::BlockState })
                         .unwrap(),
                 );
 
@@ -33,7 +35,7 @@ pub(super) fn block_impl(input: TokenStream) -> TokenStream {
                 if !props.is_empty() {
                     fields.named.push(
                         syn::Field::parse_named
-                            .parse2(quote! { _inputs: Vec::<InputImpl> })
+                            .parse2(quote! { _inputs: Vec::<::logic_mesh::blocks::InputImpl> })
                             .expect("input props"),
                     )
                 }
