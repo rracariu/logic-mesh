@@ -7,7 +7,7 @@ use proc_macro2::{Group, TokenTree};
 
 use crate::utils::{
     get_block_attributes, get_block_fields, get_block_input_attribute, get_block_inputs_props,
-    get_block_outputs_props,
+    get_block_outputs_props, get_crate_path,
 };
 
 ///
@@ -19,26 +19,36 @@ use crate::utils::{
 ///
 pub(super) fn block_props_impl(ast: &syn::DeriveInput) -> TokenStream {
     let block_ident = &ast.ident;
+    let krate = get_crate_path(ast);
+    let krate = &krate;
 
     // Block input attributes (defined by the inputs attribute of the block)
     let block_defined_inputs = get_block_input_attribute(ast);
-    let block_defined_init = create_block_defined_input_init(&block_defined_inputs);
+    let block_defined_init = create_block_defined_input_init(&block_defined_inputs, krate);
 
     // Block inputs
     let block_input_props = get_block_inputs_props(ast);
 
-    let input_fields_init = create_block_input_fields_init(&block_input_props);
-    let inputs_mut_refs =
-        create_input_members_ref(!block_defined_inputs.is_empty(), &block_input_props, true);
+    let input_fields_init = create_block_input_fields_init(&block_input_props, krate);
+    let inputs_mut_refs = create_input_members_ref(
+        !block_defined_inputs.is_empty(),
+        &block_input_props,
+        true,
+        krate,
+    );
 
-    let inputs_refs =
-        create_input_members_ref(!block_defined_inputs.is_empty(), &block_input_props, false);
+    let inputs_refs = create_input_members_ref(
+        !block_defined_inputs.is_empty(),
+        &block_input_props,
+        false,
+        krate,
+    );
 
     // Block outputs
     let block_outputs_props = get_block_outputs_props(ast);
-    let outputs_field_init = create_block_outputs_field_init(&block_outputs_props);
-    let outputs_mut_ref = create_outputs_member_ref(&block_outputs_props, true);
-    let outputs_ref = create_outputs_member_ref(&block_outputs_props, false);
+    let outputs_field_init = create_block_outputs_field_init(&block_outputs_props, krate);
+    let outputs_mut_ref = create_outputs_member_ref(&block_outputs_props, true, krate);
+    let outputs_ref = create_outputs_member_ref(&block_outputs_props, false, krate);
 
     // Block description attributes
     let mut block_props_attrs = get_block_attributes(ast);
@@ -70,8 +80,8 @@ pub(super) fn block_props_impl(ast: &syn::DeriveInput) -> TokenStream {
         create_block_fields_init(&block_fields, &block_input_props, &block_outputs_props);
 
     // Create the code for getting input and output description
-    let input_desc = create_input_desc(&block_defined_inputs, &block_input_props);
-    let out_desc = create_output_desc(&block_outputs_props);
+    let input_desc = create_input_desc(&block_defined_inputs, &block_input_props, krate);
+    let out_desc = create_output_desc(&block_outputs_props, krate);
     ensure_unique_outputs(&block_defined_inputs, &block_outputs_props);
 
     // The code that gets generated for the blocks
@@ -80,14 +90,14 @@ pub(super) fn block_props_impl(ast: &syn::DeriveInput) -> TokenStream {
         // Generated constructors
         impl #block_ident {
             pub fn new() -> Self {
-                let uuid = ::logic_mesh::Uuid::new_v4();
+                let uuid = #krate::Uuid::new_v4();
                 Self::new_uuid(uuid)
             }
 
-            pub fn new_uuid(uuid: ::logic_mesh::Uuid) -> Self {
+            pub fn new_uuid(uuid: #krate::Uuid) -> Self {
                 Self {
                     id: uuid,
-                    state: ::logic_mesh::base::block::BlockState::Running,
+                    state: #krate::base::block::BlockState::Running,
                     #block_field_init
                     #outputs_field_init,
                     #block_defined_init
@@ -98,11 +108,11 @@ pub(super) fn block_props_impl(ast: &syn::DeriveInput) -> TokenStream {
 
         // Implementation of the BlockProps trait
         // using the attributes
-        impl ::logic_mesh::base::block::BlockProps for #block_ident {
-            type Reader = <::logic_mesh::blocks::InputImpl as ::logic_mesh::base::input::InputProps>::Reader;
-            type Writer = <::logic_mesh::blocks::InputImpl as ::logic_mesh::base::input::InputProps>::Writer;
+        impl #krate::base::block::BlockProps for #block_ident {
+            type Reader = <#krate::blocks::InputImpl as #krate::base::input::InputProps>::Reader;
+            type Writer = <#krate::blocks::InputImpl as #krate::base::input::InputProps>::Writer;
 
-            fn id(&self) -> &::logic_mesh::Uuid {
+            fn id(&self) -> &#krate::Uuid {
                 &self.id
             }
 
@@ -110,36 +120,36 @@ pub(super) fn block_props_impl(ast: &syn::DeriveInput) -> TokenStream {
                 &self.desc().name
             }
 
-            fn desc(&self) -> &::logic_mesh::base::block::BlockDesc {
-                <Self as ::logic_mesh::base::block::BlockStaticDesc>::desc()
+            fn desc(&self) -> &#krate::base::block::BlockDesc {
+                <Self as #krate::base::block::BlockStaticDesc>::desc()
             }
 
-            fn state(&self) -> ::logic_mesh::base::block::BlockState {
+            fn state(&self) -> #krate::base::block::BlockState {
                 self.state.clone()
             }
 
-            fn set_state(&mut self, state: ::logic_mesh::base::block::BlockState) -> ::logic_mesh::base::block::BlockState {
+            fn set_state(&mut self, state: #krate::base::block::BlockState) -> #krate::base::block::BlockState {
                 self.state = state;
                 self.state.clone()
             }
 
-            fn inputs(&self) -> Vec<&(dyn ::logic_mesh::base::block::BlockInput<Self::Reader, Self::Writer> + Send)> {
+            fn inputs(&self) -> Vec<&(dyn #krate::base::block::BlockInput<Self::Reader, Self::Writer> + Send)> {
                 #inputs_refs
             }
 
-            fn inputs_mut(&mut self) -> Vec<&mut (dyn ::logic_mesh::base::block::BlockInput<Self::Reader, Self::Writer> + Send)> {
+            fn inputs_mut(&mut self) -> Vec<&mut (dyn #krate::base::block::BlockInput<Self::Reader, Self::Writer> + Send)> {
                 #inputs_mut_refs
             }
 
-            fn outputs_mut(&mut self) -> Vec<&mut (dyn ::logic_mesh::base::block::BlockOutput<Self::Writer> + Send)> {
+            fn outputs_mut(&mut self) -> Vec<&mut (dyn #krate::base::block::BlockOutput<Self::Writer> + Send)> {
                 #outputs_mut_ref
             }
 
-            fn outputs(&self) -> Vec<&(dyn ::logic_mesh::base::block::BlockOutput<Self::Writer> + Send)> {
+            fn outputs(&self) -> Vec<&(dyn #krate::base::block::BlockOutput<Self::Writer> + Send)> {
                 #outputs_ref
             }
 
-            fn links(&self) -> Vec<(&str, Vec<&(dyn ::logic_mesh::base::link::Link + Send)>)> {
+            fn links(&self) -> Vec<(&str, Vec<&(dyn #krate::base::link::Link + Send)>)> {
                 let mut res = Vec::new();
 
                 self.inputs().iter().for_each(|input| res.push((input.name(), input.links())));
@@ -147,7 +157,7 @@ pub(super) fn block_props_impl(ast: &syn::DeriveInput) -> TokenStream {
                 res
             }
 
-            fn remove_link_by_id(&mut self, link_uuid: &::logic_mesh::Uuid) {
+            fn remove_link_by_id(&mut self, link_uuid: &#krate::Uuid) {
                 self.inputs_mut().iter_mut().for_each(|input| input.remove_link_by_id(link_uuid));
                 self.outputs_mut().iter_mut().for_each(|out| out.remove_link_by_id(link_uuid))
             }
@@ -160,11 +170,11 @@ pub(super) fn block_props_impl(ast: &syn::DeriveInput) -> TokenStream {
 
         // Implementation of the BlockDesc trait
         // using the attributes
-        impl ::logic_mesh::base::block::BlockStaticDesc for #block_ident {
-            fn desc() -> &'static ::logic_mesh::base::block::BlockDesc {
-                static DESC: std::sync::LazyLock<::logic_mesh::base::block::BlockDesc> = std::sync::LazyLock::new(|| {
-                    let desc = ::logic_mesh::base::block::BlockDesc {
-                        implementation: ::logic_mesh::base::block::desc::BlockImplementation::Native,
+        impl #krate::base::block::BlockStaticDesc for #block_ident {
+            fn desc() -> &'static #krate::base::block::BlockDesc {
+                static DESC: std::sync::LazyLock<#krate::base::block::BlockDesc> = std::sync::LazyLock::new(|| {
+                    let desc = #krate::base::block::BlockDesc {
+                        implementation: #krate::base::block::desc::BlockImplementation::Native,
                         run_condition: None,
                         #(#block_prop_names : #block_prop_values.to_string(),)*
                         #out_desc,
@@ -191,6 +201,7 @@ pub(super) fn block_props_impl(ast: &syn::DeriveInput) -> TokenStream {
 /// Init the input fields of a block
 fn create_block_input_fields_init(
     block_input_props: &[(String, BTreeMap<String, String>)],
+    krate: &syn::Path,
 ) -> proc_macro2::TokenStream {
     if block_input_props.is_empty() {
         proc_macro2::TokenStream::default()
@@ -205,7 +216,7 @@ fn create_block_input_fields_init(
         });
 
         quote! {
-            #(#input_field: ::logic_mesh::blocks::InputImpl::new(#input_name, ::logic_mesh::HaystackKind::#kind, uuid.clone())),*
+            #(#input_field: #krate::blocks::InputImpl::new(#input_name, #krate::HaystackKind::#kind, uuid.clone())),*
         }
     }
 }
@@ -247,6 +258,7 @@ fn create_block_fields_init(
 /// Init automatic inputs defined on the block attribute
 fn create_block_defined_input_init(
     block_defined_input_props: &BTreeMap<String, String>,
+    krate: &syn::Path,
 ) -> proc_macro2::TokenStream {
     if block_defined_input_props.is_empty() {
         proc_macro2::TokenStream::default()
@@ -269,7 +281,7 @@ fn create_block_defined_input_init(
         let names = (0..count).map(|i| format!("{name}{i}"));
 
         quote! {
-            _inputs: vec![ #(::logic_mesh::blocks::InputImpl::new(#names, ::logic_mesh::HaystackKind::#kind, uuid.clone())),* ],
+            _inputs: vec![ #(#krate::blocks::InputImpl::new(#names, #krate::HaystackKind::#kind, uuid.clone())),* ],
         }
     }
 }
@@ -277,6 +289,7 @@ fn create_block_defined_input_init(
 /// Create the outputS fieLd init
 fn create_block_outputs_field_init(
     block_output_props: &[(String, BTreeMap<String, String>)],
+    krate: &syn::Path,
 ) -> proc_macro2::TokenStream {
     if block_output_props.is_empty() {
         panic!("Block must have at least one output field.")
@@ -294,7 +307,7 @@ fn create_block_outputs_field_init(
         });
 
         quote! {
-            #(#out_field: ::logic_mesh::blocks::OutputImpl::new_named(#output_name, ::logic_mesh::HaystackKind::#kind, uuid)),*
+            #(#out_field: #krate::blocks::OutputImpl::new_named(#output_name, #krate::HaystackKind::#kind, uuid)),*
         }
     }
 }
@@ -305,6 +318,7 @@ fn create_input_members_ref(
     has_block_defined_inputs: bool,
     block_input_props: &[(String, BTreeMap<String, String>)],
     mutable: bool,
+    krate: &syn::Path,
 ) -> proc_macro2::TokenStream {
     if !has_block_defined_inputs && block_input_props.is_empty() {
         quote! {
@@ -331,14 +345,14 @@ fn create_input_members_ref(
 
         if has_block_defined_inputs {
             quote! {
-                let mut inputs = vec![ #(&#borrow self.#input_field as &#borrow (dyn ::logic_mesh::base::block::BlockInput<Self::Reader, Self::Writer> + Send)),* ];
-                inputs.extend(self._inputs.#iter().map(|input| input as &#borrow (dyn ::logic_mesh::base::block::BlockInput<Self::Reader, Self::Writer> + Send)));
+                let mut inputs = vec![ #(&#borrow self.#input_field as &#borrow (dyn #krate::base::block::BlockInput<Self::Reader, Self::Writer> + Send)),* ];
+                inputs.extend(self._inputs.#iter().map(|input| input as &#borrow (dyn #krate::base::block::BlockInput<Self::Reader, Self::Writer> + Send)));
 
                 inputs
             }
         } else {
             quote! {
-                vec![ #(&#borrow self.#input_field as &#borrow (dyn ::logic_mesh::base::block::BlockInput<Self::Reader, Self::Writer> + Send)),* ]
+                vec![ #(&#borrow self.#input_field as &#borrow (dyn #krate::base::block::BlockInput<Self::Reader, Self::Writer> + Send)),* ]
             }
         }
     }
@@ -348,6 +362,7 @@ fn create_input_members_ref(
 fn create_outputs_member_ref(
     block_output_props: &[(String, BTreeMap<String, String>)],
     mutable: bool,
+    krate: &syn::Path,
 ) -> proc_macro2::TokenStream {
     if block_output_props.is_empty() {
         quote! {
@@ -368,7 +383,7 @@ fn create_outputs_member_ref(
         };
 
         quote! {
-            vec![ #(&#borrow self.#output_fields as &#borrow (dyn ::logic_mesh::base::block::BlockOutput<Self::Writer> + Send)),* ]
+            vec![ #(&#borrow self.#output_fields as &#borrow (dyn #krate::base::block::BlockOutput<Self::Writer> + Send)),* ]
         }
     }
 }
@@ -377,6 +392,7 @@ fn create_outputs_member_ref(
 fn create_input_desc(
     block_defined_input_props: &BTreeMap<String, String>,
     block_input_props: &[(String, BTreeMap<String, String>)],
+    krate: &syn::Path,
 ) -> proc_macro2::TokenStream {
     ensure_unique_inputs(block_defined_input_props, block_input_props);
 
@@ -406,14 +422,15 @@ fn create_input_desc(
     let block_defined_inputs = (0..count).map(|i| format!("{name}{i}"));
 
     quote! {
-        inputs: vec![#(::logic_mesh::base::block::BlockPin { name: #input_field_names.to_string(), kind: ::logic_mesh::HaystackKind::#input_field_kinds },)*
-        #(::logic_mesh::base::block::BlockPin { name: #block_defined_inputs.to_string(), kind: ::logic_mesh::HaystackKind::#kind },)*],
+        inputs: vec![#(#krate::base::block::BlockPin { name: #input_field_names.to_string(), kind: #krate::HaystackKind::#input_field_kinds },)*
+        #(#krate::base::block::BlockPin { name: #block_defined_inputs.to_string(), kind: #krate::HaystackKind::#kind },)*],
     }
 }
 
 /// Create the description of the outputs field
 fn create_output_desc(
     block_output_props: &[(String, BTreeMap<String, String>)],
+    krate: &syn::Path,
 ) -> proc_macro2::TokenStream {
     let output_names = block_output_props
         .iter()
@@ -424,7 +441,7 @@ fn create_output_desc(
         .map(|(_, props)| format_ident!("{}", props.get("kind").cloned().unwrap_or("Null".into())));
 
     quote! {
-        outputs: vec![#(::logic_mesh::base::block::BlockPin { name: #output_names.to_string(), kind: ::logic_mesh::HaystackKind::#output_kinds },)*]
+        outputs: vec![#(#krate::base::block::BlockPin { name: #output_names.to_string(), kind: #krate::HaystackKind::#output_kinds },)*]
     }
 }
 

@@ -1,0 +1,10 @@
+[package]
+name = "logic-mesh-lib-renamed-test"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+# Deliberately renamed to exercise the #[logic_mesh(crate = "...")] escape hatch.
+mesh_renamed = { package = "logic-mesh", path = ".." }
+tokio = { version = "^1.50", features = ["rt", "macros"] }
