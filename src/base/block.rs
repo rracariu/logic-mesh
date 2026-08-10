@@ -16,6 +16,7 @@ use libhaystack::{
     val::{Bool, Number, Str, Value, kind::HaystackKind},
 };
 pub use props::{BlockInput, BlockOutput, BlockProps};
+use uuid::Uuid;
 
 /// Operational state a block is in.
 ///
@@ -91,6 +92,15 @@ pub trait Block: BlockConnect {
 pub trait Block: BlockConnect {
     #[allow(async_fn_in_trait)]
     async fn execute(&mut self);
+}
+
+/// Construct a block instance with a fixed id.
+///
+/// Implemented by the `BlockProps` derive. The registry uses it to
+/// instantiate runtime-registered blocks when a program prescribes the
+/// block ids.
+pub trait BlockConstruct: Sized {
+    fn with_uuid(uuid: Uuid) -> Self;
 }
 
 /// Converts the actual value to the expected type expected value.

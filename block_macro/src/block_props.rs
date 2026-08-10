@@ -193,6 +193,12 @@ pub(super) fn block_props_impl(ast: &syn::DeriveInput) -> TokenStream {
                 Self::new()
             }
         }
+
+        impl #krate::base::block::BlockConstruct for #block_ident {
+            fn with_uuid(uuid: #krate::Uuid) -> Self {
+                Self::new_uuid(uuid)
+            }
+        }
     };
 
     tokens.into()
