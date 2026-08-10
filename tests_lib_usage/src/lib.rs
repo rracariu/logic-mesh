@@ -35,6 +35,33 @@ impl Block for Double {
     }
 }
 
+/// Same as [`Double`] but declares its pins with fully qualified paths.
+#[block]
+#[derive(BlockProps, Debug)]
+#[dis = "Triple"]
+#[library = "downstream"]
+#[category = "math"]
+pub struct Triple {
+    #[input(name = "in", kind = "Number")]
+    pub input: logic_mesh::blocks::InputImpl,
+    #[output(kind = "Number")]
+    pub out: logic_mesh::blocks::OutputImpl,
+}
+
+impl Block for Triple {
+    async fn execute(&mut self) {
+        self.read_inputs_until_ready().await;
+
+        if let Some(value) = self.input.get_value() {
+            let num: f64 = match value.try_into() {
+                Ok(num) => num,
+                Err(_) => return,
+            };
+            self.out.set((num * 3.0).into());
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -72,6 +99,26 @@ mod tests {
         block.execute().await;
         let expected: logic_mesh::Value = 42.into();
         assert_eq!(block.out.value, expected);
+    }
+
+    #[tokio::test]
+    async fn fully_qualified_pin_types_work() {
+        use logic_mesh::base::block::BlockStaticDesc;
+
+        let desc = <Triple as BlockStaticDesc>::desc();
+        assert_eq!(desc.inputs.len(), 1);
+        assert_eq!(desc.outputs.len(), 1);
+
+        let mut block = Triple::new();
+        let input = block.get_input_mut("in").unwrap();
+        input.increment_conn();
+        input
+            .writer()
+            .send((7.into(), logic_mesh::base::Status::Ok))
+            .unwrap();
+
+        block.execute().await;
+        assert_eq!(block.out.value, 21.into());
     }
 
     #[test]
