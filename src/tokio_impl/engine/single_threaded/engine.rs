@@ -334,8 +334,12 @@ impl SingleThreadedEngine {
         block_id: Option<Uuid>,
         lib: Option<&str>,
     ) -> Result<Uuid> {
-        let block_def =
-            get_block(block_name.as_str(), lib).ok_or_else(|| anyhow!("Block not found"))?;
+        let block_def = get_block(block_name.as_str(), lib).ok_or_else(|| {
+            anyhow!(
+                "Block '{block_name}' not found in library '{}'",
+                lib.unwrap_or("core")
+            )
+        })?;
         // schedule_block_on_engine spawns the actor task immediately (via
         // `schedule()`); it returns the assigned block id.
         schedule_block_on_engine(&block_def.desc, block_id, self)

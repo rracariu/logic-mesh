@@ -281,8 +281,12 @@ impl MultiThreadedEngine {
         block_id: Option<Uuid>,
         lib: Option<String>,
     ) -> Result<Uuid> {
-        let block_def = get_block(block_name.as_str(), lib.as_deref())
-            .ok_or_else(|| anyhow!("Block not found"))?;
+        let block_def = get_block(block_name.as_str(), lib.as_deref()).ok_or_else(|| {
+            anyhow!(
+                "Block '{block_name}' not found in library '{}'",
+                lib.as_deref().unwrap_or("core")
+            )
+        })?;
         schedule_block_on_engine_mt(&block_def.desc, block_id, self)
     }
 
@@ -785,7 +789,10 @@ impl MultiThreadedEngine {
                 let Some(block) = get_block(name.as_str(), lib.as_deref()) else {
                     return self.reply_to_sender(
                         sender_uuid,
-                        EngineMessage::EvaluateBlockRes(Err("Block not found".into())),
+                        EngineMessage::EvaluateBlockRes(Err(format!(
+                            "Block '{name}' not found in library '{}'",
+                            lib.as_deref().unwrap_or("core")
+                        ))),
                     );
                 };
                 let response = crate::tokio_impl::engine::eval_block(&block.desc, inputs).await;

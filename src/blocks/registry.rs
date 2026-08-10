@@ -322,7 +322,10 @@ pub fn register_block_desc(desc: &BlockDesc) -> Result<()> {
 
     let name = desc.name.clone();
     if reg.contains_key(&name) {
-        return Err(anyhow!("Block already registered"));
+        return Err(anyhow!(
+            "Block '{name}' is already registered in library '{}'",
+            desc.library
+        ));
     }
 
     reg.insert(
@@ -384,17 +387,28 @@ pub fn register<B: RegisterableBlock>() {
 fn make_registered(name: &str, uuid: Option<Uuid>) -> Result<RegisteredBlock> {
     let reg = BLOCKS.lock().expect("Block registry is locked");
 
-    let mut matches = reg
-        .values()
-        .filter_map(|lib| lib.get(name))
-        .filter_map(|entry| entry.make_erased);
+    let matches: Vec<_> = reg
+        .iter()
+        .filter_map(|(lib, blocks)| {
+            blocks
+                .get(name)
+                .and_then(|entry| entry.make_erased)
+                .map(|make| (lib.as_str(), make))
+        })
+        .collect();
 
-    let make = matches.next().ok_or_else(|| anyhow!("Block not found"))?;
-    if matches.next().is_some() {
-        return Err(anyhow!("Block name '{name}' is ambiguous across libraries"));
+    match matches.as_slice() {
+        [] => Err(anyhow!("Block '{name}' not found in the registry")),
+        [(_, make)] => Ok(make(uuid)),
+        _ => {
+            let mut libs: Vec<_> = matches.iter().map(|(lib, _)| format!("'{lib}'")).collect();
+            libs.sort_unstable();
+            Err(anyhow!(
+                "Block name '{name}' is ambiguous across libraries: {}",
+                libs.join(", ")
+            ))
+        }
     }
-
-    Ok(make(uuid))
 }
 
 /// Schedule a runtime-registered block. Fallback used by [`schedule_block`]
@@ -595,6 +609,69 @@ mod test {
         #[tokio::test]
         async fn unknown_block_still_errors() {
             assert!(eval_static_block("NoSuchBlock", vec![]).await.is_err());
+        }
+
+        mod lib_a {
+            use super::*;
+
+            #[block]
+            #[derive(BlockProps, Debug)]
+            #[library = "clash_lib_a"]
+            #[category = "test"]
+            pub(super) struct Clash {
+                #[input(name = "in", kind = "Number")]
+                input: InputImpl,
+                #[output(kind = "Number")]
+                out: OutputImpl,
+            }
+
+            impl Block for Clash {
+                async fn execute(&mut self) {}
+            }
+        }
+
+        mod lib_b {
+            use super::*;
+
+            #[block]
+            #[derive(BlockProps, Debug)]
+            #[library = "clash_lib_b"]
+            #[category = "test"]
+            pub(super) struct Clash {
+                #[input(name = "in", kind = "Number")]
+                input: InputImpl,
+                #[output(kind = "Number")]
+                out: OutputImpl,
+            }
+
+            impl Block for Clash {
+                async fn execute(&mut self) {}
+            }
+        }
+
+        #[test]
+        fn name_clash_across_libraries_errors_with_context() {
+            register::<lib_a::Clash>();
+            register::<lib_b::Clash>();
+
+            let mut eng = crate::single_threaded::SingleThreadedEngine::new();
+            let err = schedule_block("Clash", &mut eng).expect_err("clash should be rejected");
+            assert_eq!(
+                err.to_string(),
+                "Block name 'Clash' is ambiguous across libraries: 'clash_lib_a', 'clash_lib_b'"
+            );
+        }
+
+        #[test]
+        fn duplicate_registration_errors_with_context() {
+            register::<Increment>();
+
+            let desc = <Increment as crate::base::block::BlockStaticDesc>::desc();
+            let err = register_block_desc(desc).expect_err("duplicate should be rejected");
+            assert_eq!(
+                err.to_string(),
+                "Block 'Increment' is already registered in library 'runtime_test'"
+            );
         }
     }
 }
