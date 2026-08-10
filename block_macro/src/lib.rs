@@ -28,9 +28,9 @@ use proc_macro::TokenStream;
 /// struct MyBlock { ... }
 /// ```
 ///
-/// Input and output fields must be declared with the unqualified type names
-/// `InputImpl` and `OutputImpl`, imported as
-/// `use logic_mesh::blocks::{InputImpl, OutputImpl};`.
+/// Input and output fields are declared with the `InputImpl` and `OutputImpl`
+/// types, either imported (`use logic_mesh::blocks::{InputImpl, OutputImpl};`)
+/// or as fully qualified paths (`logic_mesh::blocks::InputImpl`).
 #[allow(clippy::let_and_return)]
 #[proc_macro_attribute]
 pub fn block(_args: TokenStream, input: TokenStream) -> TokenStream {
@@ -44,9 +44,9 @@ pub fn block(_args: TokenStream, input: TokenStream) -> TokenStream {
 /// The `block_props` attribute macro
 /// This macro is used to derive the `BlockProps` trait for a struct
 ///
-/// See the [`block`] macro docs for the requirements the expansion places on
-/// the using crate (bare `InputImpl`/`OutputImpl` field types) and the
-/// `#[logic_mesh(crate = "path")]` override for renamed dependencies.
+/// See the [`block`] macro docs for the `InputImpl`/`OutputImpl` field type
+/// requirements and the `#[logic_mesh(crate = "path")]` override for renamed
+/// dependencies.
 #[allow(clippy::let_and_return)]
 #[proc_macro_derive(
     BlockProps,
