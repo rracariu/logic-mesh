@@ -41,6 +41,9 @@ jobs:
           npm run lint --workspace=logic-mesh
           npm run lint --workspace=web-app
 
+      - name: test
+        run: npm test --workspace=logic-mesh
+
       - name: build
         run: npm run build --workspace=web-app
 
