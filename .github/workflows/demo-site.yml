@@ -1,6 +1,14 @@
-on: [push, pull_request]
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
 
 name: DemoSite
+
+# Only one deployment at a time; let a newer commit supersede an in-flight one.
+concurrency:
+  group: demo-site
+  cancel-in-progress: true
 
 jobs:
   site:

@@ -1,0 +1,43 @@
+on:
+  pull_request:
+
+name: WebCheck
+
+# A new push to the PR branch supersedes the previous check run.
+concurrency:
+  group: web-check-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  site:
+    name: Check demo site build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+
+      - name: wasm-pack installer
+        run: curl https://wasm-bindgen.github.io/wasm-pack/installer/init.sh -sSf | bash
+      - name: install
+        run: npm ci
+
+      - name: format check
+        run: |
+          npm run format:check --workspace=logic-mesh
+          npm run format:check --workspace=web-app
+
+      - name: wasm-build
+        run: npm run build --workspace=logic-mesh
+
+      - name: lint
+        run: |
+          npm run lint --workspace=logic-mesh
+          npm run lint --workspace=web-app
+
+      - name: build
+        run: npm run build --workspace=web-app
