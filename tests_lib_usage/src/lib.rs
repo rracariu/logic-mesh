@@ -70,7 +70,8 @@ mod tests {
             .unwrap();
 
         block.execute().await;
-        assert_eq!(block.out.value, 42.into());
+        let expected: logic_mesh::Value = 42.into();
+        assert_eq!(block.out.value, expected);
     }
 
     #[test]

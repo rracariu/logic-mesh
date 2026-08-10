@@ -9,6 +9,7 @@ extern crate self as logic_mesh;
 
 pub use logic_mesh_block_macro::{BlockProps, block};
 
+pub use libhaystack::val::Value;
 pub use libhaystack::val::kind::HaystackKind;
 pub use uuid::Uuid;
 
