@@ -132,4 +132,28 @@ mod tests {
                 .any(|desc| desc.name == "Double" && desc.library == "downstream")
         );
     }
+
+    #[tokio::test]
+    async fn registered_block_evals_by_name() {
+        logic_mesh::blocks::registry::register::<Double>();
+
+        let result =
+            logic_mesh::blocks::registry::eval_static_block("Double", vec![21.into()]).await;
+        assert_eq!(result.unwrap(), vec![logic_mesh::Value::from(42)]);
+    }
+
+    #[test]
+    fn registered_block_schedules_on_engine() {
+        logic_mesh::blocks::registry::register::<Double>();
+
+        let mut eng = logic_mesh::single_threaded::SingleThreadedEngine::new();
+        let id = logic_mesh::blocks::registry::schedule_block("Double", &mut eng)
+            .expect("schedule registered block");
+
+        assert!(
+            eng.block_handles()
+                .iter()
+                .any(|b| *b.id() == id && b.desc().name == "Double")
+        );
+    }
 }

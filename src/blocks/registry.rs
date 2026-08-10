@@ -4,7 +4,10 @@
 //! Defines the block registry.
 //!
 
-use crate::base::block::{Block, BlockDesc, BlockProps, BlockStaticDesc};
+use crate::base::block::{
+    Block, BlockConstruct, BlockDesc, BlockInput, BlockOutput, BlockProps, BlockState,
+    BlockStaticDesc,
+};
 use crate::base::input::input_reader::InputReader;
 use libhaystack::val::Value;
 
@@ -12,8 +15,11 @@ use crate::base::engine::Engine;
 
 use anyhow::{Result, anyhow};
 use std::collections::HashMap;
+use std::future::Future;
+use std::pin::Pin;
 use std::sync::LazyLock;
 use std::sync::Mutex;
+use uuid::Uuid;
 
 use crate::blocks::{ReaderImpl, WriterImpl};
 
@@ -26,6 +32,120 @@ type BlockRegistry = Mutex<MapType>;
 pub struct BlockEntry {
     pub desc: BlockDesc,
     pub make: Option<fn() -> Box<DynBlockProps>>,
+    pub(crate) make_erased: Option<fn(Option<Uuid>) -> RegisteredBlock>,
+}
+
+/// Object-safe view over [`Block`] so runtime-registered blocks can be
+/// scheduled and evaluated without static dispatch. `Block::execute`
+/// returns an opaque future, which keeps `Block` itself from being a
+/// trait object; this trait boxes the future instead.
+#[cfg(not(target_arch = "wasm32"))]
+trait ErasedBlock: BlockProps<Reader = ReaderImpl, Writer = WriterImpl> + Send + Sync {
+    fn execute_boxed(&mut self) -> Pin<Box<dyn Future<Output = ()> + Send + '_>>;
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+impl<B> ErasedBlock for B
+where
+    B: Block<Reader = ReaderImpl, Writer = WriterImpl> + Send + Sync,
+{
+    fn execute_boxed(&mut self) -> Pin<Box<dyn Future<Output = ()> + Send + '_>> {
+        Box::pin(self.execute())
+    }
+}
+
+#[cfg(target_arch = "wasm32")]
+trait ErasedBlock: BlockProps<Reader = ReaderImpl, Writer = WriterImpl> {
+    fn execute_boxed(&mut self) -> Pin<Box<dyn Future<Output = ()> + '_>>;
+}
+
+#[cfg(target_arch = "wasm32")]
+impl<B> ErasedBlock for B
+where
+    B: Block<Reader = ReaderImpl, Writer = WriterImpl>,
+{
+    fn execute_boxed(&mut self) -> Pin<Box<dyn Future<Output = ()> + '_>> {
+        Box::pin(self.execute())
+    }
+}
+
+/// A runtime-registered block behind type erasure. Lets the engines and
+/// evaluator treat downstream-crate blocks uniformly with built-ins.
+pub(crate) struct RegisteredBlock(Box<dyn ErasedBlock>);
+
+impl std::fmt::Debug for RegisteredBlock {
+    fn fmt(&self, fmt: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        fmt.debug_tuple("RegisteredBlock")
+            .field(&self.0.desc().qname())
+            .finish()
+    }
+}
+
+impl BlockProps for RegisteredBlock {
+    type Reader = ReaderImpl;
+    type Writer = WriterImpl;
+
+    fn id(&self) -> &Uuid {
+        self.0.id()
+    }
+
+    fn name(&self) -> &str {
+        self.0.name()
+    }
+
+    fn desc(&self) -> &BlockDesc {
+        self.0.desc()
+    }
+
+    fn state(&self) -> BlockState {
+        self.0.state()
+    }
+
+    fn set_state(&mut self, state: BlockState) -> BlockState {
+        self.0.set_state(state)
+    }
+
+    fn inputs(&self) -> Vec<&(dyn BlockInput<Self::Reader, Self::Writer> + Send)> {
+        self.0.inputs()
+    }
+
+    fn inputs_mut(&mut self) -> Vec<&mut (dyn BlockInput<Self::Reader, Self::Writer> + Send)> {
+        self.0.inputs_mut()
+    }
+
+    fn outputs(&self) -> Vec<&(dyn BlockOutput<Self::Writer> + Send)> {
+        self.0.outputs()
+    }
+
+    fn outputs_mut(&mut self) -> Vec<&mut (dyn BlockOutput<Self::Writer> + Send)> {
+        self.0.outputs_mut()
+    }
+
+    fn links(&self) -> Vec<(&str, Vec<&(dyn crate::base::link::Link + Send)>)> {
+        self.0.links()
+    }
+
+    fn remove_link_by_id(&mut self, link_id: &Uuid) {
+        self.0.remove_link_by_id(link_id)
+    }
+
+    fn remove_all_links(&mut self) {
+        self.0.remove_all_links()
+    }
+}
+
+impl BlockStaticDesc for RegisteredBlock {
+    fn desc() -> &'static BlockDesc {
+        // Same as `JsBlock`: the desc lives in the instance, there is no
+        // static one. Nothing on the scheduling or eval path calls this.
+        unimplemented!()
+    }
+}
+
+impl Block for RegisteredBlock {
+    async fn execute(&mut self) {
+        self.0.execute_boxed().await
+    }
 }
 
 /// Macro for statically registering all the blocks that are
@@ -51,7 +171,8 @@ macro_rules! register_blocks {
 		/// Schedule a block by name.
 		/// If the block name is valid, it will be scheduled on the engine.
 		/// The engine will execute the block if the engine is running.
-		/// This requires that the block is statically registered.
+		/// The block must be statically registered, or registered at
+		/// runtime via [`register`].
 		///
 		/// # Arguments
 		/// - name: The name of the block to schedule
@@ -70,9 +191,7 @@ macro_rules! register_blocks {
 						Ok(uuid)
 					}
 				)*
-				_ => {
-					return Err(anyhow!("Block not found"));
-				}
+				_ => schedule_registered(name, None, eng),
 			}
 
 		}
@@ -90,9 +209,7 @@ macro_rules! register_blocks {
 						Ok(uuid)
 					}
 				)*
-				_ => {
-					return Err(anyhow!("Block not found"));
-				}
+				_ => schedule_registered(name, Some(uuid), eng),
 			}
 
 		}
@@ -111,9 +228,7 @@ macro_rules! register_blocks {
 						Ok(uuid)
 					}
 				)*
-				_ => {
-					return Err(anyhow!("Block not found"));
-				}
+				_ => schedule_registered_send(name, None, eng),
 			}
 		}
 
@@ -129,9 +244,7 @@ macro_rules! register_blocks {
 						Ok(uuid)
 					}
 				)*
-				_ => {
-					return Err(anyhow!("Block not found"));
-				}
+				_ => schedule_registered_send(name, Some(uuid), eng),
 			}
 		}
 
@@ -152,9 +265,7 @@ macro_rules! register_blocks {
 						eval_block_impl(&mut block, inputs).await
 					}
 				)*
-				_ => {
-					return Err(anyhow!("Block not found"));
-				}
+				_ => eval_registered(name, inputs).await,
 			}
 		}
     };
@@ -219,10 +330,42 @@ pub fn register_block_desc(desc: &BlockDesc) -> Result<()> {
         BlockEntry {
             desc: desc.clone(),
             make: None,
+            make_erased: None,
         },
     );
 
     Ok(())
+}
+
+/// Bounds a block type must meet to be registered at runtime. All
+/// macro-generated blocks satisfy this. `Send + Sync` (native only) lets
+/// registered blocks be scheduled on the multi-threaded engine.
+#[cfg(not(target_arch = "wasm32"))]
+pub trait RegisterableBlock:
+    Block<Reader = ReaderImpl, Writer = WriterImpl> + BlockConstruct + Default + Send + Sync + 'static
+{
+}
+#[cfg(not(target_arch = "wasm32"))]
+impl<
+    T: Block<Reader = ReaderImpl, Writer = WriterImpl>
+        + BlockConstruct
+        + Default
+        + Send
+        + Sync
+        + 'static,
+> RegisterableBlock for T
+{
+}
+
+#[cfg(target_arch = "wasm32")]
+pub trait RegisterableBlock:
+    Block<Reader = ReaderImpl, Writer = WriterImpl> + BlockConstruct + Default + 'static
+{
+}
+#[cfg(target_arch = "wasm32")]
+impl<T: Block<Reader = ReaderImpl, Writer = WriterImpl> + BlockConstruct + Default + 'static>
+    RegisterableBlock for T
+{
 }
 
 /// Register a block with the registry
@@ -230,10 +373,66 @@ pub fn register_block_desc(desc: &BlockDesc) -> Result<()> {
 /// - B: The block type to register
 /// # Panics
 /// Panics if the block registry is already locked
-pub fn register<B: Block<Reader = ReaderImpl, Writer = WriterImpl> + Default + 'static>() {
+pub fn register<B: RegisterableBlock>() {
     let mut reg = BLOCKS.lock().expect("Block registry is locked");
 
     register_impl::<B>(&mut reg);
+}
+
+/// Instantiate a runtime-registered block by name, searching all libraries.
+/// Errors if the name is unknown or ambiguous across libraries.
+fn make_registered(name: &str, uuid: Option<Uuid>) -> Result<RegisteredBlock> {
+    let reg = BLOCKS.lock().expect("Block registry is locked");
+
+    let mut matches = reg
+        .values()
+        .filter_map(|lib| lib.get(name))
+        .filter_map(|entry| entry.make_erased);
+
+    let make = matches.next().ok_or_else(|| anyhow!("Block not found"))?;
+    if matches.next().is_some() {
+        return Err(anyhow!("Block name '{name}' is ambiguous across libraries"));
+    }
+
+    Ok(make(uuid))
+}
+
+/// Schedule a runtime-registered block. Fallback used by [`schedule_block`]
+/// and friends when the name doesn't match a statically compiled block —
+/// e.g. blocks registered by downstream crates via [`register`].
+#[doc(hidden)]
+pub fn schedule_registered<E>(name: &str, uuid: Option<Uuid>, eng: &mut E) -> Result<Uuid>
+where
+    E: Engine<Reader = ReaderImpl, Writer = WriterImpl>,
+{
+    let block = make_registered(name, uuid)?;
+    let id = *block.id();
+    eng.schedule(block);
+    Ok(id)
+}
+
+/// [`schedule_registered`] for the multi-threaded engine.
+#[cfg(feature = "multi-threaded")]
+#[cfg(not(target_arch = "wasm32"))]
+#[doc(hidden)]
+pub fn schedule_registered_send(
+    name: &str,
+    uuid: Option<Uuid>,
+    eng: &mut crate::tokio_impl::engine::multi_threaded::MultiThreadedEngine,
+) -> Result<Uuid> {
+    let block = make_registered(name, uuid)?;
+    let id = *block.id();
+    eng.schedule_send(block);
+    Ok(id)
+}
+
+/// Evaluate a runtime-registered block. Fallback used by
+/// [`eval_static_block`] when the name doesn't match a statically
+/// compiled block.
+#[doc(hidden)]
+pub async fn eval_registered(name: &str, inputs: Vec<Value>) -> Result<Vec<Value>> {
+    let mut block = make_registered(name, None)?;
+    eval_block_impl(&mut block, inputs).await
 }
 
 /// Evaluate a block directly
@@ -269,9 +468,7 @@ pub async fn eval_block_impl<B: Block<Reader = ReaderImpl, Writer = WriterImpl>>
     Ok(block.outputs().iter().map(|o| o.value().clone()).collect())
 }
 
-fn register_impl<B: Block<Reader = ReaderImpl, Writer = WriterImpl> + Default + 'static>(
-    reg: &mut MapType,
-) {
+fn register_impl<B: RegisterableBlock>(reg: &mut MapType) {
     let desc = <B as BlockStaticDesc>::desc();
     let lib = desc.library.clone();
 
@@ -281,9 +478,18 @@ fn register_impl<B: Block<Reader = ReaderImpl, Writer = WriterImpl> + Default + 
             Box::new(block)
         };
 
+        let make_erased = |uuid: Option<Uuid>| -> RegisteredBlock {
+            let block = match uuid {
+                Some(uuid) => B::with_uuid(uuid),
+                None => B::default(),
+            };
+            RegisteredBlock(Box::new(block))
+        };
+
         BlockEntry {
             desc: desc.clone(),
             make: Some(make),
+            make_erased: Some(make_erased),
         }
     });
 }
@@ -328,5 +534,67 @@ mod test {
         let result = eval_static_block("Add", vec![Value::from(1), Value::from(2)]).await;
 
         assert_eq!(result.unwrap(), vec![Value::from(3)]);
+    }
+
+    mod runtime_registered {
+        use super::super::*;
+        use crate::base::block::Block;
+        use crate::blocks::{InputImpl, OutputImpl};
+
+        #[block]
+        #[derive(BlockProps, Debug)]
+        #[library = "runtime_test"]
+        #[category = "test"]
+        struct Increment {
+            #[input(name = "in", kind = "Number")]
+            input: InputImpl,
+            #[output(kind = "Number")]
+            out: OutputImpl,
+        }
+
+        impl Block for Increment {
+            async fn execute(&mut self) {
+                use crate::base::input::InputProps;
+                use crate::base::input::input_reader::InputReader;
+                use crate::base::output::Output;
+
+                self.read_inputs_until_ready().await;
+
+                if let Some(value) = self.input.get_value()
+                    && let Ok(num) = f64::try_from(value)
+                {
+                    self.out.set((num + 1.0).into());
+                }
+            }
+        }
+
+        #[tokio::test]
+        async fn eval_falls_back_to_runtime_registry() {
+            register::<Increment>();
+
+            let result = eval_static_block("Increment", vec![Value::from(41)]).await;
+            assert_eq!(result.unwrap(), vec![Value::from(42)]);
+        }
+
+        #[test]
+        fn schedule_falls_back_to_runtime_registry() {
+            register::<Increment>();
+
+            let mut eng = crate::single_threaded::SingleThreadedEngine::new();
+            let uuid = Uuid::new_v4();
+            let id = schedule_block_with_uuid("Increment", uuid, &mut eng).expect("scheduled");
+            assert_eq!(id, uuid);
+
+            assert!(
+                eng.block_handles()
+                    .iter()
+                    .any(|b| b.desc().name == "Increment" && b.desc().library == "runtime_test")
+            );
+        }
+
+        #[tokio::test]
+        async fn unknown_block_still_errors() {
+            assert!(eval_static_block("NoSuchBlock", vec![]).await.is_err());
+        }
     }
 }
