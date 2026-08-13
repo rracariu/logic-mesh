@@ -137,8 +137,12 @@ mod tests {
     async fn registered_block_evals_by_name() {
         logic_mesh::blocks::registry::register::<Double>();
 
-        let result =
-            logic_mesh::blocks::registry::eval_static_block("Double", vec![21.into()]).await;
+        let result = logic_mesh::blocks::registry::eval_static_block(
+            "Double",
+            Some("downstream"),
+            vec![21.into()],
+        )
+        .await;
         assert_eq!(result.unwrap(), vec![logic_mesh::Value::from(42)]);
     }
 
@@ -147,8 +151,9 @@ mod tests {
         logic_mesh::blocks::registry::register::<Double>();
 
         let mut eng = logic_mesh::single_threaded::SingleThreadedEngine::new();
-        let id = logic_mesh::blocks::registry::schedule_block("Double", &mut eng)
-            .expect("schedule registered block");
+        let id =
+            logic_mesh::blocks::registry::schedule_block("Double", Some("downstream"), &mut eng)
+                .expect("schedule registered block");
 
         assert!(
             eng.block_handles()

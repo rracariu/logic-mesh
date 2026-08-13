@@ -23,6 +23,9 @@ use uuid::Uuid;
 
 use crate::blocks::{ReaderImpl, WriterImpl};
 
+/// The library name of the built-in blocks.
+pub const CORE_LIB: &str = "core";
+
 pub(crate) type DynBlockProps = dyn BlockProps<Reader = ReaderImpl, Writer = WriterImpl>;
 type MapType = HashMap<String, HashMap<String, BlockEntry>>;
 type BlockRegistry = Mutex<MapType>;
@@ -176,41 +179,49 @@ macro_rules! register_blocks {
 		///
 		/// # Arguments
 		/// - name: The name of the block to schedule
+		/// - lib: The library the block belongs to. `None` searches all
+		///   libraries and errors if the name is ambiguous across them.
 		/// - eng: The engine to schedule the block on
 		/// # Returns
 		/// A result indicating success or failure
-		pub fn schedule_block<E>(name: &str, eng: &mut E) -> Result<uuid::Uuid>
+		pub fn schedule_block<E>(name: &str, lib: Option<&str>, eng: &mut E) -> Result<uuid::Uuid>
 		where E : Engine<Reader = ReaderImpl, Writer = WriterImpl> {
 
-			match name {
-				$(
-					stringify!($block_name) => {
-						let block = <$block_name>::new();
-						let uuid = *block.id();
-						eng.schedule(block);
-						Ok(uuid)
-					}
-				)*
-				_ => schedule_registered(name, None, eng),
+			if lib == Some(CORE_LIB) {
+				match name {
+					$(
+						stringify!($block_name) => {
+							let block = <$block_name>::new();
+							let uuid = *block.id();
+							eng.schedule(block);
+							return Ok(uuid);
+						}
+					)*
+					_ => {}
+				}
 			}
+			schedule_registered(name, lib, None, eng)
 
 		}
 
 		/// Schedule a block by name and UUID.
 		/// See [`schedule_block`] for more details.
-		pub fn schedule_block_with_uuid<E>(name: &str, uuid: uuid::Uuid, eng: &mut E) -> Result<uuid::Uuid>
+		pub fn schedule_block_with_uuid<E>(name: &str, lib: Option<&str>, uuid: uuid::Uuid, eng: &mut E) -> Result<uuid::Uuid>
 		where E : Engine<Reader = ReaderImpl, Writer = WriterImpl> {
 
-			match name {
-				$(
-					stringify!($block_name) => {
-						let block = <$block_name>::new_uuid(uuid);
-						eng.schedule(block);
-						Ok(uuid)
-					}
-				)*
-				_ => schedule_registered(name, Some(uuid), eng),
+			if lib == Some(CORE_LIB) {
+				match name {
+					$(
+						stringify!($block_name) => {
+							let block = <$block_name>::new_uuid(uuid);
+							eng.schedule(block);
+							return Ok(uuid);
+						}
+					)*
+					_ => {}
+				}
 			}
+			schedule_registered(name, lib, Some(uuid), eng)
 
 		}
 
@@ -218,34 +229,40 @@ macro_rules! register_blocks {
 		/// The block must be `Send`.
 		#[cfg(feature = "multi-threaded")]
 		#[cfg(not(target_arch = "wasm32"))]
-		pub fn schedule_block_send(name: &str, eng: &mut $crate::tokio_impl::engine::multi_threaded::MultiThreadedEngine) -> Result<uuid::Uuid> {
-			match name {
-				$(
-					stringify!($block_name) => {
-						let block = <$block_name>::new();
-						let uuid = *block.id();
-						eng.schedule_send(block);
-						Ok(uuid)
-					}
-				)*
-				_ => schedule_registered_send(name, None, eng),
+		pub fn schedule_block_send(name: &str, lib: Option<&str>, eng: &mut $crate::tokio_impl::engine::multi_threaded::MultiThreadedEngine) -> Result<uuid::Uuid> {
+			if lib == Some(CORE_LIB) {
+				match name {
+					$(
+						stringify!($block_name) => {
+							let block = <$block_name>::new();
+							let uuid = *block.id();
+							eng.schedule_send(block);
+							return Ok(uuid);
+						}
+					)*
+					_ => {}
+				}
 			}
+			schedule_registered_send(name, lib, None, eng)
 		}
 
 		/// Schedule a block by name and UUID on a multi-threaded engine.
 		#[cfg(feature = "multi-threaded")]
 		#[cfg(not(target_arch = "wasm32"))]
-		pub fn schedule_block_send_with_uuid(name: &str, uuid: uuid::Uuid, eng: &mut $crate::tokio_impl::engine::multi_threaded::MultiThreadedEngine) -> Result<uuid::Uuid> {
-			match name {
-				$(
-					stringify!($block_name) => {
-						let block = <$block_name>::new_uuid(uuid);
-						eng.schedule_send(block);
-						Ok(uuid)
-					}
-				)*
-				_ => schedule_registered_send(name, Some(uuid), eng),
+		pub fn schedule_block_send_with_uuid(name: &str, lib: Option<&str>, uuid: uuid::Uuid, eng: &mut $crate::tokio_impl::engine::multi_threaded::MultiThreadedEngine) -> Result<uuid::Uuid> {
+			if lib == Some(CORE_LIB) {
+				match name {
+					$(
+						stringify!($block_name) => {
+							let block = <$block_name>::new_uuid(uuid);
+							eng.schedule_send(block);
+							return Ok(uuid);
+						}
+					)*
+					_ => {}
+				}
 			}
+			schedule_registered_send(name, lib, Some(uuid), eng)
 		}
 
 		/// Evaluate a static registered block by name.
@@ -253,20 +270,25 @@ macro_rules! register_blocks {
 		///
 		/// # Arguments
 		/// - name: The name of the block to evaluate
+		/// - lib: The library the block belongs to. `None` searches all
+		///   libraries and errors if the name is ambiguous across them.
 		/// - inputs: The input values to the block
 		///
 		/// # Returns
 		/// A list of values representing the outputs of the block
-		pub async fn eval_static_block(name: &str, inputs: Vec<Value>) -> Result<Vec<Value>> {
-			match name {
-				$(
-					stringify!($block_name) => {
-						let mut block = <$block_name>::new();
-						eval_block_impl(&mut block, inputs).await
-					}
-				)*
-				_ => eval_registered(name, inputs).await,
+		pub async fn eval_static_block(name: &str, lib: Option<&str>, inputs: Vec<Value>) -> Result<Vec<Value>> {
+			if lib == Some(CORE_LIB) {
+				match name {
+					$(
+						stringify!($block_name) => {
+							let mut block = <$block_name>::new();
+							return eval_block_impl(&mut block, inputs).await;
+						}
+					)*
+					_ => {}
+				}
 			}
+			eval_registered(name, lib, inputs).await
 		}
     };
 }
@@ -288,7 +310,7 @@ pub fn make(name: &str, lib: Option<&str>) -> Option<Box<DynBlockProps>> {
 /// Get a block entry from the registry
 pub fn get_block(name: &str, lib: Option<&str>) -> Option<BlockEntry> {
     let reg = BLOCKS.lock().expect("Block registry is locked");
-    let lib = lib.unwrap_or("core");
+    let lib = lib.unwrap_or(CORE_LIB);
 
     let reg = reg.get(lib)?;
     reg.get(name).cloned()
@@ -296,7 +318,7 @@ pub fn get_block(name: &str, lib: Option<&str>) -> Option<BlockEntry> {
 
 /// Get a core block
 pub fn get_core_block(name: &str) -> Option<BlockEntry> {
-    get_block(name, Some("core"))
+    get_block(name, Some(CORE_LIB))
 }
 
 /// Get all block descriptions from the registry
@@ -382,44 +404,65 @@ pub fn register<B: RegisterableBlock>() {
     register_impl::<B>(&mut reg);
 }
 
-/// Instantiate a runtime-registered block by name, searching all libraries.
-/// Errors if the name is unknown or ambiguous across libraries.
-fn make_registered(name: &str, uuid: Option<Uuid>) -> Result<RegisteredBlock> {
-    let reg = BLOCKS.lock().expect("Block registry is locked");
+/// Instantiate a runtime-registered block by name. A qualified lookup
+/// (`lib` given) resolves directly in that library; an unqualified one
+/// searches all libraries and errors if the name is ambiguous.
+fn make_registered(name: &str, lib: Option<&str>, uuid: Option<Uuid>) -> Result<RegisteredBlock> {
+    // Resolve the constructor and release the lock before running it:
+    // a constructor that touches the registry would otherwise deadlock,
+    // and a panicking one would poison the lock for the whole process.
+    let make = {
+        let reg = BLOCKS.lock().expect("Block registry is locked");
 
-    let matches: Vec<_> = reg
-        .iter()
-        .filter_map(|(lib, blocks)| {
-            blocks
-                .get(name)
+        if let Some(lib) = lib {
+            reg.get(lib)
+                .and_then(|blocks| blocks.get(name))
                 .and_then(|entry| entry.make_erased)
-                .map(|make| (lib.as_str(), make))
-        })
-        .collect();
+                .ok_or_else(|| anyhow!("Block '{name}' not found in library '{lib}'"))?
+        } else {
+            let matches: Vec<_> = reg
+                .iter()
+                .filter_map(|(lib, blocks)| {
+                    blocks
+                        .get(name)
+                        .and_then(|entry| entry.make_erased)
+                        .map(|make| (lib.as_str(), make))
+                })
+                .collect();
 
-    match matches.as_slice() {
-        [] => Err(anyhow!("Block '{name}' not found in the registry")),
-        [(_, make)] => Ok(make(uuid)),
-        _ => {
-            let mut libs: Vec<_> = matches.iter().map(|(lib, _)| format!("'{lib}'")).collect();
-            libs.sort_unstable();
-            Err(anyhow!(
-                "Block name '{name}' is ambiguous across libraries: {}",
-                libs.join(", ")
-            ))
+            match matches.as_slice() {
+                [] => return Err(anyhow!("Block '{name}' not found in the registry")),
+                [(_, make)] => *make,
+                _ => {
+                    let mut libs: Vec<_> =
+                        matches.iter().map(|(lib, _)| format!("'{lib}'")).collect();
+                    libs.sort_unstable();
+                    return Err(anyhow!(
+                        "Block name '{name}' is ambiguous across libraries: {}",
+                        libs.join(", ")
+                    ));
+                }
+            }
         }
-    }
+    };
+
+    Ok(make(uuid))
 }
 
 /// Schedule a runtime-registered block. Fallback used by [`schedule_block`]
 /// and friends when the name doesn't match a statically compiled block —
 /// e.g. blocks registered by downstream crates via [`register`].
 #[doc(hidden)]
-pub fn schedule_registered<E>(name: &str, uuid: Option<Uuid>, eng: &mut E) -> Result<Uuid>
+pub fn schedule_registered<E>(
+    name: &str,
+    lib: Option<&str>,
+    uuid: Option<Uuid>,
+    eng: &mut E,
+) -> Result<Uuid>
 where
     E: Engine<Reader = ReaderImpl, Writer = WriterImpl>,
 {
-    let block = make_registered(name, uuid)?;
+    let block = make_registered(name, lib, uuid)?;
     let id = *block.id();
     eng.schedule(block);
     Ok(id)
@@ -431,10 +474,11 @@ where
 #[doc(hidden)]
 pub fn schedule_registered_send(
     name: &str,
+    lib: Option<&str>,
     uuid: Option<Uuid>,
     eng: &mut crate::tokio_impl::engine::multi_threaded::MultiThreadedEngine,
 ) -> Result<Uuid> {
-    let block = make_registered(name, uuid)?;
+    let block = make_registered(name, lib, uuid)?;
     let id = *block.id();
     eng.schedule_send(block);
     Ok(id)
@@ -444,8 +488,12 @@ pub fn schedule_registered_send(
 /// [`eval_static_block`] when the name doesn't match a statically
 /// compiled block.
 #[doc(hidden)]
-pub async fn eval_registered(name: &str, inputs: Vec<Value>) -> Result<Vec<Value>> {
-    let mut block = make_registered(name, None)?;
+pub async fn eval_registered(
+    name: &str,
+    lib: Option<&str>,
+    inputs: Vec<Value>,
+) -> Result<Vec<Value>> {
+    let mut block = make_registered(name, lib, None)?;
     eval_block_impl(&mut block, inputs).await
 }
 
@@ -538,14 +586,15 @@ mod test {
 
         let mut eng = crate::single_threaded::SingleThreadedEngine::new();
 
-        schedule_block("Add", &mut eng).expect("Block");
+        schedule_block("Add", Some("core"), &mut eng).expect("Block");
 
         assert!(eng.block_handles().iter().any(|b| b.desc().name == "Add"));
     }
 
     #[tokio::test]
     async fn test_block_eval() {
-        let result = eval_static_block("Add", vec![Value::from(1), Value::from(2)]).await;
+        let result =
+            eval_static_block("Add", Some("core"), vec![Value::from(1), Value::from(2)]).await;
 
         assert_eq!(result.unwrap(), vec![Value::from(3)]);
     }
@@ -586,7 +635,7 @@ mod test {
         async fn eval_falls_back_to_runtime_registry() {
             register::<Increment>();
 
-            let result = eval_static_block("Increment", vec![Value::from(41)]).await;
+            let result = eval_static_block("Increment", None, vec![Value::from(41)]).await;
             assert_eq!(result.unwrap(), vec![Value::from(42)]);
         }
 
@@ -596,7 +645,8 @@ mod test {
 
             let mut eng = crate::single_threaded::SingleThreadedEngine::new();
             let uuid = Uuid::new_v4();
-            let id = schedule_block_with_uuid("Increment", uuid, &mut eng).expect("scheduled");
+            let id =
+                schedule_block_with_uuid("Increment", None, uuid, &mut eng).expect("scheduled");
             assert_eq!(id, uuid);
 
             assert!(
@@ -608,7 +658,11 @@ mod test {
 
         #[tokio::test]
         async fn unknown_block_still_errors() {
-            assert!(eval_static_block("NoSuchBlock", vec![]).await.is_err());
+            assert!(
+                eval_static_block("NoSuchBlock", None, vec![])
+                    .await
+                    .is_err()
+            );
         }
 
         mod lib_a {
@@ -655,11 +709,57 @@ mod test {
             register::<lib_b::Clash>();
 
             let mut eng = crate::single_threaded::SingleThreadedEngine::new();
-            let err = schedule_block("Clash", &mut eng).expect_err("clash should be rejected");
+            let err =
+                schedule_block("Clash", None, &mut eng).expect_err("clash should be rejected");
             assert_eq!(
                 err.to_string(),
                 "Block name 'Clash' is ambiguous across libraries: 'clash_lib_a', 'clash_lib_b'"
             );
+        }
+
+        #[test]
+        fn qualified_name_resolves_despite_clash() {
+            register::<lib_a::Clash>();
+            register::<lib_b::Clash>();
+
+            let mut eng = crate::single_threaded::SingleThreadedEngine::new();
+            let id = schedule_block("Clash", Some("clash_lib_a"), &mut eng)
+                .expect("qualified name should resolve");
+
+            assert!(
+                eng.block_handles()
+                    .iter()
+                    .any(|b| *b.id() == id && b.desc().library == "clash_lib_a")
+            );
+        }
+
+        // A downstream block whose ident collides with a built-in must be
+        // reachable when qualified by its own library, not silently
+        // shadowed by the static dispatch arm.
+        #[block]
+        #[derive(BlockProps, Debug)]
+        #[library = "shadow_test"]
+        #[category = "test"]
+        struct Random {
+            #[input(name = "in", kind = "Number")]
+            input: InputImpl,
+            #[output(kind = "Number")]
+            out: OutputImpl,
+        }
+
+        impl Block for Random {
+            async fn execute(&mut self) {
+                use crate::base::output::Output;
+                self.out.set(42.into());
+            }
+        }
+
+        #[tokio::test]
+        async fn qualified_lookup_is_not_shadowed_by_builtin() {
+            register::<Random>();
+
+            let result = eval_static_block("Random", Some("shadow_test"), vec![]).await;
+            assert_eq!(result.unwrap(), vec![Value::from(42)]);
         }
 
         #[test]

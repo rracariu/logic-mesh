@@ -36,9 +36,9 @@ pub(super) fn schedule_block_on_engine(
             Err(anyhow!("External blocks not supported on this platform"))
         }
     } else if let Some(uuid) = block_id {
-        schedule_block_with_uuid(&block.name, uuid, engine)
+        schedule_block_with_uuid(&block.name, Some(&block.library), uuid, engine)
     } else {
-        schedule_block(&block.name, engine)
+        schedule_block(&block.name, Some(&block.library), engine)
     }
 }
 
@@ -57,9 +57,9 @@ pub(super) fn schedule_block_on_engine_mt(
             "External blocks not supported in multi-threaded mode"
         ))
     } else if let Some(uuid) = block_id {
-        schedule_block_send_with_uuid(&block.name, uuid, engine)
+        schedule_block_send_with_uuid(&block.name, Some(&block.library), uuid, engine)
     } else {
-        schedule_block_send(&block.name, engine)
+        schedule_block_send(&block.name, Some(&block.library), engine)
     }
 }
 
@@ -76,6 +76,6 @@ pub(super) async fn eval_block(block: &BlockDesc, inputs: Vec<Value>) -> Result<
             Err(anyhow!("External blocks not supported on this platform"))
         }
     } else {
-        eval_static_block(&block.name, inputs).await
+        eval_static_block(&block.name, Some(&block.library), inputs).await
     }
 }
