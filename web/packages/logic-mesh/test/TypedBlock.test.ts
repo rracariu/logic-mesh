@@ -52,11 +52,28 @@ describe('defineBlock', () => {
     ]);
   });
 
-  it('registers with the engine', () => {
+  it('registers with the engine without an executor when execute is absent', () => {
     const Block = defineBlock({
       desc,
       inputs: [['x', z.number()]] as const,
       outputs: [['y', z.string()]] as const,
+    });
+    const engine = { registerBlock: vi.fn() };
+    Block.register(engine as any);
+
+    expect(engine.registerBlock).toHaveBeenCalledWith(
+      expect.objectContaining({ name: 'TestBlock' }),
+    );
+  });
+
+  it('registers with the engine with an executor when execute is present', () => {
+    const Block = defineBlock({
+      desc,
+      inputs: [['x', z.number()]] as const,
+      outputs: [['y', z.string()]] as const,
+      execute([x]) {
+        return Promise.resolve([String(x)]);
+      },
     });
     const engine = { registerBlock: vi.fn() };
     Block.register(engine as any);
