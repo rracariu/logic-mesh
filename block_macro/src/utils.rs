@@ -157,9 +157,10 @@ fn get_attribute_props(input_attr: &syn::Attribute, attrs: &mut BTreeMap<String,
     });
 }
 
-// Input/output fields are detected by the type name, matched on the
-// last path segment so both bare `InputImpl` and qualified paths like
-// `logic_mesh::blocks::InputImpl` are recognized.
+// Input/output fields are detected by the type name, matched exactly on
+// the last path segment so both bare `InputImpl` and qualified paths like
+// `logic_mesh::blocks::InputImpl` are recognized, while unrelated types
+// that merely share the prefix (e.g. `InputImplConfig`) are not.
 fn field_type_is(ty: &TypePath, field_type: &str) -> bool {
     let it = match field_type {
         "input" => "InputImpl",
@@ -167,10 +168,7 @@ fn field_type_is(ty: &TypePath, field_type: &str) -> bool {
         _ => panic!("Invalid field type."),
     };
 
-    ty.path
-        .segments
-        .last()
-        .is_some_and(|seg| seg.ident.to_string().starts_with(it))
+    ty.path.segments.last().is_some_and(|seg| seg.ident == it)
 }
 
 fn filed_attribute_is(attr: &Attribute, field_type: &str) -> bool {

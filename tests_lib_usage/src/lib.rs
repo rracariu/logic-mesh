@@ -62,6 +62,49 @@ impl Block for Triple {
     }
 }
 
+/// Custom field types whose names merely start with `InputImpl` /
+/// `OutputImpl` must not be classified as pins by the derive.
+#[derive(Debug, Default)]
+pub struct InputImplConfig {
+    pub scale: f64,
+}
+
+#[derive(Debug, Default)]
+pub struct OutputImplSettings {
+    pub offset: f64,
+}
+
+/// Has one real pin of each kind plus custom fields with pin-like
+/// type-name prefixes.
+#[block]
+#[derive(BlockProps, Debug)]
+#[dis = "Prefixed"]
+#[library = "downstream"]
+#[category = "math"]
+pub struct Prefixed {
+    #[input(name = "in", kind = "Number")]
+    pub input: InputImpl,
+    #[output(kind = "Number")]
+    pub out: OutputImpl,
+    pub config: InputImplConfig,
+    pub settings: OutputImplSettings,
+}
+
+impl Block for Prefixed {
+    async fn execute(&mut self) {
+        self.read_inputs_until_ready().await;
+
+        if let Some(value) = self.input.get_value() {
+            let num: f64 = match value.try_into() {
+                Ok(num) => num,
+                Err(_) => return,
+            };
+            self.out
+                .set((num * self.config.scale + self.settings.offset).into());
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -115,6 +158,32 @@ mod tests {
         input
             .writer()
             .send((7.into(), logic_mesh::base::Status::Ok))
+            .unwrap();
+
+        block.execute().await;
+        assert_eq!(block.out.value, 21.into());
+    }
+
+    #[tokio::test]
+    async fn prefixed_field_types_are_not_pins() {
+        use logic_mesh::base::block::BlockStaticDesc;
+
+        let desc = <Prefixed as BlockStaticDesc>::desc();
+        assert_eq!(desc.inputs.len(), 1);
+        assert_eq!(desc.outputs.len(), 1);
+
+        let mut block = Prefixed::new();
+        block.config = InputImplConfig { scale: 2.0 };
+        block.settings = OutputImplSettings { offset: 1.0 };
+
+        assert_eq!(block.inputs().len(), 1);
+        assert_eq!(block.outputs().len(), 1);
+
+        let input = block.get_input_mut("in").unwrap();
+        input.increment_conn();
+        input
+            .writer()
+            .send((10.into(), logic_mesh::base::Status::Ok))
             .unwrap();
 
         block.execute().await;
