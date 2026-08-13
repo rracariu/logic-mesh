@@ -5,5 +5,5 @@ edition = "2024"
 publish = false
 
 [dependencies]
-logic-mesh = { path = ".." }
-tokio = { version = "^1.50", features = ["rt", "macros"] }
+logic-mesh = { path = "..", features = ["multi-threaded"] }
+tokio = { version = "^1.50", features = ["rt", "rt-multi-thread", "macros"] }

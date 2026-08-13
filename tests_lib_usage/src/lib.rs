@@ -161,4 +161,24 @@ mod tests {
                 .any(|b| *b.id() == id && b.desc().name == "Double")
         );
     }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn registered_block_schedules_on_multi_threaded_engine() {
+        logic_mesh::blocks::registry::register::<Double>();
+
+        let mut eng = logic_mesh::multi_threaded::MultiThreadedEngine::new();
+        logic_mesh::blocks::registry::schedule_block_send("Double", Some("downstream"), &mut eng)
+            .expect("schedule registered block on MT engine");
+    }
+
+    #[test]
+    fn generic_schedule_on_multi_threaded_engine_errors() {
+        logic_mesh::blocks::registry::register::<Double>();
+
+        let mut eng = logic_mesh::multi_threaded::MultiThreadedEngine::new();
+        let err =
+            logic_mesh::blocks::registry::schedule_block("Double", Some("downstream"), &mut eng)
+                .expect_err("trait-path scheduling on the MT engine should error, not panic");
+        assert!(err.to_string().contains("schedule_send"));
+    }
 }

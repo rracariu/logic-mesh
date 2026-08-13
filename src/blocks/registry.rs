@@ -193,7 +193,7 @@ macro_rules! register_blocks {
 						stringify!($block_name) => {
 							let block = <$block_name>::new();
 							let uuid = *block.id();
-							eng.schedule(block);
+							eng.schedule(block)?;
 							return Ok(uuid);
 						}
 					)*
@@ -214,7 +214,7 @@ macro_rules! register_blocks {
 					$(
 						stringify!($block_name) => {
 							let block = <$block_name>::new_uuid(uuid);
-							eng.schedule(block);
+							eng.schedule(block)?;
 							return Ok(uuid);
 						}
 					)*
@@ -464,7 +464,7 @@ where
 {
     let block = make_registered(name, lib, uuid)?;
     let id = *block.id();
-    eng.schedule(block);
+    eng.schedule(block)?;
     Ok(id)
 }
 
@@ -752,6 +752,15 @@ mod test {
                 use crate::base::output::Output;
                 self.out.set(42.into());
             }
+        }
+
+        #[cfg(feature = "multi-threaded")]
+        #[test]
+        fn generic_schedule_on_mt_engine_errors_instead_of_panicking() {
+            let mut eng = crate::tokio_impl::engine::multi_threaded::MultiThreadedEngine::new();
+            let err = schedule_block("Add", Some(CORE_LIB), &mut eng)
+                .expect_err("trait-path scheduling on the MT engine should error");
+            assert!(err.to_string().contains("schedule_send"));
         }
 
         #[tokio::test]

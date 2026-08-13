@@ -122,15 +122,16 @@ impl crate::base::engine::Engine for MultiThreadedEngine {
     fn schedule<B: Block<Writer = Self::Writer, Reader = Self::Reader> + 'static>(
         &mut self,
         _block: B,
-    ) {
+    ) -> Result<()> {
         // The MT engine requires `Send` because the block crosses the
-        // worker-thread boundary. Use [`MultiThreadedEngine::schedule_send`]
-        // for the Send-bounded entry point; this trait method is here only
-        // to satisfy the `Engine` contract and panics if called.
-        panic!(
-            "MultiThreadedEngine::schedule (trait) requires `Send`; \
-             use the inherent `schedule_send` method instead"
-        );
+        // worker-thread boundary, but this trait signature cannot express
+        // that bound. Use [`MultiThreadedEngine::schedule_send`] for the
+        // Send-bounded entry point.
+        Err(anyhow!(
+            "MultiThreadedEngine cannot schedule through the `Engine` trait \
+             (requires `Send`); use the inherent `schedule_send` method or \
+             the `*_send` registry entry points instead"
+        ))
     }
 
     fn schedule_program_blocks(&mut self, program: &Program) -> Result<()> {

@@ -130,7 +130,7 @@ impl Engine for SingleThreadedEngine {
     fn schedule<B: Block<Writer = Self::Writer, Reader = Self::Reader> + 'static>(
         &mut self,
         block: B,
-    ) {
+    ) -> Result<()> {
         let id = *block.id();
         let name = block.name().to_string();
         let library = block.desc().library.clone();
@@ -154,6 +154,7 @@ impl Engine for SingleThreadedEngine {
         let watchers = self.watchers.clone();
         self.local
             .spawn_local(block_actor_task(block, mailbox_rx, watchers));
+        Ok(())
     }
 
     fn schedule_program_blocks(&mut self, program: &Program) -> Result<()> {
