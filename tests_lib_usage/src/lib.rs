@@ -123,7 +123,7 @@ mod tests {
 
     #[test]
     fn registers_in_runtime_registry() {
-        logic_mesh::blocks::registry::register::<Double>();
+        let _ = logic_mesh::blocks::registry::register::<Double>();
 
         let registered = logic_mesh::blocks::registry::list_registered_blocks();
         assert!(
@@ -135,7 +135,7 @@ mod tests {
 
     #[tokio::test]
     async fn registered_block_evals_by_name() {
-        logic_mesh::blocks::registry::register::<Double>();
+        let _ = logic_mesh::blocks::registry::register::<Double>();
 
         let result = logic_mesh::blocks::registry::eval_static_block(
             "Double",
@@ -148,7 +148,7 @@ mod tests {
 
     #[test]
     fn registered_block_schedules_on_engine() {
-        logic_mesh::blocks::registry::register::<Double>();
+        let _ = logic_mesh::blocks::registry::register::<Double>();
 
         let mut eng = logic_mesh::single_threaded::SingleThreadedEngine::new();
         let id =
@@ -164,7 +164,7 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn registered_block_schedules_on_multi_threaded_engine() {
-        logic_mesh::blocks::registry::register::<Double>();
+        let _ = logic_mesh::blocks::registry::register::<Double>();
 
         let mut eng = logic_mesh::multi_threaded::MultiThreadedEngine::new();
         logic_mesh::blocks::registry::schedule_block_send("Double", Some("downstream"), &mut eng)
@@ -173,7 +173,7 @@ mod tests {
 
     #[test]
     fn generic_schedule_on_multi_threaded_engine_errors() {
-        logic_mesh::blocks::registry::register::<Double>();
+        let _ = logic_mesh::blocks::registry::register::<Double>();
 
         let mut eng = logic_mesh::multi_threaded::MultiThreadedEngine::new();
         let err =

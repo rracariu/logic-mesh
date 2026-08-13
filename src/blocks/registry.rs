@@ -164,7 +164,8 @@ macro_rules! register_blocks {
 			let mut reg = HashMap::new();
 
 			$(
-				register_impl::<$block_name>(&mut reg);
+				register_impl::<$block_name>(&mut reg)
+					.expect("duplicate statically registered block");
 			)*
 
 			reg.into()
@@ -396,12 +397,16 @@ impl<T: Block<Reader = ReaderImpl, Writer = WriterImpl> + BlockConstruct + Defau
 /// Register a block with the registry
 /// # Arguments
 /// - B: The block type to register
+/// # Returns
+/// An error if a block with the same name is already registered in the
+/// block's library — e.g. a downstream block that omits `#[library]` and
+/// so defaults to the core library, colliding with a built-in.
 /// # Panics
 /// Panics if the block registry is already locked
-pub fn register<B: RegisterableBlock>() {
+pub fn register<B: RegisterableBlock>() -> Result<()> {
     let mut reg = BLOCKS.lock().expect("Block registry is locked");
 
-    register_impl::<B>(&mut reg);
+    register_impl::<B>(&mut reg)
 }
 
 /// Instantiate a runtime-registered block by name. A qualified lookup
@@ -530,11 +535,20 @@ pub async fn eval_block_impl<B: Block<Reader = ReaderImpl, Writer = WriterImpl>>
     Ok(block.outputs().iter().map(|o| o.value().clone()).collect())
 }
 
-fn register_impl<B: RegisterableBlock>(reg: &mut MapType) {
+fn register_impl<B: RegisterableBlock>(reg: &mut MapType) -> Result<()> {
     let desc = <B as BlockStaticDesc>::desc();
     let lib = desc.library.clone();
 
-    reg.entry(lib).or_default().insert(desc.name.clone(), {
+    let lib_reg = reg.entry(lib).or_default();
+    if lib_reg.contains_key(&desc.name) {
+        return Err(anyhow!(
+            "Block '{}' is already registered in library '{}'",
+            desc.name,
+            desc.library
+        ));
+    }
+
+    lib_reg.insert(desc.name.clone(), {
         let make = || -> Box<DynBlockProps> {
             let block = B::default();
             Box::new(block)
@@ -554,6 +568,8 @@ fn register_impl<B: RegisterableBlock>(reg: &mut MapType) {
             make_erased: Some(make_erased),
         }
     });
+
+    Ok(())
 }
 
 #[cfg(test)]
@@ -633,7 +649,7 @@ mod test {
 
         #[tokio::test]
         async fn eval_falls_back_to_runtime_registry() {
-            register::<Increment>();
+            let _ = register::<Increment>();
 
             let result = eval_static_block("Increment", None, vec![Value::from(41)]).await;
             assert_eq!(result.unwrap(), vec![Value::from(42)]);
@@ -641,7 +657,7 @@ mod test {
 
         #[test]
         fn schedule_falls_back_to_runtime_registry() {
-            register::<Increment>();
+            let _ = register::<Increment>();
 
             let mut eng = crate::single_threaded::SingleThreadedEngine::new();
             let uuid = Uuid::new_v4();
@@ -705,8 +721,8 @@ mod test {
 
         #[test]
         fn name_clash_across_libraries_errors_with_context() {
-            register::<lib_a::Clash>();
-            register::<lib_b::Clash>();
+            let _ = register::<lib_a::Clash>();
+            let _ = register::<lib_b::Clash>();
 
             let mut eng = crate::single_threaded::SingleThreadedEngine::new();
             let err =
@@ -719,8 +735,8 @@ mod test {
 
         #[test]
         fn qualified_name_resolves_despite_clash() {
-            register::<lib_a::Clash>();
-            register::<lib_b::Clash>();
+            let _ = register::<lib_a::Clash>();
+            let _ = register::<lib_b::Clash>();
 
             let mut eng = crate::single_threaded::SingleThreadedEngine::new();
             let id = schedule_block("Clash", Some("clash_lib_a"), &mut eng)
@@ -765,7 +781,7 @@ mod test {
 
         #[tokio::test]
         async fn qualified_lookup_is_not_shadowed_by_builtin() {
-            register::<Random>();
+            let _ = register::<Random>();
 
             let result = eval_static_block("Random", Some("shadow_test"), vec![]).await;
             assert_eq!(result.unwrap(), vec![Value::from(42)]);
@@ -773,13 +789,39 @@ mod test {
 
         #[test]
         fn duplicate_registration_errors_with_context() {
-            register::<Increment>();
+            let _ = register::<Increment>();
 
             let desc = <Increment as crate::base::block::BlockStaticDesc>::desc();
             let err = register_block_desc(desc).expect_err("duplicate should be rejected");
             assert_eq!(
                 err.to_string(),
                 "Block 'Increment' is already registered in library 'runtime_test'"
+            );
+        }
+
+        #[block]
+        #[derive(BlockProps, Debug)]
+        #[library = "dup_test"]
+        #[category = "test"]
+        struct Dup {
+            #[input(name = "in", kind = "Number")]
+            input: InputImpl,
+            #[output(kind = "Number")]
+            out: OutputImpl,
+        }
+
+        impl Block for Dup {
+            async fn execute(&mut self) {}
+        }
+
+        #[test]
+        fn duplicate_register_errors_instead_of_overwriting() {
+            register::<Dup>().expect("first registration succeeds");
+
+            let err = register::<Dup>().expect_err("duplicate should be rejected");
+            assert_eq!(
+                err.to_string(),
+                "Block 'Dup' is already registered in library 'dup_test'"
             );
         }
     }
