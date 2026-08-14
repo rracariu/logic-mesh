@@ -215,8 +215,7 @@ mod tests {
 
         let desc = <Double as BlockStaticDesc>::desc();
         assert_eq!(
-            desc.doc,
-            "Doubles the value of its numeric input.",
+            desc.doc, "Doubles the value of its numeric input.",
             "/// doc comment should be captured in desc().doc"
         );
     }
