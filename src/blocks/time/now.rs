@@ -2,18 +2,16 @@
 
 use crate::{
     base::{
-        block::{Block, BlockDesc, BlockProps, BlockState},
-        input::{InputProps, input_reader::InputReader},
+        block::Block,
+        input::input_reader::InputReader,
         output::{Output, OutputProps},
     },
     blocks::utils::input_to_millis_or_default,
 };
 use std::time::Duration;
-use uuid::Uuid;
 
 use crate::tokio_impl::sleep::current_time_millis;
 use crate::{blocks::InputImpl, blocks::OutputImpl};
-use libhaystack::val::kind::HaystackKind;
 
 /// Outputs the current wall clock time in millis at the desired resolution.
 #[block]

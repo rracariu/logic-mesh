@@ -16,6 +16,7 @@ use libhaystack::{
     val::{Bool, Number, Str, Value, kind::HaystackKind},
 };
 pub use props::{BlockInput, BlockOutput, BlockProps};
+use uuid::Uuid;
 
 /// Operational state a block is in.
 ///
@@ -91,6 +92,15 @@ pub trait Block: BlockConnect {
 pub trait Block: BlockConnect {
     #[allow(async_fn_in_trait)]
     async fn execute(&mut self);
+}
+
+/// Construct a block instance with a fixed id.
+///
+/// Implemented by the `BlockProps` derive. The registry uses it to
+/// instantiate runtime-registered blocks when a program prescribes the
+/// block ids.
+pub trait BlockConstruct: Sized {
+    fn with_uuid(uuid: Uuid) -> Self;
 }
 
 /// Converts the actual value to the expected type expected value.
@@ -191,14 +201,10 @@ pub fn convert_value_kind(
 pub(crate) mod test_utils;
 #[cfg(test)]
 mod test {
-    use uuid::Uuid;
 
-    use crate::base::{
-        block::{Block, BlockDesc, BlockProps, BlockState},
-        input::InputProps,
-    };
+    use crate::base::block::{Block, BlockProps, BlockState};
 
-    use super::test_utils::mock::{InputImpl, OutputImpl};
+    use crate::blocks::{InputImpl, OutputImpl, ReaderImpl, WriterImpl};
 
     use libhaystack::val::{Value, kind::HaystackKind};
 
@@ -223,7 +229,7 @@ mod test {
 
     #[test]
     fn test_block_props_declared_inputs() {
-        let test_block = &Test::new() as &dyn BlockProps<Reader = String, Writer = String>;
+        let test_block = &Test::new() as &dyn BlockProps<Reader = ReaderImpl, Writer = WriterImpl>;
 
         assert_eq!(test_block.desc().name, "Test");
         assert_eq!(test_block.desc().dis, "Test long name");
@@ -264,7 +270,7 @@ mod test {
 
     #[test]
     fn test_block_outputs() {
-        let test_block = &Test::new() as &dyn BlockProps<Reader = String, Writer = String>;
+        let test_block = &Test::new() as &dyn BlockProps<Reader = ReaderImpl, Writer = WriterImpl>;
 
         assert_eq!(test_block.outputs().len(), 1);
         assert_eq!(test_block.outputs()[0].desc().name, "out");

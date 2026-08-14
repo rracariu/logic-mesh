@@ -302,7 +302,7 @@ pub(crate) fn schedule_js_block(
     let block = JsBlock::new(desc.clone(), func, block_id);
     let id = *block.id();
 
-    engine.schedule(block);
+    engine.schedule(block)?;
 
     Ok(id)
 }

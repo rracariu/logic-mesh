@@ -130,7 +130,7 @@ impl Engine for SingleThreadedEngine {
     fn schedule<B: Block<Writer = Self::Writer, Reader = Self::Reader> + 'static>(
         &mut self,
         block: B,
-    ) {
+    ) -> Result<()> {
         let id = *block.id();
         let name = block.name().to_string();
         let library = block.desc().library.clone();
@@ -154,6 +154,7 @@ impl Engine for SingleThreadedEngine {
         let watchers = self.watchers.clone();
         self.local
             .spawn_local(block_actor_task(block, mailbox_rx, watchers));
+        Ok(())
     }
 
     fn schedule_program_blocks(&mut self, program: &Program) -> Result<()> {
@@ -334,8 +335,12 @@ impl SingleThreadedEngine {
         block_id: Option<Uuid>,
         lib: Option<&str>,
     ) -> Result<Uuid> {
-        let block_def =
-            get_block(block_name.as_str(), lib).ok_or_else(|| anyhow!("Block not found"))?;
+        let block_def = get_block(block_name.as_str(), lib).ok_or_else(|| {
+            anyhow!(
+                "Block '{block_name}' not found in library '{}'",
+                lib.unwrap_or("core")
+            )
+        })?;
         // schedule_block_on_engine spawns the actor task immediately (via
         // `schedule()`); it returns the assigned block id.
         schedule_block_on_engine(&block_def.desc, block_id, self)

@@ -77,6 +77,41 @@ pub(super) fn get_block_attributes(ast: &syn::DeriveInput) -> BTreeMap<String, S
 }
 
 ///
+/// Resolve the crate path used in the generated code.
+///
+/// Defaults to `::logic_mesh`; overridden with the provided escape hatch
+/// `#[logic_mesh(crate = "path")]` when the dependency is renamed.
+///
+pub(super) fn get_crate_path(ast: &syn::DeriveInput) -> syn::Path {
+    for attr in &ast.attrs {
+        if !attr.path().is_ident("logic_mesh") {
+            continue;
+        }
+
+        let mut path: Option<syn::Path> = None;
+        let result = attr.parse_nested_meta(|meta| {
+            if meta.path.is_ident("crate") {
+                let lit: syn::LitStr = meta.value()?.parse()?;
+                path = Some(lit.parse()?);
+                Ok(())
+            } else {
+                Err(meta.error("unsupported attribute; expected `crate = \"path\"`"))
+            }
+        });
+
+        if let Err(err) = result {
+            panic!("invalid #[logic_mesh(...)] attribute: {err}");
+        }
+
+        if let Some(path) = path {
+            return path;
+        }
+    }
+
+    syn::parse_quote!(::logic_mesh)
+}
+
+///
 /// Extract the attribute props for an input attribute
 ///
 /// These would be:
@@ -122,18 +157,18 @@ fn get_attribute_props(input_attr: &syn::Attribute, attrs: &mut BTreeMap<String,
     });
 }
 
+// Input/output fields are detected by the type name, matched exactly on
+// the last path segment so both bare `InputImpl` and qualified paths like
+// `logic_mesh::blocks::InputImpl` are recognized, while unrelated types
+// that merely share the prefix (e.g. `InputImplConfig`) are not.
 fn field_type_is(ty: &TypePath, field_type: &str) -> bool {
-    let it: String = match field_type {
+    let it = match field_type {
         "input" => "InputImpl",
         "output" => "OutputImpl",
         _ => panic!("Invalid field type."),
-    }
-    .into();
+    };
 
-    ty.path
-        .get_ident()
-        .filter(|id| id.to_string().starts_with::<&String>(&it))
-        .is_some()
+    ty.path.segments.last().is_some_and(|seg| seg.ident == it)
 }
 
 fn filed_attribute_is(attr: &Attribute, field_type: &str) -> bool {

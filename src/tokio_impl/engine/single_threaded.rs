@@ -119,9 +119,9 @@ mod tests {
             rt.block_on(handle)
         });
 
-        eng.schedule(add1);
-        eng.schedule(sine1);
-        eng.schedule(sine2);
+        eng.schedule(add1).unwrap();
+        eng.schedule(sine1).unwrap();
+        eng.schedule(sine2).unwrap();
 
         eng.run().await;
     }

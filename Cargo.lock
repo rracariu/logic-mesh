@@ -860,6 +860,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "logic-mesh-lib-renamed-test"
+version = "0.0.0"
+dependencies = [
+ "logic-mesh",
+ "tokio",
+]
+
+[[package]]
+name = "logic-mesh-lib-test"
+version = "0.0.0"
+dependencies = [
+ "logic-mesh",
+ "tokio",
+]
+
+[[package]]
 name = "logic_mesh_block_macro"
 version = "1.0.0"
 dependencies = [

@@ -5,9 +5,6 @@ use crate::{
     tokio_impl::{ReaderImpl, WriterImpl},
 };
 
-#[cfg(test)]
-pub mod mock;
-
 /// Writes the given values to the given inputs as if they had arrived from
 /// connected upstream sources. Each input is marked connected (so the block
 /// will treat it as a real input) and the value is pushed through the

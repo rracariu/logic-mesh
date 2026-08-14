@@ -122,15 +122,16 @@ impl crate::base::engine::Engine for MultiThreadedEngine {
     fn schedule<B: Block<Writer = Self::Writer, Reader = Self::Reader> + 'static>(
         &mut self,
         _block: B,
-    ) {
+    ) -> Result<()> {
         // The MT engine requires `Send` because the block crosses the
-        // worker-thread boundary. Use [`MultiThreadedEngine::schedule_send`]
-        // for the Send-bounded entry point; this trait method is here only
-        // to satisfy the `Engine` contract and panics if called.
-        panic!(
-            "MultiThreadedEngine::schedule (trait) requires `Send`; \
-             use the inherent `schedule_send` method instead"
-        );
+        // worker-thread boundary, but this trait signature cannot express
+        // that bound. Use [`MultiThreadedEngine::schedule_send`] for the
+        // Send-bounded entry point.
+        Err(anyhow!(
+            "MultiThreadedEngine cannot schedule through the `Engine` trait \
+             (requires `Send`); use the inherent `schedule_send` method or \
+             the `*_send` registry entry points instead"
+        ))
     }
 
     fn schedule_program_blocks(&mut self, program: &Program) -> Result<()> {
@@ -281,8 +282,12 @@ impl MultiThreadedEngine {
         block_id: Option<Uuid>,
         lib: Option<String>,
     ) -> Result<Uuid> {
-        let block_def = get_block(block_name.as_str(), lib.as_deref())
-            .ok_or_else(|| anyhow!("Block not found"))?;
+        let block_def = get_block(block_name.as_str(), lib.as_deref()).ok_or_else(|| {
+            anyhow!(
+                "Block '{block_name}' not found in library '{}'",
+                lib.as_deref().unwrap_or("core")
+            )
+        })?;
         schedule_block_on_engine_mt(&block_def.desc, block_id, self)
     }
 
@@ -785,7 +790,10 @@ impl MultiThreadedEngine {
                 let Some(block) = get_block(name.as_str(), lib.as_deref()) else {
                     return self.reply_to_sender(
                         sender_uuid,
-                        EngineMessage::EvaluateBlockRes(Err("Block not found".into())),
+                        EngineMessage::EvaluateBlockRes(Err(format!(
+                            "Block '{name}' not found in library '{}'",
+                            lib.as_deref().unwrap_or("core")
+                        ))),
                     );
                 };
                 let response = crate::tokio_impl::engine::eval_block(&block.desc, inputs).await;

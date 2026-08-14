@@ -16,6 +16,21 @@ use proc_macro::TokenStream;
 
 /// The `block` attribute macro
 /// This macro is used to derive the `Block` trait for a struct
+///
+/// The generated code references items via `::logic_mesh::...` paths by
+/// default. If the `logic-mesh` dependency is renamed, override the path
+/// with the `#[logic_mesh(crate = "path")]` attribute.
+///
+/// ```ignore
+/// #[block]
+/// #[derive(BlockProps, Debug)]
+/// #[logic_mesh(crate = "renamed_mesh")]
+/// struct MyBlock { ... }
+/// ```
+///
+/// Input and output fields are declared with the `InputImpl` and `OutputImpl`
+/// types, either imported (`use logic_mesh::blocks::{InputImpl, OutputImpl};`)
+/// or as fully qualified paths (`logic_mesh::blocks::InputImpl`).
 #[allow(clippy::let_and_return)]
 #[proc_macro_attribute]
 pub fn block(_args: TokenStream, input: TokenStream) -> TokenStream {
@@ -28,8 +43,15 @@ pub fn block(_args: TokenStream, input: TokenStream) -> TokenStream {
 
 /// The `block_props` attribute macro
 /// This macro is used to derive the `BlockProps` trait for a struct
+///
+/// See the [`block`] macro docs for the `InputImpl`/`OutputImpl` field type
+/// requirements and the `#[logic_mesh(crate = "path")]` override for renamed
+/// dependencies.
 #[allow(clippy::let_and_return)]
-#[proc_macro_derive(BlockProps, attributes(dis, library, category, input, output))]
+#[proc_macro_derive(
+    BlockProps,
+    attributes(dis, library, category, input, output, logic_mesh)
+)]
 pub fn block_props(input: TokenStream) -> TokenStream {
     let ast: syn::DeriveInput = syn::parse(input).unwrap();
 

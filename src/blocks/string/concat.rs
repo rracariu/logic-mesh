@@ -1,16 +1,14 @@
 // Copyright (c) 2022-2024, Radu Racariu.
 
-use uuid::Uuid;
-
 use crate::base::{
-    block::{Block, BlockDesc, BlockProps, BlockState},
-    input::{InputProps, input_reader::InputReader},
+    block::{Block, BlockProps},
+    input::input_reader::InputReader,
     output::Output,
 };
 
-use libhaystack::val::{Value, kind::HaystackKind};
+use libhaystack::val::Value;
 
-use crate::{blocks::InputImpl, blocks::OutputImpl};
+use crate::blocks::OutputImpl;
 
 /// Outputs the concatenated value of all the input strings.
 #[block]

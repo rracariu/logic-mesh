@@ -23,10 +23,14 @@ pub trait Engine {
 
     /// Schedule a block to be executed by this engine.
     /// This operation can be performed while the engine is running.
+    ///
+    /// Engines that cannot schedule through this trait — e.g. the
+    /// multi-threaded engine, which needs a `Send` bound this signature
+    /// cannot express — return an error instead.
     fn schedule<B: Block<Writer = Self::Writer, Reader = Self::Reader> + 'static>(
         &mut self,
         block: B,
-    );
+    ) -> Result<()>;
 
     /// Synchronously schedule the blocks and validate-and-queue the links
     /// from a [`Program`]. This is the pre-run setup half of program

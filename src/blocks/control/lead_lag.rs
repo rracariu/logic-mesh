@@ -1,15 +1,13 @@
 // Copyright (c) 2022-2026, Radu Racariu.
 
-use uuid::Uuid;
-
 use crate::base::{
-    block::{Block, BlockDesc, BlockProps, BlockState},
+    block::Block,
     input::{InputProps, input_reader::InputReader},
     output::Output,
 };
 use crate::blocks::utils::input_as_number;
 
-use libhaystack::val::{Bool, Value, kind::HaystackKind};
+use libhaystack::val::{Bool, Value};
 
 use crate::{blocks::InputImpl, blocks::OutputImpl};
 

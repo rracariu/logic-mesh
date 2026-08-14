@@ -71,7 +71,10 @@ pub(super) async fn dispatch_message(engine: &mut SingleThreadedEngine, msg: Mes
                 return reply_to_sender(
                     engine,
                     sender_uuid,
-                    EngineMessage::EvaluateBlockRes(Err("Block not found".into())),
+                    EngineMessage::EvaluateBlockRes(Err(format!(
+                        "Block '{name}' not found in library '{}'",
+                        lib.as_deref().unwrap_or("core")
+                    ))),
                 );
             };
 

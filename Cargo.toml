@@ -19,10 +19,12 @@ exclude = [
 	"build-wasm.sh",
 	".cargo/**",
 	"rust-toolchain.toml",
+	"tests_lib_usage/**",
+	"tests_lib_renamed/**",
 ]
 
 [workspace]
-members = ["block_macro"]
+members = ["block_macro", "tests_lib_usage", "tests_lib_renamed"]
 
 [features]
 default = []

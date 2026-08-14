@@ -2,18 +2,16 @@
 
 use std::time::Duration;
 
-use uuid::Uuid;
-
 use crate::base::output::props::OutputProps;
 use crate::base::{
-    block::{Block, BlockDesc, BlockProps, BlockState},
+    block::Block,
     input::{InputProps, input_reader::InputReader},
     output::Output,
 };
 use crate::blocks::utils::{get_sleep_dur, input_to_millis_or_default};
 use crate::tokio_impl::sleep::current_time_millis;
 
-use libhaystack::val::{Bool, Value, kind::HaystackKind};
+use libhaystack::val::{Bool, Value};
 
 use crate::{blocks::InputImpl, blocks::OutputImpl};
 
