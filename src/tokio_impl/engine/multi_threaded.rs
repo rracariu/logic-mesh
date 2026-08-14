@@ -1,5 +1,7 @@
 // Copyright (c) 2022-2026, Radu Racariu.
 
+//! Multi-threaded engine implementation.
+
 mod actor;
 pub mod engine;
 
