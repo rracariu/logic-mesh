@@ -1,7 +1,5 @@
 // Copyright (c) 2022-2023, Radu Racariu.
 
-use anyhow::Ok;
-
 use crate::{
     base::{
         block::{Block, BlockProps, BlockState},
@@ -36,8 +34,8 @@ impl Block for Min {
         if let (Some(Value::Number(a)), Some(Value::Number(b))) =
             (self.a.get_value(), self.b.get_value())
         {
-            let _ = convert_units(&[a.to_owned(), b.to_owned()])
-                .and_then(|parts| {
+            convert_units(&[a.to_owned(), b.to_owned()])
+                .map(|parts| {
                     if let [a, b] = &parts[..] {
                         let val = Number {
                             value: a.value.min(b.value),
@@ -45,11 +43,9 @@ impl Block for Min {
                         };
                         self.out.set(val.into());
                     }
-                    Ok(())
                 })
-                .or_else(|_| {
+                .unwrap_or_else(|_| {
                     self.set_state(BlockState::fault("Min: unit conversion failed"));
-                    Ok(())
                 });
         }
     }

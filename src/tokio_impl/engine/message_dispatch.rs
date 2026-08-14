@@ -8,7 +8,8 @@
 
 use crate::base::engine::messages::EngineMessage;
 
-use crate::blocks::registry::get_block;
+use crate::base::error::{RegistryError, parse_block_uuid};
+use crate::blocks::registry::{CORE_LIB, get_block};
 use crate::single_threaded::Messages;
 use crate::single_threaded::SingleThreadedEngine;
 use uuid::Uuid;
@@ -24,19 +25,15 @@ pub(super) async fn dispatch_message(engine: &mut SingleThreadedEngine, msg: Mes
                 block_name,
             );
 
-            let block_id = if let Some(uuid) = block_uuid {
-                match Uuid::parse_str(&uuid) {
-                    Ok(uuid) => Some(uuid),
-                    Err(_) => {
-                        return reply_to_sender(
-                            engine,
-                            sender_uuid,
-                            EngineMessage::AddBlockRes(Err("Invalid UUID".into())),
-                        );
-                    }
+            let block_id = match block_uuid.as_deref().map(parse_block_uuid).transpose() {
+                Ok(id) => id,
+                Err(err) => {
+                    return reply_to_sender(
+                        engine,
+                        sender_uuid,
+                        EngineMessage::AddBlockRes(Err(err.to_string())),
+                    );
                 }
-            } else {
-                None
             };
 
             let block_id = engine
@@ -58,7 +55,10 @@ pub(super) async fn dispatch_message(engine: &mut SingleThreadedEngine, msg: Mes
         }
 
         EngineMessage::InspectBlockReq(sender_uuid, block_uuid) => {
-            let response = engine.inspect_block(&block_uuid).await;
+            let response = engine
+                .inspect_block(&block_uuid)
+                .await
+                .map_err(|err| err.to_string());
             reply_to_sender(
                 engine,
                 sender_uuid,
@@ -68,13 +68,14 @@ pub(super) async fn dispatch_message(engine: &mut SingleThreadedEngine, msg: Mes
 
         EngineMessage::EvaluateBlockReq(sender_uuid, name, inputs, lib) => {
             let Some(block) = get_block(name.as_str(), lib.as_deref()) else {
+                let err = RegistryError::BlockNotFound {
+                    library: lib.as_deref().unwrap_or(CORE_LIB).to_string(),
+                    name,
+                };
                 return reply_to_sender(
                     engine,
                     sender_uuid,
-                    EngineMessage::EvaluateBlockRes(Err(format!(
-                        "Block '{name}' not found in library '{}'",
-                        lib.as_deref().unwrap_or("core")
-                    ))),
+                    EngineMessage::EvaluateBlockRes(Err(err.to_string())),
                 );
             };
 
@@ -88,7 +89,10 @@ pub(super) async fn dispatch_message(engine: &mut SingleThreadedEngine, msg: Mes
         }
 
         EngineMessage::WriteBlockOutputReq(sender_uuid, block_uuid, output_name, value) => {
-            let response = engine.write_output(&block_uuid, output_name, value).await;
+            let response = engine
+                .write_output(&block_uuid, output_name, value)
+                .await
+                .map_err(|err| err.to_string());
             reply_to_sender(
                 engine,
                 sender_uuid,
@@ -97,7 +101,10 @@ pub(super) async fn dispatch_message(engine: &mut SingleThreadedEngine, msg: Mes
         }
 
         EngineMessage::WriteBlockInputReq(sender_uuid, block_uuid, input_name, value) => {
-            let response = engine.write_input(&block_uuid, input_name, value).await;
+            let response = engine
+                .write_input(&block_uuid, input_name, value)
+                .await
+                .map_err(|err| err.to_string());
             reply_to_sender(
                 engine,
                 sender_uuid,

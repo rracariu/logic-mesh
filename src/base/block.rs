@@ -8,7 +8,7 @@ pub mod connect;
 pub mod desc;
 pub mod props;
 
-use anyhow::Result;
+use super::error::{Result, ValueError};
 pub use connect::BlockConnect;
 pub use desc::{BlockDesc, BlockPin, BlockStaticDesc};
 use libhaystack::{
@@ -112,7 +112,7 @@ pub trait BlockConstruct: Sized {
 /// # Returns
 /// The converted value if the conversion was successful.
 /// If the conversion was not successful, an error is returned.
-pub fn convert_value(expect: &Value, actual: Value) -> Result<Value> {
+pub fn convert_value(expect: &Value, actual: Value) -> Result<Value, ValueError> {
     let to_kind = HaystackKind::from(&actual);
     convert_value_kind(actual, HaystackKind::from(expect), to_kind)
 }
@@ -130,7 +130,7 @@ pub fn convert_value_kind(
     val: Value,
     expected: HaystackKind,
     actual: HaystackKind,
-) -> Result<Value> {
+) -> Result<Value, ValueError> {
     if expected == actual || actual == HaystackKind::Null {
         return Ok(val);
     }
@@ -138,12 +138,12 @@ pub fn convert_value_kind(
     match (expected, actual) {
         (HaystackKind::Bool, HaystackKind::Bool) => Ok(val),
         (HaystackKind::Bool, HaystackKind::Number) => {
-            let val = Number::try_from(&val).map_err(|err| anyhow::anyhow!(err))?;
+            let val = Number::try_from(&val).map_err(ValueError::Conversion)?;
 
             Ok((val.value != 0.0).into())
         }
         (HaystackKind::Bool, HaystackKind::Str) => {
-            let val = Str::try_from(&val).map_err(|err| anyhow::anyhow!(err))?;
+            let val = Str::try_from(&val).map_err(ValueError::Conversion)?;
 
             if val.value == "true" || val.value == "false" {
                 return Ok(val.value.parse::<bool>()?.into());
@@ -153,27 +153,30 @@ pub fn convert_value_kind(
             match num {
                 Value::Number(Number { value, unit: _ }) => Ok((value != 0.0).into()),
                 Value::Bool(Bool { value }) => Ok(value.into()),
-                _ => Err(anyhow::anyhow!("Expected a bool value, but got {:?}", val)),
+                _ => Err(ValueError::UnexpectedValue {
+                    expected: HaystackKind::Bool,
+                    actual: Box::new(Value::Str(val)),
+                }),
             }
         }
 
         (HaystackKind::Number, HaystackKind::Number) => Ok(val),
         (HaystackKind::Number, HaystackKind::Bool) => {
-            let val = Bool::try_from(&val).map_err(|err| anyhow::anyhow!(err))?;
+            let val = Bool::try_from(&val).map_err(ValueError::Conversion)?;
 
             Ok((if val.value { 1 } else { 0 }).into())
         }
         (HaystackKind::Number, HaystackKind::Str) => {
-            let val = Str::try_from(&val).map_err(|err| anyhow::anyhow!(err))?;
+            let val = Str::try_from(&val).map_err(ValueError::Conversion)?;
 
             let num = zinc::decode::from_str(&val.value)?;
             if num.is_number() {
                 Ok(num)
             } else {
-                Err(anyhow::anyhow!(
-                    "Expected a number value, but got {:?}",
-                    val
-                ))
+                Err(ValueError::UnexpectedValue {
+                    expected: HaystackKind::Number,
+                    actual: Box::new(Value::Str(val)),
+                })
             }
         }
 
@@ -189,11 +192,7 @@ pub fn convert_value_kind(
             Ok(str.as_str().into())
         }
 
-        _ => Err(anyhow::anyhow!(
-            "Cannot convert {:?} to {:?}",
-            actual,
-            expected
-        )),
+        _ => Err(ValueError::KindConversion { expected, actual }),
     }
 }
 

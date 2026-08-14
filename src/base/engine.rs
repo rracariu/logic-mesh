@@ -4,8 +4,7 @@
 //! Defines the block execution engine
 //!
 
-use anyhow::Result;
-
+use super::error::Result;
 use super::{block::Block, program::Program};
 
 pub mod messages;

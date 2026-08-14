@@ -2,7 +2,6 @@
 
 use std::collections::{BTreeMap, HashMap};
 
-use anyhow::Result;
 use libhaystack::val::Value;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;

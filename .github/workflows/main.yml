@@ -115,3 +115,31 @@ jobs:
         with:
           command: clippy
           args: ${{ matrix.features && format('--features {0}', matrix.features) || '' }} -- -D warnings
+
+  clippy-wasm:
+    name: Clippy (wasm32)
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        rust:
+          - stable
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v4
+
+      - name: Install toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: ${{ matrix.rust }}
+          target: wasm32-unknown-unknown
+          components: clippy
+          override: true
+
+      # Library only, no `--all-targets`: that would pull in the
+      # dev-dependencies of the native `tui_runner` example (crossterm),
+      # which do not build for wasm32.
+      - name: Run cargo clippy
+        uses: actions-rs/cargo@v1
+        with:
+          command: clippy
+          args: --target wasm32-unknown-unknown -- -D warnings

@@ -395,7 +395,7 @@ impl EngineCommand {
                     }
                 }
             },
-            Err(_) => return Err("Failed to send message".to_string()),
+            Err(_) => Err("Failed to send message".to_string()),
         }
     }
 
