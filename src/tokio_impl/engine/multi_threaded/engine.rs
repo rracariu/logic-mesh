@@ -80,21 +80,27 @@ pub struct BlockHandle {
 }
 
 impl BlockHandle {
+    /// Returns the block's unique id.
     pub fn id(&self) -> &Uuid {
         &self.id
     }
+    /// Returns the block's type name.
     pub fn name(&self) -> &str {
         &self.name
     }
+    /// Returns the block's library name.
     pub fn library(&self) -> &str {
         &self.library
     }
+    /// Returns the block's descriptor.
     pub fn desc(&self) -> &BlockDesc {
         &self.desc
     }
+    /// Returns the user-supplied display label, if any.
     pub fn label(&self) -> Option<&str> {
         self.label.as_deref()
     }
+    /// Returns the UI position, if any.
     pub fn position(&self) -> Option<Position> {
         self.position
     }
@@ -269,6 +275,7 @@ impl MultiThreadedEngine {
         self.handles.values().collect()
     }
 
+    /// Returns the handle for a specific block, if scheduled.
     pub fn block_handle(&self, id: &Uuid) -> Option<&BlockHandle> {
         self.handles.get(id)
     }
@@ -290,6 +297,7 @@ impl MultiThreadedEngine {
             .ok_or(EngineError::BlockInstanceNotFound { id: *id })
     }
 
+    /// Adds a block to the engine by name and schedules it.
     pub fn add_block(
         &mut self,
         block_name: String,
@@ -362,12 +370,14 @@ impl MultiThreadedEngine {
         })
     }
 
+    /// Inspects the current state of a block.
     pub async fn inspect_block(&self, id: &Uuid) -> Result<BlockDefinition, EngineError> {
         let mailbox = self.mailbox_or_err(id)?;
 
         mailbox_request(mailbox, *id, |reply| BlockMailboxCmd::Inspect { reply }).await
     }
 
+    /// Writes a value to a block's input pin.
     pub async fn write_input(
         &self,
         id: &Uuid,
@@ -385,6 +395,7 @@ impl MultiThreadedEngine {
         .map_err(EngineError::BlockRequestRejected)
     }
 
+    /// Writes a value to a block's output pin.
     pub async fn write_output(
         &self,
         id: &Uuid,
@@ -402,6 +413,7 @@ impl MultiThreadedEngine {
         .map_err(EngineError::BlockRequestRejected)
     }
 
+    /// Connects two blocks via a link.
     pub async fn connect_blocks(&self, link_data: &LinkData) -> Result<LinkData> {
         let source_id = parse_block_uuid(&link_data.source_block_uuid)?;
         let target_id = parse_block_uuid(&link_data.target_block_uuid)?;
@@ -529,6 +541,7 @@ impl MultiThreadedEngine {
         Ok(())
     }
 
+    /// Removes a block and all its links from the engine.
     pub async fn remove_block(&mut self, block_id: &Uuid) -> Result<Uuid> {
         let target_mb = self.mailbox_or_err(block_id)?.clone();
 
@@ -677,6 +690,7 @@ impl MultiThreadedEngine {
         Ok(())
     }
 
+    /// Disconnects a link by its UUID.
     pub async fn disconnect_link_by_id(&self, link_id: &Uuid) -> Result<bool> {
         for handle in self.handles.values() {
             let (reply, response) = oneshot::channel();

@@ -74,21 +74,27 @@ pub struct BlockHandle {
 }
 
 impl BlockHandle {
+    /// Returns the block's unique id.
     pub fn id(&self) -> &Uuid {
         &self.id
     }
+    /// Returns the block's type name.
     pub fn name(&self) -> &str {
         &self.name
     }
+    /// Returns the block's library name.
     pub fn library(&self) -> &str {
         &self.library
     }
+    /// Returns the block's descriptor.
     pub fn desc(&self) -> &BlockDesc {
         &self.desc
     }
+    /// Returns the user-supplied display label, if any.
     pub fn label(&self) -> Option<&str> {
         self.label.as_deref()
     }
+    /// Returns the UI position, if any.
     pub fn position(&self) -> Option<Position> {
         self.position
     }
@@ -241,6 +247,7 @@ impl Engine for SingleThreadedEngine {
 }
 
 impl SingleThreadedEngine {
+    /// Creates a new single-threaded engine.
     pub fn new() -> Self {
         let (sender, receiver) = mpsc::channel(32);
         Self {
@@ -260,6 +267,7 @@ impl SingleThreadedEngine {
         self.handles.values().collect()
     }
 
+    /// Returns the handle for a specific block, if scheduled.
     pub fn block_handle(&self, id: &Uuid) -> Option<&BlockHandle> {
         self.handles.get(id)
     }

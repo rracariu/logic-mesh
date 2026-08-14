@@ -11,7 +11,9 @@ use crate::base::{
 /// Block field properties, inputs or output
 #[derive(Default, Clone, Serialize, Deserialize)]
 pub struct JsBlockPin {
+    /// Pin name.
     pub name: String,
+    /// Haystack kind as a string.
     pub kind: String,
 }
 
@@ -19,15 +21,25 @@ pub struct JsBlockPin {
 #[derive(Default, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct JsBlockDesc {
+    /// Block type name.
     pub name: String,
+    /// Display name.
     pub dis: String,
+    /// Library the block belongs to.
     pub lib: String,
+    /// Semantic version.
     pub ver: String,
+    /// Functional category.
     pub category: String,
+    /// Documentation string.
     pub doc: String,
+    /// Implementation kind (native or external).
     pub implementation: String,
+    /// Input pin descriptors.
     pub inputs: Vec<JsBlockPin>,
+    /// Output pin descriptors.
     pub outputs: Vec<JsBlockPin>,
+    /// Optional run condition expression.
     pub run_condition: Option<String>,
 }
 
@@ -104,7 +116,9 @@ impl From<BlockDesc> for JsBlockDesc {
 #[derive(Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct JsWatchNotification {
+    /// Block UUID as a string.
     pub id: String,
+    /// Pin changes since the last notification.
     pub changes: Vec<JsWatchChange>,
     /// Block's operational state at the time of the notification
     /// (`running | fault | disabled | terminated`).
@@ -116,8 +130,11 @@ pub struct JsWatchNotification {
 
 #[derive(Default, Serialize, Deserialize)]
 pub struct JsWatchChange {
+    /// Pin name that changed.
     pub name: String,
+    /// `"input"` or `"output"`.
     pub source: String,
+    /// New pin value.
     pub value: Value,
 }
 

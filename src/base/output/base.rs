@@ -14,8 +14,11 @@ use super::{OutputProps, props::OutDesc};
 #[derive(Debug)]
 pub struct BaseOutput<L: Link> {
     desc: OutDesc,
+    /// Current output value.
     pub value: Value,
+    /// Downstream links attached to this output.
     pub links: Vec<L>,
+    /// UUID of the block that owns this output.
     pub block_id: Uuid,
     /// Status to pair with this output's value when it's emitted on the
     /// watch channel. Managed by the actor task: set to `Fault` while the

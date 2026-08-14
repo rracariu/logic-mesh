@@ -15,9 +15,11 @@ use crate::{
     tokio_impl::{PinPayload, ReaderImpl, WriterImpl},
 };
 
+/// Concrete input type backed by tokio watch channels.
 pub type InputImpl = BaseInput<ReaderImpl, WriterImpl>;
 
 impl InputImpl {
+    /// Creates a new input with a fresh watch channel.
     pub fn new(name: &str, kind: HaystackKind, block_id: Uuid) -> Self {
         // Watch is a coalescing 1-slot channel: producers always succeed and
         // overwrite; consumers always see the latest value. The seed

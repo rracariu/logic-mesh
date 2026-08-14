@@ -56,7 +56,9 @@ pub trait BlockStaticDesc: BlockProps {
 /// A block pin, either an input or an output.
 #[derive(Default, Debug, Clone, PartialEq)]
 pub struct BlockPin {
+    /// Pin name.
     pub name: String,
+    /// Haystack value kind accepted or produced by this pin.
     pub kind: HaystackKind,
 }
 

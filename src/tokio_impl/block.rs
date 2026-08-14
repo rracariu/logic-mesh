@@ -12,7 +12,9 @@ use crate::base::input::{InputProps, input_reader::InputReader};
 use crate::blocks::InputImpl;
 use crate::blocks::utils::get_sleep_dur;
 
+/// Concrete reader type extracted from [`InputImpl`].
 pub type ReaderImpl = <InputImpl as InputProps>::Reader;
+/// Concrete writer type extracted from [`InputImpl`].
 pub type WriterImpl = <InputImpl as InputProps>::Writer;
 
 impl<B: Block> InputReader for B {

@@ -44,6 +44,7 @@ impl<Tx: Clone> Link for BaseLink<Tx> {
 }
 
 impl<Tx> BaseLink<Tx> {
+    /// Creates a new disconnected link targeting the given block and input.
     pub fn new(target_block_id: Uuid, target_input: String) -> Self {
         Self {
             id: Uuid::new_v4(),

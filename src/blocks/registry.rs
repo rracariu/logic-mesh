@@ -31,7 +31,9 @@ type BlockRegistry = Mutex<MapType>;
 /// A block registration entry in the registry.
 #[derive(Debug, Clone)]
 pub struct BlockEntry {
+    /// Block descriptor (name, library, pins, etc.).
     pub desc: BlockDesc,
+    /// Factory function that creates a new instance of this block.
     pub make: Option<fn() -> Box<DynBlockProps>>,
     pub(crate) make_erased: Option<fn(Option<Uuid>) -> RegisteredBlock>,
 }

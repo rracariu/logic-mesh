@@ -21,11 +21,17 @@ use serde::{Deserialize, Serialize};
 /// `data::ProgramMeta` type was part of the public surface.
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct ProgramMeta {
+    /// Program name.
     pub name: String,
+    /// Libraries referenced by the program.
     pub libs: Vec<String>,
+    /// Semantic version string.
     pub ver: Option<String>,
+    /// Human-readable description.
     pub description: Option<String>,
+    /// Program author.
     pub author: Option<String>,
+    /// SPDX license identifier.
     pub license: Option<String>,
 }
 
@@ -36,10 +42,15 @@ pub struct ProgramMeta {
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LinkData {
+    /// Optional link UUID (omitted for auto-generated IDs).
     pub id: Option<String>,
+    /// UUID of the source block.
     pub source_block_uuid: String,
+    /// UUID of the target block.
     pub target_block_uuid: String,
+    /// Output pin name on the source block.
     pub source_block_pin_name: String,
+    /// Input pin name on the target block.
     pub target_block_pin_name: String,
 }
 
@@ -48,11 +59,17 @@ pub struct LinkData {
 /// load/save round-trip use [`Program`] / [`ProgramBlock`] instead.
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct BlockData {
+    /// Block UUID.
     pub id: String,
+    /// Block type name.
     pub name: String,
+    /// Display name.
     pub dis: String,
+    /// Library the block belongs to.
     pub lib: String,
+    /// Functional category.
     pub category: String,
+    /// Semantic version.
     pub ver: String,
 }
 
@@ -61,7 +78,9 @@ pub struct BlockData {
 /// itself never reads these — purely passthrough.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct Position {
+    /// Horizontal coordinate.
     pub x: f64,
+    /// Vertical coordinate.
     pub y: f64,
 }
 
@@ -72,7 +91,9 @@ pub struct Position {
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PinValue {
+    /// The pin's current value.
     pub value: Value,
+    /// Whether the pin is currently wired to another block.
     #[serde(default)]
     pub is_connected: bool,
 }
@@ -109,8 +130,10 @@ pub struct ProgramBlock {
 /// JSON without reassembly.
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct Program {
+    /// Program name.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
+    /// Human-readable description.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
     /// Blocks keyed by their UUID string.
