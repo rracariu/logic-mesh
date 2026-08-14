@@ -1,5 +1,7 @@
 // Copyright (c) 2022-2026, Radu Racariu.
 
+//! Rate limiter block.
+
 use crate::base::output::props::OutputProps;
 use crate::base::{block::Block, input::input_reader::InputReader, output::Output};
 use crate::blocks::utils::{input_as_float_or_default, input_to_millis_or_default};

@@ -1,5 +1,7 @@
 // Copyright (c) 2022-2026, Radu Racariu.
 
+//! Change-of-value filter block.
+
 use crate::base::{block::Block, input::input_reader::InputReader, output::Output};
 use crate::blocks::utils::{input_as_number, input_as_number_matching};
 

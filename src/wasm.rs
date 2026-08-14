@@ -1,5 +1,7 @@
 // Copyright (c) 2022-2023, Radu Racariu.
 
+//! WebAssembly bindings.
+
 pub mod engine;
 pub mod engine_command;
 pub mod js_block;

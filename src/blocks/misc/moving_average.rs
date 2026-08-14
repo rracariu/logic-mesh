@@ -1,5 +1,7 @@
 // Copyright (c) 2022-2026, Radu Racariu.
 
+//! Moving average block.
+
 use std::collections::VecDeque;
 use std::time::Duration;
 

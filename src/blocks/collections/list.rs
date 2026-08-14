@@ -1,5 +1,7 @@
 // Copyright (c) 2022-2023, Radu Racariu.
 
+//! List builder block.
+
 use crate::base::{
     block::{Block, BlockProps},
     input::input_reader::InputReader,

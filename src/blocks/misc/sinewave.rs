@@ -1,5 +1,7 @@
 // Copyright (c) 2022-2023, Radu Racariu.
 
+//! Sine wave generator block.
+
 use std::time::Duration;
 
 use crate::base::output::props::OutputProps;

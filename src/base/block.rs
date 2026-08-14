@@ -31,7 +31,10 @@ pub enum BlockState {
     /// proximate cause (upstream fault, type conversion failure,
     /// block-specific computation failure). Downstream blocks that drain
     /// a Fault-status value transition to Fault themselves.
-    Fault { reason: String },
+    Fault {
+        /// The proximate cause of the fault.
+        reason: String,
+    },
     /// Block exists but is intentionally not executing. Phase 1 doesn't
     /// have a path that sets this; reserved for explicit user disable.
     Disabled,
@@ -84,6 +87,7 @@ impl BlockState {
 /// `!Send` — can still implement the trait.
 #[cfg(not(target_arch = "wasm32"))]
 pub trait Block: BlockConnect {
+    /// Run one cycle of this block's dataflow logic.
     fn execute(&mut self) -> impl std::future::Future<Output = ()> + Send;
 }
 
@@ -99,6 +103,7 @@ pub trait Block: BlockConnect {
 /// instantiate runtime-registered blocks when a program prescribes the
 /// block ids.
 pub trait BlockConstruct: Sized {
+    /// Creates a new block with the given UUID.
     fn with_uuid(uuid: Uuid) -> Self;
 }
 

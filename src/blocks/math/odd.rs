@@ -1,5 +1,7 @@
 // Copyright (c) 2022-2023, Radu Racariu.
 
+//! Odd number test block.
+
 use crate::base::{
     block::Block,
     input::{InputProps, input_reader::InputReader},

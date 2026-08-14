@@ -1,5 +1,7 @@
 // Copyright (c) 2022-2024, Radu Racariu.
 
+//! Bitwise AND block.
+
 use crate::base::block::Block;
 
 use crate::{blocks::InputImpl, blocks::OutputImpl};

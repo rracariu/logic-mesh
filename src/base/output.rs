@@ -15,6 +15,7 @@ pub use props::OutputProps;
 
 /// The output trait.
 pub trait Output: OutputProps {
+    /// The transmission type used by this output's links.
     type Writer: Clone;
 
     /// Adds a link to this output.

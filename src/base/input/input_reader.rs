@@ -1,5 +1,7 @@
 // Copyright (c) 2022-2023, Radu Racariu.
 
+//! Input reader trait.
+
 use crate::base::block::Block;
 use std::time::Duration;
 

@@ -1,5 +1,7 @@
 // Copyright (c) 2022-2026, Radu Racariu.
 
+//! Sunrise/sunset block.
+
 use std::time::Duration;
 
 use crate::base::{block::Block, input::input_reader::InputReader, output::Output};
