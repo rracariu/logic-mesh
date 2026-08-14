@@ -34,9 +34,9 @@ pub struct BaseInput<Reader, Writer> {
     pub links: Vec<BaseLink<Writer>>,
 }
 
-/// Implements the `InputProps` trait for `BaseInput`.
+/// Implements the [`InputProps`] trait for [`BaseInput`].
 ///
-/// `Writer: Send` is required so the link list can return
+/// `Writer:` [`Send`] is required so the link list can return
 /// `Vec<&(dyn Link + Send)>` — see the [`InputProps::links`] doc.
 impl<Reader, Writer: Clone + Send> InputProps for BaseInput<Reader, Writer> {
     type Reader = Reader;

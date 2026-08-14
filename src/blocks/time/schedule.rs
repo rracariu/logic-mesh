@@ -118,7 +118,7 @@ fn str_input(input: &InputImpl) -> Option<&str> {
     }
 }
 
-/// Parse "HH:MM" (24h) to minutes-since-midnight. Returns `None` on bad input.
+/// Parse "HH:MM" (24h) to minutes-since-midnight. Returns [`None`] on bad input.
 fn parse_hhmm(s: &str) -> Option<u32> {
     let (h, m) = s.split_once(':')?;
     let h: u32 = h.trim().parse().ok()?;

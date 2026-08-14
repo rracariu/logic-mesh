@@ -3,12 +3,12 @@
 //! Per-block actor task for the multi-threaded engine.
 //!
 //! Same shape as the single-threaded variant: the actor task **owns the
-//! block by value** and `tokio::select!`s between `block.execute()` and a
+//! block by value** and [`tokio::select!`]s between `block.execute()` and a
 //! per-block mailbox. The MT-specific differences are:
 //!
 //! - The block is sent across thread boundaries (worker thread) once, then
-//!   stays put. `B: Send` is required at scheduling time, but the actor
-//!   future itself is `!Send` (runs on the worker's `LocalSet`).
+//!   stays put. `B: `[`Send`] is required at scheduling time, but the actor
+//!   future itself is `!Send` (runs on the worker's [`LocalSet`](tokio::task::LocalSet)).
 //! - Watchers are stored as `Arc<RwLock<...>>` (cross-worker visibility),
 //!   so the change-of-value check is async.
 

@@ -2,9 +2,10 @@
 
 //! Engine-message dispatcher.
 //!
-//! Each `EngineMessage` arriving on the engine's external channel is
+//! Each [`EngineMessage`] arriving on the engine's external channel is
 //! translated into one (or more) per-block mailbox round-trips against the
-//! actor tasks owned by `SingleThreadedEngine`.
+//! actor tasks owned by
+//! [`SingleThreadedEngine`](super::single_threaded::engine::SingleThreadedEngine).
 
 use crate::base::engine::messages::EngineMessage;
 

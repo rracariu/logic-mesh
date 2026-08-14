@@ -9,10 +9,10 @@ use crate::base::{input::Input, link::Link, output::Output};
 use super::{BlockState, desc::BlockDesc};
 
 /// Trait-alias shorthand for "an [`Input`] with reader/writer types
-/// pinned to `R` and `W`". Lets `BlockProps` return-position types stay
+/// pinned to `R` and `W`". Lets [`BlockProps`] return-position types stay
 /// readable instead of repeating
 /// `Input<Reader = Self::Reader, Writer = Self::Writer>` everywhere.
-/// Auto-implemented for any matching `Input`; `?Sized` so it works in
+/// Auto-implemented for any matching [`Input`]; [`?Sized`](Sized) so it works in
 /// trait-object positions.
 pub trait BlockInput<R, W: Clone>: Input<Reader = R, Writer = W> {}
 impl<R, W: Clone, T: ?Sized + Input<Reader = R, Writer = W>> BlockInput<R, W> for T {}
@@ -24,11 +24,13 @@ impl<W: Clone, T: ?Sized + Output<Writer = W>> BlockOutput<W> for T {}
 
 /// Block properties that are common to all blocks.
 ///
-/// Trait-object returns carry a `+ Send` bound so they can be held
+/// Trait-object returns carry a `+` [`Send`] bound so they can be held
 /// across `.await` points in actor futures running on tokio's
-/// multi-threaded runtime (see [`crate::tokio_impl::engine::multi_threaded`]).
-/// Concrete impls in this crate (`BaseInput`, `BaseOutput`, the
-/// mocks) are already `Send`, so the bound is satisfied transparently.
+/// multi-threaded runtime.
+/// Concrete impls in this crate
+/// ([`BaseInput`](crate::base::input::BaseInput),
+/// [`BaseOutput`](crate::base::output::BaseOutput), the mocks) are
+/// already [`Send`], so the bound is satisfied transparently.
 pub trait BlockProps {
     /// The block's read type, used to read from the block's inputs.
     type Reader;

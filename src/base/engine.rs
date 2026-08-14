@@ -20,7 +20,7 @@ pub trait Engine {
     /// Schedules a block to be executed by this engine.
     ///
     /// Engines that cannot schedule through this trait — e.g. the
-    /// multi-threaded engine, which needs a `Send` bound this signature
+    /// multi-threaded engine, which needs a [`Send`] bound this signature
     /// cannot express — return an error instead.
     fn schedule<B: Block<Writer = Self::Writer, Reader = Self::Reader> + 'static>(
         &mut self,

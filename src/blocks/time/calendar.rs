@@ -21,7 +21,7 @@ use crate::{blocks::InputImpl, blocks::OutputImpl};
 /// or semicolons (mix freely). `tzOffset` accepts any time unit
 /// (e.g. `-5h`, `60min`); a bare number is interpreted as minutes.
 ///
-/// Compose with [`Schedule`] (e.g. `schedule AND NOT calendar`) to
+/// Compose with [`Schedule`](super::schedule::Schedule) (e.g. `schedule AND NOT calendar`) to
 /// implement holiday overrides.
 #[block]
 #[derive(BlockProps, Debug)]

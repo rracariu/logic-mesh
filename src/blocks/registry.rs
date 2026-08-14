@@ -39,8 +39,8 @@ pub struct BlockEntry {
 }
 
 /// Object-safe view over [`Block`] so runtime-registered blocks can be
-/// scheduled and evaluated without static dispatch. `Block::execute`
-/// returns an opaque future, which keeps `Block` itself from being a
+/// scheduled and evaluated without static dispatch. [`Block::execute`](Block::execute)
+/// returns an opaque future, which keeps [`Block`] itself from being a
 /// trait object; this trait boxes the future instead.
 #[cfg(not(target_arch = "wasm32"))]
 trait ErasedBlock: BlockProps<Reader = ReaderImpl, Writer = WriterImpl> + Send + Sync {
@@ -180,7 +180,7 @@ macro_rules! register_blocks {
 		///
 		/// # Arguments
 		/// - name: The name of the block to schedule
-		/// - lib: The library the block belongs to. `None` searches all
+		/// - lib: The library the block belongs to. [`None`] searches all
 		///   libraries and errors if the name is ambiguous across them.
 		/// - eng: The engine to schedule the block on
 		/// # Returns
@@ -227,7 +227,7 @@ macro_rules! register_blocks {
 		}
 
 		/// Schedule a block by name on a multi-threaded engine.
-		/// The block must be `Send`.
+		/// The block must be [`Send`].
 		#[cfg(feature = "multi-threaded")]
 		#[cfg(not(target_arch = "wasm32"))]
 		pub fn schedule_block_send(name: &str, lib: Option<&str>, eng: &mut $crate::tokio_impl::engine::multi_threaded::MultiThreadedEngine) -> Result<uuid::Uuid> {
@@ -271,7 +271,7 @@ macro_rules! register_blocks {
 		///
 		/// # Arguments
 		/// - name: The name of the block to evaluate
-		/// - lib: The library the block belongs to. `None` searches all
+		/// - lib: The library the block belongs to. [`None`] searches all
 		///   libraries and errors if the name is ambiguous across them.
 		/// - inputs: The input values to the block
 		///
@@ -360,7 +360,7 @@ pub fn register_block_desc(desc: &BlockDesc) -> Result<(), RegistryError> {
 }
 
 /// Bounds a block type must meet to be registered at runtime. All
-/// macro-generated blocks satisfy this. `Send + Sync` (native only) lets
+/// macro-generated blocks satisfy this. [`Send`] + [`Sync`] (native only) lets
 /// registered blocks be scheduled on the multi-threaded engine.
 #[cfg(not(target_arch = "wasm32"))]
 pub trait RegisterableBlock:

@@ -3,9 +3,10 @@
 //! Per-block actor task.
 //!
 //! Each scheduled block lives in a task spawned via [`block_actor_task`].
-//! The task **owns the block by value** — there is no `Rc`, no `UnsafeCell`,
-//! and no aliasing. The task loop interleaves `block.execute()` with mailbox
-//! handling via `tokio::select!`; when a mailbox command arrives, the
+//! The task **owns the block by value** — there is no
+//! [`Rc`](std::rc::Rc), no [`UnsafeCell`](std::cell::UnsafeCell), and no
+//! aliasing. The task loop interleaves `block.execute()` with mailbox
+//! handling via [`tokio::select!`]; when a mailbox command arrives, the
 //! in-flight execute future is dropped (cancellation-safe — see the module
 //! docstring) and the command is handled before a fresh `execute()` is
 //! started.
@@ -92,7 +93,8 @@ pub(super) async fn block_actor_task<B>(
 
 /// Push status updates to every output when the block's state changes
 /// between Fault and not-Fault. Recovery (Fault → Running) also re-emits
-/// `Ok` so consumers see the recovery even if the value didn't change.
+/// [`Status::Ok`](crate::base::Status::Ok) so consumers see the recovery
+/// even if the value didn't change.
 fn propagate_status<B>(current: &BlockState, previous: &BlockState, block: &mut B)
 where
     B: EngineBlock + 'static,
@@ -140,8 +142,8 @@ where
 }
 
 /// Detect changes on the block's pins and/or state relative to the
-/// previously-emitted snapshot and dispatch a `WatchMessage` to every
-/// subscribed watcher. The current `BlockState` rides on every emitted
+/// previously-emitted snapshot and dispatch a [`WatchMessage`] to every
+/// subscribed watcher. The current [`BlockState`] rides on every emitted
 /// message so the UI can render Fault state alongside the pin updates.
 fn change_of_value_check<B: Block + 'static>(
     notification_channels: &WatchersHandle,

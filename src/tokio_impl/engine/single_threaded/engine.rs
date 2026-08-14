@@ -54,14 +54,15 @@ pub struct BlockHandle {
     library: String,
     /// Owned clone of the block's descriptor.
     ///
-    /// We clone instead of borrowing `&'static BlockDesc` because for
+    /// We clone instead of borrowing `&'static` [`BlockDesc`] because for
     /// JS blocks the descriptor lives inside the block instance — and
     /// the instance gets moved into its actor task at schedule time,
     /// invalidating any borrowed pointer. Native (Rust) blocks back
-    /// their descriptor with a `LazyLock<BlockDesc>` so a `&'static`
-    /// would be sound for them, but we use a single uniform owned shape
-    /// to avoid an unsafe trait split. The clone happens once per
-    /// block at schedule time.
+    /// their descriptor with a
+    /// [`LazyLock`](std::sync::LazyLock)`<`[`BlockDesc`]`>` so a
+    /// `&'static` would be sound for them, but we use a single uniform
+    /// owned shape to avoid an unsafe trait split. The clone happens
+    /// once per block at schedule time.
     desc: BlockDesc,
     mailbox: mpsc::Sender<BlockMailboxCmd>,
     /// UI display label. Pure passthrough metadata — the engine never
@@ -102,7 +103,8 @@ impl BlockHandle {
 
 /// Single-threaded execution environment for blocks.
 pub struct SingleThreadedEngine {
-    /// LocalSet that hosts every per-block actor task. Wrapped in `Rc` so
+    /// [`LocalSet`](tokio::task::LocalSet) that hosts every per-block actor
+    /// task. Wrapped in [`Rc`](std::rc::Rc) so
     /// `run()` can clone a handle and avoid double-borrowing `self` when it
     /// needs to drive the local set while also dispatching engine messages.
     local: Rc<LocalSet>,
@@ -679,12 +681,12 @@ impl SingleThreadedEngine {
     /// Atomically load a full [`Program`]: schedule every block, wire
     /// every link, push initial input/output values, and store UI
     /// metadata. Idempotent re-entry (engine should be empty or the
-    /// caller should reset it first via `Reset`).
+    /// caller should reset it first via [`Reset`](EngineMessage::Reset)).
     ///
     /// Must be called from within the engine `run()` context (the actor
     /// tasks need to be live to handle the WriteInput/Output mailbox
     /// cmds). When invoked through the engine message channel
-    /// (`LoadProgramReq`), this is automatic.
+    /// ([`LoadProgramReq`](EngineMessage::LoadProgramReq)), this is automatic.
     pub(crate) async fn load_program(&mut self, program: Program) -> Result<()> {
         // Sync: schedule blocks + queue links. After this the per-block
         // actor tasks have been spawned and the link wiring is queued

@@ -9,11 +9,11 @@
 //! [`Send`] by construction (trait-method returns carry `+ Send`; see
 //! [`crate::base::block::BlockProps`]).
 //!
-//! Shares the per-block mailbox protocol ([`super::super::block_mailbox`])
+//! Shares the per-block mailbox protocol (`block_mailbox`)
 //! with the single-threaded engine, so the actor task implementation is
 //! near-identical — the only MT-specific bits are watchers
 //! (`Arc<RwLock<...>>`) and the cross-thread mailbox semantics, both of
-//! which already work over `tokio::spawn`.
+//! which already work over [`tokio::spawn`].
 //!
 //! ## Runtime requirement
 //!
@@ -236,14 +236,14 @@ impl MultiThreadedEngine {
         }
     }
 
-    /// Schedule a block on the engine. The block must be `Send + 'static`
+    /// Schedule a block on the engine. The block must be [`Send`] `+ 'static`
     /// because the actor task is handed to [`tokio::spawn`], where the
     /// runtime is free to migrate it between worker threads.
     ///
     /// Must be called from within a tokio multi-thread runtime context
     /// (`#[tokio::main(flavor = "multi_thread")]`, `Runtime::block_on`,
     /// or an already-spawned task on such a runtime). Calling this
-    /// outside a runtime panics — that's a `tokio::spawn` invariant.
+    /// outside a runtime panics — that's a [`tokio::spawn`] invariant.
     pub fn schedule_send<B>(&mut self, block: B)
     where
         B: MtBlock + 'static,
@@ -590,7 +590,8 @@ impl MultiThreadedEngine {
         Ok(*block_id)
     }
 
-    /// MT mirror of [`super::super::single_threaded::engine::SingleThreadedEngine::save_program`].
+    /// MT mirror of
+    /// [`SingleThreadedEngine`](crate::tokio_impl::engine::single_threaded::SingleThreadedEngine)::`save_program`.
     pub async fn save_program(&self) -> Result<Program> {
         let mut blocks = std::collections::BTreeMap::new();
         let mut links = std::collections::BTreeMap::new();
@@ -662,7 +663,8 @@ impl MultiThreadedEngine {
         })
     }
 
-    /// MT mirror of [`super::super::single_threaded::engine::SingleThreadedEngine::load_program`].
+    /// MT mirror of
+    /// [`SingleThreadedEngine`](crate::tokio_impl::engine::single_threaded::SingleThreadedEngine)::`load_program`.
     pub async fn load_program(&mut self, program: Program) -> Result<()> {
         self.schedule_program_blocks(&program)?;
 

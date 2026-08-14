@@ -35,7 +35,7 @@ use crate::{blocks::InputImpl, blocks::OutputImpl};
 ///
 /// The first execute emits as soon as the inputs are available (no
 /// startup wait). Subsequent executes align to the next wall-clock
-/// minute boundary, so multiple `Sun` blocks (or repeated program
+/// minute boundary, so multiple [`Sun`] blocks (or repeated program
 /// loads of the same program) stay phase-aligned. Editing `lat`,
 /// `lon`, or `tzOffset` wakes the block immediately for a fresh
 /// compute — `wait_on_inputs` returns early on any input change.

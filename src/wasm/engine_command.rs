@@ -101,7 +101,7 @@ impl EngineCommand {
     /// * `target_block_input_name` - The name of the input pin of the target block
     ///
     /// # Returns
-    /// A `LinkData` object with the following properties:
+    /// A [`LinkData`] object with the following properties:
     /// * `source_block_uuid` - The UUID of the source block
     /// * `target_block_uuid` - The UUID of the target block
     /// * `source_block_pin_name` - The name of the output pin of the source block
@@ -367,7 +367,8 @@ impl EngineCommand {
     ///
     /// The engine→UI watch channel is **unbounded**. The producer rate is
     /// capped by per-block execution cadence and the payload is tiny
-    /// (one `WatchMessage` per changed block per cycle); a bounded channel
+    /// (one [`WatchMessage`](crate::base::engine::messages::WatchMessage)
+    /// per changed block per cycle); a bounded channel
     /// (we had 32) was undersized for bursty loads — e.g., dozens of
     /// blocks faulting simultaneously during program load — and silently
     /// dropped fault notifications, which the UI is now load-bearing on

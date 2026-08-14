@@ -46,7 +46,7 @@ pub(super) fn input_as_number(input: &InputImpl) -> Option<Number> {
 /// - If the input has no unit set, the raw value is returned (lenient).
 /// - If the input's unit equals `target`, the raw value is returned.
 /// - If the input's unit is convertible to `target`, the converted value is returned.
-/// - If the input is missing or has an incompatible unit, returns `None`.
+/// - If the input is missing or has an incompatible unit, returns [`None`].
 pub(super) fn input_as_number_in(input: &InputImpl, target: &'static Unit) -> Option<f64> {
     let n = input_as_number(input)?;
     match n.unit {

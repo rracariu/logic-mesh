@@ -7,7 +7,7 @@
 //! through any external (JS) loader. This is what makes headless
 //! deployments possible.
 //!
-//! Shape mirrors the JS-side `Program` interface so the wasm bridge is a
+//! Shape mirrors the JS-side [`Program`] interface so the wasm bridge is a
 //! single serde round-trip, not a JS-side reassembly job.
 
 use std::collections::BTreeMap;
@@ -18,7 +18,7 @@ use serde::{Deserialize, Serialize};
 /// Backwards-compatible metadata wrapper. Predates [`Program`] and only
 /// carries top-level descriptors; modern code uses [`Program::name`] /
 /// [`Program::description`] directly. Kept because the
-/// `data::ProgramMeta` type was part of the public surface.
+/// [`ProgramMeta`] type was part of the public surface.
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct ProgramMeta {
     /// Program name.
@@ -37,7 +37,7 @@ pub struct ProgramMeta {
 
 /// Link between two pins.
 ///
-/// Fields use camelCase serialization to match the JS `LinkData`
+/// Fields use camelCase serialization to match the JS [`LinkData`]
 /// interface — programs round-trip through the wasm bridge unchanged.
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -99,7 +99,7 @@ pub struct PinValue {
 }
 
 /// One block entry in the program format. Mirrors the per-block object
-/// in the JS `Program` interface.
+/// in the JS [`Program`] interface.
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct ProgramBlock {
     /// Block type name (looked up in the block registry at load time).

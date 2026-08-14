@@ -18,7 +18,7 @@ use uuid::Uuid;
 
 /// Operational state a block is in.
 ///
-/// Phase 1 fault propagation: `Fault` carries the reason so the engine and
+/// Phase 1 fault propagation: [`BlockState::Fault`] carries the reason so the engine and
 /// UI can show *why* the block isn't producing trustworthy output. Recovery
 /// is automatic — the actor task optimistically clears Fault at the start
 /// of each cycle and re-enters it only if drain or execute set it again.
@@ -43,14 +43,14 @@ pub enum BlockState {
 }
 
 impl BlockState {
-    /// Constructs a `Fault` state with the given reason.
+    /// Constructs a [`BlockState::Fault`] state with the given reason.
     pub fn fault(reason: impl Into<String>) -> Self {
         BlockState::Fault {
             reason: reason.into(),
         }
     }
 
-    /// Returns `true` if the block is in a `Fault` state.
+    /// Returns `true` if the block is in a [`BlockState::Fault`] state.
     pub fn is_fault(&self) -> bool {
         matches!(self, BlockState::Fault { .. })
     }
@@ -78,11 +78,11 @@ impl BlockState {
 /// produces output values.
 ///
 /// On native targets we declare `execute` as returning an `impl Future
-/// + Send`. That promise lets the multi-threaded engine spawn block
+/// + [`Send`]`. That promise lets the multi-threaded engine spawn block
 /// actor tasks directly via [`tokio::spawn`], which requires the
-/// future be `Send`. Macro-generated native blocks all satisfy this.
+/// future be [`Send`]. Macro-generated native blocks all satisfy this.
 ///
-/// On `wasm32` (single-threaded by definition), we drop the `Send`
+/// On `wasm32` (single-threaded by definition), we drop the [`Send`]
 /// requirement so `JsBlock` — whose `func: js_sys::Function` is
 /// `!Send` — can still implement the trait.
 #[cfg(not(target_arch = "wasm32"))]
@@ -99,7 +99,7 @@ pub trait Block: BlockConnect {
 
 /// Construct a block instance with a fixed id.
 ///
-/// Implemented by the `BlockProps` derive. The registry uses it to
+/// Implemented by the [`BlockProps`] derive. The registry uses it to
 /// instantiate runtime-registered blocks when a program prescribes the
 /// block ids.
 pub trait BlockConstruct: Sized {

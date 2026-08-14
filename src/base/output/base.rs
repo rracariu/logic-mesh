@@ -21,15 +21,17 @@ pub struct BaseOutput<L: Link> {
     /// UUID of the block that owns this output.
     pub block_id: Uuid,
     /// Status to pair with this output's value when it's emitted on the
-    /// watch channel. Managed by the actor task: set to `Fault` while the
-    /// owning block is in `BlockState::Fault`, restored to `Ok` on
+    /// watch channel. Managed by the actor task: set to
+    /// [`Status::Fault`] while the owning block is in
+    /// [`BlockState::Fault`](crate::base::block::BlockState::Fault),
+    /// restored to [`Status::Ok`] on
     /// recovery.
     pub effective_status: Status,
 }
 
 /// The implementation of the OutputProps trait.
 ///
-/// `L: Send` is required so the link list can return
+/// `L:` [`Send`] is required so the link list can return
 /// `Vec<&(dyn Link + Send)>` — see the [`OutputProps::links`] doc.
 impl<L: Link + Send> OutputProps for BaseOutput<L> {
     fn desc(&self) -> &OutDesc {

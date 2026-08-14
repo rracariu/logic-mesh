@@ -123,7 +123,7 @@ pub struct JsWatchNotification {
     /// Block's operational state at the time of the notification
     /// (`running | fault | disabled | terminated`).
     pub state: String,
-    /// Fault reason when `state == "fault"`, else `None`.
+    /// Fault reason when `state == "fault"`, else [`None`].
     #[serde(skip_serializing_if = "Option::is_none")]
     pub fault_reason: Option<String>,
 }

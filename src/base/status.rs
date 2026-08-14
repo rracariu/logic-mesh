@@ -5,8 +5,8 @@
 //! OPC UA quality codes.
 //!
 //! For Phase 1 of fault propagation the status is essentially block-level
-//! — every output of a faulted block emits `Fault`, and a consumer that
-//! drains a `Fault`-status value faults itself. Phase 2 will introduce
+//! — every output of a faulted block emits [`Status::Fault`], and a consumer that
+//! drains a [`Status::Fault`]-status value faults itself. Phase 2 will introduce
 //! per-pin granularity.
 
 use serde::{Deserialize, Serialize};
@@ -28,12 +28,12 @@ pub enum Status {
 }
 
 impl Status {
-    /// Returns `true` if the status is `Ok`.
+    /// Returns `true` if the status is [`Status::Ok`].
     pub fn is_ok(&self) -> bool {
         matches!(self, Status::Ok)
     }
 
-    /// Returns `true` if the status is `Fault`.
+    /// Returns `true` if the status is [`Status::Fault`].
     pub fn is_fault(&self) -> bool {
         matches!(self, Status::Fault)
     }

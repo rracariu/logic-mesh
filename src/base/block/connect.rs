@@ -61,7 +61,7 @@ pub trait BlockConnect: BlockStaticDesc {
     ) -> Result<(), &'static str>;
 }
 
-/// Implements the `BlockConnect` trait for all types that are `Block`s.
+/// Implements the [`BlockConnect`] trait for all types that are [`Block`]s.
 impl<T: Block + ?Sized> BlockConnect for T {
     fn connect_output(
         &mut self,

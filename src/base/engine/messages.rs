@@ -52,7 +52,7 @@ pub struct BlockDefinition {
     /// (`running | fault | disabled | terminated`).
     #[serde(default)]
     pub state: String,
-    /// Fault reason when `state == "fault"`, else `None`.
+    /// Fault reason when `state == "fault"`, else [`None`].
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub fault_reason: Option<String>,
 }
@@ -116,7 +116,7 @@ pub enum EngineMessage<WatchEventSender: Clone> {
     /// Response to [`GetCurrentProgramReq`](Self::GetCurrentProgramReq).
     GetCurrentProgramRes(Result<Program, String>),
 
-    /// Atomically load a full `Program` (blocks, links, pin values, UI
+    /// Atomically load a full [`Program`] (blocks, links, pin values, UI
     /// metadata) into the engine. Replaces the multi-call JS chain of
     /// `addBlock` + `createLink` + `writeBlockInput` per block.
     LoadProgramReq(Uuid, Program),
