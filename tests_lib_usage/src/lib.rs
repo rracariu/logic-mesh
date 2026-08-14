@@ -66,11 +66,15 @@ impl Block for Triple {
 /// `OutputImpl` must not be classified as pins by the derive.
 #[derive(Debug, Default)]
 pub struct InputImplConfig {
+    /// The scale factor to apply to the input value.
     pub scale: f64,
 }
 
+/// Custom field types whose names merely start with `InputImpl` /
+/// `OutputImpl` must not be classified as pins by the derive.
 #[derive(Debug, Default)]
 pub struct OutputImplSettings {
+    /// The offset to apply to the output value.
     pub offset: f64,
 }
 
