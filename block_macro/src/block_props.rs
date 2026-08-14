@@ -85,6 +85,7 @@ pub(super) fn block_props_impl(ast: &syn::DeriveInput) -> TokenStream {
     let tokens = quote! {
 
         // Generated constructors
+        #[allow(missing_docs)]
         impl #block_ident {
             pub fn new() -> Self {
                 let uuid = #krate::Uuid::new_v4();

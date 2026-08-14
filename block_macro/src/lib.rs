@@ -1,5 +1,7 @@
 // Copyright (c) 2022-2023, Radu Racariu.
 
+//! Proc-macro crate for the `#[block]` attribute and `BlockProps` derive.
+
 extern crate proc_macro;
 extern crate proc_macro2;
 extern crate syn;
