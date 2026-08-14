@@ -35,6 +35,21 @@ impl Block for Double {
     }
 }
 
+#[allow(missing_docs)]
+#[block]
+#[derive(BlockProps, Debug)]
+#[dis = "Bare"]
+#[library = "downstream"]
+#[category = "test"]
+pub struct Bare {
+    #[output(kind = "Number")]
+    pub out: OutputImpl,
+}
+
+impl Block for Bare {
+    async fn execute(&mut self) {}
+}
+
 /// Same as [`Double`] but declares its pins with fully qualified paths.
 #[block]
 #[derive(BlockProps, Debug)]
@@ -192,6 +207,40 @@ mod tests {
 
         block.execute().await;
         assert_eq!(block.out.value, 21.into());
+    }
+
+    #[test]
+    fn doc_comment_captured_in_desc() {
+        use logic_mesh::base::block::BlockStaticDesc;
+
+        let desc = <Double as BlockStaticDesc>::desc();
+        assert_eq!(
+            desc.doc,
+            "Doubles the value of its numeric input.",
+            "/// doc comment should be captured in desc().doc"
+        );
+    }
+
+    #[test]
+    fn doc_comment_multiline_concatenated() {
+        use logic_mesh::base::block::BlockStaticDesc;
+
+        let desc = <Triple as BlockStaticDesc>::desc();
+        assert!(
+            desc.doc.starts_with("Same as"),
+            "multi-line /// doc should be concatenated into desc().doc"
+        );
+    }
+
+    #[test]
+    fn missing_doc_defaults_to_empty() {
+        use logic_mesh::base::block::BlockStaticDesc;
+
+        let desc = <Bare as BlockStaticDesc>::desc();
+        assert_eq!(
+            desc.doc, "",
+            "block without /// doc should have an empty desc().doc"
+        );
     }
 
     #[test]

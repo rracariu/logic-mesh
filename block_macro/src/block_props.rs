@@ -81,17 +81,21 @@ pub(super) fn block_props_impl(ast: &syn::DeriveInput) -> TokenStream {
     let out_desc = create_output_desc(&block_outputs_props, krate);
     ensure_unique_outputs(&block_defined_inputs, &block_outputs_props);
 
+    let new_doc = format!("Creates a new [`{block_ident}`].");
+    let new_uuid_doc = format!("Creates a new [`{block_ident}`] with the given UUID.");
+
     // The code that gets generated for the blocks
     let tokens = quote! {
 
         // Generated constructors
-        #[allow(missing_docs)]
         impl #block_ident {
+            #[doc = #new_doc]
             pub fn new() -> Self {
                 let uuid = #krate::Uuid::new_v4();
                 Self::new_uuid(uuid)
             }
 
+            #[doc = #new_uuid_doc]
             pub fn new_uuid(uuid: #krate::Uuid) -> Self {
                 Self {
                     id: uuid,

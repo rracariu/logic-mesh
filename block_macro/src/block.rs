@@ -21,14 +21,14 @@ pub(super) fn block_impl(input: TokenStream) -> TokenStream {
                 // Add the `id` member
                 fields.named.push(
                     syn::Field::parse_named
-                        .parse2(quote! { #[allow(missing_docs)] id: #krate::Uuid })
+                        .parse2(quote! { #[doc = "Block UUID."] id: #krate::Uuid })
                         .unwrap(),
                 );
 
                 // Add the `state` member
                 fields.named.push(
                     syn::Field::parse_named
-                        .parse2(quote! { #[allow(missing_docs)] state: #krate::base::block::BlockState })
+                        .parse2(quote! { #[doc = "Current block state."] state: #krate::base::block::BlockState })
                         .unwrap(),
                 );
 
@@ -36,7 +36,7 @@ pub(super) fn block_impl(input: TokenStream) -> TokenStream {
                 if !props.is_empty() {
                     fields.named.push(
                         syn::Field::parse_named
-                            .parse2(quote! { #[allow(missing_docs)] _inputs: Vec::<#krate::blocks::InputImpl> })
+                            .parse2(quote! { #[doc = "Auto-generated input pins."] _inputs: Vec::<#krate::blocks::InputImpl> })
                             .expect("input props"),
                     )
                 }
