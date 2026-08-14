@@ -10,13 +10,10 @@ use crate::utils::{
     get_block_outputs_props, get_crate_path,
 };
 
-///
-/// Generates the implementation for the BlockProps trait
-/// and creates the constructor function.
+/// Generates the implementation for the `BlockProps` trait and creates the constructor function.
 ///
 /// It also initializes any block fields that are not inputs or output
 /// to their default type value.
-///
 pub(super) fn block_props_impl(ast: &syn::DeriveInput) -> TokenStream {
     let block_ident = &ast.ident;
     let krate = get_crate_path(ast);
@@ -204,7 +201,7 @@ pub(super) fn block_props_impl(ast: &syn::DeriveInput) -> TokenStream {
     tokens.into()
 }
 
-/// Init the input fields of a block
+/// Initializes the input fields of a block.
 fn create_block_input_fields_init(
     block_input_props: &[(String, BTreeMap<String, String>)],
     krate: &syn::Path,
@@ -227,7 +224,7 @@ fn create_block_input_fields_init(
     }
 }
 
-/// Init custom fields that a user may have on a block
+/// Initializes custom fields that a user may have on a block.
 fn create_block_fields_init(
     block_fields: &BTreeMap<String, syn::Type>,
     block_input_props: &[(String, BTreeMap<String, String>)],
@@ -261,7 +258,7 @@ fn create_block_fields_init(
     }
 }
 
-/// Init automatic inputs defined on the block attribute
+/// Initializes automatic inputs defined on the block attribute.
 fn create_block_defined_input_init(
     block_defined_input_props: &BTreeMap<String, String>,
     krate: &syn::Path,
@@ -292,7 +289,7 @@ fn create_block_defined_input_init(
     }
 }
 
-/// Create the outputS fieLd init
+/// Creates the output field initializer.
 fn create_block_outputs_field_init(
     block_output_props: &[(String, BTreeMap<String, String>)],
     krate: &syn::Path,
@@ -318,8 +315,8 @@ fn create_block_outputs_field_init(
     }
 }
 
-/// Create the reference for input fields for all the types of inputs:
-/// block defined automatic inputs or user defined block input fields
+/// Creates the reference for input fields, including both block-defined
+/// automatic inputs and user-defined block input fields.
 fn create_input_members_ref(
     has_block_defined_inputs: bool,
     block_input_props: &[(String, BTreeMap<String, String>)],
@@ -364,7 +361,7 @@ fn create_input_members_ref(
     }
 }
 
-/// Create the reference for the output field of the block
+/// Creates the reference for the output fields of the block.
 fn create_outputs_member_ref(
     block_output_props: &[(String, BTreeMap<String, String>)],
     mutable: bool,
@@ -394,7 +391,7 @@ fn create_outputs_member_ref(
     }
 }
 
-/// Create the description of the input fields
+/// Creates the description of the input fields.
 fn create_input_desc(
     block_defined_input_props: &BTreeMap<String, String>,
     block_input_props: &[(String, BTreeMap<String, String>)],
@@ -433,7 +430,7 @@ fn create_input_desc(
     }
 }
 
-/// Create the description of the outputs field
+/// Creates the description of the output fields.
 fn create_output_desc(
     block_output_props: &[(String, BTreeMap<String, String>)],
     krate: &syn::Path,
@@ -451,7 +448,7 @@ fn create_output_desc(
     }
 }
 
-/// Ensure that the block defined inputs and user defined inputs have different names
+/// Ensures that the block-defined inputs and user-defined inputs have different names.
 fn ensure_unique_inputs(
     block_defined_inputs: &BTreeMap<String, String>,
     block_input_props: &[(String, BTreeMap<String, String>)],
@@ -469,7 +466,7 @@ fn ensure_unique_inputs(
     }
 }
 
-/// Ensure that the block defined outputs do not shadow the user defined inputs
+/// Ensures that the block-defined outputs do not shadow the user-defined inputs.
 fn ensure_unique_outputs(
     block_defined_inputs: &BTreeMap<String, String>,
     block_output_props: &[(String, BTreeMap<String, String>)],
@@ -487,7 +484,7 @@ fn ensure_unique_outputs(
     }
 }
 
-/// Get the count of block defined inputs
+/// Returns the count of block-defined inputs.
 fn get_block_defined_inputs_count(
     block_defined_inputs: &BTreeMap<String, String>,
 ) -> Option<usize> {

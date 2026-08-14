@@ -1,8 +1,6 @@
 // Copyright (c) 2022-2024, Radu Racariu.
 
-//!
 //! Bitwise operation blocks.
-//!
 
 pub mod bitwise_and;
 pub mod bitwise_not;

@@ -9,7 +9,7 @@ use uuid::Uuid;
 use crate::base::block::BlockState;
 use crate::base::program::{Program, data::LinkData};
 
-/// Block input properties
+/// Block input properties.
 #[derive(Default, Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct BlockInputData {
@@ -22,14 +22,14 @@ pub struct BlockInputData {
     pub is_connected: bool,
 }
 
-/// Block output properties
+/// Block output properties.
 #[derive(Default, Debug, Serialize, Deserialize, Clone)]
 pub struct BlockOutputData {
     pub kind: String,
     pub val: Value,
 }
 
-/// Block definition
+/// Block definition.
 #[derive(Debug, Default, Serialize, Deserialize, Clone)]
 pub struct BlockDefinition {
     pub id: String,
@@ -46,14 +46,14 @@ pub struct BlockDefinition {
     pub fault_reason: Option<String>,
 }
 
-/// Defines the source of a change
+/// The source of a change.
 #[derive(Debug, Clone)]
 pub enum ChangeSource {
     Input(String, Value),
     Output(String, Value),
 }
 
-/// A notification message for a block change
+/// A notification message for a block change.
 #[derive(Debug, Clone)]
 pub struct WatchMessage {
     pub block_id: Uuid,
@@ -63,7 +63,7 @@ pub struct WatchMessage {
     pub state: BlockState,
 }
 
-/// Messages that engine accepts
+/// Messages that the engine accepts.
 #[derive(Debug, Clone)]
 pub enum EngineMessage<WatchEventSender: Clone> {
     AddBlockReq(Uuid, String, Option<String>, Option<String>),

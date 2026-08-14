@@ -1,31 +1,27 @@
 // Copyright (c) 2022-2023, Radu Racariu.
 
-//!
-//! Defines the base link type.
-//!
+//! Base link type.
 
 use uuid::Uuid;
 
 use super::{Link, LinkState};
 
-/// Base Link that uses an abstract
-/// optional transmitter type `Tx`.
+/// Base link that uses an abstract optional transmitter type `Tx`.
 ///
-/// Links connect a block output to another block's input.
-/// Or, a block input to another block's input.
-/// A block output can have multiple links to multiple block inputs.
-/// A block input can have multiple links to multiple block inputs.
+/// Links connect a block output to another block's input, or a block
+/// input to another block's input. A block output or input can have
+/// multiple links to multiple block inputs.
 #[derive(Debug, Default, Clone, PartialEq)]
 pub struct BaseLink<Tx> {
-    /// Unique link id
+    /// Unique link id.
     pub id: Uuid,
-    /// The target block id
+    /// The target block id.
     pub target_block_id: Uuid,
-    /// The target input name
+    /// The target input name.
     pub target_input: String,
-    /// Optional transmitter type
+    /// Optional transmitter type.
     pub tx: Option<Tx>,
-    /// The current link state
+    /// The current link state.
     pub state: LinkState,
 }
 

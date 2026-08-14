@@ -28,10 +28,12 @@ pub enum Status {
 }
 
 impl Status {
+    /// Returns `true` if the status is `Ok`.
     pub fn is_ok(&self) -> bool {
         matches!(self, Status::Ok)
     }
 
+    /// Returns `true` if the status is `Fault`.
     pub fn is_fault(&self) -> bool {
         matches!(self, Status::Fault)
     }

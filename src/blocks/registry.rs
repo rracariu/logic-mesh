@@ -1,8 +1,6 @@
 // Copyright (c) 2022-2024, Radu Racariu.
 
-//!
-//! Defines the block registry.
-//!
+//! Block registry.
 
 use crate::base::block::{
     Block, BlockConstruct, BlockDesc, BlockInput, BlockOutput, BlockProps, BlockState,
@@ -30,7 +28,7 @@ pub(crate) type DynBlockProps = dyn BlockProps<Reader = ReaderImpl, Writer = Wri
 type MapType = HashMap<String, HashMap<String, BlockEntry>>;
 type BlockRegistry = Mutex<MapType>;
 
-/// Register a block in the registry
+/// A block registration entry in the registry.
 #[derive(Debug, Clone)]
 pub struct BlockEntry {
     pub desc: BlockDesc,
@@ -298,17 +296,13 @@ macro_rules! register_blocks {
 // by build.rs scanning for #[block] annotated structs in src/blocks/.
 include!(concat!(env!("OUT_DIR"), "/block_registry.rs"));
 
-/// Construct a block properties from the registry
-/// # Arguments
-/// - name: The name of the block to get
-/// # Returns
-/// A boxed block
+/// Constructs block properties from the registry.
 pub fn make(name: &str, lib: Option<&str>) -> Option<Box<DynBlockProps>> {
     let entry = get_block(name, lib)?;
     entry.make.map(|make| make())
 }
 
-/// Get a block entry from the registry
+/// Returns a block entry from the registry.
 pub fn get_block(name: &str, lib: Option<&str>) -> Option<BlockEntry> {
     let reg = BLOCKS.lock().expect("Block registry is locked");
     let lib = lib.unwrap_or(CORE_LIB);
@@ -317,12 +311,12 @@ pub fn get_block(name: &str, lib: Option<&str>) -> Option<BlockEntry> {
     reg.get(name).cloned()
 }
 
-/// Get a core block
+/// Returns a core block entry.
 pub fn get_core_block(name: &str) -> Option<BlockEntry> {
     get_block(name, Some(CORE_LIB))
 }
 
-/// Get all block descriptions from the registry
+/// Returns all block descriptions from the registry.
 pub fn list_registered_blocks() -> Vec<BlockDesc> {
     let reg = BLOCKS.lock().expect("Block registry is locked");
 
@@ -336,7 +330,7 @@ pub fn list_registered_blocks() -> Vec<BlockDesc> {
     blocks
 }
 
-/// Register a block with the registry
+/// Registers a block description with the registry.
 pub fn register_block_desc(desc: &BlockDesc) -> Result<(), RegistryError> {
     let mut reg = BLOCKS.lock().expect("Block registry is locked");
 
@@ -394,15 +388,17 @@ impl<T: Block<Reader = ReaderImpl, Writer = WriterImpl> + BlockConstruct + Defau
 {
 }
 
-/// Register a block with the registry
-/// # Arguments
-/// - B: The block type to register
-/// # Returns
-/// An error if a block with the same name is already registered in the
+/// Registers a block type with the registry.
+///
+/// # Errors
+///
+/// Returns an error if a block with the same name is already registered in the
 /// block's library — e.g. a downstream block that omits `#[library]` and
 /// so defaults to the core library, colliding with a built-in.
+///
 /// # Panics
-/// Panics if the block registry is already locked
+///
+/// Panics if the block registry is already locked.
 pub fn register<B: RegisterableBlock>() -> Result<(), RegistryError> {
     let mut reg = BLOCKS.lock().expect("Block registry is locked");
 
@@ -513,13 +509,12 @@ pub async fn eval_registered(
     eval_block_impl(&mut block, inputs).await
 }
 
-/// Evaluate a block directly
+/// Evaluates a block directly.
 ///
 /// # Arguments
-/// - block: The block to evaluate
-/// - inputs: The input values to the block
-/// # Returns
-/// A list of values representing the outputs of the block
+///
+/// * `block` - The block to evaluate.
+/// * `inputs` - The input values to the block.
 pub async fn eval_block_impl<B: Block<Reader = ReaderImpl, Writer = WriterImpl>>(
     block: &mut B,
     inputs: Vec<Value>,

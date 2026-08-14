@@ -1,8 +1,6 @@
 // Copyright (c) 2022-2023, Radu Racariu.
 
-//!
-//! Module dealing with control logic.
-//!
+//! Control logic blocks.
 
 pub mod clamp;
 pub mod deadband;

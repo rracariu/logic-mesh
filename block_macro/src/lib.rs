@@ -14,8 +14,7 @@ use block::block_impl;
 use block_props::block_props_impl;
 use proc_macro::TokenStream;
 
-/// The `block` attribute macro
-/// This macro is used to derive the `Block` trait for a struct
+/// The `block` attribute macro derives the `Block` trait for a struct.
 ///
 /// The generated code references items via `::logic_mesh::...` paths by
 /// default. If the `logic-mesh` dependency is renamed, override the path
@@ -41,8 +40,7 @@ pub fn block(_args: TokenStream, input: TokenStream) -> TokenStream {
     gen
 }
 
-/// The `block_props` attribute macro
-/// This macro is used to derive the `BlockProps` trait for a struct
+/// The `block_props` derive macro generates the `BlockProps` trait for a struct.
 ///
 /// See the [`block`] macro docs for the `InputImpl`/`OutputImpl` field type
 /// requirements and the `#[logic_mesh(crate = "path")]` override for renamed

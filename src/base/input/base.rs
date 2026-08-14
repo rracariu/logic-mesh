@@ -1,8 +1,6 @@
 // Copyright (c) 2022-2023, Radu Racariu.
 
-//!
-//! Defines the base input type
-//!
+//! Base input type.
 
 use libhaystack::val::{Value, kind::HaystackKind};
 use uuid::Uuid;
@@ -12,27 +10,27 @@ use crate::base::link::{BaseLink, Link};
 
 use super::InputProps;
 
-/// The base input type
+/// The base input type.
 #[derive(Debug, Default)]
 pub struct BaseInput<Reader, Writer> {
-    /// The block unique input's name
+    /// The block-unique input name.
     pub name: String,
-    /// The kind of data this input can receive
+    /// The kind of data this input can receive.
     pub kind: HaystackKind,
-    /// The block id of the block this input belongs to
+    /// The block id of the block this input belongs to.
     pub block_id: Uuid,
-    /// The number of connections this input has
+    /// The number of connections this input has.
     pub connection_count: usize,
-    /// The input reader
+    /// The input reader.
     pub reader: Reader,
-    /// The input writer
+    /// The input writer.
     pub writer: Writer,
-    /// The input value
+    /// The input value.
     pub val: Option<Value>,
     /// The status of the last value received on this input. Tracks the
     /// producer's quality assertion across the watch channel.
     pub status: Status,
-    /// The links to other inputs
+    /// The links to other inputs.
     pub links: Vec<BaseLink<Writer>>,
 }
 

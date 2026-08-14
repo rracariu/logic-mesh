@@ -1,8 +1,6 @@
 // Copyright (c) 2022-2023, Radu Racariu.
 
-//!
-//! Defines the block trait and associated types
-//!
+//! Block trait and associated types.
 
 pub mod connect;
 pub mod desc;
@@ -42,13 +40,14 @@ pub enum BlockState {
 }
 
 impl BlockState {
-    /// Construct a Fault state with the given reason.
+    /// Constructs a `Fault` state with the given reason.
     pub fn fault(reason: impl Into<String>) -> Self {
         BlockState::Fault {
             reason: reason.into(),
         }
     }
 
+    /// Returns `true` if the block is in a `Fault` state.
     pub fn is_fault(&self) -> bool {
         matches!(self, BlockState::Fault { .. })
     }
@@ -103,15 +102,16 @@ pub trait BlockConstruct: Sized {
     fn with_uuid(uuid: Uuid) -> Self;
 }
 
-/// Converts the actual value to the expected type expected value.
+/// Converts a value to the type indicated by the expected value.
 ///
 /// # Arguments
-/// - `expect` The expected value, this is used to determine the expected type
-/// - `actual` The actual value to convert
 ///
-/// # Returns
-/// The converted value if the conversion was successful.
-/// If the conversion was not successful, an error is returned.
+/// * `expect` - The expected value, used to determine the target type.
+/// * `actual` - The actual value to convert.
+///
+/// # Errors
+///
+/// Returns an error if the conversion is not possible.
 pub fn convert_value(expect: &Value, actual: Value) -> Result<Value, ValueError> {
     let to_kind = HaystackKind::from(&actual);
     convert_value_kind(actual, HaystackKind::from(expect), to_kind)
@@ -120,12 +120,14 @@ pub fn convert_value(expect: &Value, actual: Value) -> Result<Value, ValueError>
 /// Converts a value from one kind to another.
 ///
 /// # Arguments
-/// - `val` The value to convert
-/// - `expected` The expected kind of the value
-/// - `actual` The actual kind of the value
 ///
-/// # Returns
-/// The converted value if the conversion was successful.
+/// * `val` - The value to convert.
+/// * `expected` - The expected kind of the value.
+/// * `actual` - The actual kind of the value.
+///
+/// # Errors
+///
+/// Returns an error if the conversion is not possible.
 pub fn convert_value_kind(
     val: Value,
     expected: HaystackKind,

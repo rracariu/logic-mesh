@@ -31,12 +31,14 @@ use crate::{
 type ExternFuncRegistryType = HashMap<String, HashMap<String, js_sys::Function>>;
 
 thread_local! {
-    /// A registry of JS functions that implement block logic
+    /// A registry of JS functions that implement block logic.
     pub(crate) static JS_FNS: RefCell<ExternFuncRegistryType> = RefCell::new(HashMap::new());
 }
 
 /// A block that is implemented in JavaScript.
-/// The block will delegate the evaluation to a JS function that will be called with the inputs as arguments.
+///
+/// The block delegates evaluation to a JS function that is called with the
+/// inputs as arguments.
 #[derive(Debug, Default)]
 pub struct JsBlock {
     id: Uuid,
@@ -48,7 +50,7 @@ pub struct JsBlock {
 }
 
 impl JsBlock {
-    /// Create a new instance of a block
+    /// Creates a new instance of a block.
     pub fn new(desc: BlockDesc, func: Option<js_sys::Function>, block_id: Option<Uuid>) -> Self {
         let id = block_id.unwrap_or_else(uuid::Uuid::new_v4);
 

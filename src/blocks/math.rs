@@ -1,8 +1,6 @@
 // Copyright (c) 2022-2023, Radu Racariu.
 
-//!
-//! Math Blocks
-//!
+//! Math blocks.
 
 pub mod abs;
 pub mod add;

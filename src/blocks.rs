@@ -1,8 +1,6 @@
 // Copyright (c) 2022-2023, Radu Racariu.
 
-//!
-//! Block implementations
-//!
+//! Block implementations.
 
 pub mod bitwise;
 pub mod collections;

@@ -3,9 +3,7 @@
 use std::collections::BTreeMap;
 use syn::{Attribute, Expr, ExprLit, Lit, Meta, Type, TypePath};
 
-///
-/// Extract the block field names and their types.
-///
+/// Extracts the block field names and their types.
 pub(super) fn get_block_fields(ast: &syn::DeriveInput) -> BTreeMap<String, Type> {
     let mut members = BTreeMap::<String, Type>::new();
 
@@ -24,28 +22,21 @@ pub(super) fn get_block_fields(ast: &syn::DeriveInput) -> BTreeMap<String, Type>
     members
 }
 
-///
-/// Get all the inputs fields and their attributes
-///
+/// Returns all input fields and their attributes.
 pub(super) fn get_block_inputs_props(
     ast: &syn::DeriveInput,
 ) -> Vec<(String, BTreeMap<String, String>)> {
     get_block_field_props(ast, "input")
 }
 
-///
-/// Get all the output fields and their attributes
-///
+/// Returns all output fields and their attributes.
 pub(super) fn get_block_outputs_props(
     ast: &syn::DeriveInput,
 ) -> Vec<(String, BTreeMap<String, String>)> {
     get_block_field_props(ast, "output")
 }
 
-///
-/// Extract block props helper attributes
-/// as a map of strings
-///
+/// Extracts block props helper attributes as a map of strings.
 pub(super) fn get_block_attributes(ast: &syn::DeriveInput) -> BTreeMap<String, String> {
     let mut attrs: BTreeMap<String, String> = BTreeMap::new();
     ast.attrs
@@ -76,12 +67,10 @@ pub(super) fn get_block_attributes(ast: &syn::DeriveInput) -> BTreeMap<String, S
     attrs
 }
 
-///
-/// Resolve the crate path used in the generated code.
+/// Resolves the crate path used in the generated code.
 ///
 /// Defaults to `::logic_mesh`; overridden with the provided escape hatch
 /// `#[logic_mesh(crate = "path")]` when the dependency is renamed.
-///
 pub(super) fn get_crate_path(ast: &syn::DeriveInput) -> syn::Path {
     for attr in &ast.attrs {
         if !attr.path().is_ident("logic_mesh") {
@@ -111,14 +100,12 @@ pub(super) fn get_crate_path(ast: &syn::DeriveInput) -> syn::Path {
     syn::parse_quote!(::logic_mesh)
 }
 
-///
-/// Extract the attribute props for an input attribute
+/// Extracts the attribute props for an input attribute.
 ///
 /// These would be:
 ///
-/// - kind: A String property for the Haystack Kind for the input
-/// - count The number of inputs to be created.
-///
+/// - `kind`: a string property for the Haystack Kind for the input.
+/// - `count`: the number of inputs to be created.
 pub(super) fn get_block_input_attribute(ast: &syn::DeriveInput) -> BTreeMap<String, String> {
     let mut attrs: BTreeMap<String, String> = BTreeMap::new();
 
@@ -130,9 +117,7 @@ pub(super) fn get_block_input_attribute(ast: &syn::DeriveInput) -> BTreeMap<Stri
     attrs
 }
 
-///
-/// Extract the attribute props for an helper attribute
-///
+/// Extracts the attribute props for a helper attribute.
 fn get_attribute_props(input_attr: &syn::Attribute, attrs: &mut BTreeMap<String, String>) {
     if !matches!(&input_attr.meta, Meta::List(_)) {
         return;

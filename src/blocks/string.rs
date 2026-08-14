@@ -1,8 +1,6 @@
 // Copyright (c) 2022-2023, Radu Racariu.
 
-//!
-//! String Blocks
-//!
+//! String blocks.
 
 pub mod concat;
 pub mod len;

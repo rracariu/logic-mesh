@@ -1,8 +1,6 @@
 // Copyright (c) 2022-2023, Radu Racariu.
 
-//!
-//! Defines the base output types and traits.
-//!
+//! Base output types and traits.
 
 pub mod base;
 pub mod props;
@@ -15,10 +13,11 @@ use super::link::BaseLink;
 pub use base::BaseOutput;
 pub use props::OutputProps;
 
+/// The output trait.
 pub trait Output: OutputProps {
     type Writer: Clone;
 
-    /// Adds a link to this output
+    /// Adds a link to this output.
     fn add_link(&mut self, link: BaseLink<Self::Writer>);
 
     /// Set this output's value, paired with the output's current

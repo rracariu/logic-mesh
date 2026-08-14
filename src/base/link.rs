@@ -1,8 +1,6 @@
 // Copyright (c) 2022-2023, Radu Racariu.
 
-//!
-//! Contains link types and traits.
-//!
+//! Link types and traits.
 
 use uuid::Uuid;
 
@@ -15,27 +13,24 @@ pub use base::BaseLink;
 /// `Disconnected`/`Connected` track wiring state only.
 #[derive(Default, Debug, Clone, Copy, PartialEq)]
 pub enum LinkState {
-    // The link is disconnected
+    /// The link is disconnected.
     #[default]
     Disconnected,
-    // The link is connected
+    /// The link is connected.
     Connected,
 }
 
-///
-/// A link creates a connection from a block
-/// output to another's block input.
-///
+/// A link creates a connection from a block output to another block's input.
 pub trait Link {
-    /// Unique link id
+    /// Returns the unique link id.
     fn id(&self) -> &Uuid;
 
-    /// Current link state
+    /// Returns the current link state.
     fn state(&self) -> LinkState;
 
-    /// The id of the target block
+    /// Returns the id of the target block.
     fn target_block_id(&self) -> &Uuid;
 
-    /// The name of the target input
+    /// Returns the name of the target input.
     fn target_input(&self) -> &str;
 }

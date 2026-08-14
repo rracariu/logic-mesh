@@ -1,8 +1,6 @@
 // Copyright (c) 2022-2023, Radu Racariu.
 
-//!
-//! Defines the block properties
-//!
+//! Block properties trait.
 
 use uuid::Uuid;
 
@@ -24,8 +22,7 @@ impl<R, W: Clone, T: ?Sized + Input<Reader = R, Writer = W>> BlockInput<R, W> fo
 pub trait BlockOutput<W: Clone>: Output<Writer = W> {}
 impl<W: Clone, T: ?Sized + Output<Writer = W>> BlockOutput<W> for T {}
 
-/// Defines the the Block properties
-/// that are common to all blocks.
+/// Block properties that are common to all blocks.
 ///
 /// Trait-object returns carry a `+ Send` bound so they can be held
 /// across `.await` points in actor futures running on tokio's
@@ -33,32 +30,30 @@ impl<W: Clone, T: ?Sized + Output<Writer = W>> BlockOutput<W> for T {}
 /// Concrete impls in this crate (`BaseInput`, `BaseOutput`, the
 /// mocks) are already `Send`, so the bound is satisfied transparently.
 pub trait BlockProps {
-    /// The block's read type
-    /// This is the type used to read from the block's inputs
+    /// The block's read type, used to read from the block's inputs.
     type Reader;
-    /// The block's write type
-    /// This is the type used to write to the block's outputs
+    /// The block's write type, used to write to the block's outputs.
     type Writer: Clone;
 
-    /// Blocks unique id
+    /// Returns the block's unique id.
     fn id(&self) -> &Uuid;
 
-    /// Blocks name
+    /// Returns the block's name.
     fn name(&self) -> &str;
 
-    /// Block's static description
+    /// Returns the block's static description.
     fn desc(&self) -> &BlockDesc;
 
-    /// Blocks state
+    /// Returns the block's state.
     fn state(&self) -> BlockState;
 
-    /// Set the blocks state
+    /// Sets the block's state.
     fn set_state(&mut self, state: BlockState) -> BlockState;
 
-    /// List all the block inputs
+    /// Returns all the block inputs.
     fn inputs(&self) -> Vec<&(dyn BlockInput<Self::Reader, Self::Writer> + Send)>;
 
-    /// Get block input by name
+    /// Returns a block input by name.
     fn get_input(
         &self,
         name: &str,
@@ -66,7 +61,7 @@ pub trait BlockProps {
         self.inputs().iter().find(|i| i.name() == name).cloned()
     }
 
-    /// Get block mutable input by name
+    /// Returns a mutable block input by name.
     fn get_input_mut(
         &mut self,
         name: &str,
@@ -74,18 +69,18 @@ pub trait BlockProps {
         self.inputs_mut().into_iter().find(|i| i.name() == name)
     }
 
-    /// List all the block inputs
+    /// Returns all the block inputs as mutable references.
     fn inputs_mut(&mut self) -> Vec<&mut (dyn BlockInput<Self::Reader, Self::Writer> + Send)>;
 
-    /// The block outputs
+    /// Returns all the block outputs.
     fn outputs(&self) -> Vec<&(dyn BlockOutput<Self::Writer> + Send)>;
 
-    /// Get block output by name
+    /// Returns a block output by name.
     fn get_output(&self, name: &str) -> Option<&(dyn BlockOutput<Self::Writer> + Send)> {
         self.outputs().iter().find(|i| i.name() == name).cloned()
     }
 
-    /// Get block mutable output by name
+    /// Returns a mutable block output by name.
     fn get_output_mut(
         &mut self,
         name: &str,
@@ -93,20 +88,20 @@ pub trait BlockProps {
         self.outputs_mut().into_iter().find(|i| i.name() == name)
     }
 
-    /// Mutable reference to the block's output
+    /// Returns mutable references to the block's outputs.
     fn outputs_mut(&mut self) -> Vec<&mut (dyn BlockOutput<Self::Writer> + Send)>;
 
-    /// List all the links this block has
+    /// Returns all the links this block has.
     fn links(&self) -> Vec<(&str, Vec<&(dyn crate::base::link::Link + Send)>)>;
 
-    /// Remove a link from the link collection
+    /// Removes a link from the link collection.
     fn remove_link(&mut self, link: &dyn Link) {
         self.remove_link_by_id(link.id())
     }
 
-    /// Remove a link by its id from the link collection
+    /// Removes a link by its id from the link collection.
     fn remove_link_by_id(&mut self, link_id: &Uuid);
 
-    /// Remove all links from this block
+    /// Removes all links from this block.
     fn remove_all_links(&mut self);
 }
