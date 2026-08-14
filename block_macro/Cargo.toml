@@ -7,6 +7,9 @@ repository = "https://github.com/rracariu/logic-mesh"
 description = "Macros for easy defining of block."
 license = "BSD-3-Clause"
 
+[lints]
+workspace = true
+
 [lib]
 proc-macro = true
 
