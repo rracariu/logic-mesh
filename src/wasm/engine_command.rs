@@ -1,5 +1,7 @@
 // Copyright (c) 2022-2024, Radu Racariu.
 
+//! Commands sent from JavaScript to the engine.
+
 use std::str::FromStr;
 
 use crate::base::program::Program;

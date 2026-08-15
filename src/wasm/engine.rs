@@ -1,5 +1,7 @@
 // Copyright (c) 2022-2023, Radu Racariu.
 
+//! Block engine exposed to JavaScript.
+
 use crate::blocks::registry::{list_registered_blocks, register_block_desc};
 use crate::blocks::utils::set_sleep_dur;
 use crate::single_threaded::SingleThreadedEngine;
@@ -115,6 +117,7 @@ impl BlocksEngine {
         Ok(name)
     }
 
+    /// Returns a new [`EngineCommand`] handle for sending commands.
     #[wasm_bindgen(js_name = "engineCommand")]
     pub fn engine_command(&mut self) -> EngineCommand {
         let (sender, receiver) = mpsc::channel(32);

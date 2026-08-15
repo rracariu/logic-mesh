@@ -379,6 +379,7 @@ impl<
 {
 }
 
+/// Marker trait for blocks that can be registered with the block registry (WASM variant).
 #[cfg(target_arch = "wasm32")]
 pub trait RegisterableBlock:
     Block<Reader = ReaderImpl, Writer = WriterImpl> + BlockConstruct + Default + 'static

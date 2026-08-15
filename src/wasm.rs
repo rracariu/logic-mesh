@@ -15,6 +15,7 @@ use wasm_bindgen_console_logger::DEFAULT_LOGGER;
 
 use self::engine::BlocksEngine;
 
+/// Creates and returns a new [`BlocksEngine`].
 #[wasm_bindgen(js_name = "initEngine")]
 pub fn init_engine(sleep_duration: Option<u32>) -> BlocksEngine {
     let engine = BlocksEngine::new(sleep_duration.map(u64::from));
@@ -22,6 +23,7 @@ pub fn init_engine(sleep_duration: Option<u32>) -> BlocksEngine {
     engine
 }
 
+/// WASM module entry point — installs the panic hook and logger.
 #[wasm_bindgen(start)]
 pub fn start() {
     panic::set_hook(Box::new(console_error_panic_hook::hook));

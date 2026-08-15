@@ -1,5 +1,7 @@
 // Copyright (c) 2022-2023, Radu Racariu.
 
+//! TypeScript-facing data types.
+
 use libhaystack::val::Value;
 use serde::{Deserialize, Serialize};
 
@@ -113,6 +115,7 @@ impl From<BlockDesc> for JsBlockDesc {
     }
 }
 
+/// A watch notification sent to JavaScript when a block's state changes.
 #[derive(Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct JsWatchNotification {
@@ -128,6 +131,7 @@ pub struct JsWatchNotification {
     pub fault_reason: Option<String>,
 }
 
+/// A single pin value change within a [`JsWatchNotification`].
 #[derive(Default, Serialize, Deserialize)]
 pub struct JsWatchChange {
     /// Pin name that changed.

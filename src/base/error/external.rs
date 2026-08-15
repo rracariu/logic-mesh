@@ -30,16 +30,31 @@ pub enum ExternalError {
     #[error(
         "Missing library: '{library}'. Can't find the executor JavaScript function for: '{name}' block."
     )]
-    LibraryNotFound { library: String, name: String },
+    LibraryNotFound {
+        /// The JavaScript library name that was not found.
+        library: String,
+        /// The block that requires the missing library.
+        name: String,
+    },
 
     /// The JavaScript factory function of an external block threw.
     #[cfg(target_arch = "wasm32")]
     #[error("External block '{name}' factory function failed: {detail}")]
-    FactoryCallFailed { name: String, detail: String },
+    FactoryCallFailed {
+        /// The block whose factory threw.
+        name: String,
+        /// The error message from JavaScript.
+        detail: String,
+    },
 
     /// The JavaScript factory function returned something that is not a
     /// function, so there is nothing to execute the block with.
     #[cfg(target_arch = "wasm32")]
     #[error("External block '{name}' factory did not return a function: {detail}")]
-    FactoryReturnedNonFunction { name: String, detail: String },
+    FactoryReturnedNonFunction {
+        /// The block whose factory returned a non-function.
+        name: String,
+        /// Description of the unexpected return value.
+        detail: String,
+    },
 }

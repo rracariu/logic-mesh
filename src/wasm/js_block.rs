@@ -1,5 +1,7 @@
 // Copyright (c) 2022-2023, Radu Racariu.
 
+//! JavaScript-backed block implementation.
+
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::time::Duration;

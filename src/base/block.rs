@@ -91,8 +91,10 @@ pub trait Block: BlockConnect {
     fn execute(&mut self) -> impl std::future::Future<Output = ()> + Send;
 }
 
+/// WASM variant of [`Block`] without the `Send` bound.
 #[cfg(target_arch = "wasm32")]
 pub trait Block: BlockConnect {
+    /// Run one cycle of this block's dataflow logic.
     #[allow(async_fn_in_trait)]
     async fn execute(&mut self);
 }
