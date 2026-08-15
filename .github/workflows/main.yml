@@ -116,6 +116,60 @@ jobs:
           command: clippy
           args: ${{ matrix.features && format('--features {0}', matrix.features) || '' }} -- -D warnings
 
+  docs:
+    name: Docs (${{ matrix.features == '' && 'default' || matrix.features }})
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        rust:
+          - stable
+        features:
+          - ""
+          - "multi-threaded"
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v4
+
+      - name: Install toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: ${{ matrix.rust }}
+          override: true
+
+      - name: Run cargo doc
+        uses: actions-rs/cargo@v1
+        env:
+          RUSTDOCFLAGS: "-D warnings"
+        with:
+          command: doc
+          args: --no-deps ${{ matrix.features && format('--features {0}', matrix.features) || '' }}
+
+  docs-wasm:
+    name: Docs (wasm32)
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        rust:
+          - stable
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v4
+
+      - name: Install toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: ${{ matrix.rust }}
+          target: wasm32-unknown-unknown
+          override: true
+
+      - name: Run cargo doc
+        uses: actions-rs/cargo@v1
+        env:
+          RUSTDOCFLAGS: "-D warnings"
+        with:
+          command: doc
+          args: --no-deps --target wasm32-unknown-unknown
+
   clippy-wasm:
     name: Clippy (wasm32)
     runs-on: ubuntu-latest
