@@ -25,7 +25,7 @@
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
-use anyhow::{Result, anyhow};
+use crate::base::error::{EngineError, LinkEnd, RegistryError, Result, parse_block_uuid};
 use libhaystack::val::Value;
 use tokio::sync::{
     RwLock,
@@ -34,7 +34,9 @@ use tokio::sync::{
 };
 use uuid::Uuid;
 
-use super::super::block_mailbox::{BLOCK_MAILBOX_CAP, BlockMailboxCmd};
+use super::super::block_mailbox::{
+    BLOCK_MAILBOX_CAP, BlockMailboxCmd, mailbox_request, mailbox_send,
+};
 use super::actor::{WatchersHandle, block_actor_task};
 use crate::base::{
     block::{Block, BlockDesc},
@@ -47,7 +49,7 @@ use crate::base::{
         data::{LinkData, PinValue, Position, ProgramBlock},
     },
 };
-use crate::blocks::registry::get_block;
+use crate::blocks::registry::{CORE_LIB, get_block};
 use crate::tokio_impl::engine::schedule_block_on_engine_mt;
 use crate::tokio_impl::{MtBlock, ReaderImpl, WriterImpl};
 
@@ -127,19 +129,18 @@ impl crate::base::engine::Engine for MultiThreadedEngine {
         // worker-thread boundary, but this trait signature cannot express
         // that bound. Use [`MultiThreadedEngine::schedule_send`] for the
         // Send-bounded entry point.
-        Err(anyhow!(
-            "MultiThreadedEngine cannot schedule through the `Engine` trait \
-             (requires `Send`); use the inherent `schedule_send` method or \
-             the `*_send` registry entry points instead"
-        ))
+        Err(EngineError::ScheduleRequiresSend.into())
     }
 
     fn schedule_program_blocks(&mut self, program: &Program) -> Result<()> {
         for (uuid_str, pb) in &program.blocks {
-            let id = Uuid::try_from(uuid_str.as_str())
-                .map_err(|_| anyhow!("Invalid block uuid: {}", uuid_str))?;
-            let block_def = get_block(&pb.name, Some(pb.lib.as_str()))
-                .ok_or_else(|| anyhow!("Block not found: {}::{}", pb.lib, pb.name))?;
+            let id = parse_block_uuid(uuid_str)?;
+            let block_def = get_block(&pb.name, Some(pb.lib.as_str())).ok_or_else(|| {
+                RegistryError::BlockNotFound {
+                    library: pb.lib.clone(),
+                    name: pb.name.clone(),
+                }
+            })?;
             schedule_block_on_engine_mt(&block_def.desc, Some(id), self)?;
             if let Some(handle) = self.handles.get_mut(&id) {
                 handle.label = pb.label.clone();
@@ -276,6 +277,19 @@ impl MultiThreadedEngine {
         self.handles.get(id).map(|h| &h.mailbox)
     }
 
+    /// [`block_handle`](Self::block_handle) for callers that treat an
+    /// unscheduled id as an error rather than an absence.
+    fn block_handle_or_err(&self, id: &Uuid) -> Result<&BlockHandle, EngineError> {
+        self.block_handle(id)
+            .ok_or(EngineError::BlockInstanceNotFound { id: *id })
+    }
+
+    /// [`mailbox`](Self::mailbox), same treatment.
+    fn mailbox_or_err(&self, id: &Uuid) -> Result<&mpsc::Sender<BlockMailboxCmd>, EngineError> {
+        self.mailbox(id)
+            .ok_or(EngineError::BlockInstanceNotFound { id: *id })
+    }
+
     pub fn add_block(
         &mut self,
         block_name: String,
@@ -283,10 +297,10 @@ impl MultiThreadedEngine {
         lib: Option<String>,
     ) -> Result<Uuid> {
         let block_def = get_block(block_name.as_str(), lib.as_deref()).ok_or_else(|| {
-            anyhow!(
-                "Block '{block_name}' not found in library '{}'",
-                lib.as_deref().unwrap_or("core")
-            )
+            RegistryError::BlockNotFound {
+                library: lib.as_deref().unwrap_or(CORE_LIB).to_string(),
+                name: block_name.clone(),
+            }
         })?;
         schedule_block_on_engine_mt(&block_def.desc, block_id, self)
     }
@@ -294,14 +308,10 @@ impl MultiThreadedEngine {
     /// Sync configuration-time link validation. Real wiring is deferred to
     /// `run()` start (mailbox round-trips need the worker tasks running).
     pub(super) fn connect_blocks_sync(&mut self, link_data: &LinkData) -> Result<LinkData> {
-        let source_id = Uuid::try_from(link_data.source_block_uuid.as_str())?;
-        let target_id = Uuid::try_from(link_data.target_block_uuid.as_str())?;
-        let source_handle = self
-            .block_handle(&source_id)
-            .ok_or_else(|| anyhow!("Source block '{}' not found", link_data.source_block_uuid))?;
-        let target_handle = self
-            .block_handle(&target_id)
-            .ok_or_else(|| anyhow!("Target block '{}' not found", link_data.target_block_uuid))?;
+        let source_id = parse_block_uuid(&link_data.source_block_uuid)?;
+        let target_id = parse_block_uuid(&link_data.target_block_uuid)?;
+        let source_handle = self.block_handle_or_err(&source_id)?;
+        let target_handle = self.block_handle_or_err(&target_id)?;
 
         let source_pin = link_data.source_block_pin_name.as_str();
         let source_pin_exists = source_handle
@@ -315,11 +325,12 @@ impl MultiThreadedEngine {
                 .iter()
                 .any(|i| i.name == source_pin);
         if !source_pin_exists {
-            return Err(anyhow!(
-                "Source pin '{}' not found on block '{}'",
-                source_pin,
-                link_data.source_block_uuid
-            ));
+            return Err(EngineError::PinNotFound {
+                end: LinkEnd::Source,
+                block: source_id,
+                pin: source_pin.to_string(),
+            }
+            .into());
         }
 
         let target_pin = link_data.target_block_pin_name.as_str();
@@ -329,11 +340,12 @@ impl MultiThreadedEngine {
             .iter()
             .any(|i| i.name == target_pin);
         if !target_pin_exists {
-            return Err(anyhow!(
-                "Target input '{}' not found on block '{}'",
-                target_pin,
-                link_data.target_block_uuid
-            ));
+            return Err(EngineError::PinNotFound {
+                end: LinkEnd::Target,
+                block: target_id,
+                pin: target_pin.to_string(),
+            }
+            .into());
         }
 
         let id = link_data
@@ -350,16 +362,10 @@ impl MultiThreadedEngine {
         })
     }
 
-    pub async fn inspect_block(&self, id: &Uuid) -> Result<BlockDefinition, String> {
-        let mailbox = self
-            .mailbox(id)
-            .ok_or_else(|| "Block not found".to_string())?;
-        let (tx, rx) = oneshot::channel();
-        mailbox
-            .send(BlockMailboxCmd::Inspect { reply: tx })
-            .await
-            .map_err(|_| "Block task gone".to_string())?;
-        rx.await.map_err(|_| "Block task dropped reply".to_string())
+    pub async fn inspect_block(&self, id: &Uuid) -> Result<BlockDefinition, EngineError> {
+        let mailbox = self.mailbox_or_err(id)?;
+
+        mailbox_request(mailbox, *id, |reply| BlockMailboxCmd::Inspect { reply }).await
     }
 
     pub async fn write_input(
@@ -367,21 +373,16 @@ impl MultiThreadedEngine {
         id: &Uuid,
         name: String,
         value: Value,
-    ) -> Result<Option<Value>, String> {
-        let mailbox = self
-            .mailbox(id)
-            .ok_or_else(|| "Block not found".to_string())?;
-        let (tx, rx) = oneshot::channel();
-        mailbox
-            .send(BlockMailboxCmd::WriteInput {
-                name,
-                value,
-                reply: tx,
-            })
-            .await
-            .map_err(|_| "Block task gone".to_string())?;
-        rx.await
-            .map_err(|_| "Block task dropped reply".to_string())?
+    ) -> Result<Option<Value>, EngineError> {
+        let mailbox = self.mailbox_or_err(id)?;
+
+        mailbox_request(mailbox, *id, |reply| BlockMailboxCmd::WriteInput {
+            name,
+            value,
+            reply,
+        })
+        .await?
+        .map_err(EngineError::BlockRequestRejected)
     }
 
     pub async fn write_output(
@@ -389,113 +390,93 @@ impl MultiThreadedEngine {
         id: &Uuid,
         name: String,
         value: Value,
-    ) -> Result<Value, String> {
-        let mailbox = self
-            .mailbox(id)
-            .ok_or_else(|| "Block not found".to_string())?;
-        let (tx, rx) = oneshot::channel();
-        mailbox
-            .send(BlockMailboxCmd::WriteOutput {
-                name,
-                value,
-                reply: tx,
-            })
-            .await
-            .map_err(|_| "Block task gone".to_string())?;
-        rx.await
-            .map_err(|_| "Block task dropped reply".to_string())?
+    ) -> Result<Value, EngineError> {
+        let mailbox = self.mailbox_or_err(id)?;
+
+        mailbox_request(mailbox, *id, |reply| BlockMailboxCmd::WriteOutput {
+            name,
+            value,
+            reply,
+        })
+        .await?
+        .map_err(EngineError::BlockRequestRejected)
     }
 
     pub async fn connect_blocks(&self, link_data: &LinkData) -> Result<LinkData> {
-        let source_id = Uuid::try_from(link_data.source_block_uuid.as_str())?;
-        let target_id = Uuid::try_from(link_data.target_block_uuid.as_str())?;
+        let source_id = parse_block_uuid(&link_data.source_block_uuid)?;
+        let target_id = parse_block_uuid(&link_data.target_block_uuid)?;
 
-        let source_mb = self
-            .mailbox(&source_id)
-            .ok_or_else(|| anyhow!("Source block '{}' not found", link_data.source_block_uuid))?;
-        let target_mb = self
-            .mailbox(&target_id)
-            .ok_or_else(|| anyhow!("Target block '{}' not found", link_data.target_block_uuid))?;
+        let source_mb = self.mailbox_or_err(&source_id)?;
+        let target_mb = self.mailbox_or_err(&target_id)?;
 
         // Get the writer of the target input.
-        let (tx, rx) = oneshot::channel();
-        target_mb
-            .send(BlockMailboxCmd::GetInputWriter {
+        let target_writer = mailbox_request(target_mb, target_id, |reply| {
+            BlockMailboxCmd::GetInputWriter {
                 name: link_data.target_block_pin_name.clone(),
-                reply: tx,
-            })
-            .await
-            .map_err(|_| anyhow!("Target block task gone"))?;
-        let target_writer = rx
-            .await
-            .map_err(|_| anyhow!("Target block dropped reply"))?
-            .map_err(|e| anyhow!(e))?;
+                reply,
+            }
+        })
+        .await?
+        .map_err(EngineError::BlockRequestRejected)?;
 
         // Source pin: output or input?
-        let (has_tx, has_rx) = oneshot::channel();
-        source_mb
-            .send(BlockMailboxCmd::HasOutput {
-                name: link_data.source_block_pin_name.clone(),
-                reply: has_tx,
-            })
-            .await
-            .map_err(|_| anyhow!("Source block task gone"))?;
-        let is_output = has_rx
-            .await
-            .map_err(|_| anyhow!("Source block dropped reply"))?;
+        let is_output = mailbox_request(source_mb, source_id, |reply| BlockMailboxCmd::HasOutput {
+            name: link_data.source_block_pin_name.clone(),
+            reply,
+        })
+        .await?;
 
-        let (link_tx, link_rx) = oneshot::channel();
-        if is_output {
-            source_mb
-                .send(BlockMailboxCmd::AddOutputLink {
+        let link_id = mailbox_request(source_mb, source_id, |reply| {
+            if is_output {
+                BlockMailboxCmd::AddOutputLink {
                     output_name: link_data.source_block_pin_name.clone(),
                     target_block_id: target_id,
                     target_input_name: link_data.target_block_pin_name.clone(),
                     target_writer: target_writer.clone(),
-                    reply: link_tx,
-                })
-                .await
-                .map_err(|_| anyhow!("Source block task gone"))?;
-        } else {
-            source_mb
-                .send(BlockMailboxCmd::AddInputLink {
+                    reply,
+                }
+            } else {
+                BlockMailboxCmd::AddInputLink {
                     input_name: link_data.source_block_pin_name.clone(),
                     target_block_id: target_id,
                     target_input_name: link_data.target_block_pin_name.clone(),
                     target_writer: target_writer.clone(),
-                    reply: link_tx,
-                })
-                .await
-                .map_err(|_| anyhow!("Source block task gone"))?;
-        }
-        let link_id = link_rx
-            .await
-            .map_err(|_| anyhow!("Source block dropped reply"))?
-            .map_err(|e| anyhow!(e))?;
+                    reply,
+                }
+            }
+        })
+        .await?
+        .map_err(EngineError::BlockRequestRejected)?;
 
         // Increment connection count on target — without this,
-        // `drain_ready_inputs` skips the input.
-        let (inc_tx, inc_rx) = oneshot::channel();
-        target_mb
-            .send(BlockMailboxCmd::IncrementInput {
+        // `drain_ready_inputs` skips the input. The new count itself is of
+        // no interest, so only the delivery half is checked.
+        let (inc_reply, inc_response) = oneshot::channel();
+        mailbox_send(
+            target_mb,
+            target_id,
+            BlockMailboxCmd::IncrementInput {
                 name: link_data.target_block_pin_name.clone(),
-                reply: inc_tx,
-            })
-            .await
-            .map_err(|_| anyhow!("Target block task gone"))?;
-        let _ = inc_rx.await;
+                reply: inc_reply,
+            },
+        )
+        .await?;
+        let _ = inc_response.await;
 
         // Seed the target input with the source's current value.
-        target_mb
-            .send(BlockMailboxCmd::SeedInputValue {
-                name: link_data.target_block_pin_name.clone(),
-                value: self
-                    .read_source_value(&source_id, &link_data.source_block_pin_name, is_output)
-                    .await
-                    .unwrap_or_default(),
-            })
+        let seed_value = self
+            .read_source_value(&source_id, &link_data.source_block_pin_name, is_output)
             .await
-            .map_err(|_| anyhow!("Target block task gone"))?;
+            .unwrap_or_default();
+        mailbox_send(
+            target_mb,
+            target_id,
+            BlockMailboxCmd::SeedInputValue {
+                name: link_data.target_block_pin_name.clone(),
+                value: seed_value,
+            },
+        )
+        .await?;
         // Refresh another connected input on the target so it re-cycles.
         self.reset_connected_inputs(&target_id, &link_data.target_block_pin_name)
             .await?;
@@ -549,18 +530,13 @@ impl MultiThreadedEngine {
     }
 
     pub async fn remove_block(&mut self, block_id: &Uuid) -> Result<Uuid> {
-        let target_mb = self
-            .mailbox(block_id)
-            .ok_or_else(|| anyhow!("Block not found"))?
-            .clone();
+        let target_mb = self.mailbox_or_err(block_id)?.clone();
 
         // 1. DisconnectAll on the target to learn what to decrement.
-        let (tx, rx) = oneshot::channel();
-        target_mb
-            .send(BlockMailboxCmd::DisconnectAll { reply: tx })
-            .await
-            .map_err(|_| anyhow!("Block task gone"))?;
-        let targets = rx.await.map_err(|_| anyhow!("Block dropped reply"))?;
+        let targets = mailbox_request(&target_mb, *block_id, |reply| {
+            BlockMailboxCmd::DisconnectAll { reply }
+        })
+        .await?;
         for (other_id, input_name) in targets {
             if let Some(mb) = self.mailbox(&other_id) {
                 let (dec_tx, dec_rx) = oneshot::channel();
@@ -607,22 +583,15 @@ impl MultiThreadedEngine {
         let mut links = std::collections::BTreeMap::new();
 
         for (id, handle) in &self.handles {
-            let (insp_tx, insp_rx) = oneshot::channel();
-            handle
-                .mailbox
-                .send(BlockMailboxCmd::Inspect { reply: insp_tx })
-                .await
-                .map_err(|_| anyhow!("Block task gone"))?;
-            let definition = insp_rx.await.map_err(|_| anyhow!("Block dropped reply"))?;
+            let definition = mailbox_request(&handle.mailbox, *id, |reply| {
+                BlockMailboxCmd::Inspect { reply }
+            })
+            .await?;
 
-            let (data_tx, data_rx) = oneshot::channel();
-            handle
-                .mailbox
-                .send(BlockMailboxCmd::GetBlockData { reply: data_tx })
-                .await
-                .map_err(|_| anyhow!("Block task gone"))?;
-            let (_block_data, block_links) =
-                data_rx.await.map_err(|_| anyhow!("Block dropped reply"))?;
+            let (_block_data, block_links) = mailbox_request(&handle.mailbox, *id, |reply| {
+                BlockMailboxCmd::GetBlockData { reply }
+            })
+            .await?;
 
             let inputs = definition
                 .inputs
@@ -690,7 +659,7 @@ impl MultiThreadedEngine {
         }
 
         for (uuid_str, pb) in &program.blocks {
-            let id = Uuid::try_from(uuid_str.as_str())?;
+            let id = parse_block_uuid(uuid_str)?;
             for (name, pin) in &pb.inputs {
                 if hasinitialvalue_mt(&pin.value) {
                     let _ = self.write_input(&id, name.clone(), pin.value.clone()).await;
@@ -710,19 +679,23 @@ impl MultiThreadedEngine {
 
     pub async fn disconnect_link_by_id(&self, link_id: &Uuid) -> Result<bool> {
         for handle in self.handles.values() {
-            let (tx, rx) = oneshot::channel();
+            let (reply, response) = oneshot::channel();
+            // A block whose task is gone simply cannot own the link; skip
+            // it rather than failing the whole search.
             if handle
                 .mailbox
                 .send(BlockMailboxCmd::DisconnectLink {
                     link_id: *link_id,
-                    reply: tx,
+                    reply,
                 })
                 .await
                 .is_err()
             {
                 continue;
             }
-            let targets = rx.await.map_err(|_| anyhow!("Block dropped reply"))?;
+            let targets = response
+                .await
+                .map_err(|_| EngineError::BlockDroppedReply { id: *handle.id() })?;
             if !targets.is_empty() {
                 for (other_id, input_name) in targets {
                     if let Some(mb) = self.mailbox(&other_id) {
@@ -754,18 +727,14 @@ impl MultiThreadedEngine {
     async fn dispatch_message(&mut self, msg: Messages) {
         match msg {
             EngineMessage::AddBlockReq(sender_uuid, block_name, block_uuid, lib) => {
-                let block_id = if let Some(uuid) = block_uuid {
-                    match Uuid::parse_str(&uuid) {
-                        Ok(uuid) => Some(uuid),
-                        Err(_) => {
-                            return self.reply_to_sender(
-                                sender_uuid,
-                                EngineMessage::AddBlockRes(Err("Invalid UUID".into())),
-                            );
-                        }
+                let block_id = match block_uuid.as_deref().map(parse_block_uuid).transpose() {
+                    Ok(id) => id,
+                    Err(err) => {
+                        return self.reply_to_sender(
+                            sender_uuid,
+                            EngineMessage::AddBlockRes(Err(err.to_string())),
+                        );
                     }
-                } else {
-                    None
                 };
                 let res = self
                     .add_block(block_name, block_id, lib)
@@ -782,18 +751,22 @@ impl MultiThreadedEngine {
             }
 
             EngineMessage::InspectBlockReq(sender_uuid, block_id) => {
-                let res = self.inspect_block(&block_id).await;
+                let res = self
+                    .inspect_block(&block_id)
+                    .await
+                    .map_err(|err| err.to_string());
                 self.reply_to_sender(sender_uuid, EngineMessage::InspectBlockRes(res));
             }
 
             EngineMessage::EvaluateBlockReq(sender_uuid, name, inputs, lib) => {
                 let Some(block) = get_block(name.as_str(), lib.as_deref()) else {
+                    let err = RegistryError::BlockNotFound {
+                        library: lib.as_deref().unwrap_or(CORE_LIB).to_string(),
+                        name,
+                    };
                     return self.reply_to_sender(
                         sender_uuid,
-                        EngineMessage::EvaluateBlockRes(Err(format!(
-                            "Block '{name}' not found in library '{}'",
-                            lib.as_deref().unwrap_or("core")
-                        ))),
+                        EngineMessage::EvaluateBlockRes(Err(err.to_string())),
                     );
                 };
                 let response = crate::tokio_impl::engine::eval_block(&block.desc, inputs).await;
@@ -804,12 +777,18 @@ impl MultiThreadedEngine {
             }
 
             EngineMessage::WriteBlockOutputReq(sender_uuid, id, output_name, value) => {
-                let res = self.write_output(&id, output_name, value).await;
+                let res = self
+                    .write_output(&id, output_name, value)
+                    .await
+                    .map_err(|err| err.to_string());
                 self.reply_to_sender(sender_uuid, EngineMessage::WriteBlockOutputRes(res));
             }
 
             EngineMessage::WriteBlockInputReq(sender_uuid, id, input_name, value) => {
-                let res = self.write_input(&id, input_name, value).await;
+                let res = self
+                    .write_input(&id, input_name, value)
+                    .await
+                    .map_err(|err| err.to_string());
                 self.reply_to_sender(sender_uuid, EngineMessage::WriteBlockInputRes(res));
             }
 

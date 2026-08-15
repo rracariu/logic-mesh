@@ -13,7 +13,7 @@ use libhaystack::val::Value;
 
 use crate::base::engine::Engine;
 
-use anyhow::{Result, anyhow};
+use crate::base::error::{RegistryError, Result};
 use std::collections::HashMap;
 use std::future::Future;
 use std::pin::Pin;
@@ -337,7 +337,7 @@ pub fn list_registered_blocks() -> Vec<BlockDesc> {
 }
 
 /// Register a block with the registry
-pub fn register_block_desc(desc: &BlockDesc) -> Result<()> {
+pub fn register_block_desc(desc: &BlockDesc) -> Result<(), RegistryError> {
     let mut reg = BLOCKS.lock().expect("Block registry is locked");
 
     let lib = desc.library.clone();
@@ -345,10 +345,10 @@ pub fn register_block_desc(desc: &BlockDesc) -> Result<()> {
 
     let name = desc.name.clone();
     if reg.contains_key(&name) {
-        return Err(anyhow!(
-            "Block '{name}' is already registered in library '{}'",
-            desc.library
-        ));
+        return Err(RegistryError::BlockAlreadyRegistered {
+            library: desc.library.clone(),
+            name,
+        });
     }
 
     reg.insert(
@@ -403,7 +403,7 @@ impl<T: Block<Reader = ReaderImpl, Writer = WriterImpl> + BlockConstruct + Defau
 /// so defaults to the core library, colliding with a built-in.
 /// # Panics
 /// Panics if the block registry is already locked
-pub fn register<B: RegisterableBlock>() -> Result<()> {
+pub fn register<B: RegisterableBlock>() -> Result<(), RegistryError> {
     let mut reg = BLOCKS.lock().expect("Block registry is locked");
 
     register_impl::<B>(&mut reg)
@@ -412,7 +412,11 @@ pub fn register<B: RegisterableBlock>() -> Result<()> {
 /// Instantiate a runtime-registered block by name. A qualified lookup
 /// (`lib` given) resolves directly in that library; an unqualified one
 /// searches all libraries and errors if the name is ambiguous.
-fn make_registered(name: &str, lib: Option<&str>, uuid: Option<Uuid>) -> Result<RegisteredBlock> {
+fn make_registered(
+    name: &str,
+    lib: Option<&str>,
+    uuid: Option<Uuid>,
+) -> Result<RegisteredBlock, RegistryError> {
     // Resolve the constructor and release the lock before running it:
     // a constructor that touches the registry would otherwise deadlock,
     // and a panicking one would poison the lock for the whole process.
@@ -423,7 +427,10 @@ fn make_registered(name: &str, lib: Option<&str>, uuid: Option<Uuid>) -> Result<
             reg.get(lib)
                 .and_then(|blocks| blocks.get(name))
                 .and_then(|entry| entry.make_erased)
-                .ok_or_else(|| anyhow!("Block '{name}' not found in library '{lib}'"))?
+                .ok_or_else(|| RegistryError::BlockNotFound {
+                    library: lib.to_string(),
+                    name: name.to_string(),
+                })?
         } else {
             let matches: Vec<_> = reg
                 .iter()
@@ -436,16 +443,20 @@ fn make_registered(name: &str, lib: Option<&str>, uuid: Option<Uuid>) -> Result<
                 .collect();
 
             match matches.as_slice() {
-                [] => return Err(anyhow!("Block '{name}' not found in the registry")),
+                [] => {
+                    return Err(RegistryError::BlockNotRegistered {
+                        name: name.to_string(),
+                    });
+                }
                 [(_, make)] => *make,
                 _ => {
-                    let mut libs: Vec<_> =
-                        matches.iter().map(|(lib, _)| format!("'{lib}'")).collect();
-                    libs.sort_unstable();
-                    return Err(anyhow!(
-                        "Block name '{name}' is ambiguous across libraries: {}",
-                        libs.join(", ")
-                    ));
+                    let mut libraries: Vec<_> =
+                        matches.iter().map(|(lib, _)| lib.to_string()).collect();
+                    libraries.sort_unstable();
+                    return Err(RegistryError::AmbiguousBlockName {
+                        name: name.to_string(),
+                        libraries,
+                    });
                 }
             }
         }
@@ -517,7 +528,11 @@ pub async fn eval_block_impl<B: Block<Reader = ReaderImpl, Writer = WriterImpl>>
         let mut input_pins = block.inputs_mut();
 
         if i >= input_pins.len() {
-            return Err(anyhow!("Too many inputs"));
+            return Err(RegistryError::TooManyInputs {
+                declared: input_pins.len(),
+                supplied: inputs.len(),
+            }
+            .into());
         }
 
         input_pins[i].increment_conn();
@@ -535,17 +550,16 @@ pub async fn eval_block_impl<B: Block<Reader = ReaderImpl, Writer = WriterImpl>>
     Ok(block.outputs().iter().map(|o| o.value().clone()).collect())
 }
 
-fn register_impl<B: RegisterableBlock>(reg: &mut MapType) -> Result<()> {
+fn register_impl<B: RegisterableBlock>(reg: &mut MapType) -> Result<(), RegistryError> {
     let desc = <B as BlockStaticDesc>::desc();
     let lib = desc.library.clone();
 
     let lib_reg = reg.entry(lib).or_default();
     if lib_reg.contains_key(&desc.name) {
-        return Err(anyhow!(
-            "Block '{}' is already registered in library '{}'",
-            desc.name,
-            desc.library
-        ));
+        return Err(RegistryError::BlockAlreadyRegistered {
+            library: desc.library.clone(),
+            name: desc.name.clone(),
+        });
     }
 
     lib_reg.insert(desc.name.clone(), {
@@ -576,6 +590,8 @@ fn register_impl<B: RegisterableBlock>(reg: &mut MapType) -> Result<()> {
 mod test {
 
     use crate::base::block::connect::connect_output;
+    use crate::base::error::Error;
+    use assert_matches::assert_matches;
 
     use super::*;
 
@@ -613,6 +629,51 @@ mod test {
             eval_static_block("Add", Some("core"), vec![Value::from(1), Value::from(2)]).await;
 
         assert_eq!(result.unwrap(), vec![Value::from(3)]);
+    }
+
+    /// Lookup failures are distinguishable by variant, so callers can
+    /// tell an unqualified miss from a miss inside a named library
+    /// without scraping the message.
+    #[test]
+    fn unknown_block_reports_a_matchable_variant() {
+        let mut eng = crate::single_threaded::SingleThreadedEngine::new();
+
+        // Unqualified: every library was searched and none matched.
+        let err =
+            schedule_block("NoSuchBlock", None, &mut eng).expect_err("unknown block is rejected");
+        assert_matches!(
+            err,
+            Error::Registry(RegistryError::BlockNotRegistered { name }) if name == "NoSuchBlock"
+        );
+
+        // Qualified: the failure names the library that was searched.
+        let err = schedule_block("NoSuchBlock", Some("no_such_lib"), &mut eng)
+            .expect_err("unknown library is rejected");
+        assert_matches!(
+            err,
+            Error::Registry(RegistryError::BlockNotFound { library, name })
+                if library == "no_such_lib" && name == "NoSuchBlock"
+        );
+    }
+
+    #[tokio::test]
+    async fn eval_with_too_many_inputs_reports_the_counts() {
+        // `Max` declares two inputs; supplying three overruns it.
+        let err = eval_static_block(
+            "Max",
+            Some(CORE_LIB),
+            vec![Value::from(1), Value::from(2), Value::from(3)],
+        )
+        .await
+        .expect_err("surplus inputs should be rejected");
+
+        assert_matches!(
+            err,
+            Error::Registry(RegistryError::TooManyInputs {
+                declared: 2,
+                supplied: 3
+            })
+        );
     }
 
     mod runtime_registered {

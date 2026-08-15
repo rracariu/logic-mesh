@@ -65,6 +65,50 @@ mod tests {
     use tokio::{runtime::Runtime, sync::mpsc, time::sleep};
     use uuid::Uuid;
 
+    /// Link validation reports which half of the link was wrong, as a
+    /// variant carrying the offending id or pin name — no message
+    /// parsing needed to tell the cases apart.
+    #[tokio::test(flavor = "current_thread")]
+    async fn link_validation_reports_matchable_variants() {
+        use crate::base::error::{EngineError, Error, LinkEnd};
+        use assert_matches::assert_matches;
+
+        let mut eng = SingleThreadedEngine::new();
+        let add = Add::new();
+        let add_uuid = *add.id();
+        eng.schedule(add).expect("scheduled");
+
+        let link = |source: String, target: String, pin: &str| LinkData {
+            id: None,
+            source_block_uuid: source,
+            target_block_uuid: target,
+            source_block_pin_name: "out".to_string(),
+            target_block_pin_name: pin.to_string(),
+        };
+
+        let missing = Uuid::new_v4();
+        let err = eng
+            .connect_blocks_sync(&link(missing.to_string(), add_uuid.to_string(), "in0"))
+            .expect_err("unknown source block is rejected");
+        assert_matches!(
+            err,
+            Error::Engine(EngineError::BlockInstanceNotFound { id }) if id == missing
+        );
+
+        let err = eng
+            .connect_blocks_sync(&link(
+                add_uuid.to_string(),
+                add_uuid.to_string(),
+                "no_such_pin",
+            ))
+            .expect_err("unknown target pin is rejected");
+        assert_matches!(
+            err,
+            Error::Engine(EngineError::PinNotFound { end, block, pin })
+                if end == LinkEnd::Target && block == add_uuid && pin == "no_such_pin"
+        );
+    }
+
     #[tokio::test(flavor = "current_thread")]
     async fn engine_test() {
         use crate::base::block::connect::connect_output;

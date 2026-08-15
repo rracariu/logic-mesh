@@ -7,7 +7,7 @@
 use std::sync::atomic::AtomicU64;
 
 use super::InputImpl;
-use anyhow::Result;
+use crate::base::error::{Result, ValueError};
 use libhaystack::{
     units::{Unit, units_generated::MILLISECOND},
     val::{Number, Value},
@@ -95,7 +95,7 @@ pub(super) fn input_to_millis_or_default(dur: &Option<Value>) -> u64 {
 ///
 /// # Returns
 /// A vector of numbers with the same unit
-pub(super) fn convert_units(numbers: &[Number]) -> Result<Vec<Number>> {
+pub(super) fn convert_units(numbers: &[Number]) -> Result<Vec<Number>, ValueError> {
     if numbers.len() <= 1 {
         Ok(numbers.to_vec())
     } else if let Some(unit) = numbers
@@ -109,7 +109,7 @@ pub(super) fn convert_units(numbers: &[Number]) -> Result<Vec<Number>> {
                     if other_unit != unit {
                         other_unit
                             .convert_to(n.value, unit)
-                            .map_err(|err| anyhow::anyhow!(err))
+                            .map_err(ValueError::UnitConversion)
                             .map(|v| Number {
                                 value: v,
                                 unit: Some(unit),
@@ -124,7 +124,7 @@ pub(super) fn convert_units(numbers: &[Number]) -> Result<Vec<Number>> {
                     })
                 }
             })
-            .collect::<Result<Vec<Number>>>()
+            .collect::<Result<Vec<Number>, ValueError>>()
     } else {
         Ok(numbers.to_vec())
     }

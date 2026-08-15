@@ -9,13 +9,14 @@
 //! of the block, period — no aliasing).
 
 use libhaystack::val::Value;
-use tokio::sync::oneshot;
+use tokio::sync::{mpsc, oneshot};
 use uuid::Uuid;
 
 use crate::base::{
     Status,
     block::{Block, BlockProps, BlockState},
     engine::messages::{BlockDefinition, BlockInputData, BlockOutputData},
+    error::EngineError,
     link::{BaseLink, LinkState},
     program::data::{BlockData, LinkData},
 };
@@ -125,6 +126,40 @@ pub(super) enum BlockMailboxCmd {
 /// Mailbox capacity per block. 64 is more than enough for a UI session;
 /// engine commands are infrequent compared to the per-cycle polling.
 pub(super) const BLOCK_MAILBOX_CAP: usize = 64;
+
+/// Send a command that carries a `reply` channel and await the answer.
+///
+/// Both halves of the round-trip can fail independently — the actor task
+/// may be gone before the command is delivered, or it may drop the reply
+/// channel after receiving it — and each is reported as a distinct
+/// [`EngineError`] naming `block_id`. Every engine round-trip goes
+/// through here so those two failure modes are never conflated or
+/// reported without the block they refer to.
+pub(super) async fn mailbox_request<R>(
+    mailbox: &mpsc::Sender<BlockMailboxCmd>,
+    block_id: Uuid,
+    make_cmd: impl FnOnce(oneshot::Sender<R>) -> BlockMailboxCmd,
+) -> Result<R, EngineError> {
+    let (reply, response) = oneshot::channel();
+
+    mailbox_send(mailbox, block_id, make_cmd(reply)).await?;
+
+    response
+        .await
+        .map_err(|_| EngineError::BlockDroppedReply { id: block_id })
+}
+
+/// Send a command that has no `reply` channel.
+pub(super) async fn mailbox_send(
+    mailbox: &mpsc::Sender<BlockMailboxCmd>,
+    block_id: Uuid,
+    cmd: BlockMailboxCmd,
+) -> Result<(), EngineError> {
+    mailbox
+        .send(cmd)
+        .await
+        .map_err(|_| EngineError::BlockTaskGone { id: block_id })
+}
 
 /// Handle a single mailbox command against a block. Returns `true` if the
 /// command was [`BlockMailboxCmd::Terminate`] (signalling the actor task to

@@ -1,6 +1,10 @@
 // Copyright (c) 2022-2023, Radu Racariu.
 
-use anyhow::Result;
+use crate::base::error::Result;
+// External blocks only exist on `wasm32`, where the host supplies their
+// executor; every other target rejects them with this error.
+#[cfg(not(target_arch = "wasm32"))]
+use crate::base::error::ExternalError;
 use libhaystack::val::Value;
 use uuid::Uuid;
 
@@ -28,12 +32,11 @@ pub(super) fn schedule_block_on_engine(
         #[cfg(target_arch = "wasm32")]
         {
             use crate::wasm::js_block::schedule_js_block;
-            schedule_js_block(engine, &block, block_id)
+            schedule_js_block(engine, block, block_id)
         }
         #[cfg(not(target_arch = "wasm32"))]
         {
-            use anyhow::anyhow;
-            Err(anyhow!("External blocks not supported on this platform"))
+            Err(ExternalError::Unsupported.into())
         }
     } else if let Some(uuid) = block_id {
         schedule_block_with_uuid(&block.name, Some(&block.library), uuid, engine)
@@ -52,10 +55,7 @@ pub(super) fn schedule_block_on_engine_mt(
     use crate::blocks::registry::{schedule_block_send, schedule_block_send_with_uuid};
 
     if block.implementation == BlockImplementation::External {
-        use anyhow::anyhow;
-        Err(anyhow!(
-            "External blocks not supported in multi-threaded mode"
-        ))
+        Err(ExternalError::UnsupportedMultiThreaded.into())
     } else if let Some(uuid) = block_id {
         schedule_block_send_with_uuid(&block.name, Some(&block.library), uuid, engine)
     } else {
@@ -72,8 +72,7 @@ pub(super) async fn eval_block(block: &BlockDesc, inputs: Vec<Value>) -> Result<
         }
         #[cfg(not(target_arch = "wasm32"))]
         {
-            use anyhow::anyhow;
-            Err(anyhow!("External blocks not supported on this platform"))
+            Err(ExternalError::Unsupported.into())
         }
     } else {
         eval_static_block(&block.name, Some(&block.library), inputs).await

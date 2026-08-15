@@ -4,7 +4,7 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::time::Duration;
 
-use anyhow::Result;
+use crate::base::error::{ExternalError, Result};
 use js_sys::Promise;
 use libhaystack::val::Value;
 use uuid::Uuid;
@@ -50,7 +50,7 @@ pub struct JsBlock {
 impl JsBlock {
     /// Create a new instance of a block
     pub fn new(desc: BlockDesc, func: Option<js_sys::Function>, block_id: Option<Uuid>) -> Self {
-        let id = block_id.unwrap_or_else(|| uuid::Uuid::new_v4());
+        let id = block_id.unwrap_or_else(uuid::Uuid::new_v4);
 
         let inputs = desc
             .inputs
@@ -91,13 +91,12 @@ impl JsBlock {
                         .and_then(|res| {
                             if res.is_array() {
                                 serde_wasm_bindgen::from_value::<Vec<Value>>(res)
-                                    .and_then(|list| {
+                                    .map(|list| {
                                         list.iter().enumerate().for_each(|(index, res)| {
                                             if let Some(output) = self.outputs.get_mut(index) {
                                                 output.set(res.clone());
                                             }
                                         });
-                                        Ok(())
                                     })
                                     .map_err(|err| err.to_string())
                             } else {
@@ -316,36 +315,39 @@ pub(crate) async fn eval_js_block(desc: &BlockDesc, inputs: Vec<Value>) -> Resul
 
 fn resolve_js_execute_function(
     desc: &BlockDesc,
-) -> Result<Option<js_sys::Function>, anyhow::Error> {
+) -> Result<Option<js_sys::Function>, ExternalError> {
     JS_FNS.with(|fns| {
-		let fns = fns.borrow();
+        let fns = fns.borrow();
         let lib = fns.get(&desc.library);
 
-		let Some(lib) = lib else {
-			return Err(anyhow::anyhow!(
-				"Missing library: '{}'. Can't find the executor JavaScript function for: '{}' block.",
-				desc.library,
-				desc.name
-			));
-    	};
+        let Some(lib) = lib else {
+            return Err(ExternalError::LibraryNotFound {
+                library: desc.library.clone(),
+                name: desc.name.clone(),
+            });
+        };
 
+        let func = lib.get(desc.name.as_str());
+        let func = match func {
+            Some(func) => {
+                let func =
+                    func.call0(&JsValue::NULL)
+                        .map_err(|err| ExternalError::FactoryCallFailed {
+                            name: desc.name.clone(),
+                            detail: format!("{err:#?}"),
+                        })?;
 
-		let func = lib.get(desc.name.as_str());
-		let func = match func {
-			Some(func) => {
-				let func = func.call0(&JsValue::NULL).map_err(|err| {
-					anyhow::anyhow!("Failed to call the JS factory function: {err:#?}")
-				})?;
+                let func = func.dyn_into::<js_sys::Function>().map_err(|err| {
+                    ExternalError::FactoryReturnedNonFunction {
+                        name: desc.name.clone(),
+                        detail: format!("{err:#?}"),
+                    }
+                })?;
 
-				let func = func.dyn_into::<js_sys::Function>().map_err(|err| {
-					anyhow::anyhow!("Factory function return is not a function: {err:#?}")
-				})?;
-
-				Some(func)
-			}
-			None => None,
-		};
-    	Ok(func)
-
+                Some(func)
+            }
+            None => None,
+        };
+        Ok(func)
     })
 }
