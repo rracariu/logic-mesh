@@ -1,62 +1,56 @@
 // Copyright (c) 2022-2023, Radu Racariu.
 
-//!
-//! Defines the base output properties.
-//!
+//! Base output properties.
 
 use libhaystack::val::{Value, kind::HaystackKind};
 use uuid::Uuid;
 
 use crate::base::link::Link;
 
-/// The description of an output pin
+/// The description of an output pin.
 #[derive(Debug, Default, Clone)]
 pub struct OutDesc {
-    /// The output's name
+    /// The output's name.
     pub name: String,
-    /// The output's haystack kind
+    /// The output's haystack kind.
     pub kind: HaystackKind,
 }
 
-/// Properties of a block output pin
+/// Properties of a block output pin.
 pub trait OutputProps {
-    /// The output's description
+    /// Returns the output's description.
     fn desc(&self) -> &OutDesc;
 
-    /// The output's name
+    /// Returns the output's name.
     fn name(&self) -> &str {
         &self.desc().name
     }
 
-    /// The block id of the block this output belongs to
+    /// Returns the block id of the block this output belongs to.
     fn block_id(&self) -> &Uuid;
 
-    /// True if this output is connected to at least one input
+    /// Returns `true` if this output is connected to at least one input.
     fn is_connected(&self) -> bool;
 
-    /// Get a list of links to this output. The trait objects carry a
-    /// `+ Send` bound so they can be held across `.await` points in the
+    /// Returns links from this output. The trait objects carry a
+    /// `+` [`Send`] bound so they can be held across `.await` points in the
     /// MT actor future.
     fn links(&self) -> Vec<&(dyn Link + Send)>;
 
-    /// Remove a link from this output
-    /// # Arguments
-    /// - link: The link to be removed
+    /// Removes a link from this output.
     fn remove_link(&mut self, link: &dyn Link) {
         self.remove_link_by_id(link.id())
     }
 
-    /// Remove a link by id from this output
-    /// # Arguments
-    /// - link_id: The id of the link to be removed
+    /// Removes a link by id from this output.
     fn remove_link_by_id(&mut self, link_id: &Uuid);
 
-    /// Remove all links to a specific block from this output
+    /// Removes all links to a specific block from this output.
     fn remove_target_block_links(&mut self, block_id: &Uuid);
 
-    /// Remove all links from this output
+    /// Removes all links from this output.
     fn remove_all_links(&mut self);
 
-    /// Get this output's value
+    /// Returns this output's value.
     fn value(&self) -> &Value;
 }

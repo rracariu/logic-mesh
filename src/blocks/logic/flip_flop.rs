@@ -1,5 +1,7 @@
 // Copyright (c) 2022-2026, Radu Racariu.
 
+//! Set-reset flip-flop block.
+
 use crate::base::{
     block::Block,
     input::{InputProps, input_reader::InputReader},

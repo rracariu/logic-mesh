@@ -1,8 +1,8 @@
 // Copyright (c) 2022-2023, Radu Racariu.
 
-//!
-//! Various utility functions used by the blocks.
-//!
+//! Utility functions used by blocks.
+
+#![allow(dead_code)]
 
 use std::sync::atomic::AtomicU64;
 
@@ -13,20 +13,20 @@ use libhaystack::{
     val::{Number, Value},
 };
 
-/// Default value for sleep intervals
+/// Default value for sleep intervals.
 const DEFAULT_SLEEP_DUR: u64 = 200;
 
-/// A global variable that controls the sleep duration used
+/// Global variable that controls the sleep duration used
 /// to schedule the execution of blocks.
 static SLEEP_DUR: AtomicU64 = AtomicU64::new(DEFAULT_SLEEP_DUR);
 
-/// Set the sleep duration used to schedule the execution of blocks.
+/// Sets the sleep duration used to schedule the execution of blocks.
 pub fn set_sleep_dur(dur: u64) {
     SLEEP_DUR.store(dur, std::sync::atomic::Ordering::Relaxed);
 }
 
-/// Get the sleep duration used to schedule the execution of blocks.
-/// If the duration is not set, the default value is returned.
+/// Returns the sleep duration used to schedule the execution of blocks.
+/// Returns the default value if not explicitly set.
 pub fn get_sleep_dur() -> u64 {
     SLEEP_DUR.load(std::sync::atomic::Ordering::Relaxed)
 }
@@ -43,12 +43,12 @@ pub(super) fn input_as_number(input: &InputImpl) -> Option<Number> {
     }
 }
 
-/// Read a numeric input and return its value in `target` units.
+/// Reads a numeric input and returns its value in `target` units.
 ///
 /// - If the input has no unit set, the raw value is returned (lenient).
 /// - If the input's unit equals `target`, the raw value is returned.
 /// - If the input's unit is convertible to `target`, the converted value is returned.
-/// - If the input is missing or has an incompatible unit, returns `None`.
+/// - If the input is missing or has an incompatible unit, returns [`None`].
 pub(super) fn input_as_number_in(input: &InputImpl, target: &'static Unit) -> Option<f64> {
     let n = input_as_number(input)?;
     match n.unit {
@@ -58,7 +58,7 @@ pub(super) fn input_as_number_in(input: &InputImpl, target: &'static Unit) -> Op
     }
 }
 
-/// Read a numeric input, optionally converting to `target` if a target
+/// Reads a numeric input, optionally converting to `target` if a target
 /// unit is known. Used by unit-preserving blocks where the target unit
 /// is dictated by another input (typically `in`).
 pub(super) fn input_as_number_matching(
@@ -71,8 +71,8 @@ pub(super) fn input_as_number_matching(
     }
 }
 
-/// Convert the duration to milliseconds, or return the default with
-/// `DEFAULT_SLEEP_DUR` if the conversion fails.
+/// Converts the duration to milliseconds, or returns `DEFAULT_SLEEP_DUR`
+/// if the conversion fails.
 pub(super) fn input_to_millis_or_default(dur: &Option<Value>) -> u64 {
     if let Some(Value::Number(dur)) = dur {
         if let Some(unit) = dur.unit {
@@ -88,13 +88,11 @@ pub(super) fn input_to_millis_or_default(dur: &Option<Value>) -> u64 {
     }
 }
 
-/// Convert all the numbers to the same unit
+/// Converts all `numbers` to a common unit.
 ///
-/// # Arguments
-/// numbers - the numbers to convert
+/// # Errors
 ///
-/// # Returns
-/// A vector of numbers with the same unit
+/// Returns an error if unit conversion fails.
 pub(super) fn convert_units(numbers: &[Number]) -> Result<Vec<Number>, ValueError> {
     if numbers.len() <= 1 {
         Ok(numbers.to_vec())

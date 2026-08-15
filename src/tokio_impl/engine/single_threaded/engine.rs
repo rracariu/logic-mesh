@@ -54,14 +54,15 @@ pub struct BlockHandle {
     library: String,
     /// Owned clone of the block's descriptor.
     ///
-    /// We clone instead of borrowing `&'static BlockDesc` because for
+    /// We clone instead of borrowing `&'static` [`BlockDesc`] because for
     /// JS blocks the descriptor lives inside the block instance — and
     /// the instance gets moved into its actor task at schedule time,
     /// invalidating any borrowed pointer. Native (Rust) blocks back
-    /// their descriptor with a `LazyLock<BlockDesc>` so a `&'static`
-    /// would be sound for them, but we use a single uniform owned shape
-    /// to avoid an unsafe trait split. The clone happens once per
-    /// block at schedule time.
+    /// their descriptor with a
+    /// [`LazyLock`](std::sync::LazyLock)`<`[`BlockDesc`]`>` so a
+    /// `&'static` would be sound for them, but we use a single uniform
+    /// owned shape to avoid an unsafe trait split. The clone happens
+    /// once per block at schedule time.
     desc: BlockDesc,
     mailbox: mpsc::Sender<BlockMailboxCmd>,
     /// UI display label. Pure passthrough metadata — the engine never
@@ -74,29 +75,60 @@ pub struct BlockHandle {
 }
 
 impl BlockHandle {
+    /// Returns the block's unique id.
     pub fn id(&self) -> &Uuid {
         &self.id
     }
+    /// Returns the block's type name.
     pub fn name(&self) -> &str {
         &self.name
     }
+    /// Returns the block's library name.
     pub fn library(&self) -> &str {
         &self.library
     }
+    /// Returns the block's descriptor.
     pub fn desc(&self) -> &BlockDesc {
         &self.desc
     }
+    /// Returns the user-supplied display label, if any.
     pub fn label(&self) -> Option<&str> {
         self.label.as_deref()
     }
+    /// Returns the UI position, if any.
     pub fn position(&self) -> Option<Position> {
         self.position
     }
 }
 
 /// Single-threaded execution environment for blocks.
+///
+/// # Examples
+///
+/// ```no_run
+/// use logic_mesh::{
+///     base::block::{Block, BlockProps, connect::connect_output},
+///     base::engine::Engine,
+///     blocks::{math::Add, misc::SineWave},
+///     single_threaded::SingleThreadedEngine,
+/// };
+///
+/// #[tokio::main]
+/// async fn main() -> Result<(), Box<dyn std::error::Error>> {
+///     let mut sine = SineWave::new();
+///     let mut add = Add::new();
+///     connect_output(&mut sine.out, add.inputs_mut()[0])?;
+///
+///     let mut engine = SingleThreadedEngine::new();
+///     engine.schedule(sine)?;
+///     engine.schedule(add)?;
+///     engine.run().await;
+///     Ok(())
+/// }
+/// ```
 pub struct SingleThreadedEngine {
-    /// LocalSet that hosts every per-block actor task. Wrapped in `Rc` so
+    /// [`LocalSet`](tokio::task::LocalSet) that hosts every per-block actor
+    /// task. Wrapped in [`Rc`](std::rc::Rc) so
     /// `run()` can clone a handle and avoid double-borrowing `self` when it
     /// needs to drive the local set while also dispatching engine messages.
     local: Rc<LocalSet>,
@@ -241,6 +273,7 @@ impl Engine for SingleThreadedEngine {
 }
 
 impl SingleThreadedEngine {
+    /// Creates a new single-threaded engine.
     pub fn new() -> Self {
         let (sender, receiver) = mpsc::channel(32);
         Self {
@@ -260,6 +293,7 @@ impl SingleThreadedEngine {
         self.handles.values().collect()
     }
 
+    /// Returns the handle for a specific block, if scheduled.
     pub fn block_handle(&self, id: &Uuid) -> Option<&BlockHandle> {
         self.handles.get(id)
     }
@@ -400,7 +434,7 @@ impl SingleThreadedEngine {
         .map_err(EngineError::BlockRequestRejected)
     }
 
-    /// Connect two blocks (source pin → target input). The source pin can
+    /// Connects two blocks (source pin → target input). The source pin can
     /// be either an output or an input (the latter is input-fanout).
     pub(crate) async fn connect_blocks(&self, link_data: &LinkData) -> Result<LinkData> {
         let source_id = parse_block_uuid(&link_data.source_block_uuid)?;
@@ -671,12 +705,12 @@ impl SingleThreadedEngine {
     /// Atomically load a full [`Program`]: schedule every block, wire
     /// every link, push initial input/output values, and store UI
     /// metadata. Idempotent re-entry (engine should be empty or the
-    /// caller should reset it first via `Reset`).
+    /// caller should reset it first via [`Reset`](EngineMessage::Reset)).
     ///
     /// Must be called from within the engine `run()` context (the actor
     /// tasks need to be live to handle the WriteInput/Output mailbox
     /// cmds). When invoked through the engine message channel
-    /// (`LoadProgramReq`), this is automatic.
+    /// ([`LoadProgramReq`](EngineMessage::LoadProgramReq)), this is automatic.
     pub(crate) async fn load_program(&mut self, program: Program) -> Result<()> {
         // Sync: schedule blocks + queue links. After this the per-block
         // actor tasks have been spawned and the link wiring is queued

@@ -1,5 +1,7 @@
 // Copyright (c) 2022-2024, Radu Racariu.
 
+//! String concatenation block.
+
 use crate::base::{
     block::{Block, BlockProps},
     input::input_reader::InputReader,

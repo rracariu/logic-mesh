@@ -1,5 +1,7 @@
 // Copyright (c) 2022-2024, Radu Racariu.
 
+//! Priority array block.
+
 use crate::base::{
     block::{Block, BlockProps},
     input::{InputProps, input_reader::InputReader},

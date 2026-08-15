@@ -1,8 +1,6 @@
 // Copyright (c) 2022-2024, Radu Racariu.
 
-//!
-//! Block implementing time-related functionality
-//!
+//! Time-related blocks.
 
 pub mod calendar;
 pub mod now;

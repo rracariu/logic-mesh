@@ -9,11 +9,11 @@
 //! [`Send`] by construction (trait-method returns carry `+ Send`; see
 //! [`crate::base::block::BlockProps`]).
 //!
-//! Shares the per-block mailbox protocol ([`super::super::block_mailbox`])
-//! with the single-threaded engine, so the actor task implementation is
+//! Shares the per-block mailbox protocol (`block_mailbox`)
+//! with the [`SingleThreadedEngine`](crate::single_threaded::SingleThreadedEngine), so the actor task implementation is
 //! near-identical — the only MT-specific bits are watchers
 //! (`Arc<RwLock<...>>`) and the cross-thread mailbox semantics, both of
-//! which already work over `tokio::spawn`.
+//! which already work over [`tokio::spawn`].
 //!
 //! ## Runtime requirement
 //!
@@ -61,46 +61,77 @@ pub type Messages = EngineMessage<UnboundedSender<WatchMessage>>;
 
 /// Engine-side handle for a scheduled block in the MT engine.
 ///
-/// Same shape as the ST handle. Notably it no longer carries a
-/// `worker_idx` — the tokio MT runtime is free to migrate the actor
-/// task between worker threads via work-stealing, so a fixed pinning
-/// would be misleading.
+/// Same shape as the [ST handle](crate::single_threaded::BlockHandle).
+/// Notably it no longer carries a `worker_idx` — the tokio MT runtime
+/// is free to migrate the actor task between worker threads via
+/// work-stealing, so a fixed pinning would be misleading.
 pub struct BlockHandle {
     id: Uuid,
     name: String,
     library: String,
-    /// Owned clone of the block's descriptor — see the ST
-    /// `BlockHandle::desc` doc for the rationale (JS blocks).
+    /// Owned clone of the block's descriptor — see
+    /// [`BlockHandle::desc`](crate::single_threaded::BlockHandle::desc)
+    /// for the rationale (JS blocks).
     desc: BlockDesc,
     mailbox: mpsc::Sender<BlockMailboxCmd>,
-    /// See ST `BlockHandle::label`.
+    /// See [`BlockHandle::label`](crate::single_threaded::BlockHandle::label).
     label: Option<String>,
-    /// See ST `BlockHandle::position`.
+    /// See [`BlockHandle::position`](crate::single_threaded::BlockHandle::position).
     position: Option<Position>,
 }
 
 impl BlockHandle {
+    /// Returns the block's unique id.
     pub fn id(&self) -> &Uuid {
         &self.id
     }
+    /// Returns the block's type name.
     pub fn name(&self) -> &str {
         &self.name
     }
+    /// Returns the block's library name.
     pub fn library(&self) -> &str {
         &self.library
     }
+    /// Returns the block's descriptor.
     pub fn desc(&self) -> &BlockDesc {
         &self.desc
     }
+    /// Returns the user-supplied display label, if any.
     pub fn label(&self) -> Option<&str> {
         self.label.as_deref()
     }
+    /// Returns the UI position, if any.
     pub fn position(&self) -> Option<Position> {
         self.position
     }
 }
 
 /// Multi-threaded execution environment for blocks.
+///
+/// # Examples
+///
+/// ```no_run
+/// use logic_mesh::{
+///     base::block::{Block, BlockProps, connect::connect_output},
+///     base::engine::Engine,
+///     blocks::{math::Add, misc::SineWave},
+///     multi_threaded::MultiThreadedEngine,
+/// };
+///
+/// #[tokio::main]
+/// async fn main() -> Result<(), Box<dyn std::error::Error>> {
+///     let mut sine = SineWave::new();
+///     let mut add = Add::new();
+///     connect_output(&mut sine.out, add.inputs_mut()[0])?;
+///
+///     let mut engine = MultiThreadedEngine::new();
+///     engine.schedule_send(sine);
+///     engine.schedule_send(add);
+///     engine.run().await;
+///     Ok(())
+/// }
+/// ```
 pub struct MultiThreadedEngine {
     handles: BTreeMap<Uuid, BlockHandle>,
     pending_links: Vec<LinkData>,
@@ -214,7 +245,7 @@ impl crate::base::engine::Engine for MultiThreadedEngine {
 }
 
 impl MultiThreadedEngine {
-    /// Create a new multi-threaded engine. The engine itself does not
+    /// Creates a new multi-threaded engine. The engine itself does not
     /// own worker threads — actor tasks are spawned onto whichever
     /// tokio multi-thread runtime the engine is running inside of.
     pub fn new() -> Self {
@@ -230,14 +261,14 @@ impl MultiThreadedEngine {
         }
     }
 
-    /// Schedule a block on the engine. The block must be `Send + 'static`
+    /// Schedules a block on the engine. The block must be [`Send`] `+ 'static`
     /// because the actor task is handed to [`tokio::spawn`], where the
     /// runtime is free to migrate it between worker threads.
     ///
     /// Must be called from within a tokio multi-thread runtime context
     /// (`#[tokio::main(flavor = "multi_thread")]`, `Runtime::block_on`,
     /// or an already-spawned task on such a runtime). Calling this
-    /// outside a runtime panics — that's a `tokio::spawn` invariant.
+    /// outside a runtime panics — that's a [`tokio::spawn`] invariant.
     pub fn schedule_send<B>(&mut self, block: B)
     where
         B: MtBlock + 'static,
@@ -245,7 +276,7 @@ impl MultiThreadedEngine {
         let id = *block.id();
         let name = block.name().to_string();
         let library = block.desc().library.clone();
-        // See the ST engine's `schedule` for why we clone here.
+        // See `Engine::schedule` on SingleThreadedEngine for why we clone.
         let desc: BlockDesc = block.desc().clone();
         let (mailbox_tx, mailbox_rx) = mpsc::channel::<BlockMailboxCmd>(BLOCK_MAILBOX_CAP);
 
@@ -264,11 +295,13 @@ impl MultiThreadedEngine {
         tokio::spawn(block_actor_task(block, mailbox_rx, watchers));
     }
 
-    /// Returns sync metadata handles for every scheduled block.
+    /// Returns sync metadata handles for every scheduled block. Use the
+    /// async snapshot APIs (`inspect_block`, etc.) to read dynamic state.
     pub fn block_handles(&self) -> Vec<&BlockHandle> {
         self.handles.values().collect()
     }
 
+    /// Returns the handle for a specific block, if scheduled.
     pub fn block_handle(&self, id: &Uuid) -> Option<&BlockHandle> {
         self.handles.get(id)
     }
@@ -290,6 +323,7 @@ impl MultiThreadedEngine {
             .ok_or(EngineError::BlockInstanceNotFound { id: *id })
     }
 
+    /// Adds a block to the engine by name and schedules it.
     pub fn add_block(
         &mut self,
         block_name: String,
@@ -362,12 +396,14 @@ impl MultiThreadedEngine {
         })
     }
 
+    /// Inspects the current state of a block.
     pub async fn inspect_block(&self, id: &Uuid) -> Result<BlockDefinition, EngineError> {
         let mailbox = self.mailbox_or_err(id)?;
 
         mailbox_request(mailbox, *id, |reply| BlockMailboxCmd::Inspect { reply }).await
     }
 
+    /// Writes a value to a block's input pin.
     pub async fn write_input(
         &self,
         id: &Uuid,
@@ -385,6 +421,7 @@ impl MultiThreadedEngine {
         .map_err(EngineError::BlockRequestRejected)
     }
 
+    /// Writes a value to a block's output pin.
     pub async fn write_output(
         &self,
         id: &Uuid,
@@ -402,6 +439,8 @@ impl MultiThreadedEngine {
         .map_err(EngineError::BlockRequestRejected)
     }
 
+    /// Connects two blocks (source pin → target input). The source pin can
+    /// be either an output or an input (the latter is input-fanout).
     pub async fn connect_blocks(&self, link_data: &LinkData) -> Result<LinkData> {
         let source_id = parse_block_uuid(&link_data.source_block_uuid)?;
         let target_id = parse_block_uuid(&link_data.target_block_uuid)?;
@@ -510,8 +549,10 @@ impl MultiThreadedEngine {
         rx.await.ok().flatten()
     }
 
-    /// MT mirror of the ST helper — see its doc for the
-    /// `is_connected` filter rationale.
+    /// Re-arms any other connected inputs on the target block by
+    /// re-sending their cached values, so the block re-cycles after a
+    /// new link is added. Skips unconnected inputs — refreshing them
+    /// is a no-op and the mailbox round-trip would be wasted.
     async fn reset_connected_inputs(&self, target_id: &Uuid, ignore_input: &str) -> Result<()> {
         let inputs = match self.inspect_block(target_id).await {
             Ok(def) => def.inputs,
@@ -529,6 +570,7 @@ impl MultiThreadedEngine {
         Ok(())
     }
 
+    /// Removes a block and all its links from the engine.
     pub async fn remove_block(&mut self, block_id: &Uuid) -> Result<Uuid> {
         let target_mb = self.mailbox_or_err(block_id)?.clone();
 
@@ -577,7 +619,9 @@ impl MultiThreadedEngine {
         Ok(*block_id)
     }
 
-    /// MT mirror of [`super::super::single_threaded::engine::SingleThreadedEngine::save_program`].
+    /// Snapshots the full program: every scheduled block with its UI
+    /// metadata and current pin values, plus every link. This is the
+    /// canonical save format — round-trips through [`load_program`](Self::load_program).
     pub async fn save_program(&self) -> Result<Program> {
         let mut blocks = std::collections::BTreeMap::new();
         let mut links = std::collections::BTreeMap::new();
@@ -649,7 +693,10 @@ impl MultiThreadedEngine {
         })
     }
 
-    /// MT mirror of [`super::super::single_threaded::engine::SingleThreadedEngine::load_program`].
+    /// Atomically loads a full [`Program`]: schedules every block, wires
+    /// every link, pushes initial input/output values, and stores UI
+    /// metadata. Must be called from within the engine `run()` context
+    /// (the actor tasks need to be live to handle the mailbox commands).
     pub async fn load_program(&mut self, program: Program) -> Result<()> {
         self.schedule_program_blocks(&program)?;
 
@@ -677,6 +724,7 @@ impl MultiThreadedEngine {
         Ok(())
     }
 
+    /// Disconnects a link by its UUID.
     pub async fn disconnect_link_by_id(&self, link_id: &Uuid) -> Result<bool> {
         for handle in self.handles.values() {
             let (reply, response) = oneshot::channel();
@@ -842,7 +890,13 @@ impl MultiThreadedEngine {
     }
 }
 
-/// MT-side mirror of the ST `hasinitialvalue` helper.
+/// Filters for "this is a real saved value, not a placeholder."
+///
+/// Programs sometimes annotate a computed output pin with `{}` purely
+/// as a UI hint that the pin exists. Loading that verbatim would push
+/// an empty Dict into the value, which then propagates through
+/// connected links to Number-typed downstream pins and faults their
+/// drain.
 fn hasinitialvalue_mt(value: &Value) -> bool {
     use libhaystack::val::Value::*;
     !matches!(value, Null)

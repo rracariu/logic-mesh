@@ -1,8 +1,6 @@
 // Copyright (c) 2022-2023, Radu Racariu.
 
-//!
-//! Defines the block trait and associated types
-//!
+//! Block trait and associated types.
 
 pub mod connect;
 pub mod desc;
@@ -20,10 +18,23 @@ use uuid::Uuid;
 
 /// Operational state a block is in.
 ///
-/// Phase 1 fault propagation: `Fault` carries the reason so the engine and
+/// Phase 1 fault propagation: [`BlockState::Fault`] carries the reason so the engine and
 /// UI can show *why* the block isn't producing trustworthy output. Recovery
 /// is automatic — the actor task optimistically clears Fault at the start
 /// of each cycle and re-enters it only if drain or execute set it again.
+///
+/// # Examples
+///
+/// ```
+/// use logic_mesh::base::block::BlockState;
+///
+/// let state = BlockState::fault("unit mismatch");
+/// assert!(state.is_fault());
+/// assert_eq!(state.fault_reason(), Some("unit mismatch"));
+/// assert_eq!(state.label(), "fault");
+///
+/// assert_eq!(BlockState::Running.label(), "running");
+/// ```
 #[derive(Default, Debug, Clone, PartialEq)]
 pub enum BlockState {
     /// Block is executing normally.
@@ -33,7 +44,10 @@ pub enum BlockState {
     /// proximate cause (upstream fault, type conversion failure,
     /// block-specific computation failure). Downstream blocks that drain
     /// a Fault-status value transition to Fault themselves.
-    Fault { reason: String },
+    Fault {
+        /// The proximate cause of the fault.
+        reason: String,
+    },
     /// Block exists but is intentionally not executing. Phase 1 doesn't
     /// have a path that sets this; reserved for explicit user disable.
     Disabled,
@@ -42,13 +56,14 @@ pub enum BlockState {
 }
 
 impl BlockState {
-    /// Construct a Fault state with the given reason.
+    /// Constructs a [`BlockState::Fault`] state with the given reason.
     pub fn fault(reason: impl Into<String>) -> Self {
         BlockState::Fault {
             reason: reason.into(),
         }
     }
 
+    /// Returns `true` if the block is in a [`BlockState::Fault`] state.
     pub fn is_fault(&self) -> bool {
         matches!(self, BlockState::Fault { .. })
     }
@@ -76,56 +91,116 @@ impl BlockState {
 /// produces output values.
 ///
 /// On native targets we declare `execute` as returning an `impl Future
-/// + Send`. That promise lets the multi-threaded engine spawn block
+/// + [`Send`]`. That promise lets the multi-threaded engine spawn block
 /// actor tasks directly via [`tokio::spawn`], which requires the
-/// future be `Send`. Macro-generated native blocks all satisfy this.
+/// future be [`Send`]. Macro-generated native blocks all satisfy this.
 ///
-/// On `wasm32` (single-threaded by definition), we drop the `Send`
+/// On `wasm32` (single-threaded by definition), we drop the [`Send`]
 /// requirement so `JsBlock` — whose `func: js_sys::Function` is
 /// `!Send` — can still implement the trait.
+///
+/// # Examples
+///
+/// Define a block with the `#[block]` attribute macro:
+///
+/// ```
+/// use logic_mesh::{
+///     BlockProps, block,
+///     base::block::{Block, BlockProps as _},
+///     base::input::input_reader::InputReader,
+///     base::output::Output,
+///     blocks::{InputImpl, OutputImpl},
+/// };
+///
+/// #[block]
+/// #[derive(BlockProps, Debug)]
+/// #[category = "example"]
+/// struct Double {
+///     #[input(kind = "Number")]
+///     input: InputImpl,
+///     #[output(kind = "Number")]
+///     out: OutputImpl,
+/// }
+///
+/// impl Block for Double {
+///     async fn execute(&mut self) {
+///         self.read_inputs_until_ready().await;
+///
+///         if let Some(logic_mesh::Value::Number(n)) = &self.input.val {
+///             self.out.set((n.value * 2.0).into());
+///         }
+///     }
+/// }
+///
+/// let block = Double::new();
+/// assert_eq!(block.name(), "Double");
+/// ```
 #[cfg(not(target_arch = "wasm32"))]
 pub trait Block: BlockConnect {
+    /// Runs one cycle of this block's dataflow logic.
     fn execute(&mut self) -> impl std::future::Future<Output = ()> + Send;
 }
 
+/// WASM variant of [`Block`] without the `Send` bound.
 #[cfg(target_arch = "wasm32")]
 pub trait Block: BlockConnect {
+    /// Runs one cycle of this block's dataflow logic.
     #[allow(async_fn_in_trait)]
     async fn execute(&mut self);
 }
 
-/// Construct a block instance with a fixed id.
+/// Constructs a block instance with a fixed id.
 ///
-/// Implemented by the `BlockProps` derive. The registry uses it to
+/// Implemented by the [`BlockProps`] derive. The registry uses it to
 /// instantiate runtime-registered blocks when a program prescribes the
 /// block ids.
 pub trait BlockConstruct: Sized {
+    /// Creates a new block with the given UUID.
     fn with_uuid(uuid: Uuid) -> Self;
 }
 
-/// Converts the actual value to the expected type expected value.
+/// Converts `actual` to the type indicated by `expect`.
 ///
-/// # Arguments
-/// - `expect` The expected value, this is used to determine the expected type
-/// - `actual` The actual value to convert
+/// # Errors
 ///
-/// # Returns
-/// The converted value if the conversion was successful.
-/// If the conversion was not successful, an error is returned.
+/// Returns an error if the conversion is not possible.
+///
+/// # Examples
+///
+/// ```
+/// use logic_mesh::{Value, ValueError, base::block::convert_value};
+///
+/// # fn main() -> Result<(), ValueError> {
+/// let expected = Value::make_int(0);
+/// let actual = Value::make_str("42");
+/// let result = convert_value(&expected, actual)?;
+/// assert_eq!(result, Value::make_int(42));
+/// # Ok(())
+/// # }
+/// ```
 pub fn convert_value(expect: &Value, actual: Value) -> Result<Value, ValueError> {
     let to_kind = HaystackKind::from(&actual);
     convert_value_kind(actual, HaystackKind::from(expect), to_kind)
 }
 
-/// Converts a value from one kind to another.
+/// Converts `val` from the `actual` kind to the `expected` kind.
 ///
-/// # Arguments
-/// - `val` The value to convert
-/// - `expected` The expected kind of the value
-/// - `actual` The actual kind of the value
+/// # Errors
 ///
-/// # Returns
-/// The converted value if the conversion was successful.
+/// Returns an error if the conversion is not possible.
+///
+/// # Examples
+///
+/// ```
+/// use logic_mesh::{HaystackKind, Value, ValueError, base::block::convert_value_kind};
+///
+/// # fn main() -> Result<(), ValueError> {
+/// let val = Value::make_bool(true);
+/// let result = convert_value_kind(val, HaystackKind::Number, HaystackKind::Bool)?;
+/// assert_eq!(result, Value::make_int(1));
+/// # Ok(())
+/// # }
+/// ```
 pub fn convert_value_kind(
     val: Value,
     expected: HaystackKind,

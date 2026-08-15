@@ -5,10 +5,10 @@ use syn::{parse::Parser, parse_macro_input, DeriveInput};
 
 use crate::utils::{get_block_input_attribute, get_crate_path};
 
-/// The `block` attribute macro
-/// This macro is used to derive the `Block` trait for a struct
-/// It will add the `id`, `name` and `state` members to the struct
-/// It will also add the `inputs` member if the struct has inputs
+/// Implements the `block` attribute macro.
+///
+/// Adds the `id`, `name`, and `state` members to the struct.
+/// Also adds the `inputs` member if the struct has inputs.
 pub(super) fn block_impl(input: TokenStream) -> TokenStream {
     let mut ast = parse_macro_input!(input as DeriveInput);
 
@@ -21,14 +21,14 @@ pub(super) fn block_impl(input: TokenStream) -> TokenStream {
                 // Add the `id` member
                 fields.named.push(
                     syn::Field::parse_named
-                        .parse2(quote! { id: #krate::Uuid })
+                        .parse2(quote! { #[doc = "Block UUID."] id: #krate::Uuid })
                         .unwrap(),
                 );
 
                 // Add the `state` member
                 fields.named.push(
                     syn::Field::parse_named
-                        .parse2(quote! { state: #krate::base::block::BlockState })
+                        .parse2(quote! { #[doc = "Current block state."] state: #krate::base::block::BlockState })
                         .unwrap(),
                 );
 
@@ -36,13 +36,14 @@ pub(super) fn block_impl(input: TokenStream) -> TokenStream {
                 if !props.is_empty() {
                     fields.named.push(
                         syn::Field::parse_named
-                            .parse2(quote! { _inputs: Vec::<#krate::blocks::InputImpl> })
+                            .parse2(quote! { #[doc = "Auto-generated input pins."] _inputs: Vec::<#krate::blocks::InputImpl> })
                             .expect("input props"),
                     )
                 }
             }
 
             quote! {
+                #[allow(missing_docs)]
                 #ast
             }
             .into()

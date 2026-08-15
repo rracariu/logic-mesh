@@ -1,8 +1,6 @@
 // Copyright (c) 2022-2023, Radu Racariu.
 
-//!
-//! Defines the base output type.
-//!
+//! Base output type.
 
 use libhaystack::val::{Value, kind::HaystackKind};
 use uuid::Uuid;
@@ -12,23 +10,28 @@ use crate::base::link::Link;
 
 use super::{OutputProps, props::OutDesc};
 
-/// The base implementation of an output pin
+/// The base implementation of an output pin.
 #[derive(Debug)]
 pub struct BaseOutput<L: Link> {
     desc: OutDesc,
+    /// Current output value.
     pub value: Value,
+    /// Downstream links attached to this output.
     pub links: Vec<L>,
+    /// UUID of the block that owns this output.
     pub block_id: Uuid,
     /// Status to pair with this output's value when it's emitted on the
-    /// watch channel. Managed by the actor task: set to `Fault` while the
-    /// owning block is in `BlockState::Fault`, restored to `Ok` on
+    /// watch channel. Managed by the actor task: set to
+    /// [`Status::Fault`] while the owning block is in
+    /// [`BlockState::Fault`](crate::base::block::BlockState::Fault),
+    /// restored to [`Status::Ok`] on
     /// recovery.
     pub effective_status: Status,
 }
 
 /// The implementation of the OutputProps trait.
 ///
-/// `L: Send` is required so the link list can return
+/// `L:` [`Send`] is required so the link list can return
 /// `Vec<&(dyn Link + Send)>` — see the [`OutputProps::links`] doc.
 impl<L: Link + Send> OutputProps for BaseOutput<L> {
     fn desc(&self) -> &OutDesc {
@@ -54,9 +57,7 @@ impl<L: Link + Send> OutputProps for BaseOutput<L> {
             .collect()
     }
 
-    /// Remove a link by id from this output
-    /// # Arguments
-    /// - link_id: The id of the link to be removed
+    /// Removes a link by id from this output.
     fn remove_link_by_id(&mut self, link_id: &Uuid) {
         self.links.retain(|link| link.id() != link_id);
     }
@@ -71,15 +72,7 @@ impl<L: Link + Send> OutputProps for BaseOutput<L> {
 }
 
 impl<L: Link> BaseOutput<L> {
-    /// Creates a new output pin
-    ///
-    /// # Arguments
-    /// * `name` - The name of the output pin
-    /// * `kind` - The haystack kind of the output pin
-    /// * `block_id` - The block id of the block this output pin belongs to
-    ///
-    /// # Returns
-    /// A new output pin
+    /// Creates a new output pin with the given `name` and `kind`.
     pub fn new_named(name: &str, kind: HaystackKind, block_id: Uuid) -> Self {
         Self {
             desc: OutDesc {
@@ -93,12 +86,7 @@ impl<L: Link> BaseOutput<L> {
         }
     }
 
-    /// Creates a new output pin with the name "out"
-    /// # Arguments
-    /// * `kind` - The haystack kind of the output pin
-    /// * `block_id` - The block id of the block this output pin belongs to
-    /// # Returns
-    /// A new output pin
+    /// Creates a new output pin with the default name `"out"`.
     pub fn new(kind: HaystackKind, block_id: Uuid) -> Self {
         Self::new_named("out", kind, block_id)
     }

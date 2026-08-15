@@ -44,12 +44,17 @@ impl fmt::Display for LinkEnd {
 pub enum EngineError {
     /// No block instance with this id is scheduled on the engine.
     #[error("Block instance '{id}' not found")]
-    BlockInstanceNotFound { id: Uuid },
+    BlockInstanceNotFound {
+        /// The id of the block that was not found.
+        id: Uuid,
+    },
 
     /// A block instance id could not be parsed as a UUID.
     #[error("Invalid block uuid '{uuid}'")]
     InvalidBlockUuid {
+        /// The string that could not be parsed.
         uuid: String,
+        /// The underlying parse error.
         #[source]
         source: uuid::Error,
     },
@@ -57,19 +62,28 @@ pub enum EngineError {
     /// The named pin does not exist on the block at this end of the link.
     #[error("{end} pin '{pin}' not found on block '{block}'")]
     PinNotFound {
+        /// Which end of the link failed validation.
         end: LinkEnd,
+        /// The block the pin was looked up on.
         block: Uuid,
+        /// The pin name that was not found.
         pin: String,
     },
 
     /// The block's actor task is no longer running, so the request could
     /// not be delivered.
     #[error("Block '{id}' actor task is gone")]
-    BlockTaskGone { id: Uuid },
+    BlockTaskGone {
+        /// The id of the unreachable block.
+        id: Uuid,
+    },
 
     /// The block's actor task dropped the reply channel before answering.
     #[error("Block '{id}' actor task dropped the reply")]
-    BlockDroppedReply { id: Uuid },
+    BlockDroppedReply {
+        /// The id of the block that dropped the reply.
+        id: Uuid,
+    },
 
     /// The block's actor task answered the request with a failure.
     #[error("Block actor rejected the request: {0}")]
@@ -86,7 +100,7 @@ pub enum EngineError {
     ScheduleRequiresSend,
 }
 
-/// Parse a block id, tagging a failure with the string that was rejected.
+/// Parses a block id, tagging a failure with the string that was rejected.
 pub(crate) fn parse_block_uuid(uuid: &str) -> Result<Uuid, EngineError> {
     Uuid::try_from(uuid).map_err(|source| EngineError::InvalidBlockUuid {
         uuid: uuid.to_string(),

@@ -1,8 +1,6 @@
 // Copyright (c) 2022-2024, Radu Racariu.
 
-//!
-//! Miscellaneous Blocks
-//!
+//! Miscellaneous blocks.
 
 pub mod change_of_value;
 pub mod derivative;

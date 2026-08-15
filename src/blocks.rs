@@ -1,8 +1,6 @@
 // Copyright (c) 2022-2023, Radu Racariu.
 
-//!
-//! Block implementations
-//!
+//! Block implementations.
 
 pub mod bitwise;
 pub mod collections;
@@ -15,7 +13,7 @@ pub mod registry;
 pub mod string;
 pub mod time;
 pub mod timers;
-pub mod utils;
+pub(crate) mod utils;
 
 // Re-export implementations working with inputs and outputs
 

@@ -1,5 +1,7 @@
 // Copyright (c) 2022-2026, Radu Racariu.
 
+//! Calendar date block.
+
 use std::time::Duration;
 
 use crate::base::output::props::OutputProps;
@@ -19,7 +21,7 @@ use crate::{blocks::InputImpl, blocks::OutputImpl};
 /// or semicolons (mix freely). `tzOffset` accepts any time unit
 /// (e.g. `-5h`, `60min`); a bare number is interpreted as minutes.
 ///
-/// Compose with [`Schedule`] (e.g. `schedule AND NOT calendar`) to
+/// Compose with [`Schedule`](super::schedule::Schedule) (e.g. `schedule AND NOT calendar`) to
 /// implement holiday overrides.
 #[block]
 #[derive(BlockProps, Debug)]
@@ -69,7 +71,7 @@ impl Block for Calendar {
     }
 }
 
-/// Convert days-since-epoch (1970-01-01) to (year, month, day).
+/// Converts days-since-epoch (1970-01-01) to (year, month, day).
 /// Implementation of Howard Hinnant's civil-from-days algorithm.
 fn civil_from_days(days: i64) -> (i64, u32, u32) {
     let z = days + 719_468;

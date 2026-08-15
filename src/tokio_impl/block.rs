@@ -12,7 +12,9 @@ use crate::base::input::{InputProps, input_reader::InputReader};
 use crate::blocks::InputImpl;
 use crate::blocks::utils::get_sleep_dur;
 
+/// Concrete reader type extracted from [`InputImpl`].
 pub type ReaderImpl = <InputImpl as InputProps>::Reader;
+/// Concrete writer type extracted from [`InputImpl`].
 pub type WriterImpl = <InputImpl as InputProps>::Writer;
 
 impl<B: Block> InputReader for B {
@@ -88,7 +90,7 @@ impl<B: Block> InputReader for B {
 ///   synchronously and return the index of the last one drained.
 /// - Otherwise, await `receiver()` on every connected input and, when one
 ///   wakes up, drain again (the wait might have woken several at once).
-/// - Returns `None` only when the block has no connected inputs at all.
+/// - Returns [`None`] only when the block has no connected inputs at all.
 ///
 /// Type-mismatched inputs are converted via [`convert_value_kind`]; if the
 /// conversion fails the block transitions to [`BlockState::Fault`].
@@ -121,13 +123,13 @@ pub(crate) async fn read_block_inputs<B: Block>(block: &mut B) -> Option<usize> 
 }
 
 /// Synchronously drain every input that has a fresh payload. Returns the
-/// index of the last drained input (or `None` if nothing was ready).
+/// index of the last drained input (or [`None`] if nothing was ready).
 ///
 /// Faults the block if:
 /// - any value fails type conversion (Phase 1: block-level fault), or
 /// - any drained payload carries [`Status::Fault`] — upstream fault
 ///   propagation, the consumer enters Fault until the upstream recovers
-///   and pushes `Status::Ok` on a later cycle.
+///   and pushes [`Status::Ok`] on a later cycle.
 fn drain_ready_inputs<B: Block>(block: &mut B) -> Option<usize> {
     let mut last_idx = None;
     let mut conversion_fault: Option<String> = None;

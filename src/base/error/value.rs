@@ -16,7 +16,9 @@ pub enum ValueError {
     /// expects.
     #[error("Cannot convert {actual:?} to {expected:?}")]
     KindConversion {
+        /// The kind the pin expects.
         expected: HaystackKind,
+        /// The kind the value actually has.
         actual: HaystackKind,
     },
 
@@ -27,7 +29,9 @@ pub enum ValueError {
     /// on the per-cycle conversion path by this cold error path.
     #[error("Expected a {expected:?} value, but got {actual:?}")]
     UnexpectedValue {
+        /// The kind the conversion expected.
         expected: HaystackKind,
+        /// The rejected value.
         actual: Box<Value>,
     },
 

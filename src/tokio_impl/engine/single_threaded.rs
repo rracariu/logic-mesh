@@ -4,13 +4,14 @@
 //!
 //! ## Architecture
 //!
-//! Each scheduled block is hosted by its own task on a tokio `LocalSet`.
-//! The block is **owned by value** by that task — there is no `UnsafeCell`,
-//! no `Rc`-shared mutable state, and no aliasing. Every external operation
+//! Each scheduled block is hosted by its own task on a tokio [`LocalSet`](tokio::task::LocalSet).
+//! The block is **owned by value** by that task — there is no
+//! [`UnsafeCell`](std::cell::UnsafeCell), no [`Rc`](std::rc::Rc)-shared
+//! mutable state, and no aliasing. Every external operation
 //! against a block (write input/output, inspect, wire/teardown links) is
 //! routed through a per-block `mpsc` mailbox (`BlockMailboxCmd`).
 //!
-//! The per-block task loop uses `tokio::select!` to interleave the block's
+//! The per-block task loop uses [`tokio::select!`] to interleave the block's
 //! `execute()` future with mailbox handling. When a mailbox command arrives
 //! while `execute()` is suspended, the in-flight future is dropped and the
 //! command is handled immediately, so external commands (UI input writes,
@@ -28,9 +29,9 @@
 //!
 //! ## Module layout
 //!
-//! - [`mailbox`] — the [`BlockMailboxCmd`] enum and the actor-side
+//! - `mailbox` — the `BlockMailboxCmd` enum and the actor-side
 //!   `handle_cmd` that turns a command into mutations on the owned block.
-//! - [`actor`] — the per-block task loop (`block_actor_task`) and the
+//! - `actor` — the per-block task loop (`block_actor_task`) and the
 //!   change-of-value detector that runs after each step.
 //! - [`engine`] — [`SingleThreadedEngine`] itself: lifecycle, the [`Engine`]
 //!   trait impl, sync configuration helpers, and the async APIs that

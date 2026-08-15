@@ -1,8 +1,6 @@
 // Copyright (c) 2022-2023, Radu Racariu.
 
-//!
-//! Defines the block connection trait
-//!
+//! Block connection trait and helpers.
 
 use uuid::Uuid;
 
@@ -12,47 +10,48 @@ use crate::base::input::InputProps;
 use crate::base::link::{BaseLink, Link, LinkState};
 use crate::base::output::Output;
 
-/// Block connection functions
+/// Block connection functions.
+///
+/// # Examples
+///
+/// ```
+/// use logic_mesh::{
+///     base::block::{Block, BlockConnect, BlockProps},
+///     blocks::math::Add,
+///     blocks::misc::SineWave,
+/// };
+///
+/// # fn main() -> Result<(), &'static str> {
+/// let mut sine = SineWave::new();
+/// let mut add = Add::new();
+/// sine.connect_output("out", add.inputs_mut()[0])?;
+/// sine.disconnect_output("out", add.inputs_mut()[0])?;
+/// # Ok(())
+/// # }
+/// ```
 pub trait BlockConnect: BlockStaticDesc {
-    /// Connect a block output to the given input
-    ///
-    /// # Arguments
-    /// - output_name: The name of the output to be connected
-    /// - input: The block input to be connected
-    ///
+    /// Connects the output named `output_name` to `target_input`.
     fn connect_output(
         &mut self,
         output_name: &str,
         target_input: &mut dyn InputProps<Reader = Self::Reader, Writer = Self::Writer>,
     ) -> Result<Uuid, &'static str>;
 
-    /// Connect a block input to another's block input
-    ///
-    /// # Arguments
-    /// - input_name: The name of the output to be connected
-    /// - input: The block input to be connected
-    ///
+    /// Connects the input named `input_name` to `target_input`.
     fn connect_input(
         &mut self,
         input_name: &str,
         target_input: &mut dyn InputProps<Reader = Self::Reader, Writer = Self::Writer>,
     ) -> Result<Uuid, &'static str>;
 
-    /// Disconnect a block output from the given input
-    /// # Arguments
-    /// - source_output_name: The name of the source output to be disconnected
-    /// - target_input: The target input to be disconnected
-    ///
+    /// Disconnects the output named `source_output_name` from `target_input`.
     fn disconnect_output(
         &mut self,
         source_output_name: &str,
         target_input: &mut dyn InputProps<Reader = Self::Reader, Writer = Self::Writer>,
     ) -> Result<(), &'static str>;
 
-    /// Disconnect a block input from the given output
-    /// # Arguments
-    /// - source_input_name: The name of the source input to be disconnected
-    /// - target_input: The target input to be disconnected
+    /// Disconnects the input named `source_input_name` from `target_input`.
     fn disconnect_input(
         &mut self,
         source_input_name: &str,
@@ -60,10 +59,7 @@ pub trait BlockConnect: BlockStaticDesc {
     ) -> Result<(), &'static str>;
 }
 
-///
-/// Implements the `BlockConnect` trait for all types
-/// that are `Block`s
-///
+/// Implements the [`BlockConnect`] trait for all types that are [`Block`]s.
 impl<T: Block + ?Sized> BlockConnect for T {
     fn connect_output(
         &mut self,
@@ -145,10 +141,24 @@ impl<T: Block + ?Sized> BlockConnect for T {
     }
 }
 
-/// Connect a block output to the given input
-/// # Arguments
-/// - source_output: The output to be connected
-/// - target_input: The block input to be connected
+/// Connects `source_output` to `target_input`.
+///
+/// # Examples
+///
+/// ```
+/// use logic_mesh::{
+///     base::block::{Block, BlockProps, connect::connect_output},
+///     blocks::math::Add,
+///     blocks::misc::SineWave,
+/// };
+///
+/// # fn main() -> Result<(), &'static str> {
+/// let mut sine = SineWave::new();
+/// let mut add = Add::new();
+/// connect_output(&mut sine.out, add.inputs_mut()[0])?;
+/// # Ok(())
+/// # }
+/// ```
 pub fn connect_output<Reader, Writer: Clone>(
     source_output: &mut dyn Output<Writer = Writer>,
     target_input: &mut dyn InputProps<Reader = Reader, Writer = Writer>,
@@ -174,13 +184,29 @@ pub fn connect_output<Reader, Writer: Clone>(
     Ok(id)
 }
 
-/// Disconnect a block output from the given input
-/// # Arguments
-/// - source_output: The output to be disconnected
-/// - target_input: The block input to be disconnected
+/// Disconnects `source_output` from `target_input`.
 ///
-/// # Returns
-/// - `Ok(())` if the disconnection was successful, `Err` otherwise
+/// # Errors
+///
+/// Returns an error if no connection is found.
+///
+/// # Examples
+///
+/// ```
+/// use logic_mesh::{
+///     base::block::{Block, BlockProps, connect::{connect_output, disconnect_output}},
+///     blocks::math::Add,
+///     blocks::misc::SineWave,
+/// };
+///
+/// # fn main() -> Result<(), &'static str> {
+/// let mut sine = SineWave::new();
+/// let mut add = Add::new();
+/// connect_output(&mut sine.out, add.inputs_mut()[0])?;
+/// disconnect_output(&mut sine.out, add.inputs_mut()[0])?;
+/// # Ok(())
+/// # }
+/// ```
 pub fn disconnect_output<Reader, Writer: Clone>(
     source_output: &mut dyn Output<Writer = Writer>,
     target_input: &mut dyn InputProps<Reader = Reader, Writer = Writer>,
@@ -196,10 +222,23 @@ pub fn disconnect_output<Reader, Writer: Clone>(
     }
 }
 
-/// Connect a block input to another's block input
-/// # Arguments
-/// - source_input: The input to be connected to
-/// - target_input: The block input to be connected
+/// Connects `source_input` to `target_input` (input-to-input fanout).
+///
+/// # Examples
+///
+/// ```
+/// use logic_mesh::{
+///     base::block::{Block, BlockProps, connect::connect_input},
+///     blocks::math::{Add, Mul},
+/// };
+///
+/// # fn main() -> Result<(), &'static str> {
+/// let mut add = Add::new();
+/// let mut mul = Mul::new();
+/// connect_input(add.inputs_mut()[0], mul.inputs_mut()[0])?;
+/// # Ok(())
+/// # }
+/// ```
 pub fn connect_input<Reader, Writer: Clone>(
     source_input: &mut dyn InputProps<Reader = Reader, Writer = Writer>,
     target_input: &mut dyn InputProps<Reader = Reader, Writer = Writer>,
@@ -228,12 +267,11 @@ pub fn connect_input<Reader, Writer: Clone>(
     Ok(id)
 }
 
-/// Disconnect a block input from another's block input
-/// # Arguments
-/// - source_input: The input to be disconnected from
-/// - target_input: The block input to be disconnected
-/// # Returns
-/// - `Ok(())` if the disconnection was successful, `Err` otherwise
+/// Disconnects `source_input` from `target_input`.
+///
+/// # Errors
+///
+/// Returns an error if no connection is found.
 pub fn disconnect_input<I: InputProps + ?Sized>(
     source_input: &mut I,
     target_input: &mut I,
@@ -249,10 +287,10 @@ pub fn disconnect_input<I: InputProps + ?Sized>(
     }
 }
 
-/// Disconnect all the inputs and outputs of a block
-/// # Arguments
-/// - block: The block to be disconnected
-/// - decrement_target_input: A function that decrements the number of connections of a block input
+/// Disconnects all inputs and outputs of `block`.
+///
+/// `decrement_target_input` is called for each disconnected link to
+/// decrement the target input's connection count.
 pub fn disconnect_block<B, F>(block: &mut B, mut decrement_target_input: F)
 where
     B: BlockProps + ?Sized,
@@ -281,11 +319,10 @@ where
     block.remove_all_links();
 }
 
-/// Disconnect a link from a block
-/// # Arguments
-/// - block: The block to be disconnected
-/// - link_id: The id of the link to be disconnected
-/// - decrement_target_input: A function that decrements the number of connections of a block input
+/// Disconnects the link identified by `link_id` from `block`.
+///
+/// `decrement_target_input` is called for the disconnected link to
+/// decrement the target input's connection count.
 pub fn disconnect_link<B, F>(block: &mut B, link_id: &Uuid, mut decrement_target_input: F) -> bool
 where
     B: BlockProps + ?Sized,

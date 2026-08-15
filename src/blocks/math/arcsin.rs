@@ -1,5 +1,7 @@
 // Copyright (c) 2022-2023, Radu Racariu.
 
+//! Arc sine block.
+
 use crate::base::{
     block::Block,
     input::{InputProps, input_reader::InputReader},

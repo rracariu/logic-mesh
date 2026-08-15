@@ -1,5 +1,7 @@
 // Copyright (c) 2022-2026, Radu Racariu.
 
+//! Exponential moving average block.
+
 use std::time::Duration;
 
 use crate::base::output::props::OutputProps;

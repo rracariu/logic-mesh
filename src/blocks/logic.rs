@@ -1,8 +1,6 @@
 // Copyright (c) 2022-2023, Radu Racariu.
 
-//!
-//! Boolean logic blocks
-//!
+//! Boolean logic blocks.
 
 pub mod and;
 pub mod eq;

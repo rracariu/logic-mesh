@@ -14,7 +14,9 @@ use crate::{
 
 use super::input::InputImpl;
 
+/// Concrete link type backed by tokio watch channels.
 pub type LinkImpl = BaseLink<WriterImpl>;
+/// Concrete output type backed by tokio watch channels.
 pub type OutputImpl = BaseOutput<LinkImpl>;
 
 impl Output for OutputImpl {

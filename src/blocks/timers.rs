@@ -1,8 +1,6 @@
 // Copyright (c) 2022-2026, Radu Racariu.
 
-//!
-//! Timer function blocks
-//!
+//! Timer function blocks.
 
 pub mod cycle_count;
 pub mod off_delay;

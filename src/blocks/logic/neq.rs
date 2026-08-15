@@ -1,5 +1,7 @@
 // Copyright (c) 2022-2023, Radu Racariu.
 
+//! Not-equal comparison block.
+
 use crate::base::block::Block;
 
 use crate::{blocks::InputImpl, blocks::OutputImpl};

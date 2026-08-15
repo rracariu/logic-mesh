@@ -4,6 +4,9 @@ version = "0.0.0"
 edition = "2024"
 publish = false
 
+[lints]
+workspace = true
+
 [dependencies]
 # Deliberately renamed to exercise the #[logic_mesh(crate = "...")] escape hatch.
 mesh_renamed = { package = "logic-mesh", path = ".." }

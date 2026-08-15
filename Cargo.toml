@@ -26,6 +26,9 @@ exclude = [
 [workspace]
 members = ["block_macro", "tests_lib_usage", "tests_lib_renamed"]
 
+[lints]
+workspace = true
+
 [features]
 default = []
 multi-threaded = []
@@ -93,6 +96,12 @@ name = "tui_runner"
 # Uses `MultiThreadedEngine` so the engine.run() task can be spawned
 # via `tokio::spawn` while ratatui drives the main thread.
 required-features = ["multi-threaded"]
+
+[workspace.lints.clippy]
+missing_docs_in_private_items = "allow"
+
+[workspace.lints.rust]
+missing_docs = "warn"
 
 [profile.release]
 opt-level = "z"

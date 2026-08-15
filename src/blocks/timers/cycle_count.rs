@@ -1,5 +1,7 @@
 // Copyright (c) 2022-2026, Radu Racariu.
 
+//! Cycle counter block.
+
 use crate::base::{
     block::Block,
     input::{InputProps, input_reader::InputReader},

@@ -1,5 +1,7 @@
 // Copyright (c) 2022-2024, Radu Racariu.
 
+//! String replacement block.
+
 use crate::base::{
     block::Block,
     input::{InputProps, input_reader::InputReader},

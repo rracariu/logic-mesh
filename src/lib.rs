@@ -1,10 +1,10 @@
 // Copyright (c) 2022-2023, Radu Racariu.
 
+#![doc = include_str!("../README.md")]
+
 #[macro_use]
 extern crate logic_mesh_block_macro;
 
-// Lets the macro-generated `::logic_mesh::...` paths resolve inside this
-// crate as well as in downstream crates.
 extern crate self as logic_mesh;
 
 pub use logic_mesh_block_macro::{BlockProps, block};

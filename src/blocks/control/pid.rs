@@ -1,5 +1,7 @@
 // Copyright (c) 2022-2026, Radu Racariu.
 
+//! PID controller block.
+
 use std::time::Duration;
 
 use crate::base::output::props::OutputProps;

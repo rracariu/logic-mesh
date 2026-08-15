@@ -1,8 +1,6 @@
 // Copyright (c) 2022-2023, Radu Racariu.
 
-//!
-//! Defines the base output types and traits.
-//!
+//! Base output types and traits.
 
 pub mod base;
 pub mod props;
@@ -15,13 +13,15 @@ use super::link::BaseLink;
 pub use base::BaseOutput;
 pub use props::OutputProps;
 
+/// The output trait.
 pub trait Output: OutputProps {
+    /// The transmission type used by this output's links.
     type Writer: Clone;
 
-    /// Adds a link to this output
+    /// Adds a link to this output.
     fn add_link(&mut self, link: BaseLink<Self::Writer>);
 
-    /// Set this output's value, paired with the output's current
+    /// Sets this output's value, paired with the output's current
     /// effective status, and broadcast it on all the output's registered
     /// links. The effective status is managed by the actor task via
     /// [`Output::emit_status`].

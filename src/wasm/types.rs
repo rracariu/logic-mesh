@@ -1,5 +1,7 @@
 // Copyright (c) 2022-2023, Radu Racariu.
 
+//! TypeScript-facing data types.
+
 use libhaystack::val::Value;
 use serde::{Deserialize, Serialize};
 
@@ -11,7 +13,9 @@ use crate::base::{
 /// Block field properties, inputs or output
 #[derive(Default, Clone, Serialize, Deserialize)]
 pub struct JsBlockPin {
+    /// Pin name.
     pub name: String,
+    /// Haystack kind as a string.
     pub kind: String,
 }
 
@@ -19,15 +23,25 @@ pub struct JsBlockPin {
 #[derive(Default, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct JsBlockDesc {
+    /// Block type name.
     pub name: String,
+    /// Display name.
     pub dis: String,
+    /// Library the block belongs to.
     pub lib: String,
+    /// Semantic version.
     pub ver: String,
+    /// Functional category.
     pub category: String,
+    /// Documentation string.
     pub doc: String,
+    /// Implementation kind (native or external).
     pub implementation: String,
+    /// Input pin descriptors.
     pub inputs: Vec<JsBlockPin>,
+    /// Output pin descriptors.
     pub outputs: Vec<JsBlockPin>,
+    /// Optional run condition expression.
     pub run_condition: Option<String>,
 }
 
@@ -101,23 +115,30 @@ impl From<BlockDesc> for JsBlockDesc {
     }
 }
 
+/// A watch notification sent to JavaScript when a block's state changes.
 #[derive(Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct JsWatchNotification {
+    /// Block UUID as a string.
     pub id: String,
+    /// Pin changes since the last notification.
     pub changes: Vec<JsWatchChange>,
     /// Block's operational state at the time of the notification
     /// (`running | fault | disabled | terminated`).
     pub state: String,
-    /// Fault reason when `state == "fault"`, else `None`.
+    /// Fault reason when `state == "fault"`, else [`None`].
     #[serde(skip_serializing_if = "Option::is_none")]
     pub fault_reason: Option<String>,
 }
 
+/// A single pin value change within a [`JsWatchNotification`].
 #[derive(Default, Serialize, Deserialize)]
 pub struct JsWatchChange {
+    /// Pin name that changed.
     pub name: String,
+    /// `"input"` or `"output"`.
     pub source: String,
+    /// New pin value.
     pub value: Value,
 }
 

@@ -1,8 +1,6 @@
 // Copyright (c) 2022-2024, Radu Racariu.
 
-//!
-//! Defines the block registry.
-//!
+//! Block registry.
 
 use crate::base::block::{
     Block, BlockConstruct, BlockDesc, BlockInput, BlockOutput, BlockProps, BlockState,
@@ -30,17 +28,19 @@ pub(crate) type DynBlockProps = dyn BlockProps<Reader = ReaderImpl, Writer = Wri
 type MapType = HashMap<String, HashMap<String, BlockEntry>>;
 type BlockRegistry = Mutex<MapType>;
 
-/// Register a block in the registry
+/// A block registration entry in the registry.
 #[derive(Debug, Clone)]
 pub struct BlockEntry {
+    /// Block descriptor (name, library, pins, etc.).
     pub desc: BlockDesc,
+    /// Factory function that creates a new instance of this block.
     pub make: Option<fn() -> Box<DynBlockProps>>,
     pub(crate) make_erased: Option<fn(Option<Uuid>) -> RegisteredBlock>,
 }
 
 /// Object-safe view over [`Block`] so runtime-registered blocks can be
-/// scheduled and evaluated without static dispatch. `Block::execute`
-/// returns an opaque future, which keeps `Block` itself from being a
+/// scheduled and evaluated without static dispatch. [`Block::execute`](Block::execute)
+/// returns an opaque future, which keeps [`Block`] itself from being a
 /// trait object; this trait boxes the future instead.
 #[cfg(not(target_arch = "wasm32"))]
 trait ErasedBlock: BlockProps<Reader = ReaderImpl, Writer = WriterImpl> + Send + Sync {
@@ -151,15 +151,36 @@ impl Block for RegisteredBlock {
     }
 }
 
-/// Macro for statically registering all the blocks that are
-/// available in the system.
+/// Registers block types with the global block registry.
+///
+/// Accepts a comma-separated list of types that implement
+/// [`Block`](crate::base::block::Block). Each type is registered once at
+/// program start via a [`LazyLock`](std::sync::LazyLock) and is then
+/// available through [`get_block`], [`schedule_block`], and
+/// [`eval_static_block`].
+///
+/// Within the `logic-mesh` crate this macro is invoked by auto-generated
+/// code from `build.rs`, which scans `src/blocks/` for
+/// `#[block]`-annotated structs. Downstream crates should use
+/// [`register`] to add blocks at runtime instead.
+///
+/// # Examples
+///
+/// ```ignore
+/// use crate::blocks::math::add::Add;
+/// use crate::blocks::misc::sine_wave::SineWave;
+///
+/// register_blocks!(
+///     Add,
+///     SineWave
+/// );
+/// ```
 #[macro_export]
 macro_rules! register_blocks {
     ( $( $block_name:ty ),* ) => {
 
-		/// The block registry
-		/// This is a static variable that is initialized once and then
-		/// used throughout the lifetime of the program.
+		/// The block registry, initialized once and used for the
+		/// lifetime of the program.
 		static BLOCKS: LazyLock<BlockRegistry> = LazyLock::new(|| {
 			let mut reg = HashMap::new();
 
@@ -172,19 +193,26 @@ macro_rules! register_blocks {
 		});
 
 
-		/// Schedule a block by name.
-		/// If the block name is valid, it will be scheduled on the engine.
-		/// The engine will execute the block if the engine is running.
-		/// The block must be statically registered, or registered at
-		/// runtime via [`register`].
+		/// Schedules a block by name on `eng`, returning its UUID.
 		///
-		/// # Arguments
-		/// - name: The name of the block to schedule
-		/// - lib: The library the block belongs to. `None` searches all
-		///   libraries and errors if the name is ambiguous across them.
-		/// - eng: The engine to schedule the block on
-		/// # Returns
-		/// A result indicating success or failure
+		/// The block must be statically registered, or registered at
+		/// runtime via [`register`]. `lib` of [`None`] searches all
+		/// libraries and errors if the name is ambiguous.
+		///
+		/// # Examples
+		///
+		/// ```
+		/// use logic_mesh::{
+		///     base::engine::Engine,
+		///     blocks::registry::schedule_block,
+		///     single_threaded::SingleThreadedEngine,
+		/// };
+		///
+		/// let mut engine = SingleThreadedEngine::new();
+		/// let id = schedule_block("Add", Some("core"), &mut engine)?;
+		/// assert!(engine.block_handles().iter().any(|b| *b.id() == id));
+		/// # Ok::<(), logic_mesh::Error>(())
+		/// ```
 		pub fn schedule_block<E>(name: &str, lib: Option<&str>, eng: &mut E) -> Result<uuid::Uuid>
 		where E : Engine<Reader = ReaderImpl, Writer = WriterImpl> {
 
@@ -205,7 +233,7 @@ macro_rules! register_blocks {
 
 		}
 
-		/// Schedule a block by name and UUID.
+		/// Schedules a block by name with a specific UUID.
 		/// See [`schedule_block`] for more details.
 		pub fn schedule_block_with_uuid<E>(name: &str, lib: Option<&str>, uuid: uuid::Uuid, eng: &mut E) -> Result<uuid::Uuid>
 		where E : Engine<Reader = ReaderImpl, Writer = WriterImpl> {
@@ -226,8 +254,8 @@ macro_rules! register_blocks {
 
 		}
 
-		/// Schedule a block by name on a multi-threaded engine.
-		/// The block must be `Send`.
+		/// Schedules a block by name on a multi-threaded engine.
+		/// The block must be [`Send`].
 		#[cfg(feature = "multi-threaded")]
 		#[cfg(not(target_arch = "wasm32"))]
 		pub fn schedule_block_send(name: &str, lib: Option<&str>, eng: &mut $crate::tokio_impl::engine::multi_threaded::MultiThreadedEngine) -> Result<uuid::Uuid> {
@@ -247,7 +275,7 @@ macro_rules! register_blocks {
 			schedule_registered_send(name, lib, None, eng)
 		}
 
-		/// Schedule a block by name and UUID on a multi-threaded engine.
+		/// Schedules a block by name and UUID on a multi-threaded engine.
 		#[cfg(feature = "multi-threaded")]
 		#[cfg(not(target_arch = "wasm32"))]
 		pub fn schedule_block_send_with_uuid(name: &str, lib: Option<&str>, uuid: uuid::Uuid, eng: &mut $crate::tokio_impl::engine::multi_threaded::MultiThreadedEngine) -> Result<uuid::Uuid> {
@@ -266,17 +294,25 @@ macro_rules! register_blocks {
 			schedule_registered_send(name, lib, Some(uuid), eng)
 		}
 
-		/// Evaluate a static registered block by name.
-		/// This will create a block instance and execute it.
+		/// Evaluates a statically registered block by name, returning its
+		/// output values.
 		///
-		/// # Arguments
-		/// - name: The name of the block to evaluate
-		/// - lib: The library the block belongs to. `None` searches all
-		///   libraries and errors if the name is ambiguous across them.
-		/// - inputs: The input values to the block
+		/// Creates a temporary block instance, feeds it the given `inputs`,
+		/// executes it, and returns the outputs. `lib` of [`None`] searches
+		/// all libraries.
 		///
-		/// # Returns
-		/// A list of values representing the outputs of the block
+		/// # Examples
+		///
+		/// ```
+		/// # #[tokio::main(flavor = "current_thread")]
+		/// # async fn main() -> Result<(), logic_mesh::Error> {
+		/// use logic_mesh::{Value, blocks::registry::eval_static_block};
+		///
+		/// let result = eval_static_block("Add", Some("core"), vec![Value::from(1), Value::from(2)]).await?;
+		/// assert_eq!(result, vec![Value::from(3)]);
+		/// # Ok(())
+		/// # }
+		/// ```
 		pub async fn eval_static_block(name: &str, lib: Option<&str>, inputs: Vec<Value>) -> Result<Vec<Value>> {
 			if lib == Some(CORE_LIB) {
 				match name {
@@ -298,17 +334,23 @@ macro_rules! register_blocks {
 // by build.rs scanning for #[block] annotated structs in src/blocks/.
 include!(concat!(env!("OUT_DIR"), "/block_registry.rs"));
 
-/// Construct a block properties from the registry
-/// # Arguments
-/// - name: The name of the block to get
-/// # Returns
-/// A boxed block
+/// Constructs block properties from the registry.
 pub fn make(name: &str, lib: Option<&str>) -> Option<Box<DynBlockProps>> {
     let entry = get_block(name, lib)?;
     entry.make.map(|make| make())
 }
 
-/// Get a block entry from the registry
+/// Returns a block entry from the registry.
+///
+/// # Examples
+///
+/// ```
+/// use logic_mesh::blocks::registry::get_block;
+///
+/// let entry = get_block("Add", Some("core")).expect("Add exists");
+/// assert_eq!(entry.desc.name, "Add");
+/// assert_eq!(entry.desc.category, "math");
+/// ```
 pub fn get_block(name: &str, lib: Option<&str>) -> Option<BlockEntry> {
     let reg = BLOCKS.lock().expect("Block registry is locked");
     let lib = lib.unwrap_or(CORE_LIB);
@@ -317,12 +359,22 @@ pub fn get_block(name: &str, lib: Option<&str>) -> Option<BlockEntry> {
     reg.get(name).cloned()
 }
 
-/// Get a core block
+/// Returns a core block entry.
 pub fn get_core_block(name: &str) -> Option<BlockEntry> {
     get_block(name, Some(CORE_LIB))
 }
 
-/// Get all block descriptions from the registry
+/// Returns all block descriptions from the registry.
+///
+/// # Examples
+///
+/// ```
+/// use logic_mesh::blocks::registry::list_registered_blocks;
+///
+/// let blocks = list_registered_blocks();
+/// assert!(blocks.iter().any(|b| b.name == "Add"));
+/// assert!(blocks.iter().any(|b| b.name == "Pid"));
+/// ```
 pub fn list_registered_blocks() -> Vec<BlockDesc> {
     let reg = BLOCKS.lock().expect("Block registry is locked");
 
@@ -336,7 +388,7 @@ pub fn list_registered_blocks() -> Vec<BlockDesc> {
     blocks
 }
 
-/// Register a block with the registry
+/// Registers a block description with the registry.
 pub fn register_block_desc(desc: &BlockDesc) -> Result<(), RegistryError> {
     let mut reg = BLOCKS.lock().expect("Block registry is locked");
 
@@ -364,7 +416,7 @@ pub fn register_block_desc(desc: &BlockDesc) -> Result<(), RegistryError> {
 }
 
 /// Bounds a block type must meet to be registered at runtime. All
-/// macro-generated blocks satisfy this. `Send + Sync` (native only) lets
+/// macro-generated blocks satisfy this. [`Send`] + [`Sync`] (native only) lets
 /// registered blocks be scheduled on the multi-threaded engine.
 #[cfg(not(target_arch = "wasm32"))]
 pub trait RegisterableBlock:
@@ -383,6 +435,7 @@ impl<
 {
 }
 
+/// Marker trait for blocks that can be registered with the block registry (WASM variant).
 #[cfg(target_arch = "wasm32")]
 pub trait RegisterableBlock:
     Block<Reader = ReaderImpl, Writer = WriterImpl> + BlockConstruct + Default + 'static
@@ -394,15 +447,48 @@ impl<T: Block<Reader = ReaderImpl, Writer = WriterImpl> + BlockConstruct + Defau
 {
 }
 
-/// Register a block with the registry
-/// # Arguments
-/// - B: The block type to register
-/// # Returns
-/// An error if a block with the same name is already registered in the
+/// Registers a block type with the registry.
+///
+/// # Errors
+///
+/// Returns an error if a block with the same name is already registered in the
 /// block's library — e.g. a downstream block that omits `#[library]` and
 /// so defaults to the core library, colliding with a built-in.
+///
 /// # Panics
-/// Panics if the block registry is already locked
+///
+/// Panics if the block registry is already locked.
+///
+/// # Examples
+///
+/// ```
+/// use logic_mesh::{
+///     BlockProps, block,
+///     base::block::{Block, BlockProps as _},
+///     base::input::input_reader::InputReader,
+///     base::output::Output,
+///     blocks::{InputImpl, OutputImpl, registry},
+/// };
+///
+/// #[block]
+/// #[derive(BlockProps, Debug)]
+/// #[library = "my_lib"]
+/// #[category = "custom"]
+/// struct MyBlock {
+///     #[input(kind = "Number")]
+///     input: InputImpl,
+///     #[output(kind = "Number")]
+///     out: OutputImpl,
+/// }
+///
+/// impl Block for MyBlock {
+///     async fn execute(&mut self) {}
+/// }
+///
+/// registry::register::<MyBlock>()?;
+/// assert!(registry::get_block("MyBlock", Some("my_lib")).is_some());
+/// # Ok::<(), logic_mesh::RegistryError>(())
+/// ```
 pub fn register<B: RegisterableBlock>() -> Result<(), RegistryError> {
     let mut reg = BLOCKS.lock().expect("Block registry is locked");
 
@@ -465,7 +551,7 @@ fn make_registered(
     Ok(make(uuid))
 }
 
-/// Schedule a runtime-registered block. Fallback used by [`schedule_block`]
+/// Schedules a runtime-registered block. Fallback used by [`schedule_block`]
 /// and friends when the name doesn't match a statically compiled block —
 /// e.g. blocks registered by downstream crates via [`register`].
 #[doc(hidden)]
@@ -500,7 +586,7 @@ pub fn schedule_registered_send(
     Ok(id)
 }
 
-/// Evaluate a runtime-registered block. Fallback used by
+/// Evaluates a runtime-registered block. Fallback used by
 /// [`eval_static_block`] when the name doesn't match a statically
 /// compiled block.
 #[doc(hidden)]
@@ -513,13 +599,7 @@ pub async fn eval_registered(
     eval_block_impl(&mut block, inputs).await
 }
 
-/// Evaluate a block directly
-///
-/// # Arguments
-/// - block: The block to evaluate
-/// - inputs: The input values to the block
-/// # Returns
-/// A list of values representing the outputs of the block
+/// Evaluates `block` directly with the given `inputs`.
 pub async fn eval_block_impl<B: Block<Reader = ReaderImpl, Writer = WriterImpl>>(
     block: &mut B,
     inputs: Vec<Value>,
