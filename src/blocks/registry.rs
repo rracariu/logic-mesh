@@ -151,8 +151,30 @@ impl Block for RegisteredBlock {
     }
 }
 
-/// Macro for statically registering all the blocks that are
-/// available in the system.
+/// Registers block types with the global block registry.
+///
+/// Accepts a comma-separated list of types that implement
+/// [`Block`](crate::base::block::Block). Each type is registered once at
+/// program start via a [`LazyLock`](std::sync::LazyLock) and is then
+/// available through [`get_block`], [`schedule_block`], and
+/// [`eval_static_block`].
+///
+/// Within the `logic-mesh` crate this macro is invoked by auto-generated
+/// code from `build.rs`, which scans `src/blocks/` for
+/// `#[block]`-annotated structs. Downstream crates should use
+/// [`register`] to add blocks at runtime instead.
+///
+/// # Examples
+///
+/// ```ignore
+/// use crate::blocks::math::add::Add;
+/// use crate::blocks::misc::sine_wave::SineWave;
+///
+/// register_blocks!(
+///     Add,
+///     SineWave
+/// );
+/// ```
 #[macro_export]
 macro_rules! register_blocks {
     ( $( $block_name:ty ),* ) => {
