@@ -176,6 +176,21 @@ macro_rules! register_blocks {
 		/// The block must be statically registered, or registered at
 		/// runtime via [`register`]. `lib` of [`None`] searches all
 		/// libraries and errors if the name is ambiguous.
+		///
+		/// # Examples
+		///
+		/// ```
+		/// use logic_mesh::{
+		///     base::engine::Engine,
+		///     blocks::registry::schedule_block,
+		///     single_threaded::SingleThreadedEngine,
+		/// };
+		///
+		/// let mut engine = SingleThreadedEngine::new();
+		/// let id = schedule_block("Add", Some("core"), &mut engine)?;
+		/// assert!(engine.block_handles().iter().any(|b| *b.id() == id));
+		/// # Ok::<(), logic_mesh::Error>(())
+		/// ```
 		pub fn schedule_block<E>(name: &str, lib: Option<&str>, eng: &mut E) -> Result<uuid::Uuid>
 		where E : Engine<Reader = ReaderImpl, Writer = WriterImpl> {
 
@@ -263,6 +278,19 @@ macro_rules! register_blocks {
 		/// Creates a temporary block instance, feeds it the given `inputs`,
 		/// executes it, and returns the outputs. `lib` of [`None`] searches
 		/// all libraries.
+		///
+		/// # Examples
+		///
+		/// ```
+		/// # #[tokio::main(flavor = "current_thread")]
+		/// # async fn main() -> Result<(), logic_mesh::Error> {
+		/// use logic_mesh::{Value, blocks::registry::eval_static_block};
+		///
+		/// let result = eval_static_block("Add", Some("core"), vec![Value::from(1), Value::from(2)]).await?;
+		/// assert_eq!(result, vec![Value::from(3)]);
+		/// # Ok(())
+		/// # }
+		/// ```
 		pub async fn eval_static_block(name: &str, lib: Option<&str>, inputs: Vec<Value>) -> Result<Vec<Value>> {
 			if lib == Some(CORE_LIB) {
 				match name {
@@ -291,6 +319,16 @@ pub fn make(name: &str, lib: Option<&str>) -> Option<Box<DynBlockProps>> {
 }
 
 /// Returns a block entry from the registry.
+///
+/// # Examples
+///
+/// ```
+/// use logic_mesh::blocks::registry::get_block;
+///
+/// let entry = get_block("Add", Some("core")).expect("Add exists");
+/// assert_eq!(entry.desc.name, "Add");
+/// assert_eq!(entry.desc.category, "math");
+/// ```
 pub fn get_block(name: &str, lib: Option<&str>) -> Option<BlockEntry> {
     let reg = BLOCKS.lock().expect("Block registry is locked");
     let lib = lib.unwrap_or(CORE_LIB);
@@ -305,6 +343,16 @@ pub fn get_core_block(name: &str) -> Option<BlockEntry> {
 }
 
 /// Returns all block descriptions from the registry.
+///
+/// # Examples
+///
+/// ```
+/// use logic_mesh::blocks::registry::list_registered_blocks;
+///
+/// let blocks = list_registered_blocks();
+/// assert!(blocks.iter().any(|b| b.name == "Add"));
+/// assert!(blocks.iter().any(|b| b.name == "Pid"));
+/// ```
 pub fn list_registered_blocks() -> Vec<BlockDesc> {
     let reg = BLOCKS.lock().expect("Block registry is locked");
 
@@ -388,6 +436,37 @@ impl<T: Block<Reader = ReaderImpl, Writer = WriterImpl> + BlockConstruct + Defau
 /// # Panics
 ///
 /// Panics if the block registry is already locked.
+///
+/// # Examples
+///
+/// ```
+/// use logic_mesh::{
+///     BlockProps, block,
+///     base::block::{Block, BlockProps as _},
+///     base::input::input_reader::InputReader,
+///     base::output::Output,
+///     blocks::{InputImpl, OutputImpl, registry},
+/// };
+///
+/// #[block]
+/// #[derive(BlockProps, Debug)]
+/// #[library = "my_lib"]
+/// #[category = "custom"]
+/// struct MyBlock {
+///     #[input(kind = "Number")]
+///     input: InputImpl,
+///     #[output(kind = "Number")]
+///     out: OutputImpl,
+/// }
+///
+/// impl Block for MyBlock {
+///     async fn execute(&mut self) {}
+/// }
+///
+/// registry::register::<MyBlock>()?;
+/// assert!(registry::get_block("MyBlock", Some("my_lib")).is_some());
+/// # Ok::<(), logic_mesh::RegistryError>(())
+/// ```
 pub fn register<B: RegisterableBlock>() -> Result<(), RegistryError> {
     let mut reg = BLOCKS.lock().expect("Block registry is locked");
 

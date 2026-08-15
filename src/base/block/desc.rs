@@ -10,6 +10,18 @@ use super::BlockProps;
 
 /// Static description of a block, used to find the block in the library
 /// and inspect its inputs and outputs.
+///
+/// # Examples
+///
+/// ```
+/// use logic_mesh::blocks::registry::get_block;
+///
+/// let entry = get_block("Add", Some("core")).expect("Add exists");
+/// let desc = &entry.desc;
+/// assert_eq!(desc.qname(), "core::Add");
+/// assert!(!desc.inputs.is_empty());
+/// assert!(!desc.outputs.is_empty());
+/// ```
 #[derive(Default, Debug, Clone, PartialEq)]
 pub struct BlockDesc {
     /// The block name.

@@ -22,6 +22,19 @@ use uuid::Uuid;
 /// UI can show *why* the block isn't producing trustworthy output. Recovery
 /// is automatic — the actor task optimistically clears Fault at the start
 /// of each cycle and re-enters it only if drain or execute set it again.
+///
+/// # Examples
+///
+/// ```
+/// use logic_mesh::base::block::BlockState;
+///
+/// let state = BlockState::fault("unit mismatch");
+/// assert!(state.is_fault());
+/// assert_eq!(state.fault_reason(), Some("unit mismatch"));
+/// assert_eq!(state.label(), "fault");
+///
+/// assert_eq!(BlockState::Running.label(), "running");
+/// ```
 #[derive(Default, Debug, Clone, PartialEq)]
 pub enum BlockState {
     /// Block is executing normally.

@@ -128,6 +128,27 @@ pub struct ProgramBlock {
 /// keyed by uuid. This is the format the engine's `save_program` emits
 /// and `load_program` consumes. Round-trips through the wasm bridge as
 /// JSON without reassembly.
+///
+/// # Examples
+///
+/// ```
+/// use logic_mesh::base::program::{Program, ProgramBlock};
+///
+/// let mut program = Program::default();
+/// program.name = Some("my-program".to_string());
+/// program.blocks.insert(
+///     "00000000-0000-0000-0000-000000000000".to_string(),
+///     ProgramBlock {
+///         name: "Add".to_string(),
+///         lib: "core".to_string(),
+///         ..Default::default()
+///     },
+/// );
+///
+/// let json = serde_json::to_string(&program).unwrap();
+/// let loaded: Program = serde_json::from_str(&json).unwrap();
+/// assert_eq!(loaded.blocks.len(), 1);
+/// ```
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct Program {
     /// Program name.

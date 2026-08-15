@@ -31,6 +31,21 @@ impl<W: Clone, T: ?Sized + Output<Writer = W>> BlockOutput<W> for T {}
 /// ([`BaseInput`](crate::base::input::BaseInput),
 /// [`BaseOutput`](crate::base::output::BaseOutput), the mocks) are
 /// already [`Send`], so the bound is satisfied transparently.
+///
+/// # Examples
+///
+/// ```
+/// use logic_mesh::{
+///     base::block::{Block, BlockProps},
+///     blocks::math::Add,
+/// };
+///
+/// let add = Add::new();
+/// assert_eq!(add.name(), "Add");
+/// assert_eq!(add.desc().category, "math");
+/// assert_eq!(add.inputs().len(), 16);
+/// assert_eq!(add.outputs().len(), 1);
+/// ```
 pub trait BlockProps {
     /// The block's read type, used to read from the block's inputs.
     type Reader;
