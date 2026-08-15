@@ -102,6 +102,30 @@ impl BlockHandle {
 }
 
 /// Single-threaded execution environment for blocks.
+///
+/// # Examples
+///
+/// ```no_run
+/// use logic_mesh::{
+///     base::block::{Block, BlockProps, connect::connect_output},
+///     base::engine::Engine,
+///     blocks::{math::Add, misc::SineWave},
+///     single_threaded::SingleThreadedEngine,
+/// };
+///
+/// #[tokio::main]
+/// async fn main() -> Result<(), Box<dyn std::error::Error>> {
+///     let mut sine = SineWave::new();
+///     let mut add = Add::new();
+///     connect_output(&mut sine.out, add.inputs_mut()[0])?;
+///
+///     let mut engine = SingleThreadedEngine::new();
+///     engine.schedule(sine)?;
+///     engine.schedule(add)?;
+///     engine.run().await;
+///     Ok(())
+/// }
+/// ```
 pub struct SingleThreadedEngine {
     /// [`LocalSet`](tokio::task::LocalSet) that hosts every per-block actor
     /// task. Wrapped in [`Rc`](std::rc::Rc) so

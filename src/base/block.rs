@@ -85,6 +85,43 @@ impl BlockState {
 /// On `wasm32` (single-threaded by definition), we drop the [`Send`]
 /// requirement so `JsBlock` — whose `func: js_sys::Function` is
 /// `!Send` — can still implement the trait.
+///
+/// # Examples
+///
+/// Define a block with the `#[block]` attribute macro:
+///
+/// ```
+/// use logic_mesh::{
+///     BlockProps, block,
+///     base::block::{Block, BlockProps as _},
+///     base::input::input_reader::InputReader,
+///     base::output::Output,
+///     blocks::{InputImpl, OutputImpl},
+/// };
+///
+/// #[block]
+/// #[derive(BlockProps, Debug)]
+/// #[category = "example"]
+/// struct Double {
+///     #[input(kind = "Number")]
+///     input: InputImpl,
+///     #[output(kind = "Number")]
+///     out: OutputImpl,
+/// }
+///
+/// impl Block for Double {
+///     async fn execute(&mut self) {
+///         self.read_inputs_until_ready().await;
+///
+///         if let Some(logic_mesh::Value::Number(n)) = &self.input.val {
+///             self.out.set((n.value * 2.0).into());
+///         }
+///     }
+/// }
+///
+/// let block = Double::new();
+/// assert_eq!(block.name(), "Double");
+/// ```
 #[cfg(not(target_arch = "wasm32"))]
 pub trait Block: BlockConnect {
     /// Runs one cycle of this block's dataflow logic.
@@ -114,6 +151,20 @@ pub trait BlockConstruct: Sized {
 /// # Errors
 ///
 /// Returns an error if the conversion is not possible.
+///
+/// # Examples
+///
+/// ```
+/// use logic_mesh::{Value, ValueError, base::block::convert_value};
+///
+/// # fn main() -> Result<(), ValueError> {
+/// let expected = Value::make_int(0);
+/// let actual = Value::make_str("42");
+/// let result = convert_value(&expected, actual)?;
+/// assert_eq!(result, Value::make_int(42));
+/// # Ok(())
+/// # }
+/// ```
 pub fn convert_value(expect: &Value, actual: Value) -> Result<Value, ValueError> {
     let to_kind = HaystackKind::from(&actual);
     convert_value_kind(actual, HaystackKind::from(expect), to_kind)
@@ -124,6 +175,19 @@ pub fn convert_value(expect: &Value, actual: Value) -> Result<Value, ValueError>
 /// # Errors
 ///
 /// Returns an error if the conversion is not possible.
+///
+/// # Examples
+///
+/// ```
+/// use logic_mesh::{HaystackKind, Value, ValueError, base::block::convert_value_kind};
+///
+/// # fn main() -> Result<(), ValueError> {
+/// let val = Value::make_bool(true);
+/// let result = convert_value_kind(val, HaystackKind::Number, HaystackKind::Bool)?;
+/// assert_eq!(result, Value::make_int(1));
+/// # Ok(())
+/// # }
+/// ```
 pub fn convert_value_kind(
     val: Value,
     expected: HaystackKind,

@@ -11,6 +11,24 @@ use crate::base::link::{BaseLink, Link, LinkState};
 use crate::base::output::Output;
 
 /// Block connection functions.
+///
+/// # Examples
+///
+/// ```
+/// use logic_mesh::{
+///     base::block::{Block, BlockConnect, BlockProps},
+///     blocks::math::Add,
+///     blocks::misc::SineWave,
+/// };
+///
+/// # fn main() -> Result<(), &'static str> {
+/// let mut sine = SineWave::new();
+/// let mut add = Add::new();
+/// sine.connect_output("out", add.inputs_mut()[0])?;
+/// sine.disconnect_output("out", add.inputs_mut()[0])?;
+/// # Ok(())
+/// # }
+/// ```
 pub trait BlockConnect: BlockStaticDesc {
     /// Connects the output named `output_name` to `target_input`.
     fn connect_output(
@@ -124,6 +142,23 @@ impl<T: Block + ?Sized> BlockConnect for T {
 }
 
 /// Connects `source_output` to `target_input`.
+///
+/// # Examples
+///
+/// ```
+/// use logic_mesh::{
+///     base::block::{Block, BlockProps, connect::connect_output},
+///     blocks::math::Add,
+///     blocks::misc::SineWave,
+/// };
+///
+/// # fn main() -> Result<(), &'static str> {
+/// let mut sine = SineWave::new();
+/// let mut add = Add::new();
+/// connect_output(&mut sine.out, add.inputs_mut()[0])?;
+/// # Ok(())
+/// # }
+/// ```
 pub fn connect_output<Reader, Writer: Clone>(
     source_output: &mut dyn Output<Writer = Writer>,
     target_input: &mut dyn InputProps<Reader = Reader, Writer = Writer>,
@@ -154,6 +189,24 @@ pub fn connect_output<Reader, Writer: Clone>(
 /// # Errors
 ///
 /// Returns an error if no connection is found.
+///
+/// # Examples
+///
+/// ```
+/// use logic_mesh::{
+///     base::block::{Block, BlockProps, connect::{connect_output, disconnect_output}},
+///     blocks::math::Add,
+///     blocks::misc::SineWave,
+/// };
+///
+/// # fn main() -> Result<(), &'static str> {
+/// let mut sine = SineWave::new();
+/// let mut add = Add::new();
+/// connect_output(&mut sine.out, add.inputs_mut()[0])?;
+/// disconnect_output(&mut sine.out, add.inputs_mut()[0])?;
+/// # Ok(())
+/// # }
+/// ```
 pub fn disconnect_output<Reader, Writer: Clone>(
     source_output: &mut dyn Output<Writer = Writer>,
     target_input: &mut dyn InputProps<Reader = Reader, Writer = Writer>,
@@ -170,6 +223,22 @@ pub fn disconnect_output<Reader, Writer: Clone>(
 }
 
 /// Connects `source_input` to `target_input` (input-to-input fanout).
+///
+/// # Examples
+///
+/// ```
+/// use logic_mesh::{
+///     base::block::{Block, BlockProps, connect::connect_input},
+///     blocks::math::{Add, Mul},
+/// };
+///
+/// # fn main() -> Result<(), &'static str> {
+/// let mut add = Add::new();
+/// let mut mul = Mul::new();
+/// connect_input(add.inputs_mut()[0], mul.inputs_mut()[0])?;
+/// # Ok(())
+/// # }
+/// ```
 pub fn connect_input<Reader, Writer: Clone>(
     source_input: &mut dyn InputProps<Reader = Reader, Writer = Writer>,
     target_input: &mut dyn InputProps<Reader = Reader, Writer = Writer>,

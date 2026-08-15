@@ -8,6 +8,24 @@ use super::{block::Block, program::Program};
 pub mod messages;
 
 /// Interface for an engine that implements block execution logic.
+///
+/// # Examples
+///
+/// ```no_run
+/// use logic_mesh::{
+///     base::engine::Engine,
+///     blocks::math::Add,
+///     single_threaded::SingleThreadedEngine,
+/// };
+///
+/// # #[tokio::main]
+/// # async fn main() -> Result<(), Box<dyn std::error::Error>> {
+/// let mut engine = SingleThreadedEngine::new();
+/// engine.schedule(Add::new())?;
+/// engine.run().await;
+/// # Ok(())
+/// # }
+/// ```
 pub trait Engine {
     /// The transmission type of the blocks.
     type Writer;

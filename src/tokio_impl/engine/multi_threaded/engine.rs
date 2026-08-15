@@ -107,6 +107,30 @@ impl BlockHandle {
 }
 
 /// Multi-threaded execution environment for blocks.
+///
+/// # Examples
+///
+/// ```no_run
+/// use logic_mesh::{
+///     base::block::{Block, BlockProps, connect::connect_output},
+///     base::engine::Engine,
+///     blocks::{math::Add, misc::SineWave},
+///     multi_threaded::MultiThreadedEngine,
+/// };
+///
+/// #[tokio::main]
+/// async fn main() -> Result<(), Box<dyn std::error::Error>> {
+///     let mut sine = SineWave::new();
+///     let mut add = Add::new();
+///     connect_output(&mut sine.out, add.inputs_mut()[0])?;
+///
+///     let mut engine = MultiThreadedEngine::new();
+///     engine.schedule_send(sine);
+///     engine.schedule_send(add);
+///     engine.run().await;
+///     Ok(())
+/// }
+/// ```
 pub struct MultiThreadedEngine {
     handles: BTreeMap<Uuid, BlockHandle>,
     pending_links: Vec<LinkData>,

@@ -54,32 +54,34 @@ logic-mesh = "1.0"
 
 Wire two sine waves into an adder and run them:
 
-```rust
+```rust,no_run
 use logic_mesh::{
-    base::{block::Block, block::connect::connect_output},
+    base::block::{Block, BlockConnect, BlockProps, connect::connect_output},
+    base::engine::Engine,
     blocks::{math::Add, misc::SineWave},
-    SingleThreadedEngine,
+    single_threaded::SingleThreadedEngine,
 };
 
 #[tokio::main]
-async fn main() {
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut add1 = Add::new();
 
     let mut sine1 = SineWave::new();
     sine1.amplitude.val = Some(3.into());
     sine1.freq.val = Some(200.into());
-    connect_output(&mut sine1.out, add1.inputs_mut()[0]).expect("connected");
+    connect_output(&mut sine1.out, add1.inputs_mut()[0])?;
 
     let mut sine2 = SineWave::new();
     sine2.amplitude.val = Some(7.into());
     sine2.freq.val = Some(400.into());
-    sine2.connect_output("out", add1.inputs_mut()[1]).expect("connected");
+    sine2.connect_output("out", add1.inputs_mut()[1])?;
 
     let mut engine = SingleThreadedEngine::new();
-    engine.schedule(add1);
-    engine.schedule(sine1);
-    engine.schedule(sine2);
+    engine.schedule(add1)?;
+    engine.schedule(sine1)?;
+    engine.schedule(sine2)?;
     engine.run().await;
+    Ok(())
 }
 ```
 
@@ -128,7 +130,7 @@ Gauge.register(engine);
 
 ## Project layout
 
-```
+```text
 src/
   base/          core traits, engine, link/pin model
   blocks/        block implementations, organized by category
