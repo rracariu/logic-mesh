@@ -2,6 +2,8 @@
 
 //! Utility functions used by blocks.
 
+#![allow(dead_code)]
+
 use std::sync::atomic::AtomicU64;
 
 use super::InputImpl;
