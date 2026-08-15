@@ -7,7 +7,7 @@
 
 A reactive, async dataflow engine in Rust — wire blocks together, run programs natively or in the browser via WebAssembly, watch values propagate as inputs change.
 
-![Example program](./screen-shot.png)
+![Example program](https://raw.githubusercontent.com/rracariu/logic-mesh/main/screen-shot.png)
 
 ## Why Logic Mesh
 

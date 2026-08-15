@@ -6,7 +6,7 @@
 //! Each subsystem owns its own error enum — [`RegistryError`],
 //! [`EngineError`], [`ValueError`] and [`ExternalError`] — so a failure
 //! carries the data of the thing that failed and can be matched on
-//! without inspecting a formatted message. [`Error`] is the aggregate
+//! without inspecting a formatted message. [`enum@Error`] is the aggregate
 //! that the crate's entry points return; it forwards `Display` to the
 //! subsystem error it wraps.
 //!
@@ -39,7 +39,7 @@ use thiserror::Error;
 
 /// Result alias used throughout the crate.
 ///
-/// The error type defaults to [`Error`], while still allowing the second
+/// The error type defaults to [`enum@Error`], while still allowing the second
 /// type parameter to be named explicitly — either for a subsystem error
 /// such as [`ValueError`], or for the internal actor protocols that
 /// carry their own error payload.

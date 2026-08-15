@@ -1,6 +1,6 @@
 // Copyright (c) 2022-2023, Radu Racariu.
 
-//! A dataflow engine for building and executing block-based logic programs.
+#![doc = include_str!("../README.md")]
 
 #[macro_use]
 extern crate logic_mesh_block_macro;
