@@ -157,9 +157,8 @@ impl Block for RegisteredBlock {
 macro_rules! register_blocks {
     ( $( $block_name:ty ),* ) => {
 
-		/// The block registry
-		/// This is a static variable that is initialized once and then
-		/// used throughout the lifetime of the program.
+		/// The block registry, initialized once and used for the
+		/// lifetime of the program.
 		static BLOCKS: LazyLock<BlockRegistry> = LazyLock::new(|| {
 			let mut reg = HashMap::new();
 
@@ -172,19 +171,11 @@ macro_rules! register_blocks {
 		});
 
 
-		/// Schedule a block by name.
-		/// If the block name is valid, it will be scheduled on the engine.
-		/// The engine will execute the block if the engine is running.
-		/// The block must be statically registered, or registered at
-		/// runtime via [`register`].
+		/// Schedules a block by name on `eng`, returning its UUID.
 		///
-		/// # Arguments
-		/// - name: The name of the block to schedule
-		/// - lib: The library the block belongs to. [`None`] searches all
-		///   libraries and errors if the name is ambiguous across them.
-		/// - eng: The engine to schedule the block on
-		/// # Returns
-		/// A result indicating success or failure
+		/// The block must be statically registered, or registered at
+		/// runtime via [`register`]. `lib` of [`None`] searches all
+		/// libraries and errors if the name is ambiguous.
 		pub fn schedule_block<E>(name: &str, lib: Option<&str>, eng: &mut E) -> Result<uuid::Uuid>
 		where E : Engine<Reader = ReaderImpl, Writer = WriterImpl> {
 
@@ -205,7 +196,7 @@ macro_rules! register_blocks {
 
 		}
 
-		/// Schedule a block by name and UUID.
+		/// Schedules a block by name with a specific UUID.
 		/// See [`schedule_block`] for more details.
 		pub fn schedule_block_with_uuid<E>(name: &str, lib: Option<&str>, uuid: uuid::Uuid, eng: &mut E) -> Result<uuid::Uuid>
 		where E : Engine<Reader = ReaderImpl, Writer = WriterImpl> {
@@ -226,7 +217,7 @@ macro_rules! register_blocks {
 
 		}
 
-		/// Schedule a block by name on a multi-threaded engine.
+		/// Schedules a block by name on a multi-threaded engine.
 		/// The block must be [`Send`].
 		#[cfg(feature = "multi-threaded")]
 		#[cfg(not(target_arch = "wasm32"))]
@@ -247,7 +238,7 @@ macro_rules! register_blocks {
 			schedule_registered_send(name, lib, None, eng)
 		}
 
-		/// Schedule a block by name and UUID on a multi-threaded engine.
+		/// Schedules a block by name and UUID on a multi-threaded engine.
 		#[cfg(feature = "multi-threaded")]
 		#[cfg(not(target_arch = "wasm32"))]
 		pub fn schedule_block_send_with_uuid(name: &str, lib: Option<&str>, uuid: uuid::Uuid, eng: &mut $crate::tokio_impl::engine::multi_threaded::MultiThreadedEngine) -> Result<uuid::Uuid> {
@@ -266,17 +257,12 @@ macro_rules! register_blocks {
 			schedule_registered_send(name, lib, Some(uuid), eng)
 		}
 
-		/// Evaluate a static registered block by name.
-		/// This will create a block instance and execute it.
+		/// Evaluates a statically registered block by name, returning its
+		/// output values.
 		///
-		/// # Arguments
-		/// - name: The name of the block to evaluate
-		/// - lib: The library the block belongs to. [`None`] searches all
-		///   libraries and errors if the name is ambiguous across them.
-		/// - inputs: The input values to the block
-		///
-		/// # Returns
-		/// A list of values representing the outputs of the block
+		/// Creates a temporary block instance, feeds it the given `inputs`,
+		/// executes it, and returns the outputs. `lib` of [`None`] searches
+		/// all libraries.
 		pub async fn eval_static_block(name: &str, lib: Option<&str>, inputs: Vec<Value>) -> Result<Vec<Value>> {
 			if lib == Some(CORE_LIB) {
 				match name {
@@ -464,7 +450,7 @@ fn make_registered(
     Ok(make(uuid))
 }
 
-/// Schedule a runtime-registered block. Fallback used by [`schedule_block`]
+/// Schedules a runtime-registered block. Fallback used by [`schedule_block`]
 /// and friends when the name doesn't match a statically compiled block —
 /// e.g. blocks registered by downstream crates via [`register`].
 #[doc(hidden)]
@@ -499,7 +485,7 @@ pub fn schedule_registered_send(
     Ok(id)
 }
 
-/// Evaluate a runtime-registered block. Fallback used by
+/// Evaluates a runtime-registered block. Fallback used by
 /// [`eval_static_block`] when the name doesn't match a statically
 /// compiled block.
 #[doc(hidden)]
@@ -512,12 +498,7 @@ pub async fn eval_registered(
     eval_block_impl(&mut block, inputs).await
 }
 
-/// Evaluates a block directly.
-///
-/// # Arguments
-///
-/// * `block` - The block to evaluate.
-/// * `inputs` - The input values to the block.
+/// Evaluates `block` directly with the given `inputs`.
 pub async fn eval_block_impl<B: Block<Reader = ReaderImpl, Writer = WriterImpl>>(
     block: &mut B,
     inputs: Vec<Value>,

@@ -26,7 +26,7 @@ pub struct EngineCommand {
 
 #[wasm_bindgen]
 impl EngineCommand {
-    /// Creates a new instance of an engine command
+    /// Creates a new engine command handle.
     pub(super) fn new(uuid: Uuid, sender: Sender<Messages>, receiver: Receiver<Messages>) -> Self {
         Self {
             uuid,
@@ -35,8 +35,8 @@ impl EngineCommand {
         }
     }
 
-    /// Adds a block instance to the engine
-    /// to be immediately scheduled for execution
+    /// Adds a block instance to the engine, immediately scheduling it
+    /// for execution.
     #[wasm_bindgen(js_name = "addBlock")]
     pub async fn add_block(
         &mut self,
@@ -63,15 +63,8 @@ impl EngineCommand {
         }
     }
 
-    /// Removes a block instance from the engine
-    /// to be immediately unscheduled for execution
-    /// and removed from the engine together with all its links.
-    ///
-    /// # Arguments
-    /// * `block_uuid` - The UUID of the block to be removed
-    ///
-    /// # Returns
-    /// The UUID of the removed block
+    /// Removes a block instance and all its links from the engine,
+    /// returning the UUID of the removed block.
     #[wasm_bindgen(js_name = "removeBlock")]
     pub async fn remove_block(&mut self, block_uuid: String) -> Result<String, String> {
         match self
@@ -94,21 +87,8 @@ impl EngineCommand {
         }
     }
 
-    /// Creates a link between two blocks
-    ///
-    /// # Arguments
-    /// * `source_block_uuid` - The UUID of the source block
-    /// * `target_block_uuid` - The UUID of the target block
-    /// * `source_block_pin_name` - The name of the output pin of the source block
-    /// * `target_block_input_name` - The name of the input pin of the target block
-    ///
-    /// # Returns
-    /// A [`LinkData`] object with the following properties:
-    /// * `source_block_uuid` - The UUID of the source block
-    /// * `target_block_uuid` - The UUID of the target block
-    /// * `source_block_pin_name` - The name of the output pin of the source block
-    /// * `target_block_input_name` - The name of the input pin of the target block
-    ///
+    /// Creates a link between two blocks and returns the resulting
+    /// [`LinkData`].
     #[wasm_bindgen(js_name = "createLink")]
     pub async fn create_link(
         &mut self,
@@ -145,13 +125,7 @@ impl EngineCommand {
         }
     }
 
-    /// Removes a link between two blocks
-    ///
-    /// # Arguments
-    /// * `link_uuid` - The UUID of the link to be removed
-    ///
-    /// # Returns
-    /// True if the link was removed, false otherwise
+    /// Removes a link by UUID, returning `true` if it was found and removed.
     #[wasm_bindgen(js_name = "removeLink")]
     pub async fn remove_link(&mut self, link_uuid: String) -> Result<bool, String> {
         match self
@@ -173,15 +147,7 @@ impl EngineCommand {
         }
     }
 
-    /// Writes the given block out with a value
-    ///
-    /// # Arguments
-    /// * `block_uuid` - The UUID of the block to write to
-    /// * `output_name` - The name of the output to write to
-    /// * `value` - The value to write
-    ///
-    /// # Returns
-    /// The block data
+    /// Writes a value to a block's output pin.
     #[wasm_bindgen(js_name = "writeBlockOutput")]
     pub async fn write_block_output(
         &mut self,
@@ -213,15 +179,7 @@ impl EngineCommand {
         }
     }
 
-    /// Writes the given block input with a value
-    ///
-    /// # Arguments
-    /// * `block_uuid` - The UUID of the block to write to
-    /// * `input_name` - The name of the input to write to
-    /// * `value` - The value to write
-    ///
-    /// # Returns
-    /// The previous value of the input
+    /// Writes a value to a block's input pin, returning the previous value.
     #[wasm_bindgen(js_name = "writeBlockInput")]
     pub async fn write_block_input(
         &mut self,
@@ -275,8 +233,8 @@ impl EngineCommand {
         }
     }
 
-    /// Get the current running engine program in the canonical save
-    /// format (Program struct serialized as JSON). Round-trips through
+    /// Returns the current running engine program in the canonical save
+    /// format ([`Program`] serialized as JSON). Round-trips through
     /// `loadProgram` without re-assembly.
     #[wasm_bindgen(js_name = "getProgram")]
     pub async fn get_program(&mut self) -> Result<JsValue, String> {
@@ -298,7 +256,7 @@ impl EngineCommand {
         }
     }
 
-    /// Inspects the current state of a block
+    /// Inspects the current state of a block.
     #[wasm_bindgen(js_name = "inspectBlock")]
     pub async fn inspect_block(&mut self, block_uuid: String) -> Result<JsValue, String> {
         match self
@@ -322,16 +280,10 @@ impl EngineCommand {
         }
     }
 
-    /// Evaluates a block by name
-    /// This will create a block instance and execute it.
+    /// Evaluates a block by name, returning its output values.
     ///
-    /// # Arguments
-    /// * `block_name` - The name of the block to evaluate
-    /// * `inputs` - The input values to the block
-    /// * `lib` - Optional, the library to load the block from, defaults to "core"
-    ///
-    /// # Returns
-    /// A list of values representing the outputs of the block
+    /// Creates a temporary block instance, feeds it the given `inputs`,
+    /// executes it, and returns the outputs. `lib` defaults to `"core"`.
     #[wasm_bindgen(js_name = "evalBlock")]
     pub async fn eval_block(
         &mut self,
@@ -402,8 +354,7 @@ impl EngineCommand {
         }
     }
 
-    /// Pauses the execution of the engine
-    /// If the engine is already paused, this does nothing
+    /// Pauses the engine. Does nothing if already paused.
     #[wasm_bindgen(js_name = "pauseExecution")]
     pub async fn pause_execution(&mut self) -> Result<(), String> {
         self.sender
@@ -412,8 +363,7 @@ impl EngineCommand {
             .map_err(|err| err.to_string())
     }
 
-    /// Resumes the execution of the engine
-    /// If the engine is not paused, this does nothing
+    /// Resumes the engine. Does nothing if not paused.
     #[wasm_bindgen(js_name = "resumeExecution")]
     pub async fn resume_execution(&mut self) -> Result<(), String> {
         self.sender
@@ -422,7 +372,7 @@ impl EngineCommand {
             .map_err(|err| err.to_string())
     }
 
-    /// Resets the engine state, clears all blocks and links
+    /// Resets the engine state, clearing all blocks and links.
     #[wasm_bindgen(js_name = "resetEngine")]
     pub async fn reset_engine(&mut self) -> Result<(), String> {
         self.sender
@@ -431,7 +381,7 @@ impl EngineCommand {
             .map_err(|err| err.to_string())
     }
 
-    /// Stop the engine's execution
+    /// Stops the engine's execution.
     #[wasm_bindgen(js_name = "stopEngine")]
     pub async fn stop_engine(&mut self) -> Result<(), String> {
         self.sender

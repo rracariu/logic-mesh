@@ -220,7 +220,7 @@ impl crate::base::engine::Engine for MultiThreadedEngine {
 }
 
 impl MultiThreadedEngine {
-    /// Create a new multi-threaded engine. The engine itself does not
+    /// Creates a new multi-threaded engine. The engine itself does not
     /// own worker threads — actor tasks are spawned onto whichever
     /// tokio multi-thread runtime the engine is running inside of.
     pub fn new() -> Self {
@@ -236,7 +236,7 @@ impl MultiThreadedEngine {
         }
     }
 
-    /// Schedule a block on the engine. The block must be [`Send`] `+ 'static`
+    /// Schedules a block on the engine. The block must be [`Send`] `+ 'static`
     /// because the actor task is handed to [`tokio::spawn`], where the
     /// runtime is free to migrate it between worker threads.
     ///

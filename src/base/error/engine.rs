@@ -100,7 +100,7 @@ pub enum EngineError {
     ScheduleRequiresSend,
 }
 
-/// Parse a block id, tagging a failure with the string that was rejected.
+/// Parses a block id, tagging a failure with the string that was rejected.
 pub(crate) fn parse_block_uuid(uuid: &str) -> Result<Uuid, EngineError> {
     Uuid::try_from(uuid).map_err(|source| EngineError::InvalidBlockUuid {
         uuid: uuid.to_string(),

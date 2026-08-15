@@ -21,7 +21,7 @@ pub trait Output: OutputProps {
     /// Adds a link to this output.
     fn add_link(&mut self, link: BaseLink<Self::Writer>);
 
-    /// Set this output's value, paired with the output's current
+    /// Sets this output's value, paired with the output's current
     /// effective status, and broadcast it on all the output's registered
     /// links. The effective status is managed by the actor task via
     /// [`Output::emit_status`].

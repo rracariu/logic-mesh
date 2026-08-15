@@ -28,7 +28,7 @@ pub trait Input: InputProps {
     /// than one input per cycle.
     fn try_take(&mut self) -> Option<(Value, Status)>;
 
-    /// Set this input's cached value and status, and forward the same
+    /// Sets this input's cached value and status, and forwards the same
     /// payload to any chained input links. `status` carries the upstream
     /// producer's quality assertion through input-fanout chains.
     fn set_value(&mut self, value: Value, status: Status);

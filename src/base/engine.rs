@@ -40,11 +40,6 @@ pub trait Engine {
 
     /// Returns a handle to this engine's messaging system so external
     /// systems can communicate with this engine once it is running.
-    ///
-    /// # Arguments
-    ///
-    /// * `sender_id` - The sender's unique id.
-    /// * `sender_channel` - The sender channel to send notifications from the engine.
     fn create_message_channel(
         &mut self,
         sender_id: uuid::Uuid,

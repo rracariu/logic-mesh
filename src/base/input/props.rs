@@ -27,7 +27,7 @@ pub trait InputProps {
     /// of another block.
     fn is_connected(&self) -> bool;
 
-    /// Get a list of links to this output. The trait objects carry a
+    /// Returns links from this input. The trait objects carry a
     /// `+` [`Send`] bound so they can be held across `.await` points in the
     /// MT actor future.
     fn links(&self) -> Vec<&(dyn Link + Send)>;

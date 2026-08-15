@@ -22,7 +22,7 @@ pub struct BlockDesc {
     pub category: String,
     /// The block version.
     pub ver: String,
-    /// List of the inputs of the block.
+    /// Inputs of the block.
     pub inputs: Vec<BlockPin>,
     /// The outputs of the block.
     pub outputs: Vec<BlockPin>,

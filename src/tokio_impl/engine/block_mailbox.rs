@@ -24,17 +24,17 @@ use crate::tokio_impl::{ReaderImpl, WriterImpl};
 
 /// Commands sent from the engine to a per-block actor task.
 pub(super) enum BlockMailboxCmd {
-    /// Read the block's full inspection snapshot.
+    /// Reads the block's full inspection snapshot.
     Inspect {
         reply: oneshot::Sender<BlockDefinition>,
     },
-    /// Set an input value. Returns the previous value (if any).
+    /// Sets an input value. Returns the previous value (if any).
     WriteInput {
         name: String,
         value: Value,
         reply: oneshot::Sender<Result<Option<Value>, String>>,
     },
-    /// Set an output value. Returns the previous value.
+    /// Sets an output value. Returns the previous value.
     WriteOutput {
         name: String,
         value: Value,
@@ -47,12 +47,12 @@ pub(super) enum BlockMailboxCmd {
         name: String,
         reply: oneshot::Sender<Result<WriterImpl, String>>,
     },
-    /// Get the current cached value of one of this block's inputs.
+    /// Gets the current cached value of one of this block's inputs.
     GetInputValue {
         name: String,
         reply: oneshot::Sender<Option<Value>>,
     },
-    /// Get the current value of one of this block's outputs.
+    /// Gets the current value of one of this block's outputs.
     GetOutputValue {
         name: String,
         reply: oneshot::Sender<Option<Value>>,
@@ -62,7 +62,7 @@ pub(super) enum BlockMailboxCmd {
         name: String,
         reply: oneshot::Sender<bool>,
     },
-    /// Add a link from one of this block's outputs to a target input.
+    /// Adds a link from one of this block's outputs to a target input.
     AddOutputLink {
         output_name: String,
         target_block_id: Uuid,
@@ -70,7 +70,7 @@ pub(super) enum BlockMailboxCmd {
         target_writer: WriterImpl,
         reply: oneshot::Sender<Result<Uuid, String>>,
     },
-    /// Add a link from one of this block's inputs (chained as a source) to
+    /// Adds a link from one of this block's inputs (chained as a source) to
     /// a target input.
     AddInputLink {
         input_name: String,
@@ -109,7 +109,7 @@ pub(super) enum BlockMailboxCmd {
     DisconnectAll {
         reply: oneshot::Sender<Vec<(Uuid, String)>>,
     },
-    /// Remove any links from this block's outputs/inputs that target the
+    /// Removes any links from this block's outputs/inputs that target the
     /// given block id.
     RemoveTargetBlockLinks {
         target_block_id: Uuid,

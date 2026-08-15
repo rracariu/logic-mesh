@@ -118,7 +118,7 @@ fn str_input(input: &InputImpl) -> Option<&str> {
     }
 }
 
-/// Parse "HH:MM" (24h) to minutes-since-midnight. Returns [`None`] on bad input.
+/// Parses "HH:MM" (24h) to minutes-since-midnight. Returns [`None`] on bad input.
 fn parse_hhmm(s: &str) -> Option<u32> {
     let (h, m) = s.split_once(':')?;
     let h: u32 = h.trim().parse().ok()?;
@@ -129,7 +129,7 @@ fn parse_hhmm(s: &str) -> Option<u32> {
     Some(h * 60 + m)
 }
 
-/// Parse a day-mask string like "MTWRF" into a bitmask where bit 0 = Monday
+/// Parses a day-mask string like "MTWRF" into a bitmask where bit 0 = Monday
 /// .. bit 6 = Sunday. Unknown characters are ignored.
 fn parse_days(s: &str) -> u8 {
     let mut mask = 0u8;

@@ -72,13 +72,7 @@ impl<L: Link + Send> OutputProps for BaseOutput<L> {
 }
 
 impl<L: Link> BaseOutput<L> {
-    /// Creates a new output pin with the given name.
-    ///
-    /// # Arguments
-    ///
-    /// * `name` - The name of the output pin.
-    /// * `kind` - The haystack kind of the output pin.
-    /// * `block_id` - The block id of the block this output pin belongs to.
+    /// Creates a new output pin with the given `name` and `kind`.
     pub fn new_named(name: &str, kind: HaystackKind, block_id: Uuid) -> Self {
         Self {
             desc: OutDesc {
@@ -92,12 +86,7 @@ impl<L: Link> BaseOutput<L> {
         }
     }
 
-    /// Creates a new output pin with the default name "out".
-    ///
-    /// # Arguments
-    ///
-    /// * `kind` - The haystack kind of the output pin.
-    /// * `block_id` - The block id of the block this output pin belongs to.
+    /// Creates a new output pin with the default name `"out"`.
     pub fn new(kind: HaystackKind, block_id: Uuid) -> Self {
         Self::new_named("out", kind, block_id)
     }

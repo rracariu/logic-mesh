@@ -41,7 +41,7 @@ pub(super) fn input_as_number(input: &InputImpl) -> Option<Number> {
     }
 }
 
-/// Read a numeric input and return its value in `target` units.
+/// Reads a numeric input and returns its value in `target` units.
 ///
 /// - If the input has no unit set, the raw value is returned (lenient).
 /// - If the input's unit equals `target`, the raw value is returned.
@@ -56,7 +56,7 @@ pub(super) fn input_as_number_in(input: &InputImpl, target: &'static Unit) -> Op
     }
 }
 
-/// Read a numeric input, optionally converting to `target` if a target
+/// Reads a numeric input, optionally converting to `target` if a target
 /// unit is known. Used by unit-preserving blocks where the target unit
 /// is dictated by another input (typically `in`).
 pub(super) fn input_as_number_matching(
@@ -86,11 +86,7 @@ pub(super) fn input_to_millis_or_default(dur: &Option<Value>) -> u64 {
     }
 }
 
-/// Converts all numbers to the same unit.
-///
-/// # Arguments
-///
-/// * `numbers` - The numbers to convert.
+/// Converts all `numbers` to a common unit.
 ///
 /// # Errors
 ///

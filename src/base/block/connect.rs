@@ -12,48 +12,28 @@ use crate::base::output::Output;
 
 /// Block connection functions.
 pub trait BlockConnect: BlockStaticDesc {
-    /// Connects a block output to the given input.
-    ///
-    /// # Arguments
-    ///
-    /// * `output_name` - The name of the output to be connected.
-    /// * `target_input` - The block input to be connected.
+    /// Connects the output named `output_name` to `target_input`.
     fn connect_output(
         &mut self,
         output_name: &str,
         target_input: &mut dyn InputProps<Reader = Self::Reader, Writer = Self::Writer>,
     ) -> Result<Uuid, &'static str>;
 
-    /// Connects a block input to another block's input.
-    ///
-    /// # Arguments
-    ///
-    /// * `input_name` - The name of the input to be connected.
-    /// * `target_input` - The block input to be connected.
+    /// Connects the input named `input_name` to `target_input`.
     fn connect_input(
         &mut self,
         input_name: &str,
         target_input: &mut dyn InputProps<Reader = Self::Reader, Writer = Self::Writer>,
     ) -> Result<Uuid, &'static str>;
 
-    /// Disconnects a block output from the given input.
-    ///
-    /// # Arguments
-    ///
-    /// * `source_output_name` - The name of the source output to be disconnected.
-    /// * `target_input` - The target input to be disconnected.
+    /// Disconnects the output named `source_output_name` from `target_input`.
     fn disconnect_output(
         &mut self,
         source_output_name: &str,
         target_input: &mut dyn InputProps<Reader = Self::Reader, Writer = Self::Writer>,
     ) -> Result<(), &'static str>;
 
-    /// Disconnects a block input from the given output.
-    ///
-    /// # Arguments
-    ///
-    /// * `source_input_name` - The name of the source input to be disconnected.
-    /// * `target_input` - The target input to be disconnected.
+    /// Disconnects the input named `source_input_name` from `target_input`.
     fn disconnect_input(
         &mut self,
         source_input_name: &str,
@@ -143,12 +123,7 @@ impl<T: Block + ?Sized> BlockConnect for T {
     }
 }
 
-/// Connects a block output to the given input.
-///
-/// # Arguments
-///
-/// * `source_output` - The output to be connected.
-/// * `target_input` - The block input to be connected.
+/// Connects `source_output` to `target_input`.
 pub fn connect_output<Reader, Writer: Clone>(
     source_output: &mut dyn Output<Writer = Writer>,
     target_input: &mut dyn InputProps<Reader = Reader, Writer = Writer>,
@@ -174,12 +149,7 @@ pub fn connect_output<Reader, Writer: Clone>(
     Ok(id)
 }
 
-/// Disconnects a block output from the given input.
-///
-/// # Arguments
-///
-/// * `source_output` - The output to be disconnected.
-/// * `target_input` - The block input to be disconnected.
+/// Disconnects `source_output` from `target_input`.
 ///
 /// # Errors
 ///
@@ -199,12 +169,7 @@ pub fn disconnect_output<Reader, Writer: Clone>(
     }
 }
 
-/// Connects a block input to another block's input.
-///
-/// # Arguments
-///
-/// * `source_input` - The input to be connected to.
-/// * `target_input` - The block input to be connected.
+/// Connects `source_input` to `target_input` (input-to-input fanout).
 pub fn connect_input<Reader, Writer: Clone>(
     source_input: &mut dyn InputProps<Reader = Reader, Writer = Writer>,
     target_input: &mut dyn InputProps<Reader = Reader, Writer = Writer>,
@@ -233,12 +198,7 @@ pub fn connect_input<Reader, Writer: Clone>(
     Ok(id)
 }
 
-/// Disconnects a block input from another block's input.
-///
-/// # Arguments
-///
-/// * `source_input` - The input to be disconnected from.
-/// * `target_input` - The block input to be disconnected.
+/// Disconnects `source_input` from `target_input`.
 ///
 /// # Errors
 ///
@@ -258,12 +218,10 @@ pub fn disconnect_input<I: InputProps + ?Sized>(
     }
 }
 
-/// Disconnects all the inputs and outputs of a block.
+/// Disconnects all inputs and outputs of `block`.
 ///
-/// # Arguments
-///
-/// * `block` - The block to be disconnected.
-/// * `decrement_target_input` - A function that decrements the number of connections of a block input.
+/// `decrement_target_input` is called for each disconnected link to
+/// decrement the target input's connection count.
 pub fn disconnect_block<B, F>(block: &mut B, mut decrement_target_input: F)
 where
     B: BlockProps + ?Sized,
@@ -292,13 +250,10 @@ where
     block.remove_all_links();
 }
 
-/// Disconnects a link from a block.
+/// Disconnects the link identified by `link_id` from `block`.
 ///
-/// # Arguments
-///
-/// * `block` - The block to be disconnected.
-/// * `link_id` - The id of the link to be disconnected.
-/// * `decrement_target_input` - A function that decrements the number of connections of a block input.
+/// `decrement_target_input` is called for the disconnected link to
+/// decrement the target input's connection count.
 pub fn disconnect_link<B, F>(block: &mut B, link_id: &Uuid, mut decrement_target_input: F) -> bool
 where
     B: BlockProps + ?Sized,

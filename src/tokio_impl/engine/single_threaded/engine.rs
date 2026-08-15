@@ -410,7 +410,7 @@ impl SingleThreadedEngine {
         .map_err(EngineError::BlockRequestRejected)
     }
 
-    /// Connect two blocks (source pin → target input). The source pin can
+    /// Connects two blocks (source pin → target input). The source pin can
     /// be either an output or an input (the latter is input-fanout).
     pub(crate) async fn connect_blocks(&self, link_data: &LinkData) -> Result<LinkData> {
         let source_id = parse_block_uuid(&link_data.source_block_uuid)?;

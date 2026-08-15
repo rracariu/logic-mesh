@@ -71,7 +71,7 @@ impl Block for Calendar {
     }
 }
 
-/// Convert days-since-epoch (1970-01-01) to (year, month, day).
+/// Converts days-since-epoch (1970-01-01) to (year, month, day).
 /// Implementation of Howard Hinnant's civil-from-days algorithm.
 fn civil_from_days(days: i64) -> (i64, u32, u32) {
     let z = days + 719_468;

@@ -87,19 +87,19 @@ impl BlockState {
 /// `!Send` — can still implement the trait.
 #[cfg(not(target_arch = "wasm32"))]
 pub trait Block: BlockConnect {
-    /// Run one cycle of this block's dataflow logic.
+    /// Runs one cycle of this block's dataflow logic.
     fn execute(&mut self) -> impl std::future::Future<Output = ()> + Send;
 }
 
 /// WASM variant of [`Block`] without the `Send` bound.
 #[cfg(target_arch = "wasm32")]
 pub trait Block: BlockConnect {
-    /// Run one cycle of this block's dataflow logic.
+    /// Runs one cycle of this block's dataflow logic.
     #[allow(async_fn_in_trait)]
     async fn execute(&mut self);
 }
 
-/// Construct a block instance with a fixed id.
+/// Constructs a block instance with a fixed id.
 ///
 /// Implemented by the [`BlockProps`] derive. The registry uses it to
 /// instantiate runtime-registered blocks when a program prescribes the
@@ -109,12 +109,7 @@ pub trait BlockConstruct: Sized {
     fn with_uuid(uuid: Uuid) -> Self;
 }
 
-/// Converts a value to the type indicated by the expected value.
-///
-/// # Arguments
-///
-/// * `expect` - The expected value, used to determine the target type.
-/// * `actual` - The actual value to convert.
+/// Converts `actual` to the type indicated by `expect`.
 ///
 /// # Errors
 ///
@@ -124,13 +119,7 @@ pub fn convert_value(expect: &Value, actual: Value) -> Result<Value, ValueError>
     convert_value_kind(actual, HaystackKind::from(expect), to_kind)
 }
 
-/// Converts a value from one kind to another.
-///
-/// # Arguments
-///
-/// * `val` - The value to convert.
-/// * `expected` - The expected kind of the value.
-/// * `actual` - The actual kind of the value.
+/// Converts `val` from the `actual` kind to the `expected` kind.
 ///
 /// # Errors
 ///

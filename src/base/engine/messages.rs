@@ -96,12 +96,12 @@ pub enum EngineMessage<WatchEventSender: Clone> {
     /// Response to [`WatchBlockSubReq`](Self::WatchBlockSubReq).
     WatchBlockSubRes(Result<Uuid, &'static str>),
 
-    /// Write a value to a block's output pin.
+    /// Writes a value to a block's output pin.
     WriteBlockOutputReq(Uuid, Uuid, String, Value),
     /// Response to [`WriteBlockOutputReq`](Self::WriteBlockOutputReq).
     WriteBlockOutputRes(Result<Value, String>),
 
-    /// Write a value to a block's input pin.
+    /// Writes a value to a block's input pin.
     WriteBlockInputReq(Uuid, Uuid, String, Value),
     /// Response to [`WriteBlockInputReq`](Self::WriteBlockInputReq).
     WriteBlockInputRes(Result<Option<Value>, String>),
@@ -128,17 +128,17 @@ pub enum EngineMessage<WatchEventSender: Clone> {
     /// Response to [`InspectBlockReq`](Self::InspectBlockReq).
     InspectBlockRes(Result<BlockDefinition, String>),
 
-    /// Evaluate a block by name with given inputs.
+    /// Evaluates a block by name with given inputs.
     EvaluateBlockReq(Uuid, String, Vec<Value>, Option<String>),
     /// Response to [`EvaluateBlockReq`](Self::EvaluateBlockReq).
     EvaluateBlockRes(Result<Vec<Value>, String>),
 
-    /// Connect two blocks via a link.
+    /// Connects two blocks via a link.
     ConnectBlocksReq(Uuid, LinkData),
     /// Response to [`ConnectBlocksReq`](Self::ConnectBlocksReq).
     ConnectBlocksRes(Result<LinkData, String>),
 
-    /// Remove a link by UUID.
+    /// Removes a link by UUID.
     RemoveLinkReq(Uuid, Uuid),
     /// Response to [`RemoveLinkReq`](Self::RemoveLinkReq).
     RemoveLinkRes(Result<bool, String>),
