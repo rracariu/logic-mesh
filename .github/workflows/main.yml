@@ -23,19 +23,15 @@ jobs:
           - "multi-threaded"
     steps:
       - name: Checkout sources
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Install toolchain
-        uses: actions-rs/toolchain@v1
+        uses: dtolnay/rust-toolchain@master
         with:
           toolchain: ${{ matrix.rust }}
-          override: true
 
       - name: Run cargo check
-        uses: actions-rs/cargo@v1
-        with:
-          command: check
-          args: ${{ matrix.features && format('--features {0}', matrix.features) || '' }}
+        run: cargo check ${{ matrix.features && format('--features {0}', matrix.features) || '' }}
 
   test:
     name: Test Suite (${{ matrix.features == '' && 'default' || matrix.features }})
@@ -49,19 +45,15 @@ jobs:
           - "multi-threaded"
     steps:
       - name: Checkout sources
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Install toolchain
-        uses: actions-rs/toolchain@v1
+        uses: dtolnay/rust-toolchain@master
         with:
           toolchain: ${{ matrix.rust }}
-          override: true
 
       - name: Run cargo test
-        uses: actions-rs/cargo@v1
-        with:
-          command: test
-          args: --workspace ${{ matrix.features && format('--features {0}', matrix.features) || '' }}
+        run: cargo test --workspace ${{ matrix.features && format('--features {0}', matrix.features) || '' }}
 
   fmt:
     name: Rustfmt
@@ -72,22 +64,16 @@ jobs:
           - stable
     steps:
       - name: Checkout sources
-        uses: actions/checkout@v2
+        uses: actions/checkout@v6
 
       - name: Install toolchain
-        uses: actions-rs/toolchain@v1
+        uses: dtolnay/rust-toolchain@master
         with:
           toolchain: ${{ matrix.rust }}
-          default: true
           components: rustfmt
-          override: true
 
       - name: Run cargo fmt
-        uses: actions-rs/cargo@v1
-        with:
-          command: fmt
-          toolchain: ${{ matrix.rust }}
-          args: --all --check
+        run: cargo fmt --all --check
 
   clippy:
     name: Clippy (${{ matrix.features == '' && 'default' || matrix.features }})
@@ -101,20 +87,16 @@ jobs:
           - "multi-threaded"
     steps:
       - name: Checkout sources
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Install toolchain
-        uses: actions-rs/toolchain@v1
+        uses: dtolnay/rust-toolchain@master
         with:
           toolchain: ${{ matrix.rust }}
           components: clippy
-          override: true
 
       - name: Run cargo clippy
-        uses: actions-rs/cargo@v1
-        with:
-          command: clippy
-          args: ${{ matrix.features && format('--features {0}', matrix.features) || '' }} -- -D warnings
+        run: cargo clippy ${{ matrix.features && format('--features {0}', matrix.features) || '' }} -- -D warnings
 
   docs:
     name: Docs (${{ matrix.features == '' && 'default' || matrix.features }})
@@ -128,21 +110,17 @@ jobs:
           - "multi-threaded"
     steps:
       - name: Checkout sources
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Install toolchain
-        uses: actions-rs/toolchain@v1
+        uses: dtolnay/rust-toolchain@master
         with:
           toolchain: ${{ matrix.rust }}
-          override: true
 
       - name: Run cargo doc
-        uses: actions-rs/cargo@v1
         env:
           RUSTDOCFLAGS: "-D warnings"
-        with:
-          command: doc
-          args: --no-deps ${{ matrix.features && format('--features {0}', matrix.features) || '' }}
+        run: cargo doc --no-deps ${{ matrix.features && format('--features {0}', matrix.features) || '' }}
 
   docs-wasm:
     name: Docs (wasm32)
@@ -153,22 +131,18 @@ jobs:
           - stable
     steps:
       - name: Checkout sources
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Install toolchain
-        uses: actions-rs/toolchain@v1
+        uses: dtolnay/rust-toolchain@master
         with:
           toolchain: ${{ matrix.rust }}
-          target: wasm32-unknown-unknown
-          override: true
+          targets: wasm32-unknown-unknown
 
       - name: Run cargo doc
-        uses: actions-rs/cargo@v1
         env:
           RUSTDOCFLAGS: "-D warnings"
-        with:
-          command: doc
-          args: --no-deps --target wasm32-unknown-unknown
+        run: cargo doc --no-deps --target wasm32-unknown-unknown
 
   clippy-wasm:
     name: Clippy (wasm32)
@@ -179,21 +153,17 @@ jobs:
           - stable
     steps:
       - name: Checkout sources
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Install toolchain
-        uses: actions-rs/toolchain@v1
+        uses: dtolnay/rust-toolchain@master
         with:
           toolchain: ${{ matrix.rust }}
-          target: wasm32-unknown-unknown
+          targets: wasm32-unknown-unknown
           components: clippy
-          override: true
 
       # Library only, no `--all-targets`: that would pull in the
       # dev-dependencies of the native `tui_runner` example (crossterm),
       # which do not build for wasm32.
       - name: Run cargo clippy
-        uses: actions-rs/cargo@v1
-        with:
-          command: clippy
-          args: --target wasm32-unknown-unknown -- -D warnings
+        run: cargo clippy --target wasm32-unknown-unknown -- -D warnings
