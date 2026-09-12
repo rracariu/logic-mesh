@@ -31,7 +31,7 @@ impl Block for StrLen {
         if let Some(Value::Str(a)) = self.input.get_value() {
             self.out.set(
                 Number {
-                    value: a.value.len() as f64,
+                    value: a.len() as f64,
                     unit: None,
                 }
                 .into(),

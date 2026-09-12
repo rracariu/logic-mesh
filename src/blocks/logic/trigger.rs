@@ -33,7 +33,7 @@ impl Block for Trigger {
         self.read_inputs_until_ready().await;
 
         let op = match self.operation.get_value() {
-            Some(Value::Str(s)) => s.value.as_str().into(),
+            Some(Value::Str(s)) => s.value().into(),
             _ => Op::RisingEdge,
         };
 

@@ -33,7 +33,7 @@ impl std::fmt::Debug for ActiveSubscription {
 /// no value, a non-string value, or an empty string.
 pub(crate) fn input_as_str(input: &InputImpl) -> Option<String> {
     match input.get_value() {
-        Some(Value::Str(s)) if !s.value.is_empty() => Some(s.value.clone()),
+        Some(Value::Str(s)) if !s.is_empty() => Some(s.value().to_owned()),
         _ => None,
     }
 }

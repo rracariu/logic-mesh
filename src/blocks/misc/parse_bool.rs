@@ -28,10 +28,10 @@ impl Block for ParseBool {
         self.read_inputs_until_ready().await;
 
         if let Some(Value::Str(input)) = self.input.get_value() {
-            let parsed = input.value.parse::<bool>();
+            let parsed = input.parse::<bool>();
             if let Ok(parsed) = parsed {
                 self.out.set(parsed.into());
-            } else if let Ok(Value::Bool(bool)) = zinc::decode::from_str(&input.value) {
+            } else if let Ok(Value::Bool(bool)) = zinc::decode::from_str(input) {
                 self.out.set(bool.into());
             }
         }
