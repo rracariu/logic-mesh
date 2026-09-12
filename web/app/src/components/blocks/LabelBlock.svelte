@@ -2,6 +2,7 @@
   import { Handle, Position } from '@xyflow/svelte';
   import BlockCommons from '../BlockCommons.svelte';
   import type { Block } from '$lib/Block';
+  import { onValue } from '$lib/UiConnector';
   import { formatValue } from '$lib/utils';
 
   interface Props {
@@ -11,15 +12,17 @@
   let { data }: Props = $props();
 
   const block = $derived(data.value);
-  const inputKey = $derived(Object.keys(block.inputs)[0] ?? 'in');
 
-  const displayValue = $derived(formatValue(block.inputs.in.value));
+  let raw = $state<unknown>(undefined);
+  $effect(() => onValue(block.id, (v) => (raw = v)));
+
+  const displayValue = $derived(formatValue(raw));
 </script>
 
 <BlockCommons data={block}>
   <div class="ui-block-body">
     <Handle
-      id={inputKey}
+      id="in"
       type="target"
       position={Position.Left}
       class="handle-dot handle-input"

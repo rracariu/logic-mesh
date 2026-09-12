@@ -92,6 +92,12 @@ name = "minimal"
 # execute loop, no scheduler needed.
 
 [[example]]
+name = "connector_demo"
+# Implements the `Connector` trait in application code — the library
+# ships only the contract and the generic external blocks — and runs
+# a simulated transport on the default ST engine. No special features.
+
+[[example]]
 name = "tui_runner"
 # Uses `MultiThreadedEngine` so the engine.run() task can be spawned
 # via `tokio::spawn` while ratatui drives the main thread.

@@ -21,36 +21,34 @@
 
   let { data }: Props = $props();
 
-  const block = $derived(data.value);
+  const kind = $derived(data.value.widget?.kind);
 </script>
 
-{#if block.desc.implementation === 'native'}
-  <GenericBlock {data} />
-{:else if block.desc.name === 'Input'}
+{#if kind === 'Input'}
   <InputBlock {data} />
-{:else if block.desc.name === 'Checkbox'}
+{:else if kind === 'Checkbox'}
   <CheckboxBlock {data} />
-{:else if block.desc.name === 'Chart'}
+{:else if kind === 'Chart'}
   <ChartBlock {data} />
-{:else if block.desc.name === 'Gauge'}
+{:else if kind === 'Gauge'}
   <GaugeBlock {data} />
-{:else if block.desc.name === 'Button'}
+{:else if kind === 'Button'}
   <ButtonBlock {data} />
-{:else if block.desc.name === 'ComboBox'}
+{:else if kind === 'ComboBox'}
   <ComboBoxBlock {data} />
-{:else if block.desc.name === 'Table'}
+{:else if kind === 'Table'}
   <TableBlock {data} />
-{:else if block.desc.name === 'Label'}
+{:else if kind === 'Label'}
   <LabelBlock {data} />
-{:else if block.desc.name === 'Slider'}
+{:else if kind === 'Slider'}
   <SliderBlock {data} />
-{:else if block.desc.name === 'Led'}
+{:else if kind === 'Led'}
   <LedBlock {data} />
-{:else if block.desc.name === 'Bar'}
+{:else if kind === 'Bar'}
   <BarBlock {data} />
-{:else if block.desc.name === 'Display'}
+{:else if kind === 'Display'}
   <DisplayBlock {data} />
-{:else if block.desc.name === 'MultiChart'}
+{:else if kind === 'MultiChart'}
   <MultiChartBlock {data} />
 {:else}
   <GenericBlock {data} />

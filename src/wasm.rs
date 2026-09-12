@@ -5,6 +5,7 @@
 pub mod engine;
 pub mod engine_command;
 pub mod js_block;
+pub mod js_connector;
 pub(crate) mod sleep;
 pub mod types;
 

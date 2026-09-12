@@ -2,6 +2,8 @@
   import { Handle, Position } from '@xyflow/svelte';
   import BlockCommons from '../BlockCommons.svelte';
   import type { Block } from '$lib/Block';
+  import { onValue } from '$lib/UiConnector';
+  import { useWidgetConfig } from '$lib/WidgetConfig.svelte';
 
   interface Props {
     data: { value: Block };
@@ -10,43 +12,25 @@
   let { data }: Props = $props();
 
   const block = $derived(data.value);
+  const widgetConfig = useWidgetConfig(() => block.widget);
+  const config = $derived(widgetConfig.config);
 
-  const on = $derived(Boolean(block.inputs.in?.value));
-  const label = $derived(String(block.inputs.label?.value ?? ''));
-  const color = $derived(String(block.inputs.color?.value ?? '#3ecf6b'));
+  let raw = $state<unknown>(undefined);
+  $effect(() => onValue(block.id, (v) => (raw = v)));
+
+  const on = $derived(Boolean(raw));
+  const label = $derived(String(config.label ?? ''));
+  const color = $derived(String(config.color ?? '#3ecf6b'));
 </script>
 
 <BlockCommons data={block}>
   <div class="ui-block-body">
-    <div class="pin-stack">
-      <div class="pin-row">
-        <Handle
-          id="in"
-          type="target"
-          position={Position.Left}
-          class="handle-dot handle-input"
-        />
-        <span class="pin-name">in</span>
-      </div>
-      <div class="pin-row">
-        <Handle
-          id="label"
-          type="target"
-          position={Position.Left}
-          class="handle-dot handle-input"
-        />
-        <span class="pin-name">label</span>
-      </div>
-      <div class="pin-row">
-        <Handle
-          id="color"
-          type="target"
-          position={Position.Left}
-          class="handle-dot handle-input"
-        />
-        <span class="pin-name">color</span>
-      </div>
-    </div>
+    <Handle
+      id="in"
+      type="target"
+      position={Position.Left}
+      class="handle-dot handle-input"
+    />
 
     <div class="led-area">
       <span
@@ -69,26 +53,6 @@
     gap: 8px;
     padding: 6px 10px;
     position: relative;
-  }
-
-  .pin-stack {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-  }
-
-  .pin-row {
-    display: flex;
-    align-items: center;
-    padding: 1px 8px;
-    gap: 6px;
-    min-height: 18px;
-    position: relative;
-  }
-
-  .pin-name {
-    font-size: 11px;
-    opacity: 0.85;
   }
 
   .led-area {

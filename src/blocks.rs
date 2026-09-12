@@ -5,6 +5,7 @@
 pub mod bitwise;
 pub mod collections;
 pub mod control;
+pub mod external;
 pub mod logic;
 pub mod math;
 pub mod misc;

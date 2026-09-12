@@ -88,7 +88,10 @@ impl BlocksEngine {
     ///
     /// `desc` is a [`JsBlockDesc`] describing the block. `func`, if provided,
     /// is the JavaScript function that implements the block logic — without it
-    /// the block is a no-op.
+    /// the block is a no-op. Pin kinds must be the lowercase haystack
+    /// names (`"number"`, `"str"`, …); an unrecognized kind or run
+    /// condition rejects the registration instead of silently
+    /// registering a `Null` (accepts-anything) pin.
     #[wasm_bindgen(js_name = "registerBlock")]
     pub fn register_block(
         &mut self,
@@ -101,7 +104,8 @@ impl BlocksEngine {
         let name = desc.name.clone();
         let lib = desc.lib.clone();
 
-        register_block_desc(&desc.into()).map_err(|err| err.to_string())?;
+        let desc: crate::base::block::BlockDesc = desc.try_into()?;
+        register_block_desc(&desc).map_err(|err| err.to_string())?;
 
         if let Some(func) = func {
             JS_FNS.with_borrow_mut(|reg| {
@@ -110,6 +114,43 @@ impl BlocksEngine {
         }
 
         Ok(name)
+    }
+
+    /// Registers a JavaScript-implemented connector under `name` in
+    /// the process-wide connector registry.
+    ///
+    /// Convenience for pre-run setup — delegates to the module-level
+    /// `registerConnector` function
+    /// ([`register_js_connector`](crate::wasm::js_connector::register_js_connector));
+    /// see it and the [`js_connector`](crate::wasm::js_connector)
+    /// module docs for the connector object shape. Attach the
+    /// registered connector to the running engine with the
+    /// `addConnector` engine command.
+    ///
+    /// # Errors
+    ///
+    /// Returns (throws, on the JS side) a message if `connector` does
+    /// not have the required shape or if a connector named `name` is
+    /// already registered.
+    #[wasm_bindgen(js_name = "registerConnector")]
+    pub fn register_connector(&self, name: String, connector: JsValue) -> Result<(), String> {
+        crate::wasm::js_connector::register_js_connector(name, connector)
+    }
+
+    /// Removes the connector registered under `name` from the
+    /// process-wide connector registry, returning whether a connector
+    /// was removed.
+    ///
+    /// Convenience mirroring the module-level `unregisterConnector`
+    /// function
+    /// ([`unregister_js_connector`](crate::wasm::js_connector::unregister_js_connector)),
+    /// meant for a connector that was registered but never attached. A
+    /// connector attached to the running engine should instead be
+    /// removed with the `removeConnector` engine command, which
+    /// detaches and stops it before unregistering.
+    #[wasm_bindgen(js_name = "unregisterConnector")]
+    pub fn unregister_connector(&self, name: String) -> bool {
+        crate::wasm::js_connector::unregister_js_connector(name)
     }
 
     /// Returns a new [`EngineCommand`] handle for sending commands.

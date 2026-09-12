@@ -37,7 +37,9 @@ use uuid::Uuid;
 use super::super::block_mailbox::{
     BLOCK_MAILBOX_CAP, BlockMailboxCmd, mailbox_request, mailbox_send,
 };
+use super::super::connectors;
 use super::actor::{WatchersHandle, block_actor_task};
+use crate::base::connector::{ConnectorHandle, register_connector};
 use crate::base::{
     block::{Block, BlockDesc},
     engine::{
@@ -139,11 +141,28 @@ pub struct MultiThreadedEngine {
     receiver: Receiver<Messages>,
     pub(in super::super) reply_senders: BTreeMap<Uuid, Sender<Messages>>,
     pub(in super::super) watchers: WatchersHandle,
+    /// Names of the connectors whose lifecycle this engine manages. The
+    /// handles themselves live in the process-wide connector registry —
+    /// the single source of truth blocks also resolve against.
+    connectors: Vec<String>,
 }
 
 impl Default for MultiThreadedEngine {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+impl Drop for MultiThreadedEngine {
+    /// Unregisters any connectors the engine still tracks, so a dropped
+    /// engine does not leave the process-wide registry holding entries
+    /// that would reject re-registration with `AlreadyRegistered`.
+    ///
+    /// `stop` is not awaited here — `Drop` cannot await; connectors own
+    /// their IO tasks and wind those down from their own `Drop` once
+    /// the registry releases the last handle.
+    fn drop(&mut self) {
+        connectors::unregister_connectors(&mut self.connectors);
     }
 }
 
@@ -185,6 +204,15 @@ impl crate::base::engine::Engine for MultiThreadedEngine {
     }
 
     async fn run(&mut self) {
+        // Start connectors first, before wiring pending links or
+        // servicing any engine message. Unlike the single-threaded
+        // engine — where actor tasks only progress once `run()` drives
+        // the LocalSet — MT actor tasks were spawned onto the ambient
+        // runtime at `schedule_send` time and may already be executing;
+        // starting connectors here is the strongest ordering the MT
+        // engine can offer (see `add_connector`).
+        connectors::start_connectors(&self.connectors).await;
+
         // Process any links queued during configuration. Actor tasks are
         // already live on the tokio MT runtime by this point (they were
         // spawned at `schedule_send` time), so the mailbox round-trips
@@ -210,6 +238,17 @@ impl crate::base::engine::Engine for MultiThreadedEngine {
                             let _ = handle.mailbox.send(BlockMailboxCmd::Terminate).await;
                         }
                     }
+                    // Connectors stay registered so the engine can be
+                    // re-run with the same bindings.
+                    //
+                    // Stop-side ordering deviation from the ST engine:
+                    // `Terminate` was sent to the actor mailboxes above,
+                    // but the actor tasks are not joined — one still
+                    // mid-`execute` on another worker can transiently
+                    // hit a connector that is stopping here and fault.
+                    // Benign: blocks fault-and-retry, and the engine is
+                    // shutting down anyway.
+                    connectors::stop_connectors(&self.connectors).await;
                     break;
                 } else if matches!(message, EngineMessage::Reset) {
                     let ids: Vec<Uuid> = self.handles.keys().copied().collect();
@@ -218,6 +257,15 @@ impl crate::base::engine::Engine for MultiThreadedEngine {
                             let _ = handle.mailbox.send(BlockMailboxCmd::Terminate).await;
                         }
                     }
+                    // Unregister first — no block can `get_connector` a
+                    // connector that is being stopped — then stop the
+                    // handles the unregistration handed back. As with
+                    // shutdown above, terminated actor tasks are not
+                    // joined first, so a block mid-`execute` may
+                    // transiently resolve-and-fault against a stopping
+                    // connector; blocks fault-and-retry, so this is
+                    // benign.
+                    connectors::unregister_and_stop_connectors(&mut self.connectors).await;
                     continue;
                 } else if matches!(message, EngineMessage::Pause) {
                     is_paused = true;
@@ -258,7 +306,47 @@ impl MultiThreadedEngine {
             receiver,
             reply_senders: BTreeMap::new(),
             watchers: Arc::new(RwLock::new(BTreeMap::new())),
+            connectors: Vec::new(),
         }
+    }
+
+    /// Registers `handle` in the process-wide connector registry under
+    /// `name` and puts it under this engine's lifecycle management.
+    ///
+    /// The engine awaits the connector's `start` when [`run`](Engine::run)
+    /// begins — before pending links are wired and before any engine
+    /// message is serviced — and its `stop` on shutdown; the connector
+    /// stays registered so a re-run picks it up again. A reset
+    /// unregisters the connector first and then stops it. Dropping the
+    /// engine unregisters any still-tracked connectors without awaiting
+    /// `stop`. Start/stop failures and timeouts are logged, not fatal.
+    ///
+    /// Unlike the single-threaded engine — whose block actors make no
+    /// progress until `run()` drives its LocalSet — MT actor tasks are
+    /// spawned onto the ambient runtime at [`schedule_send`](Self::schedule_send)
+    /// time, so a block scheduled before `run()` may execute against a
+    /// connector that has not started yet. Add connectors before
+    /// scheduling connector-dependent blocks, or attach them over the
+    /// message channel once the engine is running.
+    ///
+    /// Connectors own their IO loops: spawn them from `start` via the
+    /// ambient `tokio::spawn` and wind them down in `stop`. Pausing the
+    /// engine does not pause these tasks — pause only stops servicing
+    /// engine messages.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if a connector with this name is already
+    /// registered.
+    pub fn add_connector(&mut self, name: &str, handle: impl Into<ConnectorHandle>) -> Result<()> {
+        register_connector(name, handle)?;
+        self.connectors.push(name.to_string());
+        Ok(())
+    }
+
+    /// The names of the connectors this engine manages.
+    pub fn connector_names(&self) -> Vec<String> {
+        self.connectors.clone()
     }
 
     /// Schedules a block on the engine. The block must be [`Send`] `+ 'static`
@@ -763,6 +851,16 @@ impl MultiThreadedEngine {
         Ok(false)
     }
 
+    /// Sends `engine_message` to the reply channel registered under
+    /// `sender_uuid`.
+    ///
+    /// Replies carry no correlation id — a caller matches replies to
+    /// requests purely by order, which is why each channel must hold to
+    /// the one-outstanding-request discipline documented on
+    /// [`create_message_channel`](crate::base::engine::Engine::create_message_channel).
+    /// `try_send` keeps the dispatcher from ever blocking on a slow
+    /// caller: if the (capacity-32) channel is full, the reply is
+    /// silently dropped.
     fn reply_to_sender(&self, sender_uuid: Uuid, engine_message: Messages) {
         for (sender_id, sender) in &self.reply_senders {
             if sender_id != &sender_uuid {
@@ -883,6 +981,30 @@ impl MultiThreadedEngine {
                     .await
                     .map_err(|err| err.to_string());
                 self.reply_to_sender(sender_uuid, EngineMessage::RemoveLinkRes(res));
+            }
+
+            // Shared connector semantics with the single-threaded
+            // engine — see the `connectors` module for the lifecycle
+            // rules (start-failure cleanup, detach ordering, timeouts).
+            EngineMessage::AddConnectorReq(sender_uuid, name) => {
+                log::debug!("AddConnectorReq: {name}");
+
+                let res = connectors::attach_connector(&mut self.connectors, name).await;
+                self.reply_to_sender(sender_uuid, EngineMessage::AddConnectorRes(res));
+            }
+
+            EngineMessage::RemoveConnectorReq(sender_uuid, name) => {
+                log::debug!("RemoveConnectorReq: {name}");
+
+                let res = connectors::detach_connector(&mut self.connectors, &name).await;
+                self.reply_to_sender(sender_uuid, EngineMessage::RemoveConnectorRes(res));
+            }
+
+            EngineMessage::ListConnectorsReq(sender_uuid) => {
+                log::debug!("ListConnectorsReq");
+
+                let res = Ok(self.connector_names());
+                self.reply_to_sender(sender_uuid, EngineMessage::ListConnectorsRes(res));
             }
 
             _ => unreachable!("Invalid message"),
@@ -1065,5 +1187,326 @@ mod test {
             !in0_after.is_connected,
             "after disconnect, B.in0 should report is_connected=false"
         );
+    }
+
+    /// Connector lifecycle on the MT engine
+    mod connector_lifecycle {
+        use std::sync::{
+            Arc,
+            atomic::{AtomicBool, Ordering},
+        };
+
+        use super::*;
+        use crate::base::connector::{get_connector, register_connector, unregister_connector};
+        use crate::base::engine::messages::EngineMessage::{
+            AddConnectorReq, AddConnectorRes, ListConnectorsReq, ListConnectorsRes,
+            RemoveConnectorReq, RemoveConnectorRes, Reset,
+        };
+        use crate::tokio_impl::engine::connectors::test_support::{
+            FailingStartConnector, FlagConnector,
+        };
+
+        /// The connector registry is process-global and tests run in
+        /// parallel, so every test uses a unique name.
+        fn setup(
+            prefix: &str,
+        ) -> (
+            String,
+            Arc<AtomicBool>,
+            Arc<AtomicBool>,
+            MultiThreadedEngine,
+        ) {
+            let name = format!("{prefix}-{}", Uuid::new_v4());
+            let started = Arc::new(AtomicBool::new(false));
+            let stopped = Arc::new(AtomicBool::new(false));
+
+            let mut eng = MultiThreadedEngine::new();
+            eng.add_connector(
+                &name,
+                Arc::new(FlagConnector {
+                    started: started.clone(),
+                    stopped: stopped.clone(),
+                }),
+            )
+            .expect("connector added");
+
+            (name, started, stopped, eng)
+        }
+
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn duplicate_name_is_rejected() {
+            let (name, _, _, mut eng) = setup("mt-dup");
+            let dup = Arc::new(FlagConnector {
+                started: Arc::default(),
+                stopped: Arc::default(),
+            });
+            eng.add_connector(&name, dup)
+                .expect_err("duplicate connector name is rejected");
+            assert_eq!(
+                eng.connector_names().iter().filter(|n| *n == &name).count(),
+                1,
+                "rejected add does not double-track the name"
+            );
+            assert!(
+                get_connector(&name).is_some(),
+                "rejected add leaves the original handle registered"
+            );
+            unregister_connector(&name);
+        }
+
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn started_on_run_and_stopped_on_shutdown() {
+            let (name, started, stopped, mut eng) = setup("mt-shutdown");
+
+            let (sender, _receiver) = mpsc::channel(32);
+            let engine_sender = eng.create_message_channel(Uuid::new_v4(), sender);
+
+            // On the MT runtime the driver runs concurrently with
+            // `run()` as a plain task — no extra thread/runtime needed.
+            let driver = tokio::spawn(async move {
+                sleep(Duration::from_millis(100)).await;
+                let _ = engine_sender.send(Shutdown).await;
+            });
+
+            eng.run().await;
+            driver.await.unwrap();
+
+            assert!(started.load(Ordering::SeqCst), "start driven by run()");
+            assert!(stopped.load(Ordering::SeqCst), "stop driven on shutdown");
+            assert!(
+                get_connector(&name).is_some(),
+                "shutdown keeps the connector registered for a re-run"
+            );
+            unregister_connector(&name);
+        }
+
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn reset_stops_and_unregisters() {
+            let (name, started, stopped, mut eng) = setup("mt-reset");
+
+            let (sender, _receiver) = mpsc::channel(32);
+            let engine_sender = eng.create_message_channel(Uuid::new_v4(), sender);
+
+            let driver = tokio::spawn(async move {
+                sleep(Duration::from_millis(100)).await;
+                let _ = engine_sender.send(Reset).await;
+                let _ = engine_sender.send(Shutdown).await;
+            });
+
+            eng.run().await;
+            driver.await.unwrap();
+
+            assert!(started.load(Ordering::SeqCst), "start driven by run()");
+            assert!(stopped.load(Ordering::SeqCst), "stop driven on reset");
+            assert!(
+                get_connector(&name).is_none(),
+                "reset unregisters the connector"
+            );
+        }
+
+        /// A connector registered globally while the engine is running
+        /// can be attached, listed, and detached over the message
+        /// channel.
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn dynamic_add_list_remove_over_messages() {
+            let name = format!("mt-dynamic-{}", Uuid::new_v4());
+            let started = Arc::new(AtomicBool::new(false));
+            let stopped = Arc::new(AtomicBool::new(false));
+
+            // Registered globally, NOT engine-managed yet — attaching
+            // over the message channel is what puts it under
+            // engine management.
+            register_connector(
+                &name,
+                Arc::new(FlagConnector {
+                    started: started.clone(),
+                    stopped: stopped.clone(),
+                }),
+            )
+            .expect("registered");
+
+            let mut eng = MultiThreadedEngine::new();
+            let (sender, mut receiver) = mpsc::channel(32);
+            let channel_id = Uuid::new_v4();
+            let engine_sender = eng.create_message_channel(channel_id, sender);
+
+            let driver_name = name.clone();
+            let driver_started = started.clone();
+            let driver_stopped = stopped.clone();
+            let driver = tokio::spawn(async move {
+                sleep(Duration::from_millis(100)).await;
+
+                let _ = engine_sender
+                    .send(AddConnectorReq(channel_id, driver_name.clone()))
+                    .await;
+                match receiver.recv().await {
+                    Some(AddConnectorRes(Ok(added))) => assert_eq!(added, driver_name),
+                    other => panic!("Expected AddConnectorRes(Ok), got {:?}", other),
+                }
+                assert!(
+                    driver_started.load(Ordering::SeqCst),
+                    "attach awaits the connector's start"
+                );
+
+                let _ = engine_sender.send(ListConnectorsReq(channel_id)).await;
+                match receiver.recv().await {
+                    Some(ListConnectorsRes(Ok(names))) => {
+                        assert!(names.contains(&driver_name), "attached name is listed")
+                    }
+                    other => panic!("Expected ListConnectorsRes(Ok), got {:?}", other),
+                }
+
+                let _ = engine_sender
+                    .send(RemoveConnectorReq(channel_id, driver_name.clone()))
+                    .await;
+                match receiver.recv().await {
+                    Some(RemoveConnectorRes(Ok(removed))) => assert_eq!(removed, driver_name),
+                    other => panic!("Expected RemoveConnectorRes(Ok), got {:?}", other),
+                }
+                assert!(
+                    driver_stopped.load(Ordering::SeqCst),
+                    "detach awaits the connector's stop"
+                );
+                assert!(
+                    get_connector(&driver_name).is_none(),
+                    "detach unregisters the connector"
+                );
+
+                let _ = engine_sender.send(ListConnectorsReq(channel_id)).await;
+                match receiver.recv().await {
+                    Some(ListConnectorsRes(Ok(names))) => {
+                        assert!(!names.contains(&driver_name), "detached name is not listed")
+                    }
+                    other => panic!("Expected ListConnectorsRes(Ok), got {:?}", other),
+                }
+
+                let _ = engine_sender.send(Shutdown).await;
+            });
+
+            eng.run().await;
+            driver.await.unwrap();
+        }
+
+        /// A failed attach must not leak a partially-started connector:
+        /// `start` may have spawned IO tasks before erroring, so the
+        /// engine stops the handle before reporting the error. The
+        /// name stays registered so a retry remains possible.
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn failed_attach_stops_the_connector() {
+            let name = format!("mt-failing-start-{}", Uuid::new_v4());
+            let stopped = Arc::new(AtomicBool::new(false));
+            register_connector(
+                &name,
+                Arc::new(FailingStartConnector {
+                    stopped: stopped.clone(),
+                }),
+            )
+            .expect("registered");
+
+            let mut eng = MultiThreadedEngine::new();
+            let (sender, mut receiver) = mpsc::channel(32);
+            let channel_id = Uuid::new_v4();
+            let engine_sender = eng.create_message_channel(channel_id, sender);
+
+            let driver_name = name.clone();
+            let driver_stopped = stopped.clone();
+            let driver = tokio::spawn(async move {
+                sleep(Duration::from_millis(100)).await;
+
+                let _ = engine_sender
+                    .send(AddConnectorReq(channel_id, driver_name.clone()))
+                    .await;
+                match receiver.recv().await {
+                    Some(AddConnectorRes(Err(_))) => {}
+                    other => panic!(
+                        "Expected AddConnectorRes(Err) on start failure, got {:?}",
+                        other
+                    ),
+                }
+                assert!(
+                    driver_stopped.load(Ordering::SeqCst),
+                    "failed attach stops the connector before replying"
+                );
+                assert!(
+                    get_connector(&driver_name).is_some(),
+                    "failed attach keeps the connector registered for a retry"
+                );
+
+                let _ = engine_sender.send(ListConnectorsReq(channel_id)).await;
+                match receiver.recv().await {
+                    Some(ListConnectorsRes(Ok(names))) => {
+                        assert!(
+                            !names.contains(&driver_name),
+                            "failed attach is not tracked"
+                        )
+                    }
+                    other => panic!("Expected ListConnectorsRes(Ok), got {:?}", other),
+                }
+
+                let _ = engine_sender.send(Shutdown).await;
+            });
+
+            eng.run().await;
+            driver.await.unwrap();
+
+            unregister_connector(&name);
+        }
+
+        /// Attach/detach error cases: an unregistered name, a name the
+        /// engine already manages, and detaching an unmanaged name.
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn dynamic_add_remove_error_cases() {
+            let (name, _, _, mut eng) = setup("mt-dynamic-errors");
+
+            let (sender, mut receiver) = mpsc::channel(32);
+            let channel_id = Uuid::new_v4();
+            let engine_sender = eng.create_message_channel(channel_id, sender);
+
+            let driver_name = name.clone();
+            let driver = tokio::spawn(async move {
+                sleep(Duration::from_millis(100)).await;
+
+                let missing = format!("mt-missing-{}", Uuid::new_v4());
+                let _ = engine_sender
+                    .send(AddConnectorReq(channel_id, missing.clone()))
+                    .await;
+                match receiver.recv().await {
+                    Some(AddConnectorRes(Err(_))) => {}
+                    other => panic!(
+                        "Expected AddConnectorRes(Err) for an unregistered name, got {:?}",
+                        other
+                    ),
+                }
+
+                let _ = engine_sender
+                    .send(AddConnectorReq(channel_id, driver_name.clone()))
+                    .await;
+                match receiver.recv().await {
+                    Some(AddConnectorRes(Err(_))) => {}
+                    other => panic!(
+                        "Expected AddConnectorRes(Err) for an already-managed name, got {:?}",
+                        other
+                    ),
+                }
+
+                let _ = engine_sender
+                    .send(RemoveConnectorReq(channel_id, missing))
+                    .await;
+                match receiver.recv().await {
+                    Some(RemoveConnectorRes(Err(_))) => {}
+                    other => panic!(
+                        "Expected RemoveConnectorRes(Err) for an unmanaged name, got {:?}",
+                        other
+                    ),
+                }
+
+                let _ = engine_sender.send(Shutdown).await;
+            });
+
+            eng.run().await;
+            driver.await.unwrap();
+
+            unregister_connector(&name);
+        }
     }
 }

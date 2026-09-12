@@ -18,15 +18,17 @@
     SelectTrigger,
   } from '$lib/components/ui/select';
   import { Separator } from '$lib/components/ui/separator';
+  import { toast } from '$lib/components/ui/sonner';
   import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
   import { examplePrograms } from '$lib/Examples';
   import { useEngine } from '$lib/Engine';
+  import { setUiPushPaused } from '$lib/UiConnector';
   import type { BlockDesc, Program } from 'logic-mesh';
 
   interface Props {
     blocks: BlockDesc[];
     onAddBlock: (block: BlockDesc) => void;
-    onReset: () => void;
+    onReset: () => Promise<void>;
     onCopy: () => void;
     onPaste: () => void;
     onLoad: (program: Program) => void;
@@ -65,32 +67,70 @@
     onLoad(curProgram);
   });
 
+  // Flips the UI to running, resumes the engine, and reopens the
+  // widget-push gate. resumeExecution resolves when Resume is enqueued,
+  // not when it is dispatched — which suffices: engine messages are
+  // FIFO, so Resume is queued ahead of anything the reopened gate
+  // flushes, and that backlog stays bounded and drains as soon as the
+  // engine works through the queue. The gate reopens only if isRunning
+  // still holds — the user may pause again while the send settles, and
+  // a stale resume must not reopen the gate on a paused engine.
+  function resumeEngine(): Promise<void> {
+    isRunning = true;
+    return command
+      .resumeExecution()
+      .then(() => {
+        if (isRunning) setUiPushPaused(false);
+      })
+      .catch((err) => {
+        toast.error(`Resume failed: ${err}`);
+      });
+  }
+
   function onPauseResume() {
     if (isRunning) {
       command.pauseExecution();
+      // While paused, widget pushes only update the latest-value cache
+      // instead of piling up a backlog that would replay on resume.
+      setUiPushPaused(true);
+      isRunning = false;
     } else {
-      command.resumeExecution();
+      resumeEngine();
     }
-    isRunning = !isRunning;
+  }
+
+  // onReset rejects when the engine reset fails. These click
+  // handlers are the end of the chain, so without a catch here the
+  // rejection would be unhandled: no toast, and the engine never reset
+  // while nothing tells the user so. (onPaste needs no such wrapper —
+  // it already toasts its own failures, reset included.)
+  function resetWithToast() {
+    onReset().catch((err) => toast.error(`Reset failed: ${err}`));
   }
 
   function handleNew() {
-    isRunning = true;
-    selectedIndex = '';
-    onReset();
+    if (!isRunning) {
+      resumeEngine().then(() => {
+        selectedIndex = '';
+        resetWithToast();
+      });
+    } else {
+      selectedIndex = '';
+      resetWithToast();
+    }
   }
 
   function handleReset() {
-    isRunning = true;
-    onReset();
+    if (!isRunning) {
+      resumeEngine().then(() => resetWithToast());
+    } else {
+      resetWithToast();
+    }
   }
 
   function handlePaste() {
     if (!isRunning) {
-      command.resumeExecution().then(() => {
-        isRunning = true;
-        onPaste();
-      });
+      resumeEngine().then(() => onPaste());
     } else {
       onPaste();
     }

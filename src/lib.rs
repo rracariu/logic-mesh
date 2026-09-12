@@ -21,7 +21,7 @@ pub use tokio_impl::engine::*;
 /// The per-subsystem errors this crate reports, the [`Error`] aggregate
 /// that wraps them, and the matching `Result` alias.
 pub use base::error::{
-    EngineError, Error, ExternalError, LinkEnd, RegistryError, Result, ValueError,
+    ConnectorError, EngineError, Error, ExternalError, LinkEnd, RegistryError, Result, ValueError,
 };
 
 #[cfg(target_arch = "wasm32")]

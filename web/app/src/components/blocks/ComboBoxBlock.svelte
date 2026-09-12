@@ -1,62 +1,86 @@
 <script lang="ts">
   import { Handle, Position } from '@xyflow/svelte';
+  import { onMount } from 'svelte';
   import * as Select from '$lib/components/ui/select';
   import { Input } from '$lib/components/ui/input';
   import { Button } from '$lib/components/ui/button';
   import { Plus } from 'lucide-svelte';
   import BlockCommons from '../BlockCommons.svelte';
-  import { useEngine } from '$lib/Engine';
   import type { Block } from '$lib/Block';
+  import { pushValue } from '$lib/UiConnector';
+  import { useValueFeedback, useWidgetConfig } from '$lib/WidgetConfig.svelte';
 
   interface Props {
     data: { value: Block };
   }
 
   let { data }: Props = $props();
-  const { command } = useEngine();
 
   const block = $derived(data.value);
-  const inputKey = $derived(Object.keys(block.inputs)[0] ?? 'in');
-  const outputKey = $derived(Object.keys(block.outputs)[0] ?? 'out');
+  const widgetConfig = useWidgetConfig(() => block.widget);
+  const config = $derived(widgetConfig.config);
 
-  let customItems: string[] = $state([]);
   let customEntry = $state('');
   let showCustomInput = $state(false);
+  let open = $state(false);
 
-  // Items from the CSV input + any custom-added items
-  const items = $derived.by(() => {
-    const csv = String(block.inputs.in.value ?? '');
-    const fromInput = csv
+  // Feedback tracks the source while the dropdown is closed; a user
+  // selection wins during interaction and is never echoed back.
+  const feedback = useValueFeedback(
+    () => block.widget,
+    (value) => {
+      if (value == null || !block.widget) return;
+      block.widget.config = { ...block.widget.config, value: String(value) };
+    },
+    () => open,
+  );
+
+  // Items from the CSV config (custom entries are persisted into it)
+  const items = $derived(
+    String(config.items ?? '')
       .split(',')
       .map((s) => s.trim())
-      .filter(Boolean);
-    // Merge, deduplicate, keep order
-    const all = [...fromInput];
-    for (const c of customItems) {
-      if (!all.includes(c)) all.push(c);
-    }
-    return all;
-  });
+      .filter(Boolean),
+  );
 
   const selected = $derived(
-    block.outputs.out.value != null
-      ? String(block.outputs.out.value)
-      : undefined,
+    config.value != null ? String(config.value) : undefined,
   );
+
+  onMount(() => {
+    if (config.value != null) {
+      pushValue(block.id, config.value);
+    }
+  });
 
   function onSelect(value: string | undefined) {
     if (value != null) {
-      block.outputs.out.value = value;
-      command.writeBlockOutput(block.id, outputKey, value);
+      feedback.markEdited();
+      if (block.widget) {
+        block.widget.config = { ...block.widget.config, value };
+      }
+      pushValue(block.id, value);
     }
   }
 
   function addCustomItem() {
     const val = customEntry.trim();
-    if (val && !items.includes(val)) {
-      customItems = [...customItems, val];
-    }
     if (val) {
+      if (block.widget) {
+        // Persist the custom entry into the widget config so it
+        // survives save/copy. Build from the literal items, not the
+        // effective ones — a driven override must not get baked in.
+        const literal = String(block.widget.config?.items ?? '')
+          .split(',')
+          .map((s) => s.trim())
+          .filter(Boolean);
+        if (!literal.includes(val)) {
+          block.widget.config = {
+            ...block.widget.config,
+            items: [...literal, val].join(','),
+          };
+        }
+      }
       onSelect(val);
     }
     customEntry = '';
@@ -76,15 +100,13 @@
 
 <BlockCommons data={block}>
   <div class="ui-block-body">
-    <Handle
-      id={inputKey}
-      type="target"
-      position={Position.Left}
-      class="handle-dot handle-input"
-    />
-
     <div class="combo-container">
-      <Select.Root type="single" value={selected} onValueChange={onSelect}>
+      <Select.Root
+        type="single"
+        value={selected}
+        onValueChange={onSelect}
+        bind:open
+      >
         <Select.Trigger class="h-7 w-32 text-xs">
           {selected ?? 'Select...'}
         </Select.Trigger>
@@ -126,7 +148,7 @@
     </div>
 
     <Handle
-      id={outputKey}
+      id="out"
       type="source"
       position={Position.Right}
       class="handle-dot handle-output"
@@ -160,9 +182,6 @@
     border-radius: 50% !important;
     min-width: 0 !important;
     border: 1.5px solid white !important;
-  }
-  :global(.handle-input) {
-    background: #6b9eff !important;
   }
   :global(.handle-output) {
     background: #6bcf7f !important;

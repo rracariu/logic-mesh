@@ -1,10 +1,8 @@
 <script lang="ts">
   import { Handle, Position } from '@xyflow/svelte';
-  import { Plus, Minus } from 'lucide-svelte';
-  import { Button } from '$lib/components/ui/button';
   import BlockCommons from '../BlockCommons.svelte';
-  import { useEngine } from '$lib/Engine';
   import type { Block } from '$lib/Block';
+  import { onValue } from '$lib/UiConnector';
   import { numericValue } from '$lib/utils';
 
   interface Props {
@@ -12,13 +10,13 @@
   }
 
   let { data }: Props = $props();
-  const { command } = useEngine();
 
   const block = $derived(data.value);
-  const inputKey = $derived(Object.keys(block.inputs)[0] ?? 'in');
-  const outputKey = $derived(Object.keys(block.outputs)[0] ?? 'out');
 
-  const numValue = $derived(numericValue(block.inputs.in.value) ?? 0);
+  let raw = $state<unknown>(undefined);
+  $effect(() => onValue(block.id, (v) => (raw = v)));
+
+  const numValue = $derived(numericValue(raw) ?? 0);
 
   // SVG knob parameters
   const radius = 36;
@@ -43,26 +41,12 @@
   const arcStart = $derived(toXY(minAngle, radius));
   const arcEnd = $derived(toXY(angle, radius));
   const largeArc = $derived(angle - minAngle > 180 ? 1 : 0);
-
-  function updateOutput(newVal: number) {
-    block.inputs.in.value = newVal;
-    block.outputs.out.value = newVal;
-    command.writeBlockOutput(block.id, outputKey, newVal);
-  }
-
-  function increment() {
-    updateOutput(numValue + 1);
-  }
-
-  function decrement() {
-    updateOutput(numValue - 1);
-  }
 </script>
 
 <BlockCommons data={block}>
   <div class="ui-block-body">
     <Handle
-      id={inputKey}
+      id="in"
       type="target"
       position={Position.Left}
       class="handle-dot handle-input"
@@ -96,31 +80,10 @@
           {numValue}
         </text>
       </svg>
-
-      <div class="flex gap-1">
-        <Button
-          variant="ghost"
-          size="icon"
-          class="h-6 w-6"
-          onclick={decrement}
-          aria-label="Decrement"
-        >
-          <Minus class="h-3 w-3" />
-        </Button>
-        <Button
-          variant="ghost"
-          size="icon"
-          class="h-6 w-6"
-          onclick={increment}
-          aria-label="Increment"
-        >
-          <Plus class="h-3 w-3" />
-        </Button>
-      </div>
     </div>
 
     <Handle
-      id={outputKey}
+      id="out"
       type="source"
       position={Position.Right}
       class="handle-dot handle-output"

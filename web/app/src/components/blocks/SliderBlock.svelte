@@ -1,8 +1,10 @@
 <script lang="ts">
   import { Handle, Position } from '@xyflow/svelte';
+  import { onMount } from 'svelte';
   import BlockCommons from '../BlockCommons.svelte';
-  import { useEngine } from '$lib/Engine';
   import type { Block } from '$lib/Block';
+  import { pushValue } from '$lib/UiConnector';
+  import { useValueFeedback, useWidgetConfig } from '$lib/WidgetConfig.svelte';
   import { numericValue } from '$lib/utils';
 
   interface Props {
@@ -10,35 +12,50 @@
   }
 
   let { data }: Props = $props();
-  const { command } = useEngine();
 
   const block = $derived(data.value);
-  const inputKey = $derived(Object.keys(block.inputs)[0] ?? 'in');
-  const outputKey = $derived(Object.keys(block.outputs)[0] ?? 'out');
+  const widgetConfig = useWidgetConfig(() => block.widget);
+  const config = $derived(widgetConfig.config);
 
-  const numValue = $derived(numericValue(block.inputs.in.value) ?? 0);
+  const numValue = $derived(numericValue(config.value) ?? 0);
+  const min = $derived(numericValue(config.min) ?? 0);
+  const max = $derived(numericValue(config.max) ?? 100);
+  const step = $derived(numericValue(config.step) ?? 1);
 
-  const min = $derived(numericValue(block.inputs.min?.value) ?? 0);
-  const max = $derived(numericValue(block.inputs.max?.value) ?? 100);
-  const step = $derived(numericValue(block.inputs.step?.value) ?? 1);
+  // Feedback tracks the source while the user is not interacting; a
+  // user edit wins during interaction and is never echoed back by
+  // feedback. Dragging is tracked via pointer events besides focus —
+  // WebKit/touch don't reliably focus a range input on drag.
+  let dragging = $state(false);
+  let focused = $state(false);
+  const interacting = $derived(dragging || focused);
+  const feedback = useValueFeedback(
+    () => block.widget,
+    (value) => {
+      if (!block.widget) return;
+      const num = numericValue(value);
+      if (num == null) return;
+      block.widget.config = { ...block.widget.config, value: num };
+    },
+    () => interacting,
+  );
+
+  onMount(() => {
+    pushValue(block.id, numValue);
+  });
 
   function onSliderInput(event: Event) {
+    feedback.markEdited();
     const val = Number((event.target as HTMLInputElement).value);
-    block.inputs.in.value = val;
-    block.outputs.out.value = val;
-    command.writeBlockOutput(block.id, outputKey, val);
+    if (block.widget) {
+      block.widget.config = { ...block.widget.config, value: val };
+    }
+    pushValue(block.id, val);
   }
 </script>
 
 <BlockCommons data={block}>
   <div class="ui-block-body">
-    <Handle
-      id={inputKey}
-      type="target"
-      position={Position.Left}
-      class="handle-dot handle-input"
-    />
-
     <div class="slider-container">
       <input
         type="range"
@@ -47,13 +64,18 @@
         {step}
         value={numValue}
         oninput={onSliderInput}
+        onpointerdown={() => (dragging = true)}
+        onpointerup={() => (dragging = false)}
+        onpointercancel={() => (dragging = false)}
+        onfocus={() => (focused = true)}
+        onblur={() => (focused = false)}
         class="slider nodrag"
       />
       <span class="slider-value">{numValue}</span>
     </div>
 
     <Handle
-      id={outputKey}
+      id="out"
       type="source"
       position={Position.Right}
       class="handle-dot handle-output"
@@ -94,9 +116,6 @@
     border-radius: 50% !important;
     min-width: 0 !important;
     border: 1.5px solid white !important;
-  }
-  :global(.handle-input) {
-    background: #6b9eff !important;
   }
   :global(.handle-output) {
     background: #6bcf7f !important;

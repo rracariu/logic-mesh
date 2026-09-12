@@ -2,22 +2,31 @@ import type { Program } from 'logic-mesh';
 
 // Each demo uses a deterministic UUID prefix so the IDs stay stable
 // across reloads and don't collide between examples.
+//
+// UI widgets are ExternalIn/ExternalOut blocks bound to the 'ui'
+// connector, addressed by their own block UUID, with the widget
+// identity and configuration carried in the `widget` field.
 
 const datReset = {
   name: 'DAT Temperature Reset',
   description:
-    'Discharge-air-temperature reset (ASHRAE G36 style): as outdoor temp rises, the supply-air setpoint falls. PID drives the simulated SAT toward the SP.',
+    'Discharge-air-temperature reset (ASHRAE G36 style): as outdoor temp rises, the supply-air setpoint falls. PID drives the simulated SAT toward the SP. The PV bar scales to the live SP (config drive) and the tracking slider follows the auto SP until you drag it (value feedback).',
   blocks: {
     '11111111-1111-4111-8111-000000000001': {
-      name: 'Slider',
-      lib: 'ui',
+      name: 'ExternalIn',
+      lib: 'core',
       positions: { x: 81, y: -72 },
       label: 'OAT (°F)',
+      widget: {
+        kind: 'Slider',
+        config: { value: 60, min: 30, max: 90, step: 1 },
+      },
       inputs: {
-        in: { value: 60, isConnected: false },
-        min: { value: 30, isConnected: false },
-        max: { value: 90, isConnected: false },
-        step: { value: 1, isConnected: false },
+        connector: { value: 'ui', isConnected: false },
+        address: {
+          value: '11111111-1111-4111-8111-000000000001',
+          isConnected: false,
+        },
       },
       outputs: { out: { value: 60 } },
     },
@@ -52,47 +61,146 @@ const datReset = {
       outputs: { out: { value: 58.93 } },
     },
     '11111111-1111-4111-8111-000000000004': {
-      name: 'MultiChart',
-      lib: 'ui',
-      positions: { x: 749, y: -69 },
+      name: 'ExternalOut',
+      lib: 'core',
+      positions: { x: 1200, y: -60 },
+      widget: {
+        kind: 'MultiChart',
+        config: {
+          series: [
+            { label: 'OAT' },
+            {
+              label: 'SAT SP',
+              address: '11111111-1111-4111-8111-000000000008',
+            },
+            {
+              label: 'SAT PV',
+              address: '11111111-1111-4111-8111-000000000009',
+            },
+          ],
+        },
+      },
       inputs: {
-        a: { value: 60, isConnected: false },
-        b: { value: 60, isConnected: false },
-        c: { value: 58.93, isConnected: false },
-        labelA: { value: 'OAT', isConnected: false },
-        labelB: { value: 'SAT SP', isConnected: false },
-        labelC: { value: 'SAT PV', isConnected: false },
+        in: { value: 60, isConnected: false },
+        connector: { value: 'ui', isConnected: false },
+        address: {
+          value: '11111111-1111-4111-8111-000000000004',
+          isConnected: false,
+        },
       },
     },
     '11111111-1111-4111-8111-000000000005': {
-      name: 'Display',
-      lib: 'ui',
+      name: 'ExternalOut',
+      lib: 'core',
       positions: { x: 244, y: -153.63 },
+      widget: { kind: 'Display', config: { unit: '°F', label: 'OAT' } },
       inputs: {
         in: { value: 60, isConnected: false },
-        unit: { value: '°F', isConnected: false },
-        label: { value: 'OAT', isConnected: false },
+        connector: { value: 'ui', isConnected: false },
+        address: {
+          value: '11111111-1111-4111-8111-000000000005',
+          isConnected: false,
+        },
       },
     },
     '11111111-1111-4111-8111-000000000006': {
-      name: 'Display',
-      lib: 'ui',
+      name: 'ExternalOut',
+      lib: 'core',
       positions: { x: 344, y: 290 },
+      widget: { kind: 'Display', config: { unit: '°F', label: 'SAT SP' } },
       inputs: {
         in: { value: 60, isConnected: false },
-        unit: { value: '°F', isConnected: false },
-        label: { value: 'SAT SP', isConnected: false },
+        connector: { value: 'ui', isConnected: false },
+        address: {
+          value: '11111111-1111-4111-8111-000000000006',
+          isConnected: false,
+        },
       },
     },
     '11111111-1111-4111-8111-000000000007': {
-      name: 'Display',
-      lib: 'ui',
+      name: 'ExternalOut',
+      lib: 'core',
       positions: { x: 736, y: 289 },
+      widget: { kind: 'Display', config: { unit: '°F', label: 'SAT PV' } },
       inputs: {
         in: { value: 58.93, isConnected: false },
-        unit: { value: '°F', isConnected: false },
-        label: { value: 'SAT PV', isConnected: false },
+        connector: { value: 'ui', isConnected: false },
+        address: {
+          value: '11111111-1111-4111-8111-000000000007',
+          isConnected: false,
+        },
       },
+    },
+    // Plain (non-widget) ExternalOut blocks feeding the MultiChart's
+    // extra series by address.
+    '11111111-1111-4111-8111-000000000008': {
+      name: 'ExternalOut',
+      lib: 'core',
+      positions: { x: 960, y: -20 },
+      label: 'SAT SP series',
+      inputs: {
+        in: { value: 60, isConnected: false },
+        connector: { value: 'ui', isConnected: false },
+        address: {
+          value: '11111111-1111-4111-8111-000000000008',
+          isConnected: false,
+        },
+      },
+    },
+    '11111111-1111-4111-8111-000000000009': {
+      name: 'ExternalOut',
+      lib: 'core',
+      positions: { x: 960, y: 150 },
+      label: 'SAT PV series',
+      inputs: {
+        in: { value: 58.93, isConnected: false },
+        connector: { value: 'ui', isConnected: false },
+        address: {
+          value: '11111111-1111-4111-8111-000000000009',
+          isConnected: false,
+        },
+      },
+    },
+    // The bar's `max` is driven at runtime by the SAT SP published to
+    // the plain ExternalOut …0008, so its scale follows the live SP.
+    '11111111-1111-4111-8111-00000000000a': {
+      name: 'ExternalOut',
+      lib: 'core',
+      positions: { x: 1200, y: 200 },
+      widget: {
+        kind: 'Bar',
+        config: { min: 50, max: 70, label: 'PV vs SP' },
+        configSources: { max: '11111111-1111-4111-8111-000000000008' },
+      },
+      inputs: {
+        in: { value: 58.93, isConnected: false },
+        connector: { value: 'ui', isConnected: false },
+        address: {
+          value: '11111111-1111-4111-8111-00000000000a',
+          isConnected: false,
+        },
+      },
+    },
+    // Operator SP station: tracks the auto SP published to …0008 as
+    // feedback until the user drags the slider.
+    '11111111-1111-4111-8111-00000000000b': {
+      name: 'ExternalIn',
+      lib: 'core',
+      positions: { x: 81, y: 60 },
+      label: 'SAT SP (tracks auto)',
+      widget: {
+        kind: 'Slider',
+        config: { value: 60, min: 50, max: 70, step: 0.5 },
+        valueSource: '11111111-1111-4111-8111-000000000008',
+      },
+      inputs: {
+        connector: { value: 'ui', isConnected: false },
+        address: {
+          value: '11111111-1111-4111-8111-00000000000b',
+          isConnected: false,
+        },
+      },
+      outputs: { out: { value: 60 } },
     },
   },
   links: {
@@ -108,23 +216,23 @@ const datReset = {
       sourceBlockUuid: '11111111-1111-4111-8111-000000000002',
       targetBlockUuid: '11111111-1111-4111-8111-000000000003',
     },
-    'df1ee3bd-8f1f-40d0-ad13-7f43165253a8': {
+    'df1ee3bd-8b3a-4a51-9c6e-2f4b7d1a9e03': {
       sourceBlockPinName: 'out',
-      targetBlockPinName: 'a',
+      targetBlockPinName: 'in',
       sourceBlockUuid: '11111111-1111-4111-8111-000000000001',
       targetBlockUuid: '11111111-1111-4111-8111-000000000004',
     },
-    '5abd9fc3-76f2-459d-89b0-d7ece94260f1': {
+    '5abd9fc3-14e7-4b6d-8f20-6c1d3a5e9b47': {
       sourceBlockPinName: 'out',
-      targetBlockPinName: 'b',
+      targetBlockPinName: 'in',
       sourceBlockUuid: '11111111-1111-4111-8111-000000000002',
-      targetBlockUuid: '11111111-1111-4111-8111-000000000004',
+      targetBlockUuid: '11111111-1111-4111-8111-000000000008',
     },
     'f00793e3-d209-42de-b562-2ead9532ca5c': {
       sourceBlockPinName: 'out',
-      targetBlockPinName: 'c',
+      targetBlockPinName: 'in',
       sourceBlockUuid: '11111111-1111-4111-8111-000000000003',
-      targetBlockUuid: '11111111-1111-4111-8111-000000000004',
+      targetBlockUuid: '11111111-1111-4111-8111-000000000009',
     },
     '803cabeb-ee6a-4344-81a8-85f1d5f17fd3': {
       sourceBlockPinName: 'out',
@@ -144,6 +252,12 @@ const datReset = {
       sourceBlockUuid: '11111111-1111-4111-8111-000000000003',
       targetBlockUuid: '11111111-1111-4111-8111-000000000007',
     },
+    '2f8c1b4d-6a3e-47f0-9d52-1e7b9c0a5d38': {
+      sourceBlockPinName: 'out',
+      targetBlockPinName: 'in',
+      sourceBlockUuid: '11111111-1111-4111-8111-000000000003',
+      targetBlockUuid: '11111111-1111-4111-8111-00000000000a',
+    },
   },
 } as Program;
 
@@ -153,15 +267,20 @@ const coolingTower = {
     'Demand → Sequencer stages 0..2 with up/down delays → LeadLag rotates which fan is lead. Press the rotate button to swap the lead.',
   blocks: {
     '22222222-2222-4222-8222-000000000001': {
-      name: 'Slider',
-      lib: 'ui',
+      name: 'ExternalIn',
+      lib: 'core',
       positions: { x: 10, y: 33 },
       label: 'Cooling demand 0–1',
+      widget: {
+        kind: 'Slider',
+        config: { value: 0.3, min: 0, max: 1, step: 0.1 },
+      },
       inputs: {
-        in: { value: 0.3, isConnected: false },
-        min: { value: 0, isConnected: false },
-        max: { value: 1, isConnected: false },
-        step: { value: 0.1, isConnected: false },
+        connector: { value: 'ui', isConnected: false },
+        address: {
+          value: '22222222-2222-4222-8222-000000000001',
+          isConnected: false,
+        },
       },
       outputs: { out: { value: 0.3 } },
     },
@@ -179,10 +298,18 @@ const coolingTower = {
       outputs: { out: { value: 1 } },
     },
     '22222222-2222-4222-8222-000000000003': {
-      name: 'Button',
-      lib: 'ui',
+      name: 'ExternalIn',
+      lib: 'core',
       positions: { x: 13, y: 151 },
       label: 'Rotate lead',
+      widget: { kind: 'Button' },
+      inputs: {
+        connector: { value: 'ui', isConnected: false },
+        address: {
+          value: '22222222-2222-4222-8222-000000000003',
+          isConnected: false,
+        },
+      },
       outputs: { out: { value: false } },
     },
     '22222222-2222-4222-8222-000000000004': {
@@ -198,33 +325,48 @@ const coolingTower = {
       outputs: { a: { value: true }, b: { value: false } },
     },
     '22222222-2222-4222-8222-000000000005': {
-      name: 'Led',
-      lib: 'ui',
+      name: 'ExternalOut',
+      lib: 'core',
       positions: { x: 740, y: 60 },
+      widget: { kind: 'Led', config: { label: 'Fan A', color: '#3ecf6b' } },
       inputs: {
         in: { value: true, isConnected: false },
-        label: { value: 'Fan A', isConnected: false },
-        color: { value: '#3ecf6b', isConnected: false },
+        connector: { value: 'ui', isConnected: false },
+        address: {
+          value: '22222222-2222-4222-8222-000000000005',
+          isConnected: false,
+        },
       },
     },
     '22222222-2222-4222-8222-000000000006': {
-      name: 'Led',
-      lib: 'ui',
+      name: 'ExternalOut',
+      lib: 'core',
       positions: { x: 740, y: 170 },
+      widget: { kind: 'Led', config: { label: 'Fan B', color: '#3ecf6b' } },
       inputs: {
         in: { value: false, isConnected: false },
-        label: { value: 'Fan B', isConnected: false },
-        color: { value: '#3ecf6b', isConnected: false },
+        connector: { value: 'ui', isConnected: false },
+        address: {
+          value: '22222222-2222-4222-8222-000000000006',
+          isConnected: false,
+        },
       },
     },
     '22222222-2222-4222-8222-000000000007': {
-      name: 'Display',
-      lib: 'ui',
+      name: 'ExternalOut',
+      lib: 'core',
       positions: { x: 510, y: -88 },
+      widget: {
+        kind: 'Display',
+        config: { unit: 'stages', label: 'Active' },
+      },
       inputs: {
         in: { value: 1, isConnected: false },
-        unit: { value: 'stages', isConnected: false },
-        label: { value: 'Active', isConnected: false },
+        connector: { value: 'ui', isConnected: false },
+        address: {
+          value: '22222222-2222-4222-8222-000000000007',
+          isConnected: false,
+        },
       },
     },
   },
@@ -274,54 +416,74 @@ const economizer = {
     'Compares outdoor and return air enthalpy. Free cooling is available whenever h_OA < h_RA. Drag the OAT/RH/RAT sliders to see the decision flip.',
   blocks: {
     '33333333-3333-4333-8333-000000000001': {
-      name: 'Slider',
-      lib: 'ui',
+      name: 'ExternalIn',
+      lib: 'core',
       positions: { x: 40, y: 40 },
       label: 'OAT (°C)',
+      widget: {
+        kind: 'Slider',
+        config: { value: 18, min: -10, max: 40, step: 0.5 },
+      },
       inputs: {
-        in: { value: 18, isConnected: false },
-        min: { value: -10, isConnected: false },
-        max: { value: 40, isConnected: false },
-        step: { value: 0.5, isConnected: false },
+        connector: { value: 'ui', isConnected: false },
+        address: {
+          value: '33333333-3333-4333-8333-000000000001',
+          isConnected: false,
+        },
       },
       outputs: { out: { value: 18 } },
     },
     '33333333-3333-4333-8333-000000000002': {
-      name: 'Slider',
-      lib: 'ui',
+      name: 'ExternalIn',
+      lib: 'core',
       positions: { x: 40, y: 130 },
       label: 'OA RH (%)',
+      widget: {
+        kind: 'Slider',
+        config: { value: 50, min: 0, max: 100, step: 1 },
+      },
       inputs: {
-        in: { value: 50, isConnected: false },
-        min: { value: 0, isConnected: false },
-        max: { value: 100, isConnected: false },
-        step: { value: 1, isConnected: false },
+        connector: { value: 'ui', isConnected: false },
+        address: {
+          value: '33333333-3333-4333-8333-000000000002',
+          isConnected: false,
+        },
       },
       outputs: { out: { value: 50 } },
     },
     '33333333-3333-4333-8333-000000000003': {
-      name: 'Slider',
-      lib: 'ui',
+      name: 'ExternalIn',
+      lib: 'core',
       positions: { x: 40, y: 230 },
       label: 'RAT (°C)',
+      widget: {
+        kind: 'Slider',
+        config: { value: 24, min: 18, max: 30, step: 0.5 },
+      },
       inputs: {
-        in: { value: 24, isConnected: false },
-        min: { value: 18, isConnected: false },
-        max: { value: 30, isConnected: false },
-        step: { value: 0.5, isConnected: false },
+        connector: { value: 'ui', isConnected: false },
+        address: {
+          value: '33333333-3333-4333-8333-000000000003',
+          isConnected: false,
+        },
       },
       outputs: { out: { value: 24 } },
     },
     '33333333-3333-4333-8333-000000000004': {
-      name: 'Slider',
-      lib: 'ui',
+      name: 'ExternalIn',
+      lib: 'core',
       positions: { x: 40, y: 320 },
       label: 'RA RH (%)',
+      widget: {
+        kind: 'Slider',
+        config: { value: 50, min: 20, max: 80, step: 1 },
+      },
       inputs: {
-        in: { value: 50, isConnected: false },
-        min: { value: 20, isConnected: false },
-        max: { value: 80, isConnected: false },
-        step: { value: 1, isConnected: false },
+        connector: { value: 'ui', isConnected: false },
+        address: {
+          value: '33333333-3333-4333-8333-000000000004',
+          isConnected: false,
+        },
       },
       outputs: { out: { value: 50 } },
     },
@@ -359,44 +521,89 @@ const economizer = {
       outputs: { out: { value: true } },
     },
     '33333333-3333-4333-8333-000000000008': {
-      name: 'Led',
-      lib: 'ui',
+      name: 'ExternalOut',
+      lib: 'core',
       positions: { x: 935, y: 276 },
+      widget: {
+        kind: 'Led',
+        config: { label: 'Free Cooling', color: '#3ecf6b' },
+      },
       inputs: {
         in: { value: true, isConnected: false },
-        label: { value: 'Free Cooling', isConnected: false },
-        color: { value: '#3ecf6b', isConnected: false },
+        connector: { value: 'ui', isConnected: false },
+        address: {
+          value: '33333333-3333-4333-8333-000000000008',
+          isConnected: false,
+        },
       },
     },
     '33333333-3333-4333-8333-000000000009': {
-      name: 'MultiChart',
-      lib: 'ui',
+      name: 'ExternalOut',
+      lib: 'core',
       positions: { x: 737, y: 28.63 },
+      widget: {
+        kind: 'MultiChart',
+        config: {
+          series: [
+            { label: 'h_OA' },
+            {
+              label: 'h_RA',
+              address: '33333333-3333-4333-8333-00000000000c',
+            },
+          ],
+        },
+      },
       inputs: {
-        a: { value: {}, isConnected: false },
-        b: { value: {}, isConnected: false },
-        labelA: { value: 'h_OA', isConnected: false },
-        labelB: { value: 'h_RA', isConnected: false },
+        in: { value: {}, isConnected: false },
+        connector: { value: 'ui', isConnected: false },
+        address: {
+          value: '33333333-3333-4333-8333-000000000009',
+          isConnected: false,
+        },
       },
     },
     '33333333-3333-4333-8333-00000000000a': {
-      name: 'Display',
-      lib: 'ui',
+      name: 'ExternalOut',
+      lib: 'core',
       positions: { x: 480, y: -79.25 },
+      widget: { kind: 'Display', config: { unit: 'kJ/kg', label: 'h OA' } },
       inputs: {
         in: { value: {}, isConnected: false },
-        unit: { value: 'kJ/kg', isConnected: false },
-        label: { value: 'h OA', isConnected: false },
+        connector: { value: 'ui', isConnected: false },
+        address: {
+          value: '33333333-3333-4333-8333-00000000000a',
+          isConnected: false,
+        },
       },
     },
     '33333333-3333-4333-8333-00000000000b': {
-      name: 'Display',
-      lib: 'ui',
+      name: 'ExternalOut',
+      lib: 'core',
       positions: { x: 484, y: 454 },
+      widget: { kind: 'Display', config: { unit: 'kJ/kg', label: 'h RA' } },
       inputs: {
         in: { value: {}, isConnected: false },
-        unit: { value: 'kJ/kg', isConnected: false },
-        label: { value: 'h RA', isConnected: false },
+        connector: { value: 'ui', isConnected: false },
+        address: {
+          value: '33333333-3333-4333-8333-00000000000b',
+          isConnected: false,
+        },
+      },
+    },
+    // Plain (non-widget) ExternalOut feeding the MultiChart's h_RA
+    // series by address.
+    '33333333-3333-4333-8333-00000000000c': {
+      name: 'ExternalOut',
+      lib: 'core',
+      positions: { x: 480, y: 140 },
+      label: 'h_RA series',
+      inputs: {
+        in: { value: {}, isConnected: false },
+        connector: { value: 'ui', isConnected: false },
+        address: {
+          value: '33333333-3333-4333-8333-00000000000c',
+          isConnected: false,
+        },
       },
     },
   },
@@ -445,14 +652,8 @@ const economizer = {
     },
     'f8374721-a736-4c33-afcf-a3fdf0d9efef': {
       sourceBlockPinName: 'out',
-      targetBlockPinName: 'a',
+      targetBlockPinName: 'in',
       sourceBlockUuid: '33333333-3333-4333-8333-000000000005',
-      targetBlockUuid: '33333333-3333-4333-8333-000000000009',
-    },
-    'c0478a50-fe77-407c-8853-dec1993ccd44': {
-      sourceBlockPinName: 'out',
-      targetBlockPinName: 'b',
-      sourceBlockUuid: '33333333-3333-4333-8333-000000000006',
       targetBlockUuid: '33333333-3333-4333-8333-000000000009',
     },
     'b6a98b22-962e-4423-99ea-8d180fa05f06': {
@@ -467,6 +668,12 @@ const economizer = {
       sourceBlockUuid: '33333333-3333-4333-8333-000000000006',
       targetBlockUuid: '33333333-3333-4333-8333-00000000000b',
     },
+    'c0478a50-2d91-4e3f-8b7a-5f6c1d2e3a4b': {
+      sourceBlockPinName: 'out',
+      targetBlockPinName: 'in',
+      sourceBlockUuid: '33333333-3333-4333-8333-000000000006',
+      targetBlockUuid: '33333333-3333-4333-8333-00000000000c',
+    },
   },
 } as Program;
 
@@ -476,10 +683,18 @@ const antiShortCycle = {
     'Toggle the call: OnDelay holds the compressor off until the call has been steady for 3 s; OffDelay keeps the cool-down lockout active for 10 s after the call drops.',
   blocks: {
     '44444444-4444-4444-8444-000000000001': {
-      name: 'Checkbox',
-      lib: 'ui',
+      name: 'ExternalIn',
+      lib: 'core',
       positions: { x: 18, y: 32 },
       label: 'Cooling call',
+      widget: { kind: 'Checkbox', config: { value: false } },
+      inputs: {
+        connector: { value: 'ui', isConnected: false },
+        address: {
+          value: '44444444-4444-4444-8444-000000000001',
+          isConnected: false,
+        },
+      },
     },
     '44444444-4444-4444-8444-000000000002': {
       name: 'OnDelay',
@@ -504,32 +719,51 @@ const antiShortCycle = {
       outputs: { out: { value: true } },
     },
     '44444444-4444-4444-8444-000000000004': {
-      name: 'Led',
-      lib: 'ui',
+      name: 'ExternalOut',
+      lib: 'core',
       positions: { x: 505, y: 6 },
+      widget: {
+        kind: 'Led',
+        config: { label: 'Compressor (3s warmup)', color: '#3ecf6b' },
+      },
       inputs: {
         in: { value: false, isConnected: false },
-        label: { value: 'Compressor (3s warmup)', isConnected: false },
-        color: { value: '#3ecf6b', isConnected: false },
+        connector: { value: 'ui', isConnected: false },
+        address: {
+          value: '44444444-4444-4444-8444-000000000004',
+          isConnected: false,
+        },
       },
     },
     '44444444-4444-4444-8444-000000000005': {
-      name: 'Led',
-      lib: 'ui',
+      name: 'ExternalOut',
+      lib: 'core',
       positions: { x: 505, y: 139 },
+      widget: {
+        kind: 'Led',
+        config: { label: 'Cool-down (10s)', color: '#f59e0b' },
+      },
       inputs: {
         in: { value: true, isConnected: false },
-        label: { value: 'Cool-down (10s)', isConnected: false },
-        color: { value: '#f59e0b', isConnected: false },
+        connector: { value: 'ui', isConnected: false },
+        address: {
+          value: '44444444-4444-4444-8444-000000000005',
+          isConnected: false,
+        },
       },
     },
     '44444444-4444-4444-8444-000000000006': {
-      name: 'Display',
-      lib: 'ui',
+      name: 'ExternalOut',
+      lib: 'core',
       positions: { x: 265, y: -118 },
+      widget: { kind: 'Display', config: { label: 'Call' } },
       inputs: {
         in: { value: 0, isConnected: false },
-        label: { value: 'Call', isConnected: false },
+        connector: { value: 'ui', isConnected: false },
+        address: {
+          value: '44444444-4444-4444-8444-000000000006',
+          isConnected: false,
+        },
       },
     },
   },
@@ -621,53 +855,82 @@ const outdoorLighting = {
       outputs: { out: { value: true } },
     },
     '55555555-5555-4555-8555-000000000005': {
-      name: 'Led',
-      lib: 'ui',
+      name: 'ExternalOut',
+      lib: 'core',
       positions: { x: 729, y: 110 },
+      widget: {
+        kind: 'Led',
+        config: { label: 'Streetlight', color: '#f59e0b' },
+      },
       inputs: {
         in: { value: true, isConnected: false },
-        label: { value: 'Streetlight', isConnected: false },
-        color: { value: '#f59e0b', isConnected: false },
+        connector: { value: 'ui', isConnected: false },
+        address: {
+          value: '55555555-5555-4555-8555-000000000005',
+          isConnected: false,
+        },
       },
     },
     '55555555-5555-4555-8555-000000000006': {
-      name: 'Display',
-      lib: 'ui',
+      name: 'ExternalOut',
+      lib: 'core',
       positions: { x: 37, y: -83 },
+      widget: { kind: 'Display', config: { unit: 'min', label: 'Sunrise' } },
       inputs: {
         in: { value: 441.12, isConnected: false },
-        unit: { value: 'min', isConnected: false },
-        label: { value: 'Sunrise', isConnected: false },
+        connector: { value: 'ui', isConnected: false },
+        address: {
+          value: '55555555-5555-4555-8555-000000000006',
+          isConnected: false,
+        },
       },
     },
     '55555555-5555-4555-8555-000000000007': {
-      name: 'Display',
-      lib: 'ui',
+      name: 'ExternalOut',
+      lib: 'core',
       positions: { x: 263, y: -87 },
+      widget: { kind: 'Display', config: { unit: 'min', label: 'Sunset' } },
       inputs: {
         in: { value: 999.61, isConnected: false },
-        unit: { value: 'min', isConnected: false },
-        label: { value: 'Sunset', isConnected: false },
+        connector: { value: 'ui', isConnected: false },
+        address: {
+          value: '55555555-5555-4555-8555-000000000007',
+          isConnected: false,
+        },
       },
     },
     '55555555-5555-4555-8555-000000000008': {
-      name: 'Led',
-      lib: 'ui',
+      name: 'ExternalOut',
+      lib: 'core',
       positions: { x: 307, y: 203 },
+      widget: {
+        kind: 'Led',
+        config: { label: 'Daytime', color: '#6b9eff' },
+      },
       inputs: {
         in: { value: false, isConnected: false },
-        label: { value: 'Daytime', isConnected: false },
-        color: { value: '#6b9eff', isConnected: false },
+        connector: { value: 'ui', isConnected: false },
+        address: {
+          value: '55555555-5555-4555-8555-000000000008',
+          isConnected: false,
+        },
       },
     },
     '55555555-5555-4555-8555-000000000009': {
-      name: 'Led',
-      lib: 'ui',
+      name: 'ExternalOut',
+      lib: 'core',
       positions: { x: 604, y: 338 },
+      widget: {
+        kind: 'Led',
+        config: { label: 'Schedule active', color: '#3ecf6b' },
+      },
       inputs: {
         in: { value: true, isConnected: false },
-        label: { value: 'Schedule active', isConnected: false },
-        color: { value: '#3ecf6b', isConnected: false },
+        connector: { value: 'ui', isConnected: false },
+        address: {
+          value: '55555555-5555-4555-8555-000000000009',
+          isConnected: false,
+        },
       },
     },
   },

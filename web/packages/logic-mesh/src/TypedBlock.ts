@@ -1,5 +1,5 @@
-import type { BlockDesc, Kind } from './index';
-import type { BlocksEngine } from './logic_mesh';
+import type { BlockDesc, Kind } from './index.js';
+import type { BlocksEngine } from './logic_mesh.js';
 import {
   z,
   ZodArray,
@@ -26,6 +26,17 @@ type TupleType = readonly (readonly [string, ZodType])[];
 
 /**
  * Defines a new block type with the specified configuration.
+ *
+ * Execution semantics: the engine passes `undefined` for an input pin
+ * whose value has not been set yet — e.g. on the first cycles after a
+ * link is created, before any value has flowed. While any input whose
+ * schema rejects `undefined` (a plain `z.number()`, say) is still
+ * unset, execution is skipped — a no-op, not a fault — and `execute`
+ * is not called. Wrap a pin's schema in `.optional()` or
+ * `.default(...)` to let the executor run without that pin (a default
+ * materializes as the argument value). A pin with a present but
+ * mistyped value still faults the block: only absence is tolerated.
+ *
  * @param config - The block configuration, including description, input/output types, and execution logic.
  * @returns A class that extends TypedBlock, which can be registered with the BlocksEngine.
  */
@@ -120,11 +131,29 @@ export class TypedBlock<I extends TupleType, O extends TupleType> {
       throw new Error('Invalid number of inputs');
     }
 
-    this.inputs.map((_, i) => {
+    // The engine passes `undefined` for a pin whose value is not yet
+    // set — e.g. on the first cycles after a link is created, before a
+    // value flows. That must not fault the block permanently: an unset
+    // pin is probed with `safeParse`, and when its schema rejects
+    // `undefined` (a required pin like plain `z.number()`) the whole
+    // execution is skipped by returning a non-array — on the Rust side
+    // that is a silent no-op: outputs untouched, no fault. A schema
+    // that accepts `undefined` (`.optional()`, `.default(...)`,
+    // `z.unknown()`) contributes its parsed value instead — a default
+    // materializes here. A pin with a DEFINED value keeps the strict
+    // `parse`: a present-but-mistyped value is a real error and still
+    // faults, deliberately.
+    for (let i = 0; i < this.inputs.length; i++) {
       const val = inputs.at(i);
       const kind = this.inputTypes[i] as ZodType;
-      inputs[i] = kind.parse(val);
-    });
+      if (val === undefined) {
+        const probe = kind.safeParse(undefined);
+        if (!probe.success) return undefined; // not ready yet — skip
+        inputs[i] = probe.data;
+      } else {
+        inputs[i] = kind.parse(val);
+      }
+    }
 
     const res = await this.execute(inputs);
     if (res === undefined) {

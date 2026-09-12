@@ -4,7 +4,8 @@
 //! Defines the errors reported by this crate.
 //!
 //! Each subsystem owns its own error enum — [`RegistryError`],
-//! [`EngineError`], [`ValueError`] and [`ExternalError`] — so a failure
+//! [`EngineError`], [`ValueError`], [`ExternalError`] and
+//! [`ConnectorError`] — so a failure
 //! carries the data of the thing that failed and can be matched on
 //! without inspecting a formatted message. [`enum@Error`] is the aggregate
 //! that the crate's entry points return; it forwards `Display` to the
@@ -23,11 +24,13 @@
 //! ```
 //!
 
+pub mod connector;
 pub mod engine;
 pub mod external;
 pub mod registry;
 pub mod value;
 
+pub use connector::ConnectorError;
 pub use engine::{EngineError, LinkEnd};
 pub use external::ExternalError;
 pub use registry::RegistryError;
@@ -70,6 +73,11 @@ pub enum Error {
     /// Resolving or running an external (host-provided) block failed.
     #[error(transparent)]
     External(#[from] ExternalError),
+
+    /// Looking up a connector or performing a connector operation
+    /// failed.
+    #[error(transparent)]
+    Connector(#[from] ConnectorError),
 }
 
 #[cfg(test)]

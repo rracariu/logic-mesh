@@ -3,6 +3,7 @@
 //! Basic building blocks of the engine.
 
 pub mod block;
+pub mod connector;
 pub mod engine;
 pub mod error;
 pub mod input;
@@ -11,5 +12,7 @@ pub mod output;
 pub mod program;
 pub mod status;
 
-pub use error::{EngineError, Error, ExternalError, LinkEnd, RegistryError, Result, ValueError};
+pub use error::{
+    ConnectorError, EngineError, Error, ExternalError, LinkEnd, RegistryError, Result, ValueError,
+};
 pub use status::Status;

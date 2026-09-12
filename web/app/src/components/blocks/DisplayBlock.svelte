@@ -2,6 +2,8 @@
   import { Handle, Position } from '@xyflow/svelte';
   import BlockCommons from '../BlockCommons.svelte';
   import type { Block } from '$lib/Block';
+  import { onValue } from '$lib/UiConnector';
+  import { useWidgetConfig } from '$lib/WidgetConfig.svelte';
   import { isHaystackNumber, numericValue, unitOf } from '$lib/utils';
 
   interface Props {
@@ -11,11 +13,15 @@
   let { data }: Props = $props();
 
   const block = $derived(data.value);
+  const widgetConfig = useWidgetConfig(() => block.widget);
+  const config = $derived(widgetConfig.config);
 
-  const raw = $derived(block.inputs.in?.value);
-  // Prefer the unit on the upstream Number; fall back to the user-supplied `unit` input.
-  const unit = $derived(unitOf(raw) ?? String(block.inputs.unit?.value ?? ''));
-  const label = $derived(String(block.inputs.label?.value ?? ''));
+  let raw = $state<unknown>(undefined);
+  $effect(() => onValue(block.id, (v) => (raw = v)));
+
+  // Prefer the unit on the upstream Number; fall back to the configured unit.
+  const unit = $derived(unitOf(raw) ?? String(config.unit ?? ''));
+  const label = $derived(String(config.label ?? ''));
 
   const display = $derived.by(() => {
     if (raw == null) return '—';
@@ -32,35 +38,12 @@
 
 <BlockCommons data={block}>
   <div class="ui-block-body">
-    <div class="pin-stack">
-      <div class="pin-row">
-        <Handle
-          id="in"
-          type="target"
-          position={Position.Left}
-          class="handle-dot handle-input"
-        />
-        <span class="pin-name">in</span>
-      </div>
-      <div class="pin-row">
-        <Handle
-          id="unit"
-          type="target"
-          position={Position.Left}
-          class="handle-dot handle-input"
-        />
-        <span class="pin-name">unit</span>
-      </div>
-      <div class="pin-row">
-        <Handle
-          id="label"
-          type="target"
-          position={Position.Left}
-          class="handle-dot handle-input"
-        />
-        <span class="pin-name">label</span>
-      </div>
-    </div>
+    <Handle
+      id="in"
+      type="target"
+      position={Position.Left}
+      class="handle-dot handle-input"
+    />
 
     <div class="display-area">
       {#if label}
@@ -80,26 +63,6 @@
     gap: 10px;
     padding: 6px 10px;
     position: relative;
-  }
-
-  .pin-stack {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-  }
-
-  .pin-row {
-    display: flex;
-    align-items: center;
-    padding: 1px 8px;
-    gap: 6px;
-    min-height: 18px;
-    position: relative;
-  }
-
-  .pin-name {
-    font-size: 11px;
-    opacity: 0.85;
   }
 
   .display-area {

@@ -119,21 +119,62 @@ pub enum BlockRunCondition {
 impl TryFrom<&str> for BlockRunCondition {
     type Error = String;
 
-    fn try_from(implementation: &str) -> Result<Self, Self::Error> {
-        match implementation {
+    fn try_from(run_condition: &str) -> Result<Self, Self::Error> {
+        match run_condition {
             "change" => Ok(BlockRunCondition::Change),
             "always" => Ok(BlockRunCondition::Always),
-            _ => Err(format!("Invalid implementation: {implementation}")),
+            _ => Err(format!("Invalid run condition: {run_condition}")),
         }
     }
 }
 
 impl Display for BlockRunCondition {
     fn fmt(&self, fmt: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // Must render exactly the strings `TryFrom<&str>` accepts, so a
+        // listed description round-trips back through registration.
         let kind = match self {
-            BlockRunCondition::Change => "native",
-            BlockRunCondition::Always => "external",
+            BlockRunCondition::Change => "change",
+            BlockRunCondition::Always => "always",
         };
         write!(fmt, "{kind}")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{BlockImplementation, BlockRunCondition};
+
+    #[test]
+    fn run_condition_display_round_trips_through_try_from() {
+        for cond in [BlockRunCondition::Change, BlockRunCondition::Always] {
+            let rendered = cond.to_string();
+            let parsed = BlockRunCondition::try_from(rendered.as_str())
+                .expect("rendered run condition parses back");
+            assert_eq!(parsed, cond);
+        }
+        assert_eq!(BlockRunCondition::Change.to_string(), "change");
+        assert_eq!(BlockRunCondition::Always.to_string(), "always");
+    }
+
+    #[test]
+    fn run_condition_error_names_the_run_condition() {
+        let err = BlockRunCondition::try_from("bogus").expect_err("bogus is rejected");
+        assert_eq!(err, "Invalid run condition: bogus");
+    }
+
+    #[test]
+    fn implementation_display_round_trips_through_try_from() {
+        for imp in [BlockImplementation::Native, BlockImplementation::External] {
+            let rendered = imp.to_string();
+            let parsed = BlockImplementation::try_from(rendered.as_str())
+                .expect("rendered implementation parses back");
+            assert_eq!(parsed, imp);
+        }
+    }
+
+    #[test]
+    fn implementation_error_names_the_implementation() {
+        let err = BlockImplementation::try_from("bogus").expect_err("bogus is rejected");
+        assert_eq!(err, "Invalid implementation: bogus");
     }
 }

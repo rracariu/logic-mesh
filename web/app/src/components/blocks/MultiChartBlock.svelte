@@ -4,6 +4,8 @@
   import Chart from 'chart.js/auto';
   import BlockCommons from '../BlockCommons.svelte';
   import type { Block } from '$lib/Block';
+  import { onValue } from '$lib/UiConnector';
+  import { useWidgetConfig } from '$lib/WidgetConfig.svelte';
   import { numericValue } from '$lib/utils';
 
   interface Props {
@@ -13,45 +15,158 @@
   let { data }: Props = $props();
 
   const block = $derived(data.value);
+  const widgetConfig = useWidgetConfig(() => block.widget);
+  const config = $derived(widgetConfig.config);
   const chartId = `multichart-${crypto.randomUUID()}`;
 
-  const seriesKeys = ['a', 'b', 'c', 'd'] as const;
-  const labelKeys = ['labelA', 'labelB', 'labelC', 'labelD'] as const;
-  const colors = ['#6b9eff', '#f59e0b', '#3ecf6b', '#ef4444'];
   const MAX_POINTS = 60;
+  const COLORS = ['#6b9eff', '#f59e0b', '#3ecf6b', '#ef4444'];
+
+  type SeriesDef = { label: string; address?: string };
+
+  // Series 0 is this node's own ExternalOut 'in'; additional series
+  // subscribe to other ExternalOut blocks' addresses. Structurally
+  // memoized: a new config identity (e.g. a driven configSources key)
+  // must not rebuild datasets or churn subscriptions when the series
+  // themselves are unchanged.
+  let prevDefs: SeriesDef[] = [];
+  function memoDefs(defs: SeriesDef[]): SeriesDef[] {
+    if (
+      defs.length === prevDefs.length &&
+      defs.every(
+        (d, i) =>
+          d.label === prevDefs[i].label && d.address === prevDefs[i].address,
+      )
+    ) {
+      return prevDefs;
+    }
+    prevDefs = defs;
+    return defs;
+  }
+  const seriesDefs = $derived.by((): SeriesDef[] => {
+    const raw = config.series;
+    if (Array.isArray(raw) && raw.length > 0) {
+      // Skip gap entries — slots beyond the first with neither an
+      // address nor a label (e.g. the padding the legacy migration
+      // inserts so a converted pin keeps its slot number). They can
+      // never receive data, so they'd only render as permanently
+      // empty legend datasets. Default labels are numbered by the
+      // ORIGINAL slot so filtering doesn't renumber the rest.
+      return memoDefs(
+        raw
+          .map((s, i) => {
+            const o = (s ?? {}) as Record<string, unknown>;
+            return {
+              def: {
+                label:
+                  o.label != null && String(o.label).length > 0
+                    ? String(o.label)
+                    : `series ${i + 1}`,
+                address:
+                  typeof o.address === 'string' && o.address
+                    ? o.address
+                    : undefined,
+              },
+              gap:
+                i > 0 &&
+                !(typeof o.address === 'string' && o.address) &&
+                !(o.label != null && String(o.label).length > 0),
+            };
+          })
+          .filter((e) => !e.gap)
+          .map((e) => e.def),
+      );
+    }
+    // Legacy single-series config shape ({ label }).
+    const label = config.label;
+    return memoDefs([
+      {
+        label:
+          label != null && String(label).length > 0 ? String(label) : 'series',
+      },
+    ]);
+  });
 
   let chart: Chart | undefined;
   const xAxis: number[] = [];
-  const series: number[][] = [[], [], [], []];
+  let dataArrays: number[][] = [];
+  let latest: (number | undefined)[] = [];
   let count = 0;
+  let sampleQueued = false;
 
-  function currentLabels(): string[] {
-    return labelKeys.map((k, i) => {
-      const v = block.inputs[k]?.value;
-      return v != null && String(v).length > 0
-        ? String(v)
-        : `series ${seriesKeys[i]}`;
+  // The effective per-slot subscription address; series 0 falls back
+  // to this node's own address (its ExternalOut 'in').
+  function seriesAddresses(defs: SeriesDef[]): (string | undefined)[] {
+    return defs.map((s, i) => s.address ?? (i === 0 ? block.id : undefined));
+  }
+
+  // The addresses the per-series buffers were built for. Keying the
+  // buffers off the address list — not just the series count — means
+  // re-pointing a series at another source resets that slot instead of
+  // showing the old source's history (and stale latest value) under
+  // the new label.
+  let builtFor: (string | undefined)[] = [];
+
+  function ensureSeries(defs: SeriesDef[]) {
+    const addresses = seriesAddresses(defs);
+    if (addresses.length !== builtFor.length) {
+      // Count changed: rebuild everything — history is not remappable.
+      dataArrays = Array.from({ length: addresses.length }, () => []);
+      latest = new Array(addresses.length).fill(undefined);
+      xAxis.length = 0;
+      count = 0;
+    } else {
+      // Same count: reset only the slots whose address changed, padded
+      // with NaN so they stay aligned with the shared x axis; the
+      // unchanged series keep their history.
+      for (let i = 0; i < addresses.length; i++) {
+        if (addresses[i] === builtFor[i]) continue;
+        dataArrays[i] = new Array<number>(xAxis.length).fill(NaN);
+        latest[i] = undefined;
+      }
+    }
+    builtFor = addresses;
+  }
+
+  function syncDatasets(defs: SeriesDef[]) {
+    if (!chart) return;
+    ensureSeries(defs);
+    chart.data.labels = xAxis;
+    chart.data.datasets = defs.map((s, i) => ({
+      label: s.label,
+      data: dataArrays[i],
+      borderColor: COLORS[i % COLORS.length],
+      backgroundColor: COLORS[i % COLORS.length],
+      fill: false,
+      tension: 0.3,
+      borderWidth: 1.5,
+    }));
+    chart.update('none');
+  }
+
+  // Batches same-cycle updates across series into a single sample row.
+  function queueSample() {
+    if (sampleQueued) return;
+    sampleQueued = true;
+    queueMicrotask(() => {
+      sampleQueued = false;
+      if (!chart) return;
+      xAxis.push(count++);
+      if (xAxis.length > MAX_POINTS) xAxis.shift();
+      for (let i = 0; i < dataArrays.length; i++) {
+        dataArrays[i].push(latest[i] ?? NaN);
+        if (dataArrays[i].length > MAX_POINTS) dataArrays[i].shift();
+      }
+      chart.update('none');
     });
   }
 
   function buildChart() {
     const ctx = document.getElementById(chartId) as HTMLCanvasElement | null;
     if (!ctx) return;
-    const labels = currentLabels();
     chart = new Chart(ctx, {
       type: 'line',
-      data: {
-        labels: xAxis,
-        datasets: series.map((data, i) => ({
-          label: labels[i],
-          data,
-          borderColor: colors[i],
-          backgroundColor: colors[i],
-          fill: false,
-          tension: 0.3,
-          borderWidth: 1.5,
-        })),
-      },
+      data: { labels: xAxis, datasets: [] },
       options: {
         animation: false,
         responsive: false,
@@ -69,6 +184,7 @@
         },
       },
     });
+    syncDatasets(seriesDefs);
   }
 
   onMount(() => {
@@ -79,63 +195,38 @@
     chart?.destroy();
   });
 
-  const fingerprint = $derived(
-    seriesKeys
-      .map((k) => numericValue(block.inputs[k]?.value) ?? '')
-      .join('|') +
-      '/' +
-      labelKeys.map((k) => block.inputs[k]?.value ?? '').join('|'),
-  );
-
-  let prevFingerprint = '';
+  // Keep datasets in sync with the configured series.
   $effect(() => {
-    if (fingerprint === prevFingerprint || !chart) return;
-    prevFingerprint = fingerprint;
+    syncDatasets(seriesDefs);
+  });
 
-    // Refresh legend labels on any label change.
-    const labels = currentLabels();
-    chart.data.datasets.forEach((ds, i) => {
-      ds.label = labels[i];
+  $effect(() => {
+    const defs = seriesDefs;
+    ensureSeries(defs);
+    const unsubs = seriesAddresses(defs).map((address, i) => {
+      if (!address) return undefined;
+      return onValue(address, (value) => {
+        const num = numericValue(value);
+        latest[i] = num == null ? NaN : num;
+        queueSample();
+      });
     });
-
-    xAxis.push(count++);
-    if (xAxis.length > MAX_POINTS) xAxis.shift();
-
-    seriesKeys.forEach((k, i) => {
-      const num = numericValue(block.inputs[k]?.value);
-      series[i].push(num == null ? NaN : num);
-      if (series[i].length > MAX_POINTS) series[i].shift();
-    });
-
-    chart.update('none');
+    return () => {
+      for (const unsub of unsubs) unsub?.();
+    };
   });
 </script>
 
 <BlockCommons data={block}>
   <div class="multichart-body">
-    <div class="pin-stack">
-      {#each seriesKeys as key, i (key)}
-        <div class="pin-row">
-          <Handle
-            id={key}
-            type="target"
-            position={Position.Left}
-            class="handle-dot handle-input"
-          />
-          <span class="pin-name" style:color={colors[i]}>{key}</span>
-        </div>
-      {/each}
-      {#each labelKeys as key (key)}
-        <div class="pin-row pin-row-label">
-          <Handle
-            id={key}
-            type="target"
-            position={Position.Left}
-            class="handle-dot handle-input"
-          />
-          <span class="pin-name pin-name-label">{key}</span>
-        </div>
-      {/each}
+    <div class="pin-row">
+      <Handle
+        id="in"
+        type="target"
+        position={Position.Left}
+        class="handle-dot handle-input"
+      />
+      <span class="pin-name">in</span>
     </div>
 
     <canvas id={chartId} width="240" height="140"></canvas>
@@ -151,12 +242,6 @@
     position: relative;
   }
 
-  .pin-stack {
-    display: flex;
-    flex-direction: column;
-    gap: 1px;
-  }
-
   .pin-row {
     display: flex;
     align-items: center;
@@ -169,16 +254,6 @@
   .pin-name {
     font-size: 11px;
     font-weight: 600;
-  }
-
-  .pin-name-label {
-    font-size: 10px;
-    font-weight: 400;
-    opacity: 0.6;
-  }
-
-  .pin-row-label {
-    min-height: 14px;
   }
 
   :global(.handle-dot) {

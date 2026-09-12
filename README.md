@@ -15,6 +15,7 @@ A reactive, async dataflow engine in Rust — wire blocks together, run programs
 - **Built for control, not just dataflow.** First-class blocks for PID, setpoint reset, deadband, schedules, lead/lag rotation, equipment staging, runtime accumulation, on/off delays, EMA filtering, change-of-value gating, sunrise/sunset, psychrometrics — the vocabulary you reach for in HVAC, lighting, energy, and process control. ASHRAE Guideline 36 patterns map directly to the catalog.
 - **Unit-aware numbers.** Inputs accept any compatible unit (`°F`, `°C`, `K`, `Pa`, `kPa`, `s`, `min`, `h`, …) and convert internally — courtesy of [libhaystack](https://crates.io/crates/libhaystack). Blocks like `Reset`, `Deadband`, `Clamp`, `EMA`, and `TrimRespond` propagate units to their outputs so downstream consumers see the right quantity.
 - **Extensible from either side of the WASM boundary.** Define new blocks in Rust with the `#[block]` attribute macro, or in JavaScript/TypeScript with `defineBlock(...)` + Zod schemas when running in a browser.
+- **Protocol-agnostic external integration.** A `Connector` trait (subscribe/publish/request) bridges the engine to any external system — MQTT, WebSockets, HTTP, or an in-process source. Generic `ExternalIn`/`ExternalOut`/`Request` blocks bind to a connector by name + address pins; concrete protocol implementations live outside the crate. Connectors can be implemented in JavaScript when running in a browser.
 - **Async by construction.** Every block is a `Future`; the scheduler drives them on Tokio (or `wasm-bindgen-futures` in a browser) and only resumes blocks whose inputs have actually changed.
 
 ## Block catalog
@@ -29,19 +30,22 @@ A reactive, async dataflow engine in Rust — wire blocks together, run programs
 | **Misc** | `Ema`, `MovingAverage`, `Derivative`, `Integrator`, `ChangeOfValue`, `SampleHold`, `Random`, `SineWave`, `HasValue`, `ParseBool`, `ParseNumber` |
 | **Bitwise** | `BitwiseAnd`, `BitwiseOr`, `BitwiseXor`, `BitwiseNot` |
 | **Psychrometrics** | `Enthalpy`, `Dewpoint`, `WetBulb` |
+| **External** | `ExternalIn`, `ExternalOut`, `Request` |
 | **Collections / Strings** | `Dict`, `List`, `Get`, `Keys`, `Values`, `Len`, `Concat`, `Replace` |
 
 ## Web editor & demos
 
 A live SvelteKit editor is hosted at <https://rracariu.github.io/logic-mesh/>. Drag blocks, wire pins, watch the engine react.
 
-It bundles a UI block set (`Slider`, `Gauge`, `Bar`, `Display`, `Led`, `Chart`, `MultiChart`, `Button`, `Checkbox`, `ComboBox`, `Table`, `Input`, `Label`) and five worked example programs you can switch between:
+It bundles a UI widget set (`Slider`, `Gauge`, `Bar`, `Display`, `Led`, `Chart`, `MultiChart`, `Button`, `Checkbox`, `ComboBox`, `Table`, `Input`, `Label`) — each widget exchanges values with the engine through a JS-implemented `ui` connector and the generic `ExternalIn`/`ExternalOut` blocks — and five worked example programs you can switch between:
 
 - **DAT Temperature Reset** — ASHRAE G36-style reset of supply-air SP from outdoor temperature, driving a PID loop.
 - **Cooling Tower Stage + Lead/Lag** — demand → `Sequencer` → `LeadLag` → fan LEDs with on/off delays and rotation.
 - **Air-Side Economizer (Enthalpy)** — `Enthalpy` of OA vs RA → `LessThan` → free-cooling LED, with both enthalpies on a `MultiChart`.
 - **Anti-Short-Cycle Compressor** — `OnDelay` warmup + `OffDelay` cool-down lockout.
 - **Outdoor Lighting (dusk-to-cutoff)** — `Sun` (sunrise/sunset) + `Schedule` + boolean composition driving a streetlight.
+
+Widget configuration can also be driven by the running program: any config field (a slider's `max`, a bar's range, a LED label, …) may name the address of a plain `ExternalOut` block via the widget's `configSources` map, and the live value then overrides the literal default. Input widgets additionally accept a `valueSource` address whose published values they track as feedback — the classic HMI "setpoint follows the program until the operator overrides it" idiom — while user edits still push through the widget's own address. Drive an input widget's value through `valueSource`, not a `configSources` entry on its `value` key.
 
 ## Getting started
 
@@ -93,22 +97,63 @@ A multi-threaded engine is available behind the `multi-threaded` Cargo feature.
 npm install logic-mesh
 ```
 
-The npm package wraps the WASM build. Define a UI block in TypeScript:
+The npm package wraps the WASM build. Define a custom block in TypeScript:
 
 ```ts
 import { defineBlock, initEngine } from 'logic-mesh';
 import { z } from 'zod';
 
-const Gauge = defineBlock({
-  desc: { name: 'Gauge', dis: 'Gauge', lib: 'ui', ver: '0.0.1', category: 'UI', doc: 'Round gauge' },
-  inputs: [['in', z.number()]] as const,
+const Scale = defineBlock({
+  desc: { name: 'Scale', dis: 'Scale', lib: 'custom', ver: '0.0.1', category: 'Math', doc: 'Multiplies by a factor' },
+  inputs: [['in', z.number()], ['factor', z.number()]] as const,
   outputs: [['out', z.number()]] as const,
-  execute: async ([input]) => [input],
+  execute: async ([input, factor]) => [input * factor],
 });
 
 const engine = initEngine();
-Gauge.register(engine);
+Scale.register(engine);
 // then wire blocks via engine.engineCommand() and engine.run()
+```
+
+Or bridge the engine to an external system with a connector implemented in plain JavaScript:
+
+```ts
+import { registerConnector, startEngine } from 'logic-mesh';
+
+registerConnector('sensors', {
+  subscribe(address, callback) {
+    const timer = setInterval(() => callback(readSensor(address)), 1000);
+    return () => clearInterval(timer);
+  },
+  publish(address, value) { /* write toward the external system */ },
+  request(address, value) { /* request/response */ },
+});
+
+// Creates the engine, prepares command handles, starts the message
+// loop — the ordering-sensitive part is owned by the wrapper
+const { command } = startEngine();
+
+const id = await command.addBlock('ExternalIn');
+await command.writeBlockInput(id, 'connector', 'sensors');
+await command.writeBlockInput(id, 'address', 'zone-1/temp');
+// `id`'s `out` pin now streams zone-1/temp values into the graph
+
+await command.addConnector('sensors'); // attach to the running engine
+```
+
+For plain request/response functions there is a shortcut — `defineJsBlocks`
+exposes JS functions (sync or async) as `Request` blocks through a single
+generated connector:
+
+```ts
+import { defineJsBlocks, startEngine } from 'logic-mesh';
+
+const session = startEngine();
+const jsBlocks = defineJsBlocks({ scale: (value) => (value as number) * 2 });
+await jsBlocks.attach(session.command);
+
+const id = await jsBlocks.addBlock(session.command, 'scale');
+await session.command.writeBlockInput(id, 'in', 21); // out becomes 42
 ```
 
 ## Possible applications
@@ -124,6 +169,7 @@ Gauge.register(engine);
 - **Block trait** — every unit of work implements `async fn execute(&mut self)`. The `#[block]` attribute macro generates the boilerplate (description, registration, default impl).
 - **Reactive scheduler** — blocks suspend on input pins via `read_inputs_until_ready` (event-driven) or `wait_on_inputs(timeout)` (event + periodic throttle). The engine only resumes blocks whose data has actually changed.
 - **Type-checked pins** — pin kinds (`Number`, `Bool`, `Str`, `Dict`, `List`, `Null`) are validated at link time; mismatched values fault the receiving block instead of silently corrupting state.
+- **Connectors** — external systems implement the `Connector` trait (`subscribe`/`publish`/`request`, plus optional `start`/`stop`); the engine manages their lifecycle and connectors can be added or removed at runtime through engine messages. `ExternalIn` streams subscribed values into the graph, `ExternalOut` publishes wired values, and `Request` does request/response — both with timeout and cancellation. See `examples/connector_demo.rs` for a concrete implementation.
 - **Threading models** — single-threaded (default) and multi-threaded (`features = ["multi-threaded"]`) engines on native; WASM uses single-threaded with the browser event loop.
 - **Auto-discovered registry** — `build.rs` walks `src/blocks/<category>/` and assembles the static block registry, so adding a new block is one file plus a `mod.rs` re-export.
 - **Save/load format** — programs serialize to a stable JSON shape (blocks, links, positions, optional labels and per-program description) understood by both the Rust API and the web editor.

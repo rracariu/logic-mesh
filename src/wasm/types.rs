@@ -45,39 +45,74 @@ pub struct JsBlockDesc {
     pub run_condition: Option<String>,
 }
 
-impl From<JsBlockDesc> for BlockDesc {
-    fn from(desc: JsBlockDesc) -> Self {
-        Self {
+impl TryFrom<JsBlockDesc> for BlockDesc {
+    type Error = String;
+
+    /// Strict conversion: an unrecognized pin kind, run condition, or
+    /// implementation is an error, not a silent default. Kinds are the
+    /// lowercase haystack names (`"number"`, `"str"`, …) — defaulting a
+    /// typo to `Null` used to register an accepts-anything pin that
+    /// behaved nothing like the declared type. The implementation must
+    /// be `"external"`: this conversion serves JS block registration,
+    /// which cannot produce a native block.
+    fn try_from(desc: JsBlockDesc) -> Result<Self, Self::Error> {
+        let pin = |pin: JsBlockPin| -> Result<BlockPin, String> {
+            let kind = pin
+                .kind
+                .as_str()
+                .try_into()
+                .map_err(|err| format!("pin '{}': {err}", pin.name))?;
+            Ok(BlockPin {
+                name: pin.name,
+                kind,
+            })
+        };
+
+        // JS registration only ever produces external blocks (the JS
+        // function IS the implementation), so anything else in the
+        // field is a caller mistake — likely a native desc copied from
+        // `listBlocks` — and silently registering it as external would
+        // hide that.
+        let implementation = match desc.implementation.as_str() {
+            "external" => BlockImplementation::External,
+            other => {
+                return Err(format!(
+                    "field 'implementation': a JS-registered block must be \
+                     'external', got '{other}'"
+                ));
+            }
+        };
+
+        Ok(Self {
             name: desc.name,
             dis: desc.dis,
             library: desc.lib,
             ver: desc.ver,
             category: desc.category,
             doc: desc.doc,
-            implementation: BlockImplementation::External,
+            implementation,
 
             inputs: desc
                 .inputs
                 .into_iter()
-                .map(|pin| BlockPin {
-                    name: pin.name,
-                    kind: pin.kind.as_str().try_into().unwrap_or_default(),
-                })
-                .collect(),
+                .map(pin)
+                .collect::<Result<Vec<_>, _>>()?,
 
             outputs: desc
                 .outputs
                 .into_iter()
-                .map(|pin| BlockPin {
-                    name: pin.name,
-                    kind: pin.kind.as_str().try_into().unwrap_or_default(),
-                })
-                .collect(),
+                .map(pin)
+                .collect::<Result<Vec<_>, _>>()?,
 
             run_condition: desc
                 .run_condition
-                .map(|cond| cond.as_str().try_into().unwrap_or_default()),
-        }
+                .map(|cond| {
+                    cond.as_str()
+                        .try_into()
+                        .map_err(|err| format!("field 'runCondition': {err}"))
+                })
+                .transpose()?,
+        })
     }
 }
 

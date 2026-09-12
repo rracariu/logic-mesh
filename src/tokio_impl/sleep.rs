@@ -3,11 +3,11 @@
 #[cfg(target_arch = "wasm32")]
 pub(crate) use crate::wasm::sleep::current_time_millis;
 #[cfg(target_arch = "wasm32")]
-pub(super) use crate::wasm::sleep::sleep_millis;
+pub(crate) use crate::wasm::sleep::sleep_millis;
 
 /// Sleeps for the given number of milliseconds (non-WASM version).
 #[cfg(not(target_arch = "wasm32"))]
-pub(super) async fn sleep_millis(millis: u64) {
+pub(crate) async fn sleep_millis(millis: u64) {
     use tokio::time::{Duration, sleep};
 
     sleep(Duration::from_millis(millis)).await;

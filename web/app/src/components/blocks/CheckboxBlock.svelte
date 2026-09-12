@@ -1,37 +1,50 @@
 <script lang="ts">
   import { Handle, Position } from '@xyflow/svelte';
+  import { onMount } from 'svelte';
   import { Checkbox } from '$lib/components/ui/checkbox';
   import BlockCommons from '../BlockCommons.svelte';
-  import { useEngine } from '$lib/Engine';
   import type { Block } from '$lib/Block';
+  import { pushValue } from '$lib/UiConnector';
+  import { useValueFeedback, useWidgetConfig } from '$lib/WidgetConfig.svelte';
 
   interface Props {
     data: { value: Block };
   }
 
   let { data }: Props = $props();
-  const { command } = useEngine();
 
   const block = $derived(data.value);
-  const inputKey = $derived(Object.keys(block.inputs)[0] ?? 'in');
-  const outputKey = $derived(Object.keys(block.outputs)[0] ?? 'out');
+  const widgetConfig = useWidgetConfig(() => block.widget);
+  const config = $derived(widgetConfig.config);
+  const checked = $derived(Boolean(config.value ?? false));
 
-  function onCheckedChange(checked: boolean) {
-    command.writeBlockOutput(block.id, outputKey, checked);
+  // A checkbox click is instantaneous, so feedback always applies; it
+  // updates the displayed state without being re-pushed to the engine.
+  useValueFeedback(
+    () => block.widget,
+    (value) => {
+      if (value == null || !block.widget) return;
+      block.widget.config = { ...block.widget.config, value: Boolean(value) };
+    },
+  );
+
+  onMount(() => {
+    pushValue(block.id, checked);
+  });
+
+  function onCheckedChange(next: boolean) {
+    if (block.widget) {
+      block.widget.config = { ...block.widget.config, value: next };
+    }
+    pushValue(block.id, next);
   }
 </script>
 
 <BlockCommons data={block}>
   <div class="ui-block-body">
+    <Checkbox {checked} {onCheckedChange} />
     <Handle
-      id={inputKey}
-      type="target"
-      position={Position.Left}
-      class="handle-dot handle-input"
-    />
-    <Checkbox checked={Boolean(block.inputs.in.value)} {onCheckedChange} />
-    <Handle
-      id={outputKey}
+      id="out"
       type="source"
       position={Position.Right}
       class="handle-dot handle-output"
@@ -54,9 +67,6 @@
     border-radius: 50% !important;
     min-width: 0 !important;
     border: 1.5px solid white !important;
-  }
-  :global(.handle-input) {
-    background: #6b9eff !important;
   }
   :global(.handle-output) {
     background: #6bcf7f !important;

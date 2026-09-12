@@ -20,6 +20,7 @@ use crate::base::engine::Engine;
 
 use crate::blocks::registry::eval_block_impl;
 use crate::blocks::utils::get_sleep_dur;
+use crate::tokio_impl::block::drain_ready_inputs;
 use crate::{
     base::{
         block::{BlockDesc, BlockProps},
@@ -41,6 +42,29 @@ thread_local! {
 ///
 /// The block delegates evaluation to a JS function that is called with the
 /// inputs as arguments.
+///
+/// # Delivery semantics
+///
+/// The block actor drops an in-flight `execute` whenever an engine
+/// command for the block arrives, and unlike the standard-library
+/// blocks a JsBlock has a second await *after* the input drain — the JS
+/// function's Promise. A cancellation landing there cannot un-run the
+/// JS function (only the Promise's eventual result is discarded), and
+/// the drained reaction is held on the block and the function
+/// re-invoked with the current input values on the next cycle. A JS
+/// call may therefore run more than once for one reaction, so
+/// side-effecting block functions should be idempotent (at-least-once
+/// semantics). Outputs are only ever set by a call that ran to
+/// completion.
+///
+/// Unlike the external blocks, no timeout races the Promise await: a
+/// call that never settles parks the reaction until the next engine
+/// command for the block, and each such command re-invokes the
+/// function afresh while every earlier never-settling Promise stays
+/// alive — under sustained command traffic arriving faster than the
+/// executor completes, the function re-fires on every command and the
+/// outputs are never committed. Keep executors bounded in time as
+/// well as idempotent.
 #[derive(Debug, Default)]
 pub struct JsBlock {
     id: Uuid,
@@ -49,6 +73,20 @@ pub struct JsBlock {
     outputs: Vec<OutputImpl>,
     state: BlockState,
     func: Option<js_sys::Function>,
+    /// Whether an input drain has been consumed without the JS call it
+    /// triggered running to completion: set once the input wait
+    /// returns, kept across a cancelled `execute` so the call is
+    /// re-issued, and cleared on any completion — outputs set, JS
+    /// error, or serialization failure. Unlike `ExternalOut::pending`
+    /// this holds no value snapshot: the drain already moved the
+    /// values into the input caches, which persist on the block, and
+    /// the retry re-reads them — so a value written between the
+    /// cancellation and the retry (typically by the very `WriteInput`
+    /// whose arrival cancelled us, a direct cache write with no watch
+    /// traffic) supersedes the stale reaction, the same freshest-wins
+    /// choice as ExternalOut's "a fresh value replaces any held
+    /// retry".
+    pending: bool,
 }
 
 impl JsBlock {
@@ -75,6 +113,7 @@ impl JsBlock {
             outputs,
             state: BlockState::Running,
             func,
+            pending: false,
         }
     }
 
@@ -265,11 +304,31 @@ impl BlockStaticDesc for JsBlock {
 
 impl Block for JsBlock {
     async fn execute(&mut self) {
-        if let Some(BlockRunCondition::Always) = self.desc.run_condition {
-            self.wait_on_inputs(Duration::from_millis(get_sleep_dur()))
-                .await;
+        // A reaction held from a cancelled cycle is retried before
+        // anything else: the actor drops the in-flight `execute` future
+        // whenever a mailbox command arrives, and the drop can land on
+        // the `JsFuture` await inside `call_js_function` — after the
+        // input wait already consumed the watch channels. Waiting on
+        // inputs again there would park until *new* input arrives,
+        // silently discarding the drained reaction. So only wait when
+        // no reaction is owed; a held reaction skips straight to the
+        // call. This applies to the polling (`Always`) variant too —
+        // it would eventually re-fire on its own, but the retry saves
+        // the reaction from waiting out another sleep window.
+        if self.pending {
+            // Drain, without blocking, anything that arrived while the
+            // reaction was held, so the retry below reads the freshest
+            // caches — a fresh value supersedes the held reaction
+            // rather than queueing a second call behind it.
+            drain_ready_inputs(self);
         } else {
-            self.read_inputs_until_ready().await;
+            if let Some(BlockRunCondition::Always) = self.desc.run_condition {
+                self.wait_on_inputs(Duration::from_millis(get_sleep_dur()))
+                    .await;
+            } else {
+                self.read_inputs_until_ready().await;
+            }
+            self.pending = true;
         }
 
         let values = self
@@ -289,6 +348,12 @@ impl Block for JsBlock {
                 )));
             }
         }
+
+        // Reached only when the cycle ran to completion — a
+        // cancellation drops this future at the `JsFuture` await inside
+        // `call_js_function` and never gets here. Success and fault
+        // alike consume the reaction; only a cancellation keeps it.
+        self.pending = false;
     }
 }
 

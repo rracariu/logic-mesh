@@ -179,6 +179,21 @@ where
                     let prev = input.get_value().cloned();
                     // External writes are always Ok status — they come from
                     // the engine, not from a producer block.
+                    //
+                    // This is a direct cache write, deliberately NOT a send
+                    // through the input's watch writer (the `SeedInputValue`
+                    // path): the input-reading machinery only drains
+                    // *connected* inputs, and engine pin writes mostly
+                    // target unconnected config pins — a watch send there
+                    // would sit in the channel forever while the cache (and
+                    // everything reading it: `execute`, Inspect, chained
+                    // input links) kept the stale value. The flip side is
+                    // that the write is invisible to the watch machinery,
+                    // and the command's own arrival cancels the block's
+                    // in-flight `execute` — so a block that reacts to fresh
+                    // input must compare the cache against state persisted
+                    // across `execute` calls, never against a per-execute
+                    // snapshot (see `ExternalOut::last_input`).
                     input.set_value(value, Status::Ok);
                     Ok(prev)
                 }

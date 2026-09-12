@@ -1,6 +1,15 @@
 // Copyright (c) 2022-2023, Radu Racariu.
 
 //! Engine message types.
+//!
+//! # Connector routing
+//!
+//! Connector route/subscription management needs no dedicated
+//! messages: rebinding an external block is a write to its
+//! `connector` / `address` input pins through the existing
+//! [`WriteBlockInputReq`](EngineMessage::WriteBlockInputReq) path —
+//! `ExternalIn` observes the pin change and resubscribes
+//! automatically.
 
 use std::collections::{BTreeMap, HashMap};
 
@@ -142,6 +151,42 @@ pub enum EngineMessage<WatchEventSender: Clone> {
     RemoveLinkReq(Uuid, Uuid),
     /// Response to [`RemoveLinkReq`](Self::RemoveLinkReq).
     RemoveLinkRes(Result<bool, String>),
+
+    /// Attach an already-registered connector, by name, to a running
+    /// engine: the engine resolves the name in the process-wide
+    /// connector registry, starts the connector, and manages its
+    /// lifecycle from then on.
+    ///
+    /// Connector handles never ride in messages (they are not `Send`
+    /// on every target) — register the handle through
+    /// [`register_connector`](crate::base::connector::register_connector)
+    /// first, then attach it by name.
+    ///
+    /// A registered connector must be attached to at most one engine:
+    /// the registry carries no ownership mark, so attaching the same
+    /// name to a second engine would double-start the connector, and
+    /// one engine's reset would unregister it out from under the
+    /// other.
+    AddConnectorReq(Uuid, String),
+    /// Response to [`AddConnectorReq`](Self::AddConnectorReq). `Ok`
+    /// carries the attached connector's name; errors are: not
+    /// registered, already engine-managed, or start failure/timeout.
+    AddConnectorRes(Result<String, String>),
+
+    /// Detach an engine-managed connector by name: the engine stops
+    /// tracking it, unregisters it from the process-wide registry, and
+    /// then stops it — same ordering as a reset, so no block can
+    /// resolve a connector that is being stopped.
+    RemoveConnectorReq(Uuid, String),
+    /// Response to [`RemoveConnectorReq`](Self::RemoveConnectorReq).
+    /// `Ok` carries the detached connector's name; errors if the name
+    /// is not engine-managed.
+    RemoveConnectorRes(Result<String, String>),
+
+    /// Request the names of the engine-managed connectors.
+    ListConnectorsReq(Uuid),
+    /// Response to [`ListConnectorsReq`](Self::ListConnectorsReq).
+    ListConnectorsRes(Result<Vec<String>, String>),
 
     /// Shut down the engine.
     Shutdown,

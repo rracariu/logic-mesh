@@ -4,8 +4,10 @@
 // exercise runtime validation guards. Disabling `no-explicit-any`
 // here lets those negative-path assertions stay readable.
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
+import type { BlockNotification, EngineSession } from '../src/index';
+import { createEngineSession } from '../src/index';
 import { defineBlock } from '../src/TypedBlock';
 
 const desc = {
@@ -199,5 +201,222 @@ describe('TypedBlock.executeImpl', () => {
   it('throws when input Zod validation fails', async () => {
     const b = new TestBlock();
     await expect(b.runImpl(['not-a-number', 'hello'])).rejects.toThrow();
+  });
+
+  it('skips execution — a no-op, not a fault — while a required input is unset', async () => {
+    const b = new TestBlock();
+    const executeSpy = vi.spyOn(b, 'execute');
+    // The engine passes `undefined` for a pin whose value is not set
+    // yet (e.g. right after a link is created); a required schema must
+    // skip the cycle instead of throwing a permanent-fault ZodError.
+    await expect(b.runImpl([undefined, 'hello'])).resolves.toBeUndefined();
+    expect(executeSpy).not.toHaveBeenCalled();
+  });
+
+  it('materializes a .default(...) for an unset input and executes', async () => {
+    const seen: unknown[][] = [];
+    const DefaultBase = defineBlock({
+      desc,
+      inputs: [['x', z.number().default(7)]] as const,
+      outputs: [['out', z.number()]] as const,
+      execute([x]) {
+        seen.push([x]);
+        return Promise.resolve([x * 2]);
+      },
+    });
+    class DefaultBlock extends DefaultBase {
+      runImpl(inputs: unknown[]) {
+        return this.executeImpl(inputs as any);
+      }
+    }
+
+    await expect(new DefaultBlock().runImpl([undefined])).resolves.toEqual([
+      14,
+    ]);
+    expect(seen).toEqual([[7]]);
+  });
+
+  it('an .optional() input lets the executor run with undefined', async () => {
+    const seen: unknown[][] = [];
+    const OptionalBase = defineBlock({
+      desc,
+      inputs: [['x', z.number().optional()]] as const,
+      outputs: [['out', z.boolean()]] as const,
+      execute([x]) {
+        seen.push([x]);
+        return Promise.resolve([x === undefined]);
+      },
+    });
+    class OptionalBlock extends OptionalBase {
+      runImpl(inputs: unknown[]) {
+        return this.executeImpl(inputs as any);
+      }
+    }
+
+    await expect(new OptionalBlock().runImpl([undefined])).resolves.toEqual([
+      true,
+    ]);
+    expect(seen).toEqual([[undefined]]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Real-engine tests: these run against the built wasm in `dist/` (the
+// vitest alias maps the sources' `./logic_mesh.js` import onto it —
+// build first with `npm run build:dev`), same infrastructure as
+// JsBlockCancellation.test.ts. The mock-based tests above still cover
+// descriptor shape; these cover what mocks cannot: the engine's strict
+// JsBlockDesc conversion of a defineBlock desc, the
+// factory-returns-a-function calling convention, and link-driven
+// execution — including the unset-input window that used to fault the
+// block permanently.
+// ---------------------------------------------------------------------------
+
+const sessions: EngineSession[] = [];
+
+afterEach(async () => {
+  await Promise.all(sessions.splice(0).map((s) => s.stop()));
+});
+
+/** Polls `get` until it returns a value, or fails after `timeoutMs`. */
+async function until<T>(
+  get: () => T | undefined,
+  what: string,
+  timeoutMs = 3000,
+): Promise<T> {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    const value = get();
+    if (value !== undefined) return value;
+    if (Date.now() > deadline) throw new Error(`timed out waiting for ${what}`);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+}
+
+/** All values notifications reported for the block's `out` pin, in
+ * order. Valueless changes are dropped: the block-added notification
+ * reports every output pin as a change with no value. */
+function outValues(notes: BlockNotification[], id: string): unknown[] {
+  return notes
+    .filter((n) => n.id === id)
+    .flatMap((n) => n.changes)
+    .filter((c) => c.name === 'out' && c.value !== undefined)
+    .map((c) => c.value);
+}
+
+/** The block's fault notifications, if any. */
+function faults(notes: BlockNotification[], id: string): BlockNotification[] {
+  return notes.filter((n) => n.id === id && n.state === 'fault');
+}
+
+/** The block-desc registry is process-wide, so every test registers
+ * its block under a fresh name — same idiom as the connector tests. */
+let blockSerial = 0;
+
+describe('defineBlock against the real engine', () => {
+  it('link-driven values reach execute; the pre-value window is a no-op, not a fault', async () => {
+    const session = createEngineSession({ sleepDuration: 10 });
+    sessions.push(session);
+
+    const name = `TypedDoubler${blockSerial++}`;
+    const Doubler = defineBlock({
+      desc: { ...desc, name, lib: 'typed-test' },
+      inputs: [['in', z.number()]] as const,
+      outputs: [['out', z.number()]] as const,
+      execute([v]) {
+        return Promise.resolve([v * 2]);
+      },
+    });
+    // Register before start(): registration needs the engine object,
+    // whose wasm borrow run()'s future holds from its first poll.
+    Doubler.register(session.engine);
+    session.start();
+
+    const notes: BlockNotification[] = [];
+    session.watch((n) => notes.push(n));
+
+    const typedId = await session.command.addBlock(
+      name,
+      undefined,
+      'typed-test',
+    );
+    // A reactive block only fires on link traffic — a bare engine pin
+    // write does not trigger execution — so the values travel over a
+    // real link from an Add block's output. The Add block itself never
+    // executes (its inputs stay unconnected, so its input wait never
+    // completes); it is just an output pin whose writes propagate
+    // through the link — same setup as JsBlockCancellation.test.ts.
+    const addId = await session.command.addBlock('Add');
+    await session.command.createLink(addId, typedId, 'out', 'in');
+
+    // Pre-value window: the link triggers cycles before any number has
+    // flowed, so `executeImpl` sees `undefined` on the required pin.
+    // Pre-fix this faulted the block permanently with a ZodError
+    // ("expected number, received undefined"); now the cycle is
+    // skipped. Give a fault a chance to surface before asserting there
+    // is none, and that no output was committed.
+    await until(
+      () => notes.find((n) => n.id === typedId),
+      'a typed-block notification',
+    );
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    expect(faults(notes, typedId)).toEqual([]);
+    expect(outValues(notes, typedId)).toEqual([]);
+
+    // Push values through the link; each must come out doubled —
+    // across several changes, faultless.
+    const drives: [number, number][] = [
+      [21, 42],
+      [32, 64],
+      [43, 86],
+    ];
+    for (const [value, doubled] of drives) {
+      await session.command.writeBlockOutput(addId, 'out', value);
+      await until(
+        () => (outValues(notes, typedId).includes(doubled) ? true : undefined),
+        `out=${String(doubled)}`,
+      );
+    }
+    expect(faults(notes, typedId)).toEqual([]);
+  });
+
+  it('a .default(...) input lets the executor run without that pin being driven', async () => {
+    const session = createEngineSession({ sleepDuration: 10 });
+    sessions.push(session);
+
+    const name = `TypedOffset${blockSerial++}`;
+    const Offset = defineBlock({
+      desc: { ...desc, name, lib: 'typed-test' },
+      inputs: [
+        ['in', z.number()],
+        // Never driven: the engine passes `undefined`, and the default
+        // must materialize in the executor's arguments.
+        ['k', z.number().default(7)],
+      ] as const,
+      outputs: [['out', z.number()]] as const,
+      execute([v, k]) {
+        return Promise.resolve([v + k]);
+      },
+    });
+    Offset.register(session.engine);
+    session.start();
+
+    const notes: BlockNotification[] = [];
+    session.watch((n) => notes.push(n));
+
+    const typedId = await session.command.addBlock(
+      name,
+      undefined,
+      'typed-test',
+    );
+    const addId = await session.command.addBlock('Add');
+    await session.command.createLink(addId, typedId, 'out', 'in');
+
+    await session.command.writeBlockOutput(addId, 'out', 5);
+    await until(
+      () => (outValues(notes, typedId).includes(12) ? true : undefined),
+      'out=12 (5 + the default 7)',
+    );
+    expect(faults(notes, typedId)).toEqual([]);
   });
 });

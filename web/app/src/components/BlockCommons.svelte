@@ -5,6 +5,7 @@
   import { Button } from '$lib/components/ui/button';
   import { model } from '$lib/model.svelte';
   import type { Block } from '$lib/Block';
+  import { widgetBlockDescs } from '$lib/Widgets';
 
   interface Props {
     data: Block;
@@ -12,6 +13,14 @@
   }
 
   let { data, children }: Props = $props();
+
+  // Widget nodes run on generic ExternalIn/ExternalOut engine blocks, so
+  // their engine desc doc is not widget-specific — prefer the palette doc.
+  const doc = $derived(
+    (data.widget &&
+      widgetBlockDescs.find((d) => d.widget.kind === data.widget?.kind)?.doc) ||
+      data.desc.doc,
+  );
 
   const isSelected = $derived(
     (model.currentBlock?.data as { value: Block } | undefined)?.value?.id ===
@@ -49,12 +58,14 @@
 <div
   class="node-container"
   class:node-faulted={data.state === 'fault'}
-  title={data.faultReason ?? data.desc.doc}
+  title={data.faultReason ?? doc}
   style={isSelected ? 'box-shadow: 0 0 0 2px var(--primary);' : ''}
 >
   <div class="node-header">
     <span class="node-title-row">
-      <span class="node-title" title={data.desc.doc}>{data.desc.name}</span>
+      <span class="node-title" title={doc}
+        >{data.widget?.kind ?? data.desc.name}</span
+      >
       {#if editing}
         <input
           bind:this={inputEl}

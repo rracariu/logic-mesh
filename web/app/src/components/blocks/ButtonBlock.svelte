@@ -1,28 +1,34 @@
 <script lang="ts">
   import { Handle, Position } from '@xyflow/svelte';
+  import { onMount } from 'svelte';
   import { Button } from '$lib/components/ui/button';
   import BlockCommons from '../BlockCommons.svelte';
-  import { useEngine } from '$lib/Engine';
   import type { Block } from '$lib/Block';
+  import { pushValue } from '$lib/UiConnector';
 
   interface Props {
     data: { value: Block };
   }
 
   let { data }: Props = $props();
-  const { command } = useEngine();
 
   const block = $derived(data.value);
-  const outputKey = $derived(Object.keys(block.outputs)[0] ?? 'out');
+
+  let pressed = $state(false);
+
+  onMount(() => {
+    pushValue(block.id, false);
+  });
 
   function onPress() {
-    block.outputs.out.value = true;
-    command.writeBlockOutput(block.id, outputKey, true);
+    pressed = true;
+    pushValue(block.id, true);
   }
 
   function onRelease() {
-    block.outputs.out.value = false;
-    command.writeBlockOutput(block.id, outputKey, false);
+    if (!pressed) return;
+    pressed = false;
+    pushValue(block.id, false);
   }
 </script>
 
@@ -36,10 +42,10 @@
       onpointerup={onRelease}
       onpointerleave={onRelease}
     >
-      {block.outputs.out.value ? 'ON' : 'OFF'}
+      {pressed ? 'ON' : 'OFF'}
     </Button>
     <Handle
-      id={outputKey}
+      id="out"
       type="source"
       position={Position.Right}
       class="handle-dot handle-output"

@@ -4,18 +4,16 @@
   import { Button } from '$lib/components/ui/button';
   import { Plus, Trash2 } from 'lucide-svelte';
   import BlockCommons from '../BlockCommons.svelte';
-  import { useEngine } from '$lib/Engine';
   import type { Block } from '$lib/Block';
+  import { pushValue } from '$lib/UiConnector';
 
   interface Props {
     data: { value: Block };
   }
 
   let { data }: Props = $props();
-  const { command } = useEngine();
 
   const block = $derived(data.value);
-  const outputKey = $derived(Object.keys(block.outputs)[0] ?? 'out');
 
   // Rows of key-value pairs
   let rows: { key: string; value: string }[] = $state([{ key: '', value: '' }]);
@@ -28,8 +26,7 @@
         dict[k] = row.value;
       }
     }
-    block.outputs.out.value = dict;
-    command.writeBlockOutput(block.id, outputKey, dict);
+    pushValue(block.id, dict);
   }
 
   function addRow() {
@@ -102,7 +99,7 @@
     </div>
 
     <Handle
-      id={outputKey}
+      id="out"
       type="source"
       position={Position.Right}
       class="handle-dot handle-output"

@@ -26,6 +26,12 @@
     name: string;
     lib: string;
     label?: string;
+    widget?: {
+      kind: string;
+      config?: Record<string, unknown>;
+      configSources?: Record<string, string>;
+      valueSource?: string;
+    };
     inputs?: Record<string, BlockPin>;
     outputs?: Record<string, BlockPin>;
   };
@@ -34,7 +40,8 @@
   import ToolBar from '../components/ToolBar.svelte';
   import FitView from '../components/FitView.svelte';
 
-  import { blockInstance } from '$lib/Block';
+  import { blockInstance, cloneWidget } from '$lib/Block';
+  import { attachUiConnector, forgetBlockAddress } from '$lib/UiConnector';
   import { useEngine } from '$lib/Engine';
   import { model, blockInstances } from '$lib/model.svelte';
   import { prepare, pushToEngine, save } from '$lib/Program';
@@ -44,7 +51,8 @@
     clipboardWrite,
   } from '$lib/Clipboard';
 
-  const { engine, blocks, command, startWatch } = useEngine();
+  const { start, reset, blocks, command, connectorCommand, startWatch } =
+    useEngine();
 
   const nodeTypes = { custom: BlockNode };
 
@@ -55,7 +63,18 @@
   onMount(() => {
     if (!engineRunning) {
       engineRunning = true;
-      engine.run();
+      // Kick off the engine through the session so it knows it has
+      // started (watches then use the pre-created slots); same effect
+      // as the old direct `engine.run()` call, same tick.
+      start();
+
+      // addConnector is a message to the now-running engine;
+      // registration alone (in useEngine) does not attach. Attach uses
+      // the pre-run `connectorCommand` handle — engine methods are off
+      // limits from continuations once run() has been polled.
+      attachUiConnector(connectorCommand).catch((err) =>
+        toast.error(`Failed to attach UI connector: ${err}`),
+      );
 
       startWatch((notification: BlockNotification) => {
         const blockRef = blockInstances.get(notification.id);
@@ -202,9 +221,50 @@
     }
   }
 
-  async function onReset() {
-    await command.resetEngine();
+  // Serializes whole program operations (reset, load, paste) — the
+  // same idiom as Engine.ts's `commandChain`, one level up. That chain
+  // makes individual `command` calls overlap-proof, but a program
+  // operation is a multi-step pipeline (reset → clear the model →
+  // re-attach the connector → populate), and two pipelines running
+  // concurrently interleave those steps: the second pipeline's
+  // `clearAll` fires before the first has populated the model, and its
+  // Reset reaches the engine before the first `loadProgram` — both
+  // sides end up with the union of the two programs instead of the
+  // last one. Queueing each pipeline behind the previous makes the
+  // last-clicked program win. Each caller receives its own pipeline's
+  // rejection unchanged; only the NEXT link swallows a predecessor's
+  // (it belongs to that caller, and is spent for chaining).
+  let programChain: Promise<void> = Promise.resolve();
+
+  function enqueueProgramOp(op: () => Promise<void>): Promise<void> {
+    const next = programChain.catch(() => {}).then(op);
+    programChain = next;
+    return next;
+  }
+
+  async function doReset() {
+    // Reset travels on the session's private control handle (via
+    // `useEngine().reset`), never the shared `command` handle — a
+    // reset issued there while e.g. `loadProgram` or a palette drop's
+    // `addBlock` holds that handle mid-round-trip would throw
+    // "recursive use of an object detected". It resolves when the
+    // Reset is merely enqueued, which suffices here: engine messages
+    // are FIFO, and the attach below awaits a request/reply barrier
+    // ordered after it. A failure still rejects doReset's promise —
+    // onPaste/onLoad and onReset surface it from there.
+    await reset();
     model.clearAll();
+    // Reset unregisters and stops attached connectors; the UI connector
+    // must be re-registered and re-attached for widget blocks to work.
+    // `attachUiConnector` awaits a request/reply barrier so the attach
+    // is ordered after the engine has actually processed the Reset.
+    await attachUiConnector(connectorCommand).catch((err) =>
+      toast.error(`Failed to attach UI connector: ${err}`),
+    );
+  }
+
+  function onReset() {
+    return enqueueProgramOp(doReset);
   }
 
   function onCopy() {
@@ -221,19 +281,23 @@
     toast.success('Program copied to clipboard');
   }
 
+  // Paste and load enqueue reset + populate as ONE pipeline — calling
+  // onReset() and chaining off it would put the reset and the populate
+  // in separate queue slots, letting another operation land between
+  // them.
   function onPaste() {
-    onReset()
-      .then(async () => {
-        const clipText = await navigator.clipboard.readText();
-        await loadProgram(JSON.parse(clipText));
-      })
-      .catch((err) => toast.error(`Paste failed: ${err}`));
+    enqueueProgramOp(async () => {
+      await doReset();
+      const clipText = await navigator.clipboard.readText();
+      await loadProgram(JSON.parse(clipText));
+    }).catch((err) => toast.error(`Paste failed: ${err}`));
   }
 
   function onLoad(program: Program) {
-    onReset()
-      .then(async () => await loadProgram(program))
-      .catch((err) => toast.error(`Load failed: ${err}`));
+    enqueueProgramOp(async () => {
+      await doReset();
+      await loadProgram(program);
+    }).catch((err) => toast.error(`Load failed: ${err}`));
   }
 
   async function pasteSelection() {
@@ -263,11 +327,20 @@
 
       const blockValue = $state(blockInstance(newId, cn.desc));
       blockValue.label = cn.label;
+      if (cn.widget) {
+        // Source addresses reference other (plain ExternalOut) blocks
+        // — like MultiChart series addresses inside `config` — so
+        // they are carried over verbatim, not rewritten.
+        blockValue.widget = cloneWidget(cn.widget);
+      }
 
       // Only restore values for inputs that were NOT connected upstream.
       // Connected inputs get their value from the recreated link (or
       // fall back to the block default when the source wasn't copied).
+      // A widget block's address is its own block id, so the copied
+      // address must not carry over — it is rewritten to the new id.
       for (const [name, pin] of Object.entries(cn.inputs)) {
+        if (cn.widget && name === 'address') continue;
         if (
           blockValue.inputs[name] &&
           pin.value !== undefined &&
@@ -277,6 +350,11 @@
           blockValue.inputs[name].value = pin.value;
           await command.writeBlockInput(newId, name, pin.value);
         }
+      }
+
+      if (cn.widget && blockValue.inputs['address']) {
+        blockValue.inputs['address'].value = newId;
+        await command.writeBlockInput(newId, 'address', newId);
       }
 
       const block = { value: blockValue };
@@ -340,7 +418,18 @@
     // processing the load — get dropped by the watcher callback
     // (`blockInstances.get(id)` returns undefined).
     const prog = program as Program;
-    let { nodes: newNodes, edges: newEdges } = prepare(prog);
+    let { nodes: newNodes, edges: newEdges, migration } = prepare(prog);
+
+    // Surface what the legacy migration did. Anything dropped is data
+    // loss and gets its own warning; conversions are folded into one
+    // informational toast so loading an old program isn't a toast
+    // storm.
+    for (const dropped of migration.dropped) {
+      toast.warning(dropped);
+    }
+    if (migration.converted.length) {
+      toast.info(`Migrated legacy program: ${migration.converted.join('; ')}`);
+    }
 
     newNodes = newNodes.map((node) => {
       const data = node.data as ProgramNodeData;
@@ -360,6 +449,9 @@
 
       if (typeof data.label === 'string') {
         block.value.label = data.label;
+      }
+      if (data.widget) {
+        block.value.widget = cloneWidget(data.widget);
       }
 
       for (const [name, input] of Object.entries(data.inputs ?? {})) {
@@ -432,6 +524,10 @@
           command.removeLink(linkId);
         }
         for (const node of deletedNodes ?? []) {
+          const inst = blockInstances.get(node.id)?.value;
+          if (inst) {
+            forgetBlockAddress(inst);
+          }
           command.removeBlock(node.id);
           blockInstances.delete(node.id);
         }
@@ -456,7 +552,19 @@
       <Panel position="bottom-center">
         <ToolBar
           {blocks}
-          onAddBlock={(desc) => model.addBlock(desc)}
+          onAddBlock={(desc) => {
+            // Command serialization does not close this race: a Reset
+            // travels on the session's control handle, so it can still
+            // land between addBlock and the widget's follow-up pin
+            // writes, which then reject with "Block instance not
+            // found". Surface that instead of leaving the rejection
+            // unhandled.
+            model
+              .addBlock(desc)
+              .catch((err) =>
+                toast.error(`Failed to add block '${desc.dis}': ${err}`),
+              );
+          }}
           {onReset}
           {onCopy}
           {onPaste}

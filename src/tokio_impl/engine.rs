@@ -16,6 +16,7 @@ use crate::{
 use self::single_threaded::SingleThreadedEngine;
 
 mod block_mailbox;
+mod connectors;
 mod message_dispatch;
 pub mod single_threaded;
 

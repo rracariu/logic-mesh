@@ -1,9 +1,10 @@
 <script lang="ts">
   import { Handle, Position } from '@xyflow/svelte';
-  import { onMount } from 'svelte';
+  import { onMount, onDestroy } from 'svelte';
   import Chart from 'chart.js/auto';
   import BlockCommons from '../BlockCommons.svelte';
   import type { Block } from '$lib/Block';
+  import { onValue } from '$lib/UiConnector';
   import { numericValue } from '$lib/utils';
 
   interface Props {
@@ -13,16 +14,18 @@
   let { data }: Props = $props();
 
   const block = $derived(data.value);
-  const inputKey = $derived(Object.keys(block.inputs)[0] ?? 'in');
 
   const chartId = `chart-${crypto.randomUUID()}`;
-  let chart: Chart;
-  let chartYAxis: number[] = [];
-  let chartXAxis: number[] = [];
+  let chart: Chart | undefined;
+  const chartYAxis: number[] = [];
+  const chartXAxis: number[] = [];
+  const MAX_POINTS = 10;
   let count = 0;
 
-  function draw() {
-    chart = new Chart(document.getElementById(chartId) as HTMLCanvasElement, {
+  function buildChart() {
+    const ctx = document.getElementById(chartId) as HTMLCanvasElement | null;
+    if (!ctx) return;
+    chart = new Chart(ctx, {
       type: 'line',
       data: {
         labels: chartXAxis,
@@ -38,38 +41,38 @@
   }
 
   onMount(() => {
-    draw();
+    buildChart();
   });
 
-  let prevInputValue: unknown;
-  $effect(() => {
-    const curVal = block.inputs.in.value;
-    if (curVal !== prevInputValue) {
-      prevInputValue = curVal;
-      if (chart) {
-        chart.destroy();
-        draw();
-
-        chartXAxis.push(count++);
-        chartXAxis = chartXAxis.slice(-10);
-
-        const num = numericValue(curVal);
-        chartYAxis.push(num == null ? NaN : num);
-        chartYAxis = chartYAxis.slice(-10);
-      }
-    }
+  onDestroy(() => {
+    chart?.destroy();
   });
+
+  $effect(() =>
+    onValue(block.id, (value) => {
+      if (!chart) return;
+
+      chartXAxis.push(count++);
+      if (chartXAxis.length > MAX_POINTS) chartXAxis.shift();
+
+      const num = numericValue(value);
+      chartYAxis.push(num == null ? NaN : num);
+      if (chartYAxis.length > MAX_POINTS) chartYAxis.shift();
+
+      chart.update('none');
+    }),
+  );
 </script>
 
 <BlockCommons data={block}>
   <div class="pin-row pin-row-input">
     <Handle
-      id={inputKey}
+      id="in"
       type="target"
       position={Position.Left}
       class="handle-dot handle-input"
     />
-    <span class="pin-name">{inputKey}</span>
+    <span class="pin-name">in</span>
   </div>
 
   <canvas id={chartId} width="200" height="100"></canvas>

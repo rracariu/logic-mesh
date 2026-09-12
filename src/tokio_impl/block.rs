@@ -130,7 +130,7 @@ pub(crate) async fn read_block_inputs<B: Block>(block: &mut B) -> Option<usize> 
 /// - any drained payload carries [`Status::Fault`] — upstream fault
 ///   propagation, the consumer enters Fault until the upstream recovers
 ///   and pushes [`Status::Ok`] on a later cycle.
-fn drain_ready_inputs<B: Block>(block: &mut B) -> Option<usize> {
+pub(crate) fn drain_ready_inputs<B: Block>(block: &mut B) -> Option<usize> {
     let mut last_idx = None;
     let mut conversion_fault: Option<String> = None;
     let mut upstream_fault: Option<String> = None;

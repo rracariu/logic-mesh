@@ -1,5 +1,93 @@
-export { BlocksEngine, initEngine, EngineCommand } from './logic_mesh.js';
-export { defineBlock, TypedBlock } from './TypedBlock';
+export {
+  BlocksEngine,
+  initEngine,
+  EngineCommand,
+  registerConnector,
+  unregisterConnector,
+  connectorRegistered,
+  connectorIs,
+} from './logic_mesh.js';
+export { defineBlock, TypedBlock } from './TypedBlock.js';
+export {
+  createEngineSession,
+  startEngine,
+  EngineSession,
+  type EngineSessionOptions,
+} from './EngineSession.js';
+export {
+  defineJsBlocks,
+  type JsBlocks,
+  type JsBlockFn,
+  type JsBlocksOptions,
+} from './JsBlocks.js';
+
+/**
+ * The callback a connector subscription pushes values through.
+ *
+ * - `callback(value)` pushes `value` into the subscription stream.
+ * - `callback(undefined, detail)` pushes an error carrying `detail`;
+ *   the subscription stays live.
+ * - `callback()` — no arguments — ends the stream.
+ *
+ * Beware: an accidentally-`undefined` value is indistinguishable from
+ * `callback()` and silently ends the subscription. Once the engine
+ * drops the subscription the callback is destroyed and calling it
+ * throws, so stop calling it after the unsubscribe function runs.
+ */
+export type ConnectorCallback = (value?: unknown, detail?: unknown) => void;
+
+/**
+ * A connector that is implemented in JS.
+ *
+ * Register it under a name with `registerConnector` (or the
+ * `BlocksEngine.registerConnector` convenience method), then attach it
+ * to the running engine with the `addConnector` engine command; the
+ * `ExternalIn`/`ExternalOut`/`Request` blocks resolve it by name.
+ *
+ * Every method may return a Promise — the engine awaits it — or a
+ * plain value, and is invoked with `this` bound to the connector
+ * object, so class instances work. Values cross the boundary as
+ * Haystack-encoded JSON: plain JS numbers, strings, booleans and
+ * `null` map directly.
+ */
+export interface JsConnector {
+  /**
+   * Called once per subscription. Push values through `callback` and
+   * return an unsubscribe function — directly or via a Promise — to be
+   * told when the engine drops the subscription (return nothing if
+   * there is no cleanup to do). The unsubscribe function may run after
+   * the stream already ended, so it must be idempotent.
+   */
+  subscribe(
+    address: string,
+    callback: ConnectorCallback,
+  ): (() => void) | void | Promise<(() => void) | void>;
+
+  /**
+   * Publishes `value` to `address`. A thrown exception or a rejected
+   * Promise marks the publish as failed.
+   */
+  publish(address: string, value: unknown): void | Promise<void>;
+
+  /**
+   * Round-trips `value` through `address`, resolving with the
+   * response value.
+   */
+  request(address: string, value: unknown): unknown;
+
+  /**
+   * Optional. Called when the engine starts running, before any block
+   * executes.
+   */
+  start?(): void | Promise<void>;
+
+  /**
+   * Optional. Called on engine shutdown and reset. Must end every
+   * outstanding subscription by invoking its callback with no
+   * arguments.
+   */
+  stop?(): void | Promise<void>;
+}
 
 /**
  * The kind of the block pin.
@@ -231,6 +319,17 @@ export interface Program {
 
       /** User-supplied display label shown alongside the block-type name. */
       label?: string;
+
+      /**
+       * UI widget identity for ExternalIn/ExternalOut blocks placed as
+       * widgets. Editor-only metadata; the engine ignores it.
+       */
+      widget?: {
+        kind: string;
+        config?: Record<string, unknown>;
+        configSources?: Record<string, string>;
+        valueSource?: string;
+      };
 
       positions: {
         x: number;

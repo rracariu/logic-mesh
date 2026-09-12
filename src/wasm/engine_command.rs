@@ -17,6 +17,17 @@ use crate::base::engine::messages::EngineMessage;
 use crate::single_threaded::Messages;
 
 /// Commands a running instance of a Block Engine.
+///
+/// Each handle owns a private reply channel whose replies carry no
+/// correlation id: they are matched to requests purely by order, so at
+/// most one request may be outstanding per handle at a time. The
+/// methods uphold this discipline themselves — each awaits its reply
+/// before returning, and the `&mut self` borrow serializes calls on a
+/// handle — so JS callers only need to await each returned promise; a
+/// send-without-receive that desynchronizes every later reply on the
+/// handle cannot be expressed through this API. The engine also
+/// delivers replies with a non-blocking send: a full channel (capacity
+/// 32) drops the reply rather than stall the engine.
 #[wasm_bindgen]
 pub struct EngineCommand {
     uuid: Uuid,
@@ -349,6 +360,75 @@ impl EngineCommand {
                         Err(err) => log::debug!(target: "create_watch", "{err}"),
                     }
                 }
+            },
+            Err(_) => Err("Failed to send message".to_string()),
+        }
+    }
+
+    /// Attaches an already-registered connector, by name, to the
+    /// running engine: the engine resolves the name in the process-wide
+    /// connector registry, starts the connector, and manages its
+    /// lifecycle from then on. Register the connector handle first —
+    /// handles never ride in engine messages.
+    ///
+    /// A paused engine consumes requests without answering them: this
+    /// call only resolves once the engine resumes (same as every other
+    /// engine request).
+    #[wasm_bindgen(js_name = "addConnector")]
+    pub async fn add_connector(&mut self, name: String) -> Result<String, String> {
+        match self
+            .sender
+            .send(EngineMessage::AddConnectorReq(self.uuid, name))
+            .await
+        {
+            Ok(_) => match self.receiver.recv().await {
+                Some(EngineMessage::AddConnectorRes(data)) => data,
+                Some(_) => Err("Invalid response".to_string()),
+                None => Err("Failed to receive message".to_string()),
+            },
+            Err(_) => Err("Failed to send message".to_string()),
+        }
+    }
+
+    /// Detaches an engine-managed connector by name: the engine stops
+    /// tracking it, unregisters it from the process-wide registry, and
+    /// stops it. Returns the removed connector's name.
+    ///
+    /// A paused engine consumes requests without answering them: this
+    /// call only resolves once the engine resumes (same as every other
+    /// engine request).
+    #[wasm_bindgen(js_name = "removeConnector")]
+    pub async fn remove_connector(&mut self, name: String) -> Result<String, String> {
+        match self
+            .sender
+            .send(EngineMessage::RemoveConnectorReq(self.uuid, name))
+            .await
+        {
+            Ok(_) => match self.receiver.recv().await {
+                Some(EngineMessage::RemoveConnectorRes(data)) => data,
+                Some(_) => Err("Invalid response".to_string()),
+                None => Err("Failed to receive message".to_string()),
+            },
+            Err(_) => Err("Failed to send message".to_string()),
+        }
+    }
+
+    /// Lists the names of the engine-managed connectors.
+    ///
+    /// A paused engine consumes requests without answering them: this
+    /// call only resolves once the engine resumes (same as every other
+    /// engine request).
+    #[wasm_bindgen(js_name = "listConnectors")]
+    pub async fn list_connectors(&mut self) -> Result<Vec<String>, String> {
+        match self
+            .sender
+            .send(EngineMessage::ListConnectorsReq(self.uuid))
+            .await
+        {
+            Ok(_) => match self.receiver.recv().await {
+                Some(EngineMessage::ListConnectorsRes(data)) => data,
+                Some(_) => Err("Invalid response".to_string()),
+                None => Err("Failed to receive message".to_string()),
             },
             Err(_) => Err("Failed to send message".to_string()),
         }

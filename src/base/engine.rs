@@ -53,11 +53,27 @@ pub trait Engine {
     fn schedule_program_blocks(&mut self, program: &Program) -> Result<()>;
 
     /// Runs the event loop of this engine and executes the scheduled blocks.
+    ///
+    /// The returned future must be driven to completion (it resolves on
+    /// [`Shutdown`](messages::EngineMessage::Shutdown)) — it is not a
+    /// cancellation point. Dropping it mid-flight can leave a
+    /// multi-step dispatch (link wiring, connector attach) half-applied
+    /// on an engine object that remains otherwise usable.
     #[allow(async_fn_in_trait)]
     async fn run(&mut self);
 
     /// Returns a handle to this engine's messaging system so external
     /// systems can communicate with this engine once it is running.
+    ///
+    /// Replies sent back on `sender_channel` carry no correlation id,
+    /// so each channel supports one outstanding request at a time: send
+    /// a request, then receive its reply before sending the next. A
+    /// caller that abandons a receive after a completed send leaves
+    /// that reply queued and desynchronizes every later reply on the
+    /// channel. Replies are also delivered with a non-blocking send —
+    /// a full channel (the capacity is whatever the caller created
+    /// `sender_channel` with) drops the reply rather than stall
+    /// the engine — so keep the channel drained.
     fn create_message_channel(
         &mut self,
         sender_id: uuid::Uuid,
