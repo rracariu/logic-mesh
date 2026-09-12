@@ -10,7 +10,7 @@
     type OnConnectStartParams,
   } from '@xyflow/svelte';
 
-  import { toast } from '$lib/components/ui/sonner';
+  import { toast } from 'svelte-sonner';
   import type {
     BlockDesc,
     BlockNotification,
