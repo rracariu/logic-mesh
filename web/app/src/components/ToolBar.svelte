@@ -18,7 +18,7 @@
     SelectTrigger,
   } from '$lib/components/ui/select';
   import { Separator } from '$lib/components/ui/separator';
-  import { toast } from '$lib/components/ui/sonner';
+  import { toast } from 'svelte-sonner';
   import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
   import { examplePrograms } from '$lib/Examples';
   import { useEngine } from '$lib/Engine';

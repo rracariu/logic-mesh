@@ -37,14 +37,8 @@ impl Block for Replace {
             self.find.get_value(),
             self.replace.get_value(),
         ) {
-            self.out.set(
-                Str {
-                    value: input
-                        .value
-                        .replace(find.value.as_str(), replace.value.as_str()),
-                }
-                .into(),
-            );
+            self.out
+                .set(Str::from(input.replace(find.value(), replace.value())).into());
         }
     }
 }
@@ -53,7 +47,7 @@ impl Block for Replace {
 mod test {
     use assert_matches::assert_matches;
 
-    use libhaystack::val::{Str, Value};
+    use libhaystack::val::Value;
 
     use crate::{
         base::block::Block,
@@ -78,7 +72,7 @@ mod test {
 
         assert_matches!(
             block.out.value,
-            Value::Str(Str { value, .. }) if value == "ile are mere"
+            Value::Str(value) if *value == *"ile are mere"
         );
     }
 }

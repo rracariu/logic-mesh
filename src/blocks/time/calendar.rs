@@ -45,7 +45,7 @@ impl Block for Calendar {
         }
 
         let dates_str = match &self.dates.val {
-            Some(Value::Str(s)) => s.value.as_str(),
+            Some(Value::Str(s)) => s,
             _ => {
                 self.out.set(Bool { value: false }.into());
                 return;

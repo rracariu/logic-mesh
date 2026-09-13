@@ -28,10 +28,10 @@ impl Block for ParseNumber {
         self.read_inputs_until_ready().await;
 
         if let Some(Value::Str(input)) = self.input.get_value() {
-            let parsed = input.value.parse::<f64>();
+            let parsed = input.parse::<f64>();
             if let Ok(parsed) = parsed {
                 self.out.set(parsed.into());
-            } else if let Ok(Value::Number(number)) = zinc::decode::from_str(&input.value) {
+            } else if let Ok(Value::Number(number)) = zinc::decode::from_str(input) {
                 self.out.set(number.into());
             }
         }

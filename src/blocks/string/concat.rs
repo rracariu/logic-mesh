@@ -31,7 +31,7 @@ impl Block for Concat {
             .inputs()
             .iter()
             .filter_map(|input| match input.get_value() {
-                Some(Value::Str(val)) => Some(val.value.clone()),
+                Some(Value::Str(val)) => Some(val.value().to_owned()),
                 _ => None,
             })
             .reduce(|mut acc, val| {
@@ -40,7 +40,7 @@ impl Block for Concat {
             });
 
         if let Some(result) = result {
-            self.out.set(result.as_str().into())
+            self.out.set(result.into())
         }
     }
 }
@@ -49,7 +49,7 @@ impl Block for Concat {
 mod test {
     use assert_matches::assert_matches;
 
-    use libhaystack::val::{Str, Value};
+    use libhaystack::val::Value;
 
     use crate::{
         base::block::test_utils::write_block_inputs,
@@ -68,7 +68,7 @@ mod test {
 
         assert_matches!(
             block.out.value,
-            Value::Str(Str { value}) if value == "first last"
+            Value::Str(value) if *value == *"first last"
         );
     }
 }

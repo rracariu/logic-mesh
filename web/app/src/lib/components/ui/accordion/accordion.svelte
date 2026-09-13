@@ -1,15 +1,19 @@
 <script lang="ts">
-	import type { Snippet } from 'svelte';
-	import { cn } from '$lib/utils';
+	import { Accordion as AccordionPrimitive } from "bits-ui";
+	import { cn } from "$lib/utils.js";
 
-	interface Props {
-		class?: string;
-		children: Snippet;
-	}
-
-	let { class: className, children }: Props = $props();
+	let {
+		ref = $bindable(null),
+		value = $bindable(),
+		class: className,
+		...restProps
+	}: AccordionPrimitive.RootProps = $props();
 </script>
 
-<div class={cn('w-full', className)}>
-	{@render children()}
-</div>
+<AccordionPrimitive.Root
+	bind:ref
+	bind:value={value as never}
+	data-slot="accordion"
+	class={cn("flex w-full flex-col", className)}
+	{...restProps}
+/>

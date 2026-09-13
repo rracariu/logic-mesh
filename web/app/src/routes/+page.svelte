@@ -10,7 +10,7 @@
     type OnConnectStartParams,
   } from '@xyflow/svelte';
 
-  import { toast } from '$lib/components/ui/sonner';
+  import { toast } from 'svelte-sonner';
   import type {
     BlockDesc,
     BlockNotification,
@@ -86,10 +86,7 @@
         // sends an unrecognized state.
         const nextState =
           (notification.state as
-            | 'running'
-            | 'fault'
-            | 'disabled'
-            | 'terminated') ?? 'running';
+            'running' | 'fault' | 'disabled' | 'terminated') ?? 'running';
         const prevState = blockRef.value.state;
         blockRef.value.state = nextState;
         blockRef.value.faultReason = notification.faultReason;

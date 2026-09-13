@@ -40,7 +40,7 @@ impl Block for Dict {
                 }
 
                 if let (Value::Str(key), Some(value)) = (key, values.get(i)) {
-                    dict.insert(key.value.clone(), value.clone());
+                    dict.insert(key.value().into(), value.clone());
                 }
             }
 

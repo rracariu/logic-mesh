@@ -113,7 +113,7 @@ impl Block for Schedule {
 
 fn str_input(input: &InputImpl) -> Option<&str> {
     match &input.val {
-        Some(Value::Str(s)) => Some(s.value.as_str()),
+        Some(Value::Str(s)) => Some(s),
         _ => None,
     }
 }
