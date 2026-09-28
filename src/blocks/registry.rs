@@ -33,9 +33,29 @@ type BlockRegistry = Mutex<MapType>;
 pub struct BlockEntry {
     /// Block descriptor (name, library, pins, etc.).
     pub desc: BlockDesc,
-    /// Factory function that creates a new instance of this block.
-    pub make: Option<fn() -> Box<DynBlockProps>>,
-    pub(crate) make_erased: Option<fn(Option<Uuid>) -> RegisteredBlock>,
+    /// How to instantiate the block. [`None`] for a description-only
+    /// entry (see [`register_block_desc`]), whose implementation lives
+    /// outside the registry — e.g. a JS block.
+    factory: Option<BlockFactory>,
+}
+
+impl BlockEntry {
+    /// Creates a new instance of this block, or [`None`] for a
+    /// description-only entry.
+    pub fn make(&self) -> Option<Box<DynBlockProps>> {
+        self.factory.map(|factory| (factory.make)())
+    }
+}
+
+/// The constructors of a type-registered block, held as one unit so an
+/// entry can either build its block both ways or not at all.
+#[derive(Debug, Clone, Copy)]
+struct BlockFactory {
+    /// Builds the block's properties as a trait object.
+    make: fn() -> Box<DynBlockProps>,
+    /// Builds a schedulable, type-erased instance, with a fixed id if
+    /// one is given.
+    make_erased: fn(Option<Uuid>) -> RegisteredBlock,
 }
 
 /// Receives a block the registry constructed by name, as its concrete
@@ -299,8 +319,7 @@ include!(concat!(env!("OUT_DIR"), "/block_registry.rs"));
 
 /// Constructs block properties from the registry.
 pub fn make(name: &str, lib: Option<&str>) -> Option<Box<DynBlockProps>> {
-    let entry = get_block(name, lib)?;
-    entry.make.map(|make| make())
+    get_block(name, lib)?.make()
 }
 
 /// Schedules a block by name on `eng`, returning its UUID.
@@ -408,8 +427,7 @@ pub fn register_block_desc(desc: &BlockDesc) -> Result<(), RegistryError> {
         name.to_string(),
         BlockEntry {
             desc: desc.clone(),
-            make: None,
-            make_erased: None,
+            factory: None,
         },
     );
 
@@ -513,7 +531,8 @@ fn make_registered(
         if let Some(lib) = lib {
             reg.get(lib)
                 .and_then(|blocks| blocks.get(name))
-                .and_then(|entry| entry.make_erased)
+                .and_then(|entry| entry.factory)
+                .map(|factory| factory.make_erased)
                 .ok_or_else(|| RegistryError::BlockNotFound {
                     library: lib.to_string(),
                     name: name.to_string(),
@@ -524,8 +543,8 @@ fn make_registered(
                 .filter_map(|(lib, blocks)| {
                     blocks
                         .get(name)
-                        .and_then(|entry| entry.make_erased)
-                        .map(|make| (lib.as_str(), make))
+                        .and_then(|entry| entry.factory)
+                        .map(|factory| (lib.as_str(), factory.make_erased))
                 })
                 .collect();
 
@@ -624,8 +643,7 @@ fn register_impl<B: RegisterableBlock>(reg: &mut MapType) -> Result<(), Registry
 
         BlockEntry {
             desc: desc.clone(),
-            make: Some(make),
-            make_erased: Some(make_erased),
+            factory: Some(BlockFactory { make, make_erased }),
         }
     });
 
@@ -651,10 +669,10 @@ mod test {
         assert_eq!(random.desc.name, "Random");
         assert_eq!(sine.desc.name, "SineWave");
 
-        let mut random = random.make.unwrap()();
+        let mut random = random.make().unwrap();
         let mut outs = random.outputs_mut();
 
-        let mut add = add.make.unwrap()();
+        let mut add = add.make().unwrap();
         let mut ins = add.inputs_mut();
 
         let out = outs.first_mut().unwrap();
@@ -776,6 +794,27 @@ mod test {
                 eng.block_handles()
                     .iter()
                     .any(|b| b.desc().name == "Increment" && b.desc().library == "runtime_test")
+            );
+        }
+
+        /// A description-only entry — how JS blocks are registered —
+        /// carries no factory, so it cannot be built by the registry.
+        #[test]
+        fn description_only_entry_has_no_factory() {
+            let mut desc = <Increment as crate::base::block::BlockStaticDesc>::desc().clone();
+            desc.library = "desc_only_test".to_string();
+            register_block_desc(&desc).expect("registered");
+
+            let entry = get_block("Increment", Some("desc_only_test")).expect("entry");
+            assert!(entry.make().is_none());
+
+            let mut eng = crate::single_threaded::SingleThreadedEngine::new();
+            let err = schedule_block("Increment", Some("desc_only_test"), &mut eng)
+                .expect_err("nothing to construct");
+            assert_matches::assert_matches!(
+                err,
+                crate::base::error::Error::Registry(RegistryError::BlockNotFound { library, .. })
+                    if library == "desc_only_test"
             );
         }
 
