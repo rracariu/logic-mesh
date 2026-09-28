@@ -70,6 +70,15 @@ pub enum EngineError {
         pin: String,
     },
 
+    /// The named input does not exist on the block.
+    #[error("Input '{pin}' not found on block '{block}'")]
+    InputNotFound {
+        /// The block the input was looked up on.
+        block: Uuid,
+        /// The input name that was not found.
+        pin: String,
+    },
+
     /// The block's actor task is no longer running, so the request could
     /// not be delivered.
     #[error("Block '{id}' actor task is gone")]
