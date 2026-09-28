@@ -16,9 +16,8 @@ use wasm_bindgen_futures::JsFuture;
 
 use crate::base::block::desc::BlockRunCondition;
 use crate::base::block::{Block, BlockState, BlockStaticDesc};
-use crate::base::engine::Engine;
 
-use crate::blocks::registry::eval_block_impl;
+use crate::blocks::registry::{BlockSink, eval_block_impl};
 use crate::blocks::utils::get_sleep_dur;
 use crate::tokio_impl::block::drain_ready_inputs;
 use crate::{
@@ -358,10 +357,7 @@ impl Block for JsBlock {
 }
 
 pub(crate) fn schedule_js_block(
-    engine: &mut impl Engine<
-        Reader = <InputImpl as InputProps>::Reader,
-        Writer = <InputImpl as InputProps>::Writer,
-    >,
+    engine: &mut impl BlockSink,
     desc: &BlockDesc,
     block_id: Option<Uuid>,
 ) -> Result<Uuid> {
@@ -370,7 +366,7 @@ pub(crate) fn schedule_js_block(
     let block = JsBlock::new(desc.clone(), func, block_id);
     let id = *block.id();
 
-    engine.schedule(block)?;
+    engine.accept(block)?;
 
     Ok(id)
 }

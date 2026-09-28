@@ -176,16 +176,40 @@ pub(super) async fn unregister_and_stop_connectors(connectors: &mut Vec<String>)
     }
 }
 
-/// Drop transition: unregister every still-tracked connector so a
-/// dropped engine does not leave the process-wide registry holding
-/// entries that would reject re-registration with `AlreadyRegistered`.
+/// The names of the connectors an engine manages, which it unregisters
+/// when dropped.
 ///
-/// `stop` is not awaited — `Drop` cannot await; connectors own their
-/// IO tasks and wind those down from their own `Drop` once the
-/// registry releases the last handle.
-pub(super) fn unregister_connectors(connectors: &mut Vec<String>) {
-    for name in std::mem::take(connectors) {
-        unregister_connector(&name);
+/// Owning the drop transition here, rather than on the engine, lets an
+/// engine move its fields between phases without triggering it.
+#[derive(Default)]
+pub(super) struct ManagedConnectors(Vec<String>);
+
+impl std::ops::Deref for ManagedConnectors {
+    type Target = Vec<String>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl std::ops::DerefMut for ManagedConnectors {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
+impl Drop for ManagedConnectors {
+    /// Drop transition: unregister every still-tracked connector so a
+    /// dropped engine does not leave the process-wide registry holding
+    /// entries that would reject re-registration with `AlreadyRegistered`.
+    ///
+    /// `stop` is not awaited — `Drop` cannot await; connectors own their
+    /// IO tasks and wind those down from their own `Drop` once the
+    /// registry releases the last handle.
+    fn drop(&mut self) {
+        for name in std::mem::take(&mut self.0) {
+            unregister_connector(&name);
+        }
     }
 }
 

@@ -88,16 +88,6 @@ pub enum EngineError {
     /// The block's actor task answered the request with a failure.
     #[error("Block actor rejected the request: {0}")]
     BlockRequestRejected(String),
-
-    /// The multi-threaded engine cannot schedule through the
-    /// [`Engine`](crate::base::engine::Engine) trait, whose signature
-    /// cannot express the required `Send` bound.
-    #[error(
-        "MultiThreadedEngine cannot schedule through the `Engine` trait \
-         (requires `Send`); use the inherent `schedule_send` method or \
-         the `*_send` registry entry points instead"
-    )]
-    ScheduleRequiresSend,
 }
 
 /// Parses a block id, tagging a failure with the string that was rejected.

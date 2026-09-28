@@ -7,7 +7,7 @@
 //! actor tasks owned by
 //! [`SingleThreadedEngine`](super::single_threaded::engine::SingleThreadedEngine).
 
-use crate::base::engine::messages::EngineMessage;
+use crate::base::engine::{Running, messages::EngineMessage};
 
 use crate::base::error::{RegistryError, parse_block_uuid};
 use crate::blocks::registry::{CORE_LIB, get_block};
@@ -17,7 +17,7 @@ use uuid::Uuid;
 
 use super::eval_block;
 
-pub(super) async fn dispatch_message(engine: &mut SingleThreadedEngine, msg: Messages) {
+pub(super) async fn dispatch_message(engine: &mut SingleThreadedEngine<Running>, msg: Messages) {
     match msg {
         EngineMessage::AddBlockReq(sender_uuid, block_name, block_uuid, lib) => {
             log::debug!(
@@ -214,7 +214,11 @@ pub(super) async fn dispatch_message(engine: &mut SingleThreadedEngine, msg: Mes
 /// [`create_message_channel`](crate::base::engine::Engine::create_message_channel).
 /// `try_send` keeps the dispatcher from ever blocking on a slow caller:
 /// if the (capacity-32) channel is full, the reply is silently dropped.
-fn reply_to_sender(engine: &mut SingleThreadedEngine, sender_uuid: Uuid, engine_message: Messages) {
+fn reply_to_sender(
+    engine: &mut SingleThreadedEngine<Running>,
+    sender_uuid: Uuid,
+    engine_message: Messages,
+) {
     for (sender_id, sender) in engine.reply_senders.iter() {
         if sender_id != &sender_uuid {
             continue;

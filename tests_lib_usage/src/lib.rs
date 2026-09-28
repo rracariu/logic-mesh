@@ -283,23 +283,17 @@ mod tests {
         );
     }
 
+    /// The engine-generic entry point also serves the MT engine: its
+    /// `Send` requirement is part of the `Engine::schedule` bound.
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn registered_block_schedules_on_multi_threaded_engine() {
         let _ = logic_mesh::blocks::registry::register::<Double>();
 
         let mut eng = logic_mesh::multi_threaded::MultiThreadedEngine::new();
-        logic_mesh::blocks::registry::schedule_block_send("Double", Some("downstream"), &mut eng)
-            .expect("schedule registered block on MT engine");
-    }
-
-    #[test]
-    fn generic_schedule_on_multi_threaded_engine_errors() {
-        let _ = logic_mesh::blocks::registry::register::<Double>();
-
-        let mut eng = logic_mesh::multi_threaded::MultiThreadedEngine::new();
-        let err =
+        let id =
             logic_mesh::blocks::registry::schedule_block("Double", Some("downstream"), &mut eng)
-                .expect_err("trait-path scheduling on the MT engine should error, not panic");
-        assert!(err.to_string().contains("schedule_send"));
+                .expect("schedule registered block on MT engine");
+
+        assert!(eng.block_handles().iter().any(|b| *b.id() == id));
     }
 }
