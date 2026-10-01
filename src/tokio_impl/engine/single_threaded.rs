@@ -99,7 +99,7 @@ mod tests {
 
         let missing = Uuid::new_v4();
         let err = eng
-            .connect_blocks_sync(&link(missing.to_string(), add_uuid.to_string(), "in0"))
+            .validate_link(&link(missing.to_string(), add_uuid.to_string(), "in0"))
             .expect_err("unknown source block is rejected");
         assert_matches!(
             err,
@@ -107,7 +107,7 @@ mod tests {
         );
 
         let err = eng
-            .connect_blocks_sync(&link(
+            .validate_link(&link(
                 add_uuid.to_string(),
                 add_uuid.to_string(),
                 "no_such_pin",
@@ -709,7 +709,7 @@ mod tests {
                 rt.block_on(handle)
             });
 
-            eng.run().await;
+            let eng = eng.run().await;
             driver.join().unwrap().unwrap();
 
             assert!(started.load(Ordering::SeqCst), "start driven by run()");
@@ -718,7 +718,11 @@ mod tests {
                 get_connector(&name).is_some(),
                 "shutdown keeps the connector registered for a re-run"
             );
-            unregister_connector(&name);
+            drop(eng);
+            assert!(
+                get_connector(&name).is_none(),
+                "dropping the engine unregisters the connector"
+            );
         }
 
         #[tokio::test(flavor = "current_thread")]

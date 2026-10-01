@@ -9,7 +9,7 @@ use crate::base::block::{
 use crate::base::input::input_reader::InputReader;
 use libhaystack::val::Value;
 
-use crate::base::engine::Engine;
+use crate::base::engine::{Engine, MaybeSendSync};
 
 use crate::base::error::{RegistryError, Result};
 use std::collections::HashMap;
@@ -33,9 +33,58 @@ type BlockRegistry = Mutex<MapType>;
 pub struct BlockEntry {
     /// Block descriptor (name, library, pins, etc.).
     pub desc: BlockDesc,
-    /// Factory function that creates a new instance of this block.
-    pub make: Option<fn() -> Box<DynBlockProps>>,
-    pub(crate) make_erased: Option<fn(Option<Uuid>) -> RegisteredBlock>,
+    /// How to instantiate the block. [`None`] for a description-only
+    /// entry (see [`register_block_desc`]), whose implementation lives
+    /// outside the registry — e.g. a JS block.
+    factory: Option<BlockFactory>,
+}
+
+impl BlockEntry {
+    /// Creates a new instance of this block, or [`None`] for a
+    /// description-only entry.
+    pub fn make(&self) -> Option<Box<DynBlockProps>> {
+        self.factory.map(|factory| (factory.make)())
+    }
+}
+
+/// The constructors of a type-registered block, held as one unit so an
+/// entry can either build its block both ways or not at all.
+#[derive(Debug, Clone, Copy)]
+struct BlockFactory {
+    /// Builds the block's properties as a trait object.
+    make: fn() -> Box<DynBlockProps>,
+    /// Builds a schedulable, type-erased instance, with a fixed id if
+    /// one is given.
+    make_erased: fn(Option<Uuid>) -> RegisteredBlock,
+}
+
+/// Receives a block the registry constructed by name, as its concrete
+/// type — so statically compiled blocks keep static dispatch all the
+/// way into their actor task.
+///
+/// Implemented by the engines in every phase (blocks are added by name
+/// both while configuring and while running) and, for the public
+/// [`schedule_block`] entry points, by [`Engine`] implementors.
+pub(crate) trait BlockSink {
+    /// Takes ownership of `block`, typically scheduling it.
+    fn accept<B>(&mut self, block: B) -> Result<()>
+    where
+        B: Block<Reader = ReaderImpl, Writer = WriterImpl> + MaybeSendSync + 'static;
+}
+
+/// [`BlockSink`] that schedules through the public [`Engine`] trait.
+struct ScheduleOn<'a, E>(&'a mut E);
+
+impl<E> BlockSink for ScheduleOn<'_, E>
+where
+    E: Engine<Reader = ReaderImpl, Writer = WriterImpl>,
+{
+    fn accept<B>(&mut self, block: B) -> Result<()>
+    where
+        B: Block<Reader = ReaderImpl, Writer = WriterImpl> + MaybeSendSync + 'static,
+    {
+        self.0.schedule(block)
+    }
 }
 
 /// Object-safe view over [`Block`] so runtime-registered blocks can be
@@ -193,105 +242,39 @@ macro_rules! register_blocks {
 		});
 
 
-		/// Schedules a block by name on `eng`, returning its UUID.
+		/// Constructs the block registered under `name` — with the fixed
+		/// id `uuid`, if given — and hands it to `sink`, returning its id.
 		///
-		/// The block must be statically registered, or registered at
-		/// runtime via [`register`]. `lib` of [`None`] searches all
-		/// libraries and errors if the name is ambiguous.
-		///
-		/// # Examples
-		///
-		/// ```
-		/// use logic_mesh::{
-		///     base::engine::Engine,
-		///     blocks::registry::schedule_block,
-		///     single_threaded::SingleThreadedEngine,
-		/// };
-		///
-		/// let mut engine = SingleThreadedEngine::new();
-		/// let id = schedule_block("Add", Some("core"), &mut engine)?;
-		/// assert!(engine.block_handles().iter().any(|b| *b.id() == id));
-		/// # Ok::<(), logic_mesh::Error>(())
-		/// ```
-		pub fn schedule_block<E>(name: &str, lib: Option<&str>, eng: &mut E) -> Result<uuid::Uuid>
-		where E : Engine<Reader = ReaderImpl, Writer = WriterImpl> {
-
+		/// Statically compiled blocks are handed over as their concrete
+		/// type; anything else falls back to the runtime registry and is
+		/// handed over as a [`RegisteredBlock`]. `lib` of [`None`]
+		/// searches all libraries and errors if the name is ambiguous.
+		pub(crate) fn make_block_into<K: BlockSink>(
+			name: &str,
+			lib: Option<&str>,
+			uuid: Option<uuid::Uuid>,
+			sink: &mut K,
+		) -> Result<uuid::Uuid> {
 			if lib == Some(CORE_LIB) {
 				match name {
 					$(
 						stringify!($block_name) => {
-							let block = <$block_name>::new();
-							let uuid = *block.id();
-							eng.schedule(block)?;
-							return Ok(uuid);
+							let block = match uuid {
+								Some(uuid) => <$block_name>::new_uuid(uuid),
+								None => <$block_name>::new(),
+							};
+							let id = *block.id();
+							sink.accept(block)?;
+							return Ok(id);
 						}
 					)*
 					_ => {}
 				}
 			}
-			schedule_registered(name, lib, None, eng)
-
-		}
-
-		/// Schedules a block by name with a specific UUID.
-		/// See [`schedule_block`] for more details.
-		pub fn schedule_block_with_uuid<E>(name: &str, lib: Option<&str>, uuid: uuid::Uuid, eng: &mut E) -> Result<uuid::Uuid>
-		where E : Engine<Reader = ReaderImpl, Writer = WriterImpl> {
-
-			if lib == Some(CORE_LIB) {
-				match name {
-					$(
-						stringify!($block_name) => {
-							let block = <$block_name>::new_uuid(uuid);
-							eng.schedule(block)?;
-							return Ok(uuid);
-						}
-					)*
-					_ => {}
-				}
-			}
-			schedule_registered(name, lib, Some(uuid), eng)
-
-		}
-
-		/// Schedules a block by name on a multi-threaded engine.
-		/// The block must be [`Send`].
-		#[cfg(feature = "multi-threaded")]
-		#[cfg(not(target_arch = "wasm32"))]
-		pub fn schedule_block_send(name: &str, lib: Option<&str>, eng: &mut $crate::tokio_impl::engine::multi_threaded::MultiThreadedEngine) -> Result<uuid::Uuid> {
-			if lib == Some(CORE_LIB) {
-				match name {
-					$(
-						stringify!($block_name) => {
-							let block = <$block_name>::new();
-							let uuid = *block.id();
-							eng.schedule_send(block);
-							return Ok(uuid);
-						}
-					)*
-					_ => {}
-				}
-			}
-			schedule_registered_send(name, lib, None, eng)
-		}
-
-		/// Schedules a block by name and UUID on a multi-threaded engine.
-		#[cfg(feature = "multi-threaded")]
-		#[cfg(not(target_arch = "wasm32"))]
-		pub fn schedule_block_send_with_uuid(name: &str, lib: Option<&str>, uuid: uuid::Uuid, eng: &mut $crate::tokio_impl::engine::multi_threaded::MultiThreadedEngine) -> Result<uuid::Uuid> {
-			if lib == Some(CORE_LIB) {
-				match name {
-					$(
-						stringify!($block_name) => {
-							let block = <$block_name>::new_uuid(uuid);
-							eng.schedule_send(block);
-							return Ok(uuid);
-						}
-					)*
-					_ => {}
-				}
-			}
-			schedule_registered_send(name, lib, Some(uuid), eng)
+			let block = make_registered(name, lib, uuid)?;
+			let id = *block.id();
+			sink.accept(block)?;
+			Ok(id)
 		}
 
 		/// Evaluates a statically registered block by name, returning its
@@ -336,8 +319,45 @@ include!(concat!(env!("OUT_DIR"), "/block_registry.rs"));
 
 /// Constructs block properties from the registry.
 pub fn make(name: &str, lib: Option<&str>) -> Option<Box<DynBlockProps>> {
-    let entry = get_block(name, lib)?;
-    entry.make.map(|make| make())
+    get_block(name, lib)?.make()
+}
+
+/// Schedules a block by name on `eng`, returning its UUID.
+///
+/// The block must be statically registered, or registered at runtime
+/// via [`register`]. `lib` of [`None`] searches all libraries and errors
+/// if the name is ambiguous. Works with every engine: registered blocks
+/// meet the multi-threaded engine's [`Send`] + [`Sync`] requirement.
+///
+/// # Examples
+///
+/// ```
+/// use logic_mesh::{blocks::registry::schedule_block, single_threaded::SingleThreadedEngine};
+///
+/// let mut engine = SingleThreadedEngine::new();
+/// let id = schedule_block("Add", Some("core"), &mut engine)?;
+/// assert!(engine.block_handles().iter().any(|b| *b.id() == id));
+/// # Ok::<(), logic_mesh::Error>(())
+/// ```
+pub fn schedule_block<E>(name: &str, lib: Option<&str>, eng: &mut E) -> Result<Uuid>
+where
+    E: Engine<Reader = ReaderImpl, Writer = WriterImpl>,
+{
+    make_block_into(name, lib, None, &mut ScheduleOn(eng))
+}
+
+/// Schedules a block by name with a specific UUID.
+/// See [`schedule_block`] for more details.
+pub fn schedule_block_with_uuid<E>(
+    name: &str,
+    lib: Option<&str>,
+    uuid: Uuid,
+    eng: &mut E,
+) -> Result<Uuid>
+where
+    E: Engine<Reader = ReaderImpl, Writer = WriterImpl>,
+{
+    make_block_into(name, lib, Some(uuid), &mut ScheduleOn(eng))
 }
 
 /// Returns a block entry from the registry.
@@ -407,8 +427,7 @@ pub fn register_block_desc(desc: &BlockDesc) -> Result<(), RegistryError> {
         name.to_string(),
         BlockEntry {
             desc: desc.clone(),
-            make: None,
-            make_erased: None,
+            factory: None,
         },
     );
 
@@ -512,7 +531,8 @@ fn make_registered(
         if let Some(lib) = lib {
             reg.get(lib)
                 .and_then(|blocks| blocks.get(name))
-                .and_then(|entry| entry.make_erased)
+                .and_then(|entry| entry.factory)
+                .map(|factory| factory.make_erased)
                 .ok_or_else(|| RegistryError::BlockNotFound {
                     library: lib.to_string(),
                     name: name.to_string(),
@@ -523,8 +543,8 @@ fn make_registered(
                 .filter_map(|(lib, blocks)| {
                     blocks
                         .get(name)
-                        .and_then(|entry| entry.make_erased)
-                        .map(|make| (lib.as_str(), make))
+                        .and_then(|entry| entry.factory)
+                        .map(|factory| (lib.as_str(), factory.make_erased))
                 })
                 .collect();
 
@@ -549,41 +569,6 @@ fn make_registered(
     };
 
     Ok(make(uuid))
-}
-
-/// Schedules a runtime-registered block. Fallback used by [`schedule_block`]
-/// and friends when the name doesn't match a statically compiled block —
-/// e.g. blocks registered by downstream crates via [`register`].
-#[doc(hidden)]
-pub fn schedule_registered<E>(
-    name: &str,
-    lib: Option<&str>,
-    uuid: Option<Uuid>,
-    eng: &mut E,
-) -> Result<Uuid>
-where
-    E: Engine<Reader = ReaderImpl, Writer = WriterImpl>,
-{
-    let block = make_registered(name, lib, uuid)?;
-    let id = *block.id();
-    eng.schedule(block)?;
-    Ok(id)
-}
-
-/// [`schedule_registered`] for the multi-threaded engine.
-#[cfg(feature = "multi-threaded")]
-#[cfg(not(target_arch = "wasm32"))]
-#[doc(hidden)]
-pub fn schedule_registered_send(
-    name: &str,
-    lib: Option<&str>,
-    uuid: Option<Uuid>,
-    eng: &mut crate::tokio_impl::engine::multi_threaded::MultiThreadedEngine,
-) -> Result<Uuid> {
-    let block = make_registered(name, lib, uuid)?;
-    let id = *block.id();
-    eng.schedule_send(block);
-    Ok(id)
 }
 
 /// Evaluates a runtime-registered block. Fallback used by
@@ -658,8 +643,7 @@ fn register_impl<B: RegisterableBlock>(reg: &mut MapType) -> Result<(), Registry
 
         BlockEntry {
             desc: desc.clone(),
-            make: Some(make),
-            make_erased: Some(make_erased),
+            factory: Some(BlockFactory { make, make_erased }),
         }
     });
 
@@ -685,10 +669,10 @@ mod test {
         assert_eq!(random.desc.name, "Random");
         assert_eq!(sine.desc.name, "SineWave");
 
-        let mut random = random.make.unwrap()();
+        let mut random = random.make().unwrap();
         let mut outs = random.outputs_mut();
 
-        let mut add = add.make.unwrap()();
+        let mut add = add.make().unwrap();
         let mut ins = add.inputs_mut();
 
         let out = outs.first_mut().unwrap();
@@ -813,6 +797,27 @@ mod test {
             );
         }
 
+        /// A description-only entry — how JS blocks are registered —
+        /// carries no factory, so it cannot be built by the registry.
+        #[test]
+        fn description_only_entry_has_no_factory() {
+            let mut desc = <Increment as crate::base::block::BlockStaticDesc>::desc().clone();
+            desc.library = "desc_only_test".to_string();
+            register_block_desc(&desc).expect("registered");
+
+            let entry = get_block("Increment", Some("desc_only_test")).expect("entry");
+            assert!(entry.make().is_none());
+
+            let mut eng = crate::single_threaded::SingleThreadedEngine::new();
+            let err = schedule_block("Increment", Some("desc_only_test"), &mut eng)
+                .expect_err("nothing to construct");
+            assert_matches::assert_matches!(
+                err,
+                crate::base::error::Error::Registry(RegistryError::BlockNotFound { library, .. })
+                    if library == "desc_only_test"
+            );
+        }
+
         #[tokio::test]
         async fn unknown_block_still_errors() {
             assert!(
@@ -911,13 +916,20 @@ mod test {
             }
         }
 
+        /// The `Send` requirement is enforced by the `Engine::schedule`
+        /// bound, so the generic entry points schedule on the MT engine
+        /// too — built-in and runtime-registered blocks alike.
         #[cfg(feature = "multi-threaded")]
-        #[test]
-        fn generic_schedule_on_mt_engine_errors_instead_of_panicking() {
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn generic_schedule_works_on_mt_engine() {
+            let _ = register::<Increment>();
+
             let mut eng = crate::tokio_impl::engine::multi_threaded::MultiThreadedEngine::new();
-            let err = schedule_block("Add", Some(CORE_LIB), &mut eng)
-                .expect_err("trait-path scheduling on the MT engine should error");
-            assert!(err.to_string().contains("schedule_send"));
+            let add = schedule_block("Add", Some(CORE_LIB), &mut eng).expect("built-in");
+            let inc = schedule_block("Increment", None, &mut eng).expect("runtime-registered");
+
+            let ids: Vec<Uuid> = eng.block_handles().iter().map(|b| *b.id()).collect();
+            assert!(ids.contains(&add) && ids.contains(&inc));
         }
 
         #[tokio::test]

@@ -70,6 +70,15 @@ pub enum EngineError {
         pin: String,
     },
 
+    /// The named input does not exist on the block.
+    #[error("Input '{pin}' not found on block '{block}'")]
+    InputNotFound {
+        /// The block the input was looked up on.
+        block: Uuid,
+        /// The input name that was not found.
+        pin: String,
+    },
+
     /// The block's actor task is no longer running, so the request could
     /// not be delivered.
     #[error("Block '{id}' actor task is gone")]
@@ -88,16 +97,6 @@ pub enum EngineError {
     /// The block's actor task answered the request with a failure.
     #[error("Block actor rejected the request: {0}")]
     BlockRequestRejected(String),
-
-    /// The multi-threaded engine cannot schedule through the
-    /// [`Engine`](crate::base::engine::Engine) trait, whose signature
-    /// cannot express the required `Send` bound.
-    #[error(
-        "MultiThreadedEngine cannot schedule through the `Engine` trait \
-         (requires `Send`); use the inherent `schedule_send` method or \
-         the `*_send` registry entry points instead"
-    )]
-    ScheduleRequiresSend,
 }
 
 /// Parses a block id, tagging a failure with the string that was rejected.

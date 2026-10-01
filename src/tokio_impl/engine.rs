@@ -10,10 +10,8 @@ use uuid::Uuid;
 
 use crate::{
     base::block::{BlockDesc, desc::BlockImplementation},
-    blocks::registry::{eval_static_block, schedule_block, schedule_block_with_uuid},
+    blocks::registry::{BlockSink, eval_static_block, make_block_into},
 };
-
-use self::single_threaded::SingleThreadedEngine;
 
 mod block_mailbox;
 mod connectors;
@@ -24,43 +22,41 @@ pub mod single_threaded;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod multi_threaded;
 
+/// Constructs the block `block` describes and hands it to `sink` — an
+/// engine in either phase — returning its id.
 pub(super) fn schedule_block_on_engine(
     block: &BlockDesc,
     block_id: Option<Uuid>,
-    engine: &mut SingleThreadedEngine,
+    sink: &mut impl BlockSink,
 ) -> Result<Uuid> {
     if block.implementation == BlockImplementation::External {
         #[cfg(target_arch = "wasm32")]
         {
             use crate::wasm::js_block::schedule_js_block;
-            schedule_js_block(engine, block, block_id)
+            schedule_js_block(sink, block, block_id)
         }
         #[cfg(not(target_arch = "wasm32"))]
         {
             Err(ExternalError::Unsupported.into())
         }
-    } else if let Some(uuid) = block_id {
-        schedule_block_with_uuid(&block.name, Some(&block.library), uuid, engine)
     } else {
-        schedule_block(&block.name, Some(&block.library), engine)
+        make_block_into(&block.name, Some(&block.library), block_id, sink)
     }
 }
 
+/// [`schedule_block_on_engine`] for the multi-threaded engine, which
+/// reports external blocks with its own error.
 #[cfg(feature = "multi-threaded")]
 #[cfg(not(target_arch = "wasm32"))]
 pub(super) fn schedule_block_on_engine_mt(
     block: &BlockDesc,
     block_id: Option<Uuid>,
-    engine: &mut multi_threaded::MultiThreadedEngine,
+    sink: &mut impl BlockSink,
 ) -> Result<Uuid> {
-    use crate::blocks::registry::{schedule_block_send, schedule_block_send_with_uuid};
-
     if block.implementation == BlockImplementation::External {
         Err(ExternalError::UnsupportedMultiThreaded.into())
-    } else if let Some(uuid) = block_id {
-        schedule_block_send_with_uuid(&block.name, Some(&block.library), uuid, engine)
     } else {
-        schedule_block_send(&block.name, Some(&block.library), engine)
+        make_block_into(&block.name, Some(&block.library), block_id, sink)
     }
 }
 

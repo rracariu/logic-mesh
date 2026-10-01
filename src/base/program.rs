@@ -9,9 +9,12 @@
 //! instance; that fused two concerns and made the saveable format a
 //! generic. The new [`Program`] is plain data — engine instances are
 //! managed separately and load it via [`crate::base::engine::Engine`].
+//! To assemble one in code, use [`ProgramBuilder`].
 
+pub mod builder;
 pub mod data;
 
+pub use builder::{BlockRef, ProgramBlockBuilder, ProgramBuilder};
 pub use data::{BlockData, LinkData, PinValue, Position, Program, ProgramBlock, ProgramMeta};
 
 #[cfg(test)]

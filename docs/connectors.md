@@ -156,14 +156,14 @@ Shared behaviour:
 
 ### 4.5 Engine-managed lifecycle — `src/tokio_impl/engine/connectors.rs`
 
-Both engines — single- and multi-threaded — hold a `Vec<String>` of managed connector names and
-share the same free functions, so their semantics are identical by construction.
+Both engines — single- and multi-threaded — hold a list of managed connector names and share the
+same free functions, so their semantics are identical by construction.
 
 | Engine event | Effect on managed connectors |
 |---|---|
 | `add_connector(name, handle)` before `run` | registered and added to the managed list |
 | `run()` | `start()` awaited on each **before any block actor makes progress** |
-| `Shutdown` | `stop()` awaited; connectors **stay registered and managed**, so a re-run restarts them |
+| `Shutdown` | `stop()` awaited; connectors **stay registered and managed** by the idle engine `run()` hands back, so a re-run restarts them |
 | `Reset` | **unregister first**, then `stop()`; managed list cleared |
 | `AddConnectorReq(name)` while running | resolve name → `start()` → add to list; on failure `stop()` is awaited and the name stays registered so a retry is possible |
 | `RemoveConnectorReq(name)` while running | remove from list → unregister → `stop()` |
@@ -228,8 +228,9 @@ stateDiagram-v2
   Started --> [*]: Reset / RemoveConnectorReq — unregister, then stop()
 ```
 
-A connector is retained on `Shutdown` so that `run()` can be called again with the same bindings,
-which is why `start` must tolerate being called on an already-stopped connector. Dropping the engine
+A connector is retained on `Shutdown` so that `run()` can be called again with the same bindings —
+`run()` consumes the idle engine and hands it back on `Shutdown` — which is why `start` must
+tolerate being called on an already-stopped connector. Dropping the engine
 leaves any state: its managed connectors are unregistered without awaiting `stop`, since `Drop`
 cannot await (see the table in §4.5).
 

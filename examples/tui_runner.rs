@@ -44,10 +44,7 @@ use uuid::Uuid;
 
 use logic_mesh::base::engine::Engine;
 use logic_mesh::base::engine::messages::{ChangeSource, EngineMessage, WatchMessage};
-use logic_mesh::base::program::{
-    Program, ProgramBlock,
-    data::{LinkData, PinValue, Position},
-};
+use logic_mesh::base::program::{Program, ProgramBuilder};
 use logic_mesh::multi_threaded::MultiThreadedEngine;
 
 type Backend = CrosstermBackend<Stdout>;
@@ -67,7 +64,7 @@ struct BlockRow {
 async fn main() -> anyhow::Result<()> {
     // ----- 1. Build a small Program in code (same shape as the JSON
     //         shape the web editor produces) -----
-    let program = sample_program();
+    let program = sample_program()?;
 
     // ----- 2. Spin up the engine -----
     let mut eng = MultiThreadedEngine::new();
@@ -302,89 +299,32 @@ fn restore_terminal(terminal: &mut Terminal<Backend>) -> io::Result<()> {
 /// (e.g., another block) that reads the periodic block's output.
 /// In this demo we keep things minimal and use `Add` (which has no
 /// such guard) as the visible leaf.
-fn sample_program() -> Program {
-    let sine1 = Uuid::new_v4();
-    let sine2 = Uuid::new_v4();
-    let adder = Uuid::new_v4();
+fn sample_program() -> logic_mesh::Result<Program> {
+    let mut builder =
+        ProgramBuilder::new("sine + sum").description("Two sine sources feeding an adder.");
 
-    let mut blocks = BTreeMap::new();
-    blocks.insert(
-        sine1.to_string(),
-        ProgramBlock {
-            name: "SineWave".to_string(),
-            lib: "core".to_string(),
-            label: Some("fast sine".to_string()),
-            positions: Some(Position { x: 0.0, y: 0.0 }),
-            inputs: pin_map(&[("freq", 50.into()), ("amplitude", 3.into())]),
-            outputs: Default::default(),
-        },
-    );
-    blocks.insert(
-        sine2.to_string(),
-        ProgramBlock {
-            name: "SineWave".to_string(),
-            lib: "core".to_string(),
-            label: Some("slow sine".to_string()),
-            positions: Some(Position { x: 0.0, y: 100.0 }),
-            inputs: pin_map(&[("freq", 200.into()), ("amplitude", 7.into())]),
-            outputs: Default::default(),
-        },
-    );
-    blocks.insert(
-        adder.to_string(),
-        ProgramBlock {
-            name: "Add".to_string(),
-            lib: "core".to_string(),
-            label: Some("sum".to_string()),
-            positions: Some(Position { x: 200.0, y: 50.0 }),
-            inputs: Default::default(),
-            outputs: Default::default(),
-        },
-    );
+    let sine1 = builder
+        .add_block("SineWave")?
+        .label("fast sine")
+        .position(0.0, 0.0)
+        .input("freq", 50)?
+        .input("amplitude", 3)?
+        .finish();
+    let sine2 = builder
+        .add_block("SineWave")?
+        .label("slow sine")
+        .position(0.0, 100.0)
+        .input("freq", 200)?
+        .input("amplitude", 7)?
+        .finish();
+    let adder = builder
+        .add_block("Add")?
+        .label("sum")
+        .position(200.0, 50.0)
+        .finish();
 
-    let mut links = BTreeMap::new();
-    add_link(&mut links, &sine1, "out", &adder, "in0");
-    add_link(&mut links, &sine2, "out", &adder, "in1");
+    builder.link(sine1, "out", adder, "in0")?;
+    builder.link(sine2, "out", adder, "in1")?;
 
-    Program {
-        name: Some("sine + sum".to_string()),
-        description: Some("Two sine sources feeding an adder.".to_string()),
-        blocks,
-        links,
-    }
-}
-
-fn pin_map(entries: &[(&str, Value)]) -> BTreeMap<String, PinValue> {
-    entries
-        .iter()
-        .map(|(name, v)| {
-            (
-                (*name).to_string(),
-                PinValue {
-                    value: v.clone(),
-                    is_connected: false,
-                },
-            )
-        })
-        .collect()
-}
-
-fn add_link(
-    links: &mut BTreeMap<String, LinkData>,
-    src: &Uuid,
-    src_pin: &str,
-    dst: &Uuid,
-    dst_pin: &str,
-) {
-    let id = Uuid::new_v4().to_string();
-    links.insert(
-        id.clone(),
-        LinkData {
-            id: Some(id),
-            source_block_uuid: src.to_string(),
-            target_block_uuid: dst.to_string(),
-            source_block_pin_name: src_pin.to_string(),
-            target_block_pin_name: dst_pin.to_string(),
-        },
-    );
+    Ok(builder.build())
 }

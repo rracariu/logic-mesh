@@ -170,6 +170,10 @@ impl BlocksEngine {
     /// use the command object to communicate with the engine instead.
     #[wasm_bindgen]
     pub async fn run(&mut self) {
-        self.engine.run().await;
+        // `run` consumes the idle engine and hands it back on shutdown;
+        // an empty engine holds its place meanwhile, unreachable since
+        // this call keeps `self` borrowed until the engine stops.
+        let engine = std::mem::take(&mut self.engine);
+        self.engine = engine.run().await;
     }
 }
