@@ -17,6 +17,10 @@
 //! command is handled immediately, so external commands (UI input writes,
 //! link rewiring) do not have to wait a full polling cycle.
 //!
+//! The actor tasks live on the engine's own `LocalSet`, so dropping the
+//! engine — idle, or along with an unfinished `run()` future — drops
+//! every actor task with it.
+//!
 //! ### Cancellation safety
 //!
 //! Dropping `block.execute()` mid-poll is safe in this codebase because
@@ -307,6 +311,242 @@ mod tests {
         });
 
         eng.run().await;
+    }
+
+    /// Regression: a panic in `execute` killed the block's actor task —
+    /// the block never showed Fault, downstream never faulted, and the
+    /// block could no longer be saved or removed.
+    mod panics {
+        use super::*;
+        use crate::tokio_impl::engine::test_support::panics;
+
+        #[tokio::test(flavor = "current_thread")]
+        async fn panic_faults_the_block_and_downstream() {
+            panics::panic_faults_the_block_and_downstream(SingleThreadedEngine::new()).await;
+        }
+
+        #[tokio::test(flavor = "current_thread")]
+        async fn panicked_block_recovers_after_a_clean_cycle() {
+            panics::panicked_block_recovers_after_a_clean_cycle(SingleThreadedEngine::new()).await;
+        }
+
+        #[tokio::test(flavor = "current_thread")]
+        async fn a_block_panicking_every_cycle_backs_off() {
+            panics::a_block_panicking_every_cycle_backs_off(SingleThreadedEngine::new()).await;
+        }
+    }
+
+    /// Dropping the engine drops its `LocalSet`, and every actor task
+    /// with it — see `test_support::drops`.
+    mod drops {
+        use super::*;
+        use crate::tokio_impl::engine::test_support::drops;
+
+        #[tokio::test(flavor = "current_thread")]
+        async fn dropping_an_idle_engine_ends_its_actors() {
+            drops::dropping_an_idle_engine_ends_its_actors(SingleThreadedEngine::new()).await;
+        }
+
+        #[tokio::test(flavor = "current_thread")]
+        async fn dropping_a_shut_down_engine_ends_its_actors() {
+            drops::dropping_a_shut_down_engine_ends_its_actors(SingleThreadedEngine::new()).await;
+        }
+
+        #[tokio::test(flavor = "current_thread")]
+        async fn dropping_the_run_future_ends_its_actors() {
+            drops::dropping_the_run_future_ends_its_actors(SingleThreadedEngine::new()).await;
+        }
+    }
+
+    /// The lifecycle contract — see `test_support::lifecycle`.
+    mod lifecycle {
+        use super::*;
+        use crate::tokio_impl::engine::test_support::lifecycle;
+
+        /// Guards the contract the single-threaded engine already kept.
+        #[tokio::test(flavor = "current_thread")]
+        async fn blocks_survive_shutdown() {
+            lifecycle::blocks_survive_shutdown(SingleThreadedEngine::new()).await;
+        }
+
+        /// Regression: dispatching a request drove the `LocalSet`, so
+        /// blocks kept executing while paused.
+        #[tokio::test(flavor = "current_thread")]
+        async fn pause_holds_blocks_and_answers_requests() {
+            lifecycle::pause_holds_blocks_and_answers_requests(SingleThreadedEngine::new()).await;
+        }
+
+        #[tokio::test(flavor = "current_thread")]
+        async fn reset_while_paused() {
+            lifecycle::reset_while_paused(SingleThreadedEngine::new()).await;
+        }
+    }
+
+    /// Regression: a reply variant sent to the engine hit an
+    /// `unreachable!` and panicked the event loop. It is now ignored,
+    /// and the engine keeps answering.
+    #[tokio::test(flavor = "current_thread")]
+    async fn stray_reply_is_ignored() {
+        use crate::base::engine::messages::EngineMessage::{
+            AddBlockRes, ListConnectorsReq, ListConnectorsRes,
+        };
+        use crate::tokio_impl::engine::test_support::drive;
+
+        drive(SingleThreadedEngine::new(), |mut client| async move {
+            client.send(AddBlockRes(Ok(Uuid::new_v4()))).await;
+
+            let reply = client.request(ListConnectorsReq(client.id)).await;
+            assert!(
+                matches!(reply, ListConnectorsRes(Ok(_))),
+                "Expected ListConnectorsRes(Ok), got {:?}",
+                reply
+            );
+        })
+        .await;
+    }
+
+    /// Regression: scheduling an id that is already taken used to
+    /// replace the scheduled block's handle, orphaning its actor.
+    mod duplicate_ids {
+        use assert_matches::assert_matches;
+
+        use super::*;
+        use crate::base::engine::messages::EngineMessage::{AddBlockReq, AddBlockRes};
+        use crate::base::error::{EngineError, Error};
+        use crate::tokio_impl::engine::test_support::{Client, add_program, drive};
+
+        #[tokio::test(flavor = "current_thread")]
+        async fn schedule_rejects_a_scheduled_id() {
+            let id = Uuid::new_v4();
+            let mut eng = SingleThreadedEngine::new();
+            eng.schedule(Add::new_uuid(id)).expect("first schedule");
+
+            let err = eng
+                .schedule(Add::new_uuid(id))
+                .expect_err("second schedule is rejected");
+            assert_matches!(
+                err,
+                Error::Engine(EngineError::DuplicateBlockId { id: dup }) if dup == id
+            );
+            assert_eq!(eng.block_handles().len(), 1);
+        }
+
+        #[tokio::test(flavor = "current_thread")]
+        async fn schedule_local_rejects_a_scheduled_id() {
+            let id = Uuid::new_v4();
+            let mut eng = SingleThreadedEngine::new();
+            eng.schedule_local(Add::new_uuid(id))
+                .expect("first schedule");
+
+            let err = eng
+                .schedule_local(Add::new_uuid(id))
+                .expect_err("second schedule is rejected");
+            assert_matches!(
+                err,
+                Error::Engine(EngineError::DuplicateBlockId { id: dup }) if dup == id
+            );
+            assert_eq!(eng.block_handles().len(), 1);
+        }
+
+        /// The whole program is checked up front: the program's other,
+        /// fresh block is not scheduled either.
+        #[tokio::test(flavor = "current_thread")]
+        async fn schedule_program_blocks_rejects_a_scheduled_id() {
+            let id = Uuid::new_v4();
+            let fresh = Uuid::new_v4();
+            let mut eng = SingleThreadedEngine::new();
+            eng.schedule(Add::new_uuid(id)).expect("scheduled");
+
+            let program = add_program([id.to_string().as_str(), fresh.to_string().as_str()]);
+            let err = eng
+                .schedule_program_blocks(&program)
+                .expect_err("program reusing a scheduled id is rejected");
+            assert_matches!(
+                err,
+                Error::Engine(EngineError::DuplicateBlockId { id: dup }) if dup == id
+            );
+            assert!(eng.block_handle(&fresh).is_none(), "nothing was scheduled");
+            assert_eq!(eng.block_handles().len(), 1);
+        }
+
+        /// Two program keys can spell the same UUID differently.
+        #[tokio::test(flavor = "current_thread")]
+        async fn schedule_program_blocks_rejects_an_id_named_twice() {
+            let id = Uuid::new_v4();
+            let mut eng = SingleThreadedEngine::new();
+
+            let lower = id.to_string();
+            let upper = lower.to_uppercase();
+            let err = eng
+                .schedule_program_blocks(&add_program([lower.as_str(), upper.as_str()]))
+                .expect_err("program naming an id twice is rejected");
+            assert_matches!(
+                err,
+                Error::Engine(EngineError::DuplicateBlockId { id: dup }) if dup == id
+            );
+            assert!(eng.block_handles().is_empty(), "nothing was scheduled");
+        }
+
+        #[tokio::test(flavor = "current_thread")]
+        async fn add_block_req_rejects_a_scheduled_id() {
+            let id = Uuid::new_v4();
+            let mut eng = SingleThreadedEngine::new();
+            eng.schedule(Add::new_uuid(id)).expect("scheduled");
+
+            drive(eng, move |mut client| async move {
+                let reply = client
+                    .request(AddBlockReq(
+                        client.id,
+                        "Add".to_string(),
+                        Some(id.to_string()),
+                        None,
+                    ))
+                    .await;
+                assert_matches!(
+                    reply,
+                    AddBlockRes(Err(msg))
+                        if msg == EngineError::DuplicateBlockId { id }.to_string()
+                );
+
+                // The scheduled block is untouched and still answers.
+                let reply = client.request(InspectBlockReq(client.id, id)).await;
+                assert_matches!(reply, InspectBlockRes(Ok(def)) if def.id == id.to_string());
+                assert_eq!(scheduled_ids(&mut client).await, vec![id.to_string()]);
+            })
+            .await;
+        }
+
+        #[tokio::test(flavor = "current_thread")]
+        async fn load_program_req_rejects_a_scheduled_id() {
+            let id = Uuid::new_v4();
+            let fresh = Uuid::new_v4();
+            let mut eng = SingleThreadedEngine::new();
+            eng.schedule(Add::new_uuid(id)).expect("scheduled");
+
+            let program = add_program([id.to_string().as_str(), fresh.to_string().as_str()]);
+            drive(eng, move |mut client| async move {
+                let reply = client.request(LoadProgramReq(client.id, program)).await;
+                assert_matches!(
+                    reply,
+                    LoadProgramRes(Err(msg))
+                        if msg == EngineError::DuplicateBlockId { id }.to_string()
+                );
+                assert_eq!(
+                    scheduled_ids(&mut client).await,
+                    vec![id.to_string()],
+                    "nothing was scheduled"
+                );
+            })
+            .await;
+        }
+
+        /// The ids of the running engine's blocks, from its saved program.
+        async fn scheduled_ids(client: &mut Client) -> Vec<String> {
+            match client.request(GetCurrentProgramReq(client.id)).await {
+                GetCurrentProgramRes(Ok(program)) => program.blocks.into_keys().collect(),
+                other => panic!("Expected GetCurrentProgramRes(Ok), got {:?}", other),
+            }
+        }
     }
 
     mod external_blocks {

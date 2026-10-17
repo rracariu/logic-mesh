@@ -22,6 +22,34 @@
 //! [`run`](Engine::run) hands the idle engine back after
 //! [`Shutdown`](messages::EngineMessage::Shutdown), so it can be
 //! reconfigured and run again.
+//!
+//! ## Lifecycle messages
+//!
+//! Every engine follows one contract for the lifecycle
+//! [`EngineMessage`](messages::EngineMessage)s. Blocks execute only
+//! while the engine runs and is not paused: an idle engine — before its
+//! first `run()` and after a `Shutdown` — holds every block, and a run
+//! lets blocks execute only once it has started the managed connectors
+//! and wired the links queued while idle.
+//!
+//! - [`Shutdown`](messages::EngineMessage::Shutdown) stops block
+//!   execution and the managed connectors, then ends `run()`, which
+//!   hands back the idle engine with every block, link and pin value
+//!   intact and its connectors still registered. Running it again
+//!   resumes the blocks where they stopped.
+//! - [`Pause`](messages::EngineMessage::Pause) stops block execution:
+//!   no block executes, so no output changes on its own, yet every
+//!   request is still processed and answered as usual — pin writes and
+//!   block, link and connector changes included. A value written while
+//!   paused reaches the inputs linked to it, and their blocks react once
+//!   execution resumes. Pausing a paused engine does nothing; connector
+//!   IO tasks are not paused.
+//! - [`Resume`](messages::EngineMessage::Resume) restarts block
+//!   execution; resuming an engine that is not paused does nothing.
+//!   Every `run()` starts unpaused.
+//! - [`Reset`](messages::EngineMessage::Reset) terminates and removes
+//!   every block and link and unregisters the managed connectors,
+//!   whether or not the engine is paused. A paused engine stays paused.
 
 use super::error::Result;
 use super::{block::Block, program::Program};
@@ -118,6 +146,12 @@ pub trait Engine: Sized {
     /// through its inherent
     /// [`schedule_local`](crate::single_threaded::SingleThreadedEngine::schedule_local).
     ///
+    /// # Errors
+    ///
+    /// Returns [`EngineError::DuplicateBlockId`](crate::base::error::EngineError::DuplicateBlockId)
+    /// if a block with the same id is already scheduled — a scheduled
+    /// block is never replaced.
+    ///
     /// # Examples
     ///
     /// A block holding a [`Cell`](std::cell::Cell) is not [`Sync`], so no
@@ -161,6 +195,16 @@ pub trait Engine: Sized {
     /// program including its pin values, send a
     /// [`LoadProgramReq`](messages::EngineMessage::LoadProgramReq) to the
     /// running engine instead.
+    ///
+    /// # Errors
+    ///
+    /// Every block id is checked before any block is scheduled: an id
+    /// that does not parse, or that is already scheduled or named twice
+    /// in `program`
+    /// ([`EngineError::DuplicateBlockId`](crate::base::error::EngineError::DuplicateBlockId)),
+    /// rejects the program without scheduling any of its blocks. An
+    /// unknown block type or an invalid link is reported after the
+    /// blocks before it were scheduled.
     fn schedule_program_blocks(&mut self, program: &Program) -> Result<()>;
 
     /// Runs the event loop of this engine and executes the scheduled blocks.
@@ -168,9 +212,11 @@ pub trait Engine: Sized {
     /// Consumes the idle engine and drives it in the [`Running`] phase
     /// until a [`Shutdown`](messages::EngineMessage::Shutdown) message
     /// arrives, then returns it to the [`Idle`] phase so it can be
-    /// reconfigured and run again. Connectors the engine manages stay
-    /// registered across a shutdown; dropping the returned engine
-    /// unregisters them.
+    /// reconfigured and run again. Blocks and the connectors the engine
+    /// manages survive a shutdown, and the blocks resume executing on
+    /// the next run; dropping the returned engine ends their actor tasks
+    /// and unregisters the connectors. See the
+    /// [lifecycle contract](self#lifecycle-messages).
     ///
     /// The returned future must be driven to completion — it is not a
     /// cancellation point. Dropping it mid-flight can leave a

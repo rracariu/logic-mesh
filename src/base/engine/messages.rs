@@ -90,7 +90,9 @@ pub struct WatchMessage {
 /// Messages that the engine accepts.
 #[derive(Debug, Clone)]
 pub enum EngineMessage<WatchEventSender: Clone> {
-    /// Request to add a block by name.
+    /// Request to add a block by name. A caller-supplied block id that
+    /// is already scheduled is rejected rather than replacing the
+    /// scheduled block.
     AddBlockReq(Uuid, String, Option<String>, Option<String>),
     /// Response to [`AddBlockReq`](Self::AddBlockReq).
     AddBlockRes(Result<Uuid, String>),
@@ -128,6 +130,9 @@ pub enum EngineMessage<WatchEventSender: Clone> {
     /// Atomically load a full [`Program`] (blocks, links, pin values, UI
     /// metadata) into the engine. Replaces the multi-call JS chain of
     /// `addBlock` + `createLink` + `writeBlockInput` per block.
+    ///
+    /// A program naming a block id that is already scheduled, or naming
+    /// one twice, is rejected before any of its blocks is scheduled.
     LoadProgramReq(Uuid, Program),
     /// Response to [`LoadProgramReq`](Self::LoadProgramReq).
     LoadProgramRes(Result<(), String>),
@@ -188,12 +193,18 @@ pub enum EngineMessage<WatchEventSender: Clone> {
     /// Response to [`ListConnectorsReq`](Self::ListConnectorsReq).
     ListConnectorsRes(Result<Vec<String>, String>),
 
-    /// Shut down the engine.
+    /// Shut down the engine: stop block execution and the managed
+    /// connectors and end [`run`](crate::base::engine::Engine::run),
+    /// which hands back the idle engine with its blocks intact. See the
+    /// [lifecycle contract](crate::base::engine#lifecycle-messages).
     Shutdown,
-    /// Pause block execution.
+    /// Pause block execution. Requests are still answered. See the
+    /// [lifecycle contract](crate::base::engine#lifecycle-messages).
     Pause,
-    /// Resume block execution.
+    /// Resume block execution. See the
+    /// [lifecycle contract](crate::base::engine#lifecycle-messages).
     Resume,
-    /// Reset the engine, removing all blocks and links.
+    /// Reset the engine, removing all blocks and links, paused or not.
+    /// See the [lifecycle contract](crate::base::engine#lifecycle-messages).
     Reset,
 }

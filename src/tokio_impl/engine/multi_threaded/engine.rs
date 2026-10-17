@@ -31,12 +31,12 @@ use libhaystack::val::Value;
 use tokio::sync::{
     RwLock,
     mpsc::{self, Receiver, Sender, UnboundedSender},
-    oneshot,
+    oneshot, watch,
 };
 use uuid::Uuid;
 
 use super::super::block_mailbox::{
-    BLOCK_MAILBOX_CAP, BlockMailboxCmd, mailbox_request, mailbox_send,
+    BLOCK_MAILBOX_CAP, BlockMailboxCmd, mailbox_request, mailbox_send, terminate_actor,
 };
 use super::super::connectors::{self, ManagedConnectors};
 use super::actor::{WatchersHandle, block_actor_task};
@@ -53,7 +53,7 @@ use crate::base::{
     },
 };
 use crate::blocks::registry::{BlockSink, CORE_LIB, get_block};
-use crate::tokio_impl::engine::schedule_block_on_engine_mt;
+use crate::tokio_impl::engine::{program_block_ids, schedule_block_on_engine_mt};
 use crate::tokio_impl::{MtBlock, ReaderImpl, WriterImpl};
 
 /// Concrete engine-message type.
@@ -152,6 +152,11 @@ pub struct MultiThreadedEngine<S: EngineState = Idle> {
     /// the single source of truth blocks also resolve against. Dropping
     /// the engine unregisters them.
     connectors: ManagedConnectors,
+    /// Execution gate every block actor subscribes to: `true` while the
+    /// engine runs and is not paused. Actor tasks live on the ambient
+    /// runtime from `schedule` on and keep serving their mailbox either
+    /// way; the gate is what holds their blocks while idle or paused.
+    execution: watch::Sender<bool>,
     /// The lifecycle phase, tracked in the type only.
     state: PhantomData<S>,
 }
@@ -179,8 +184,7 @@ impl Engine for MultiThreadedEngine<Idle> {
     where
         B: Block<Writer = Self::Writer, Reader = Self::Reader> + MaybeSendSync + 'static,
     {
-        self.spawn_block(block);
-        Ok(())
+        Ok(self.spawn_block(block)?)
     }
 
     fn schedule_program_blocks(&mut self, program: &Program) -> Result<()> {
@@ -220,6 +224,7 @@ impl MultiThreadedEngine<Idle> {
             reply_senders: BTreeMap::new(),
             watchers: Arc::new(RwLock::new(BTreeMap::new())),
             connectors: ManagedConnectors::default(),
+            execution: watch::Sender::new(false),
             state: PhantomData,
         }
     }
@@ -228,25 +233,18 @@ impl MultiThreadedEngine<Idle> {
     /// `name` and puts it under this engine's lifecycle management.
     ///
     /// The engine awaits the connector's `start` when [`run`](Engine::run)
-    /// begins — before pending links are wired and before any engine
-    /// message is serviced — and its `stop` on shutdown; the connector
-    /// stays registered so a re-run picks it up again. A reset
-    /// unregisters the connector first and then stops it. Dropping the
-    /// engine unregisters any still-tracked connectors without awaiting
-    /// `stop`. Start/stop failures and timeouts are logged, not fatal.
-    ///
-    /// Unlike the single-threaded engine — whose block actors make no
-    /// progress until `run()` drives its LocalSet — MT actor tasks are
-    /// spawned onto the ambient runtime at [`schedule`](Engine::schedule)
-    /// time, so a block scheduled before `run()` may execute against a
-    /// connector that has not started yet. Add connectors before
-    /// scheduling connector-dependent blocks, or attach them over the
-    /// message channel once the engine is running.
+    /// begins — before pending links are wired, before any block
+    /// executes and before any engine message is serviced — and its
+    /// `stop` on shutdown; the connector stays registered so a re-run
+    /// picks it up again. A reset unregisters the connector first and
+    /// then stops it. Dropping the engine unregisters any still-tracked
+    /// connectors without awaiting `stop`. Start/stop failures and
+    /// timeouts are logged, not fatal.
     ///
     /// Connectors own their IO loops: spawn them from `start` via the
     /// ambient `tokio::spawn` and wind them down in `stop`. Pausing the
-    /// engine does not pause these tasks — pause only stops servicing
-    /// engine messages.
+    /// engine does not pause these tasks — pause only stops block
+    /// execution.
     ///
     /// # Errors
     ///
@@ -270,6 +268,7 @@ impl<S: EngineState> MultiThreadedEngine<S> {
             reply_senders,
             watchers,
             connectors,
+            execution,
             state: _,
         } = self;
         MultiThreadedEngine {
@@ -280,8 +279,15 @@ impl<S: EngineState> MultiThreadedEngine<S> {
             reply_senders,
             watchers,
             connectors,
+            execution,
             state: PhantomData,
         }
+    }
+
+    /// Opens or closes the execution gate for every block.
+    fn set_execution(&self, open: bool) {
+        self.execution
+            .send_if_modified(|current| std::mem::replace(current, open) != open);
     }
 
     /// The names of the connectors this engine manages.
@@ -320,11 +326,17 @@ impl<S: EngineState> MultiThreadedEngine<S> {
     /// Spawns `block`'s actor task onto the ambient runtime and records
     /// its handle. Blocks are added while configuring and, over the
     /// message channel, while running.
-    fn spawn_block<B>(&mut self, block: B)
+    ///
+    /// Rejects an id that is already scheduled — see `spawn_block` on
+    /// the single-threaded engine.
+    fn spawn_block<B>(&mut self, block: B) -> Result<(), EngineError>
     where
         B: MtBlock + 'static,
     {
         let id = *block.id();
+        if self.handles.contains_key(&id) {
+            return Err(EngineError::DuplicateBlockId { id });
+        }
         let name = block.name().to_string();
         let library = block.desc().library.clone();
         // See `spawn_block` on SingleThreadedEngine for why we clone.
@@ -343,14 +355,24 @@ impl<S: EngineState> MultiThreadedEngine<S> {
         self.handles.insert(id, handle);
 
         let watchers = self.watchers.clone();
-        tokio::spawn(block_actor_task(block, mailbox_rx, watchers));
+        tokio::spawn(block_actor_task(
+            block,
+            mailbox_rx,
+            watchers,
+            self.execution.subscribe(),
+        ));
+        Ok(())
     }
 
     /// Schedules every block of `program`, recording its UI metadata,
     /// and returns the program's links once validated, ready to wire.
+    ///
+    /// Every block id is checked before anything is scheduled, so a
+    /// program naming an invalid or already-scheduled id schedules no
+    /// block at all.
     fn stage_program(&mut self, program: &Program) -> Result<Vec<LinkData>> {
-        for (uuid_str, pb) in &program.blocks {
-            let id = parse_block_uuid(uuid_str)?;
+        let blocks = program_block_ids(program, |id| self.handles.contains_key(id))?;
+        for (id, pb) in blocks {
             let block_def = get_block(&pb.name, Some(pb.lib.as_str())).ok_or_else(|| {
                 RegistryError::BlockNotFound {
                     library: pb.lib.clone(),
@@ -430,92 +452,83 @@ impl<S: EngineState> BlockSink for MultiThreadedEngine<S> {
     where
         B: Block<Writer = WriterImpl, Reader = ReaderImpl> + MaybeSendSync + 'static,
     {
-        self.spawn_block(block);
-        Ok(())
+        Ok(self.spawn_block(block)?)
     }
 }
 
 impl MultiThreadedEngine<Running> {
     /// The event loop: starts the managed connectors, wires the links
-    /// queued while idle, then services engine messages until
-    /// [`Shutdown`](EngineMessage::Shutdown).
+    /// queued while idle, opens the execution gate, then services engine
+    /// messages until [`Shutdown`](EngineMessage::Shutdown) — see the
+    /// [lifecycle contract](crate::base::engine#lifecycle-messages).
     async fn event_loop(&mut self) {
-        // Start connectors first, before wiring pending links or
-        // servicing any engine message. Unlike the single-threaded
-        // engine — where actor tasks only progress once `run()` drives
-        // the LocalSet — MT actor tasks were spawned onto the ambient
-        // runtime at `schedule` time and may already be executing;
-        // starting connectors here is the strongest ordering the MT
-        // engine can offer (see `add_connector`).
+        // Start connectors first. MT actor tasks were spawned onto the
+        // ambient runtime at `schedule` time, but the execution gate is
+        // still closed, so no block executes against a connector that
+        // has not started yet.
         connectors::start_connectors(&self.connectors).await;
 
         // Process any links queued during configuration. Actor tasks are
-        // already live on the tokio MT runtime by this point (they were
-        // spawned at `schedule` time), so the mailbox round-trips
-        // resolve immediately.
+        // already live on the tokio MT runtime (they were spawned at
+        // `schedule` time), so the mailbox round-trips resolve
+        // immediately; with the gate closed, blocks first run with their
+        // links in place.
         let pending_links = std::mem::take(&mut self.pending_links);
         for link in pending_links {
             let _ = self.connect_blocks(&link).await;
         }
 
-        let mut is_paused = false;
+        // A run always starts unpaused.
+        self.set_execution(true);
         loop {
-            let engine_msg = self.receiver.recv().await;
-            if let Some(message) = engine_msg {
-                if matches!(message, EngineMessage::Shutdown) {
-                    // Tell every actor task to terminate. Dropping the
-                    // mailbox senders would also cause the tasks to
-                    // notice via `mailbox.recv() -> None`, but explicit
-                    // termination is faster and lets the actor record
-                    // `BlockState::Terminated` for any in-flight watcher.
-                    let ids: Vec<Uuid> = self.handles.keys().copied().collect();
-                    for id in ids {
-                        if let Some(handle) = self.handles.remove(&id) {
-                            let _ = handle.mailbox.send(BlockMailboxCmd::Terminate).await;
-                        }
-                    }
-                    // Connectors stay registered so the engine can be
-                    // re-run with the same bindings.
+            // The engine holds a sender itself, so the channel never
+            // closes.
+            let Some(message) = self.receiver.recv().await else {
+                continue;
+            };
+            match message {
+                EngineMessage::Shutdown => {
+                    // Blocks stay scheduled, held by the closed gate,
+                    // and resume on the next `run()`. Connectors stay
+                    // registered so the re-run gets the same bindings.
                     //
                     // Stop-side ordering deviation from the ST engine:
-                    // `Terminate` was sent to the actor mailboxes above,
-                    // but the actor tasks are not joined — one still
-                    // mid-`execute` on another worker can transiently
-                    // hit a connector that is stopping here and fault.
-                    // Benign: blocks fault-and-retry, and the engine is
-                    // shutting down anyway.
+                    // the gate closes before connectors stop, but an
+                    // actor mid-`execute` on another worker only notices
+                    // at its next await, so it can transiently hit a
+                    // connector that is stopping here and fault. Benign:
+                    // blocks fault-and-retry, and the engine is shutting
+                    // down anyway.
+                    self.set_execution(false);
                     connectors::stop_connectors(&self.connectors).await;
                     break;
-                } else if matches!(message, EngineMessage::Reset) {
-                    let ids: Vec<Uuid> = self.handles.keys().copied().collect();
-                    for id in ids {
-                        if let Some(handle) = self.handles.remove(&id) {
-                            let _ = handle.mailbox.send(BlockMailboxCmd::Terminate).await;
-                        }
-                    }
-                    // Unregister first — no block can `get_connector` a
-                    // connector that is being stopped — then stop the
-                    // handles the unregistration handed back. As with
-                    // shutdown above, terminated actor tasks are not
-                    // joined first, so a block mid-`execute` may
-                    // transiently resolve-and-fault against a stopping
-                    // connector; blocks fault-and-retry, so this is
-                    // benign.
-                    connectors::unregister_and_stop_connectors(&mut self.connectors).await;
-                    continue;
-                } else if matches!(message, EngineMessage::Pause) {
-                    is_paused = true;
-                    continue;
-                } else if matches!(message, EngineMessage::Resume) {
-                    is_paused = false;
-                    continue;
                 }
-
-                if !is_paused {
-                    self.dispatch_message(message).await;
-                }
+                EngineMessage::Reset => self.reset().await,
+                EngineMessage::Pause => self.set_execution(false),
+                EngineMessage::Resume => self.set_execution(true),
+                message => self.dispatch_message(message).await,
             }
         }
+    }
+
+    /// Terminates and removes every block, then unregisters and stops
+    /// the managed connectors.
+    ///
+    /// The actors are told to terminate without waiting on their
+    /// mailboxes, as on the single-threaded engine. MT actors drain
+    /// their mailboxes on the runtime, so an awaited send could not
+    /// deadlock here, but it gains nothing either.
+    async fn reset(&mut self) {
+        for (_, handle) in std::mem::take(&mut self.handles) {
+            terminate_actor(handle.mailbox);
+        }
+        // Unregister first — no block can `get_connector` a connector
+        // that is being stopped — then stop the handles the
+        // unregistration handed back. Terminated actor tasks are not
+        // joined first, so a block mid-`execute` may transiently
+        // resolve-and-fault against a stopping connector; blocks
+        // fault-and-retry, so this is benign.
+        connectors::unregister_and_stop_connectors(&mut self.connectors).await;
     }
 
     /// Adds a block to the engine by name and schedules it.
@@ -833,7 +846,10 @@ impl MultiThreadedEngine<Running> {
 
     /// Atomically loads a full [`Program`]: schedules every block, wires
     /// every link, pushes initial input/output values, and stores UI
-    /// metadata.
+    /// metadata. The engine must not already hold any of the program's
+    /// block ids (reset it first via [`Reset`](EngineMessage::Reset)): a
+    /// program naming a scheduled id is rejected before anything is
+    /// scheduled.
     async fn load_program(&mut self, program: Program) -> Result<()> {
         let links = self.stage_program(&program)?;
 
@@ -1055,7 +1071,9 @@ impl MultiThreadedEngine<Running> {
                 self.reply_to_sender(sender_uuid, EngineMessage::ListConnectorsRes(res));
             }
 
-            _ => unreachable!("Invalid message"),
+            // Lifecycle messages never reach dispatch, which leaves the
+            // replies — see the single-threaded `dispatch_message`.
+            other => log::warn!("Ignoring a message the engine does not handle: {other:?}"),
         }
     }
 }
@@ -1158,7 +1176,8 @@ mod test {
     ///
     /// Drives the running-phase API directly, without the event loop:
     /// MT actor tasks live on the ambient runtime, so the mailbox
-    /// round-trips resolve without `run()`.
+    /// round-trips resolve without `run()` — only the execution gate
+    /// needs opening by hand.
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn disconnect_link_severs_dataflow() {
         let mut eng = MultiThreadedEngine::new();
@@ -1171,6 +1190,7 @@ mod test {
         eng.schedule(block_a).unwrap();
         eng.schedule(block_b).unwrap();
         let eng = eng.into_state::<Running>();
+        eng.set_execution(true);
 
         // Wire A.out -> B.in0 via the engine's async API (same path the
         // wasm bridge takes for `createLink`).
@@ -1240,6 +1260,270 @@ mod test {
             !in0_after.is_connected,
             "after disconnect, B.in0 should report is_connected=false"
         );
+    }
+
+    /// Regression: a panic in `execute` killed the block's actor task —
+    /// the block never showed Fault, downstream never faulted, and the
+    /// block could no longer be saved or removed.
+    mod panics {
+        use super::*;
+        use crate::tokio_impl::engine::test_support::panics;
+
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn panic_faults_the_block_and_downstream() {
+            panics::panic_faults_the_block_and_downstream(MultiThreadedEngine::new()).await;
+        }
+
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn panicked_block_recovers_after_a_clean_cycle() {
+            panics::panicked_block_recovers_after_a_clean_cycle(MultiThreadedEngine::new()).await;
+        }
+
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn a_block_panicking_every_cycle_backs_off() {
+            panics::a_block_panicking_every_cycle_backs_off(MultiThreadedEngine::new()).await;
+        }
+    }
+
+    /// Actor tasks are detached on the ambient runtime, so they must end
+    /// on their own once the engine is gone — see `test_support::drops`.
+    mod drops {
+        use super::*;
+        use crate::tokio_impl::engine::test_support::drops;
+
+        /// Regression: the dropped engine's closed mailboxes left every
+        /// actor spinning on the runtime forever.
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn dropping_an_idle_engine_ends_its_actors() {
+            drops::dropping_an_idle_engine_ends_its_actors(MultiThreadedEngine::new()).await;
+        }
+
+        /// Shutdown keeps the actors now, so these too end only through
+        /// their closed mailboxes.
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn dropping_a_shut_down_engine_ends_its_actors() {
+            drops::dropping_a_shut_down_engine_ends_its_actors(MultiThreadedEngine::new()).await;
+        }
+
+        /// Regression: as for the idle engine.
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn dropping_the_run_future_ends_its_actors() {
+            drops::dropping_the_run_future_ends_its_actors(MultiThreadedEngine::new()).await;
+        }
+
+        /// Regression: as for the idle engine, with `run()` on its own
+        /// task, as an application spawns it.
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn aborting_the_run_task_ends_its_actors() {
+            let mut eng = MultiThreadedEngine::new();
+            let alive = drops::schedule_tracked(&mut eng);
+
+            let run = tokio::spawn(eng.run());
+            sleep(Duration::from_millis(100)).await;
+            run.abort();
+            assert!(run.await.is_err_and(|err| err.is_cancelled()));
+
+            drops::wait_for_actors_to_end(&alive).await;
+        }
+    }
+
+    /// The lifecycle contract — see `test_support::lifecycle`.
+    mod lifecycle {
+        use super::*;
+        use crate::tokio_impl::engine::test_support::lifecycle;
+
+        /// Regression: shutdown terminated and dropped every block, so a
+        /// re-run engine had none.
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn blocks_survive_shutdown() {
+            lifecycle::blocks_survive_shutdown(MultiThreadedEngine::new()).await;
+        }
+
+        /// Regression: a paused engine dropped requests without
+        /// replying, and its blocks kept executing.
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn pause_holds_blocks_and_answers_requests() {
+            lifecycle::pause_holds_blocks_and_answers_requests(MultiThreadedEngine::new()).await;
+        }
+
+        /// Regression: requests sent after the reset went unanswered
+        /// while paused.
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn reset_while_paused() {
+            lifecycle::reset_while_paused(MultiThreadedEngine::new()).await;
+        }
+
+        /// Regression: blocks executed from `schedule` on, before `run()`
+        /// had started connectors and wired pending links.
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn idle_engine_holds_blocks() {
+            let mut eng = MultiThreadedEngine::new();
+            let (source, target) =
+                crate::tokio_impl::engine::test_support::schedule_linked_adds(&mut eng);
+            let eng = eng.into_state::<Running>();
+
+            eng.write_output(&source, "out".to_string(), 1.into())
+                .await
+                .expect("written");
+            sleep(Duration::from_millis(200)).await;
+            let target_out = eng.inspect_block(&target).await.expect("inspected").outputs["out"]
+                .val
+                .clone();
+            assert_ne!(target_out, 1.into(), "no block executes while idle");
+        }
+    }
+
+    /// Regression: a reply variant sent to the engine hit an
+    /// `unreachable!` and panicked the event loop. It is now ignored,
+    /// and the engine keeps answering.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn stray_reply_is_ignored() {
+        use crate::base::engine::messages::EngineMessage::{
+            AddBlockRes, ListConnectorsReq, ListConnectorsRes,
+        };
+        use crate::tokio_impl::engine::test_support::drive;
+
+        drive(MultiThreadedEngine::new(), |mut client| async move {
+            client.send(AddBlockRes(Ok(Uuid::new_v4()))).await;
+
+            let reply = client.request(ListConnectorsReq(client.id)).await;
+            assert!(
+                matches!(reply, ListConnectorsRes(Ok(_))),
+                "Expected ListConnectorsRes(Ok), got {:?}",
+                reply
+            );
+        })
+        .await;
+    }
+
+    /// Regression: scheduling an id that is already taken used to
+    /// replace the scheduled block's handle, orphaning its actor.
+    mod duplicate_ids {
+        use assert_matches::assert_matches;
+
+        use super::*;
+        use crate::base::engine::messages::EngineMessage::{
+            AddBlockReq, AddBlockRes, GetCurrentProgramReq, GetCurrentProgramRes, LoadProgramReq,
+            LoadProgramRes,
+        };
+        use crate::base::error::{EngineError, Error};
+        use crate::tokio_impl::engine::test_support::{Client, add_program, drive};
+
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn schedule_rejects_a_scheduled_id() {
+            let id = Uuid::new_v4();
+            let mut eng = MultiThreadedEngine::new();
+            eng.schedule(Add::new_uuid(id)).expect("first schedule");
+
+            let err = eng
+                .schedule(Add::new_uuid(id))
+                .expect_err("second schedule is rejected");
+            assert_matches!(
+                err,
+                Error::Engine(EngineError::DuplicateBlockId { id: dup }) if dup == id
+            );
+            assert_eq!(eng.block_handles().len(), 1);
+        }
+
+        /// The whole program is checked up front: the program's other,
+        /// fresh block is not scheduled either.
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn schedule_program_blocks_rejects_a_scheduled_id() {
+            let id = Uuid::new_v4();
+            let fresh = Uuid::new_v4();
+            let mut eng = MultiThreadedEngine::new();
+            eng.schedule(Add::new_uuid(id)).expect("scheduled");
+
+            let program = add_program([id.to_string().as_str(), fresh.to_string().as_str()]);
+            let err = eng
+                .schedule_program_blocks(&program)
+                .expect_err("program reusing a scheduled id is rejected");
+            assert_matches!(
+                err,
+                Error::Engine(EngineError::DuplicateBlockId { id: dup }) if dup == id
+            );
+            assert!(eng.block_handle(&fresh).is_none(), "nothing was scheduled");
+            assert_eq!(eng.block_handles().len(), 1);
+        }
+
+        /// Two program keys can spell the same UUID differently.
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn schedule_program_blocks_rejects_an_id_named_twice() {
+            let id = Uuid::new_v4();
+            let mut eng = MultiThreadedEngine::new();
+
+            let lower = id.to_string();
+            let upper = lower.to_uppercase();
+            let err = eng
+                .schedule_program_blocks(&add_program([lower.as_str(), upper.as_str()]))
+                .expect_err("program naming an id twice is rejected");
+            assert_matches!(
+                err,
+                Error::Engine(EngineError::DuplicateBlockId { id: dup }) if dup == id
+            );
+            assert!(eng.block_handles().is_empty(), "nothing was scheduled");
+        }
+
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn add_block_req_rejects_a_scheduled_id() {
+            let id = Uuid::new_v4();
+            let mut eng = MultiThreadedEngine::new();
+            eng.schedule(Add::new_uuid(id)).expect("scheduled");
+
+            drive(eng, move |mut client| async move {
+                let reply = client
+                    .request(AddBlockReq(
+                        client.id,
+                        "Add".to_string(),
+                        Some(id.to_string()),
+                        None,
+                    ))
+                    .await;
+                assert_matches!(
+                    reply,
+                    AddBlockRes(Err(msg))
+                        if msg == EngineError::DuplicateBlockId { id }.to_string()
+                );
+
+                // The scheduled block is untouched and still answers.
+                let reply = client.request(InspectBlockReq(client.id, id)).await;
+                assert_matches!(reply, InspectBlockRes(Ok(def)) if def.id == id.to_string());
+                assert_eq!(scheduled_ids(&mut client).await, vec![id.to_string()]);
+            })
+            .await;
+        }
+
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn load_program_req_rejects_a_scheduled_id() {
+            let id = Uuid::new_v4();
+            let fresh = Uuid::new_v4();
+            let mut eng = MultiThreadedEngine::new();
+            eng.schedule(Add::new_uuid(id)).expect("scheduled");
+
+            let program = add_program([id.to_string().as_str(), fresh.to_string().as_str()]);
+            drive(eng, move |mut client| async move {
+                let reply = client.request(LoadProgramReq(client.id, program)).await;
+                assert_matches!(
+                    reply,
+                    LoadProgramRes(Err(msg))
+                        if msg == EngineError::DuplicateBlockId { id }.to_string()
+                );
+                assert_eq!(
+                    scheduled_ids(&mut client).await,
+                    vec![id.to_string()],
+                    "nothing was scheduled"
+                );
+            })
+            .await;
+        }
+
+        /// The ids of the running engine's blocks, from its saved program.
+        async fn scheduled_ids(client: &mut Client) -> Vec<String> {
+            match client.request(GetCurrentProgramReq(client.id)).await {
+                GetCurrentProgramRes(Ok(program)) => program.blocks.into_keys().collect(),
+                other => panic!("Expected GetCurrentProgramRes(Ok), got {:?}", other),
+            }
+        }
     }
 
     /// Connector lifecycle on the MT engine

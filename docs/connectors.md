@@ -105,7 +105,7 @@ Five contract rules shape everything downstream:
 | **Subscriptions are RAII** — `ValueStream` is a boxed `Stream<Item = Result<Value, ConnectorError>>`, and dropping it *is* the unsubscribe | There is no `unsubscribe` method. Implementations release protocol subscriptions from the stream's `Drop`. |
 | **Cancellation is normal** — any returned future may be dropped mid-flight, because block actors race `execute()` against their mailbox | Dropping must leave the connector usable; a dropped `request` should abort the in-flight operation where the protocol allows. |
 | `start` must be restartable; `stop` must end every outstanding stream (yield `None`) | Stream holders observe the end and re-subscribe after a restart. |
-| IO loops belong to the connector — spawn from `start`, wind down in `stop` | Engine **pause** does not pause connector tasks; it only stops driving block actors. |
+| IO loops belong to the connector — spawn from `start`, wind down in `stop` | Engine **pause** does not pause connector tasks; it only stops block execution. |
 
 ### 4.2 The registry
 
@@ -162,7 +162,7 @@ same free functions, so their semantics are identical by construction.
 | Engine event | Effect on managed connectors |
 |---|---|
 | `add_connector(name, handle)` before `run` | registered and added to the managed list |
-| `run()` | `start()` awaited on each **before any block actor makes progress** |
+| `run()` | `start()` awaited on each **before any block executes** |
 | `Shutdown` | `stop()` awaited; connectors **stay registered and managed** by the idle engine `run()` hands back, so a re-run restarts them |
 | `Reset` | **unregister first**, then `stop()`; managed list cleared |
 | `AddConnectorReq(name)` while running | resolve name → `start()` → add to list; on failure `stop()` is awaited and the name stays registered so a retry is possible |
@@ -499,7 +499,7 @@ it, including a pending `Reset` sent through another handle. Attach attempts are
 promise chain so a mount-time attach and a reset-time attach cannot interleave their
 check-then-attach sequences.
 
-Because a paused engine drives no block actors, nothing drains the connector while paused. The editor
+Because a paused engine executes no block, nothing drains the connector while paused. The editor
 therefore gates UI pushes for the duration, updating only the latest-value cache and flushing one
 value per touched address on resume.
 
@@ -570,7 +570,7 @@ Two widget behaviours change as a consequence of the design:
   the cleanup `stop`.
 - **At-least-once only.** Cancellation can duplicate an outbound publish or request; the design does
   not attempt deduplication, leaving idempotency to the external system.
-- **Pause is not backpressure.** Pausing the engine stops block actors but not connector IO tasks, so
+- **Pause is not backpressure.** Pausing the engine stops block execution but not connector IO tasks, so
   an unbounded producer keeps producing. Clients that can pause must gate their own inbound pushes.
 
 ## 11. Implementing a connector

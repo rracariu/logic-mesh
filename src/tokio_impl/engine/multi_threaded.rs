@@ -16,6 +16,14 @@
 //! (`Arc<RwLock<…>>` instead of `Rc<RefCell<…>>`) and the cross-thread
 //! mailbox semantics.
 //!
+//! ### Actor lifetime
+//!
+//! Actor tasks are detached — the engine keeps no join handles — and
+//! live as long as their block's mailbox: a removed block's actor ends
+//! once told to terminate, and dropping the engine, idle or along with
+//! an unfinished `run()` future, drops every mailbox sender, which ends
+//! every actor.
+//!
 //! ### Cancellation safety
 //!
 //! The same guarantees as the [`SingleThreadedEngine`] apply: dropping

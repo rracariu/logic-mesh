@@ -371,9 +371,7 @@ impl EngineCommand {
     /// lifecycle from then on. Register the connector handle first —
     /// handles never ride in engine messages.
     ///
-    /// A paused engine consumes requests without answering them: this
-    /// call only resolves once the engine resumes (same as every other
-    /// engine request).
+    /// A paused engine still answers this request, like every other.
     #[wasm_bindgen(js_name = "addConnector")]
     pub async fn add_connector(&mut self, name: String) -> Result<String, String> {
         match self
@@ -394,9 +392,7 @@ impl EngineCommand {
     /// tracking it, unregisters it from the process-wide registry, and
     /// stops it. Returns the removed connector's name.
     ///
-    /// A paused engine consumes requests without answering them: this
-    /// call only resolves once the engine resumes (same as every other
-    /// engine request).
+    /// A paused engine still answers this request, like every other.
     #[wasm_bindgen(js_name = "removeConnector")]
     pub async fn remove_connector(&mut self, name: String) -> Result<String, String> {
         match self
@@ -415,9 +411,7 @@ impl EngineCommand {
 
     /// Lists the names of the engine-managed connectors.
     ///
-    /// A paused engine consumes requests without answering them: this
-    /// call only resolves once the engine resumes (same as every other
-    /// engine request).
+    /// A paused engine still answers this request, like every other.
     #[wasm_bindgen(js_name = "listConnectors")]
     pub async fn list_connectors(&mut self) -> Result<Vec<String>, String> {
         match self
@@ -434,7 +428,9 @@ impl EngineCommand {
         }
     }
 
-    /// Pauses the engine. Does nothing if already paused.
+    /// Pauses block execution: no block executes until
+    /// `resumeExecution`, while every other request is still answered.
+    /// Connector IO tasks keep running. Does nothing if already paused.
     #[wasm_bindgen(js_name = "pauseExecution")]
     pub async fn pause_execution(&mut self) -> Result<(), String> {
         self.sender
@@ -443,7 +439,7 @@ impl EngineCommand {
             .map_err(|err| err.to_string())
     }
 
-    /// Resumes the engine. Does nothing if not paused.
+    /// Resumes block execution. Does nothing if not paused.
     #[wasm_bindgen(js_name = "resumeExecution")]
     pub async fn resume_execution(&mut self) -> Result<(), String> {
         self.sender
@@ -452,7 +448,8 @@ impl EngineCommand {
             .map_err(|err| err.to_string())
     }
 
-    /// Resets the engine state, clearing all blocks and links.
+    /// Resets the engine state, clearing all blocks and links — also
+    /// while paused, and the engine stays paused.
     #[wasm_bindgen(js_name = "resetEngine")]
     pub async fn reset_engine(&mut self) -> Result<(), String> {
         self.sender
@@ -461,7 +458,8 @@ impl EngineCommand {
             .map_err(|err| err.to_string())
     }
 
-    /// Stops the engine's execution.
+    /// Stops the engine: `run` resolves, keeping the blocks so a later
+    /// `run` resumes them.
     #[wasm_bindgen(js_name = "stopEngine")]
     pub async fn stop_engine(&mut self) -> Result<(), String> {
         self.sender

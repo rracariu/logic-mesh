@@ -161,6 +161,18 @@ pub(super) async fn mailbox_send(
         .map_err(|_| EngineError::BlockTaskGone { id: block_id })
 }
 
+/// Asks the actor behind `mailbox` — a removed block's last sender — to
+/// terminate, without waiting on the actor.
+///
+/// Never blocks: when the mailbox is full, the [`BlockMailboxCmd::Terminate`]
+/// is skipped, and dropping `mailbox` closes it instead — the actor then
+/// exits once it has drained the commands already queued. An awaited send
+/// could wait forever on a single-threaded engine, whose actors only make
+/// progress while the engine drives its `LocalSet`.
+pub(super) fn terminate_actor(mailbox: mpsc::Sender<BlockMailboxCmd>) {
+    let _ = mailbox.try_send(BlockMailboxCmd::Terminate);
+}
+
 /// Handle a single mailbox command against a block. Returns `true` if the
 /// command was [`BlockMailboxCmd::Terminate`] (signalling the actor task to
 /// exit its loop).

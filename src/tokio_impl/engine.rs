@@ -1,6 +1,8 @@
 // Copyright (c) 2022-2023, Radu Racariu.
 
-use crate::base::error::Result;
+use std::collections::BTreeSet;
+
+use crate::base::error::{EngineError, Result, parse_block_uuid};
 // External blocks only exist on `wasm32`, where the host supplies their
 // executor; every other target rejects them with this error.
 #[cfg(not(target_arch = "wasm32"))]
@@ -9,14 +11,21 @@ use libhaystack::val::Value;
 use uuid::Uuid;
 
 use crate::{
-    base::block::{BlockDesc, desc::BlockImplementation},
+    base::{
+        block::{BlockDesc, desc::BlockImplementation},
+        program::{Program, data::ProgramBlock},
+    },
     blocks::registry::{BlockSink, eval_static_block, make_block_into},
 };
 
+mod actor_step;
 mod block_mailbox;
 mod connectors;
 mod message_dispatch;
 pub mod single_threaded;
+#[cfg(not(target_arch = "wasm32"))]
+#[cfg(test)]
+mod test_support;
 
 #[cfg(feature = "multi-threaded")]
 #[cfg(not(target_arch = "wasm32"))]
@@ -58,6 +67,30 @@ pub(super) fn schedule_block_on_engine_mt(
     } else {
         make_block_into(&block.name, Some(&block.library), block_id, sink)
     }
+}
+
+/// Parses every block id of `program`, rejecting one that
+/// `is_scheduled` already or that the program names twice — two keys can
+/// spell the same UUID differently.
+///
+/// Engines run this before scheduling any of the program's blocks, so a
+/// program rejected here leaves the engine untouched.
+pub(super) fn program_block_ids(
+    program: &Program,
+    is_scheduled: impl Fn(&Uuid) -> bool,
+) -> Result<Vec<(Uuid, &ProgramBlock)>, EngineError> {
+    let mut seen = BTreeSet::new();
+    program
+        .blocks
+        .iter()
+        .map(|(uuid_str, block)| {
+            let id = parse_block_uuid(uuid_str)?;
+            if is_scheduled(&id) || !seen.insert(id) {
+                return Err(EngineError::DuplicateBlockId { id });
+            }
+            Ok((id, block))
+        })
+        .collect()
 }
 
 pub(super) async fn eval_block(block: &BlockDesc, inputs: Vec<Value>) -> Result<Vec<Value>> {
