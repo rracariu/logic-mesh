@@ -1,7 +1,8 @@
 # Logic Mesh
 
 A logic engine that is fully async, dynamic, and reactive written in Rust.
-The engine is compiled to WebAssembly and can be used in the browser, or in a Node.js environment.
+The engine is compiled to WebAssembly and runs in the browser (through a
+bundler) and in Node.js — see [Environment support](#environment-support).
 
 ## Applications
 
@@ -24,6 +25,65 @@ npm install logic-mesh zod
 [Zod](https://zod.dev) 4 is a peer dependency: `defineBlock` describes pins
 with your Zod schemas, so the package must use the same `zod` your code
 imports.
+
+## Environment support
+
+The package is ESM only. It ships the wasm-pack `bundler` build, whose glue
+module imports the `.wasm` file directly (the WebAssembly ESM integration)
+and instantiates it on first import.
+
+### Node.js
+
+Node.js `^22.19.0` or `>=24.5.0` loads the package with a plain `import`,
+without flags or loaders:
+
+```js
+import { startEngine } from 'logic-mesh';
+
+const { command } = startEngine();
+console.log(await command.evalBlock('Add', [1, 2])); // [ 3 ]
+```
+
+- Node prints an `ExperimentalWarning` ("Importing WebAssembly module
+  instances is an experimental feature"). Run
+  `node --disable-warning=ExperimentalWarning` to silence it.
+- From CommonJS use `await import('logic-mesh')`. `require('logic-mesh')`
+  fails before Node.js 26 (`WASM is currently unsupported by require(esm)`).
+- Older releases (Node.js 20, 22.12–22.18, 24.0–24.4) load the package only
+  with `node --experimental-wasm-modules`, and are outside the supported
+  `engines` range.
+
+### Bundlers
+
+- **Vite** needs [vite-plugin-wasm](https://github.com/Menci/vite-plugin-wasm).
+  Without it, Vite 7 and earlier fail to build the package, and Vite 8's dev
+  server serves it broken (only Vite 8's production build copes). The plugin
+  instantiates the module with a top-level `await`, which the default build
+  target of Vite 6 and earlier rejects, so set `build.target` too. The
+  [demo app](https://github.com/rracariu/logic-mesh/blob/main/web/app/vite.config.ts)
+  uses this configuration:
+
+  ```ts
+  // vite.config.ts
+  import { defineConfig } from 'vite';
+  import wasm from 'vite-plugin-wasm';
+
+  export default defineConfig({
+    plugins: [wasm()],
+    build: {
+      // Needed on Vite 6 and earlier; harmless on Vite 7 and 8.
+      target: 'esnext',
+    },
+  });
+  ```
+
+- **webpack 5** needs `experiments: { asyncWebAssembly: true }`.
+
+### TypeScript
+
+Type declarations ship with the package. The wasm-bindgen declarations use
+`Symbol.dispose`, so compile with `skipLibCheck: true` or add
+`ESNext.Disposable` (or `ESNext`) to `lib`.
 
 ## UI Editor
 

@@ -14,6 +14,9 @@
     "url": "git+https://github.com/rracariu/logic-mesh.git",
     "directory": "web/packages/logic-mesh"
   },
+  "engines": {
+    "node": "^22.19.0 || >=24.5.0"
+  },
   "scripts": {
     "clean": "rm -rf ./dist ./pkg ./LICENSE",
     "build": "npm run clean && wasm-pack build --release --out-dir web/packages/logic-mesh/pkg ../../.. && npm run build:prepare && tsc",
