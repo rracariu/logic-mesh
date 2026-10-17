@@ -193,12 +193,18 @@ pub enum EngineMessage<WatchEventSender: Clone> {
     /// Response to [`ListConnectorsReq`](Self::ListConnectorsReq).
     ListConnectorsRes(Result<Vec<String>, String>),
 
-    /// Shut down the engine.
+    /// Shut down the engine: stop block execution and the managed
+    /// connectors and end [`run`](crate::base::engine::Engine::run),
+    /// which hands back the idle engine with its blocks intact. See the
+    /// [lifecycle contract](crate::base::engine#lifecycle-messages).
     Shutdown,
-    /// Pause block execution.
+    /// Pause block execution. Requests are still answered. See the
+    /// [lifecycle contract](crate::base::engine#lifecycle-messages).
     Pause,
-    /// Resume block execution.
+    /// Resume block execution. See the
+    /// [lifecycle contract](crate::base::engine#lifecycle-messages).
     Resume,
-    /// Reset the engine, removing all blocks and links.
+    /// Reset the engine, removing all blocks and links, paused or not.
+    /// See the [lifecycle contract](crate::base::engine#lifecycle-messages).
     Reset,
 }

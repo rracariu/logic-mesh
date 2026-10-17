@@ -309,6 +309,30 @@ mod tests {
         eng.run().await;
     }
 
+    /// The lifecycle contract — see `test_support::lifecycle`.
+    mod lifecycle {
+        use super::*;
+        use crate::tokio_impl::engine::test_support::lifecycle;
+
+        /// Guards the contract the single-threaded engine already kept.
+        #[tokio::test(flavor = "current_thread")]
+        async fn blocks_survive_shutdown() {
+            lifecycle::blocks_survive_shutdown(SingleThreadedEngine::new()).await;
+        }
+
+        /// Regression: dispatching a request drove the `LocalSet`, so
+        /// blocks kept executing while paused.
+        #[tokio::test(flavor = "current_thread")]
+        async fn pause_holds_blocks_and_answers_requests() {
+            lifecycle::pause_holds_blocks_and_answers_requests(SingleThreadedEngine::new()).await;
+        }
+
+        #[tokio::test(flavor = "current_thread")]
+        async fn reset_while_paused() {
+            lifecycle::reset_while_paused(SingleThreadedEngine::new()).await;
+        }
+    }
+
     /// Regression: a reply variant sent to the engine hit an
     /// `unreachable!` and panicked the event loop. It is now ignored,
     /// and the engine keeps answering.

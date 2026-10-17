@@ -18,6 +18,7 @@ use crate::{
     blocks::registry::{BlockSink, eval_static_block, make_block_into},
 };
 
+mod actor_step;
 mod block_mailbox;
 mod connectors;
 mod message_dispatch;

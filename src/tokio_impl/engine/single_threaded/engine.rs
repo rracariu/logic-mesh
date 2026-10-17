@@ -10,14 +10,14 @@ use libhaystack::val::Value;
 use tokio::{
     sync::{
         mpsc::{self, Receiver, Sender, UnboundedSender},
-        oneshot,
+        oneshot, watch,
     },
     task::LocalSet,
 };
 use uuid::Uuid;
 
 use super::super::block_mailbox::{
-    BLOCK_MAILBOX_CAP, BlockMailboxCmd, mailbox_request, mailbox_send,
+    BLOCK_MAILBOX_CAP, BlockMailboxCmd, mailbox_request, mailbox_send, terminate_actor,
 };
 use super::super::connectors::{self, ManagedConnectors};
 use super::actor::block_actor_task;
@@ -159,6 +159,10 @@ pub struct SingleThreadedEngine<S: EngineState = Idle> {
     /// the single source of truth blocks also resolve against. Dropping
     /// the engine unregisters them.
     connectors: ManagedConnectors,
+    /// Execution gate every block actor subscribes to: `true` while the
+    /// engine runs and is not paused. Actors keep serving their mailbox
+    /// either way, so requests are answered while blocks are held.
+    execution: watch::Sender<bool>,
     /// The lifecycle phase, tracked in the type only.
     state: PhantomData<S>,
 }
@@ -218,6 +222,7 @@ impl SingleThreadedEngine<Idle> {
             reply_senders: BTreeMap::new(),
             watchers: Rc::default(),
             connectors: ManagedConnectors::default(),
+            execution: watch::Sender::new(false),
             state: PhantomData,
         }
     }
@@ -287,7 +292,7 @@ impl SingleThreadedEngine<Idle> {
     /// Connectors own their IO loops: spawn them from `start` (via the
     /// ambient `tokio::spawn` natively, `wasm_bindgen_futures::spawn_local`
     /// on wasm) and wind them down in `stop`. Pausing the engine does not
-    /// pause these tasks — pause only stops driving block actors.
+    /// pause these tasks — pause only stops block execution.
     ///
     /// # Errors
     ///
@@ -312,6 +317,7 @@ impl<S: EngineState> SingleThreadedEngine<S> {
             reply_senders,
             watchers,
             connectors,
+            execution,
             state: _,
         } = self;
         SingleThreadedEngine {
@@ -323,8 +329,15 @@ impl<S: EngineState> SingleThreadedEngine<S> {
             reply_senders,
             watchers,
             connectors,
+            execution,
             state: PhantomData,
         }
+    }
+
+    /// Opens or closes the execution gate for every block.
+    fn set_execution(&self, open: bool) {
+        self.execution
+            .send_if_modified(|current| std::mem::replace(current, open) != open);
     }
 
     /// The names of the connectors this engine manages.
@@ -397,8 +410,12 @@ impl<S: EngineState> SingleThreadedEngine<S> {
         self.handles.insert(id, handle);
 
         let watchers = self.watchers.clone();
-        self.local
-            .spawn_local(block_actor_task(block, mailbox_rx, watchers));
+        self.local.spawn_local(block_actor_task(
+            block,
+            mailbox_rx,
+            watchers,
+            self.execution.subscribe(),
+        ));
         Ok(())
     }
 
@@ -519,8 +536,9 @@ impl<S: EngineState> BlockSink for SingleThreadedEngine<S> {
 
 impl SingleThreadedEngine<Running> {
     /// The event loop: starts the managed connectors, wires the links
-    /// queued while idle, then services engine messages until
-    /// [`Shutdown`](EngineMessage::Shutdown).
+    /// queued while idle, opens the execution gate, then services engine
+    /// messages until [`Shutdown`](EngineMessage::Shutdown) — see the
+    /// [lifecycle contract](crate::base::engine#lifecycle-messages).
     async fn event_loop(&mut self) {
         // Clone the LocalSet handle so the loop body can drive `local`
         // and mutate `self` independently of each other.
@@ -528,60 +546,67 @@ impl SingleThreadedEngine<Running> {
 
         // Start connectors before anything drives the LocalSet: block
         // actors are already spawned at schedule time, so any
-        // `run_until` would let them execute (and subscribe) against a
-        // connector that has not started yet. A plain await makes no
-        // progress on the LocalSet, so every connector is started
-        // before any actor runs.
+        // `run_until` would let them run against a connector that has
+        // not started yet. A plain await makes no progress on the
+        // LocalSet, so every connector is started before any actor runs.
         connectors::start_connectors(&self.connectors).await;
 
-        // Process any links queued during configuration.
+        // Process any links queued during configuration. The gate is
+        // still closed, so actors answer the wiring round-trips without
+        // executing: blocks first run with their links in place.
         let pending_links = std::mem::take(&mut self.pending_links);
         for link in pending_links {
             let _ = local.run_until(self.connect_blocks(&link)).await;
         }
 
-        let mut is_paused = false;
+        // A run always starts unpaused.
+        self.set_execution(true);
         loop {
+            // The LocalSet is driven while waiting in every state: with
+            // the gate closed, actors serve their mailboxes but no block
+            // executes.
             let mut engine_msg = None;
-            if !is_paused {
-                local
-                    .run_until(async {
-                        engine_msg = self.receiver.recv().await;
-                    })
-                    .await;
-            } else {
-                engine_msg = self.receiver.recv().await;
-            }
+            local
+                .run_until(async {
+                    engine_msg = self.receiver.recv().await;
+                })
+                .await;
 
-            if let Some(message) = engine_msg {
-                if matches!(message, EngineMessage::Shutdown) {
-                    // Connectors stay registered so the engine can be
-                    // re-run with the same bindings.
+            // The engine holds a sender itself, so the channel never
+            // closes.
+            let Some(message) = engine_msg else {
+                continue;
+            };
+            match message {
+                EngineMessage::Shutdown => {
+                    // Blocks stay scheduled, held by the closed gate,
+                    // and resume on the next `run()`. Connectors stay
+                    // registered so the re-run gets the same bindings.
+                    self.set_execution(false);
                     connectors::stop_connectors(&self.connectors).await;
                     break;
-                } else if matches!(message, EngineMessage::Reset) {
-                    let ids: Vec<Uuid> = self.handles.keys().copied().collect();
-                    for id in ids {
-                        if let Some(handle) = self.handles.remove(&id) {
-                            let _ = handle.mailbox.send(BlockMailboxCmd::Terminate).await;
-                        }
-                    }
-                    // Unregister first — no block can `get_connector` a
-                    // connector that is being stopped — then stop the
-                    // handles the unregistration handed back.
-                    connectors::unregister_and_stop_connectors(&mut self.connectors).await;
-                    continue;
-                } else if matches!(message, EngineMessage::Pause) {
-                    is_paused = true;
-                    continue;
-                } else if matches!(message, EngineMessage::Resume) {
-                    is_paused = false;
-                    continue;
                 }
-
-                local.run_until(dispatch_message(self, message)).await;
+                EngineMessage::Reset => self.reset().await,
+                EngineMessage::Pause => self.set_execution(false),
+                EngineMessage::Resume => self.set_execution(true),
+                message => local.run_until(dispatch_message(self, message)).await,
             }
         }
+    }
+
+    /// Terminates and removes every block, then unregisters and stops
+    /// the managed connectors.
+    ///
+    /// Runs outside `run_until`, where no actor makes progress, so the
+    /// actors are told to terminate without waiting on their mailboxes.
+    async fn reset(&mut self) {
+        for (_, handle) in std::mem::take(&mut self.handles) {
+            terminate_actor(handle.mailbox);
+        }
+        // Unregister first — no block can `get_connector` a connector
+        // that is being stopped — then stop the handles the
+        // unregistration handed back.
+        connectors::unregister_and_stop_connectors(&mut self.connectors).await;
     }
 
     /// Attaches an already-registered connector to this running engine:
@@ -1048,4 +1073,42 @@ fn hasinitialvalue(value: &Value) -> bool {
     !matches!(value, Null)
         && !matches!(value, Dict(d) if d.is_empty())
         && !matches!(value, List(l) if l.is_empty())
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+#[cfg(test)]
+mod test {
+    use std::time::Duration;
+
+    use tokio::time::timeout;
+
+    use super::*;
+    use crate::base::block::BlockProps;
+    use crate::blocks::math::Add;
+
+    /// Regression: reset awaited each `Terminate` send outside
+    /// `run_until`, where no actor drains its mailbox, so one full
+    /// mailbox would block the engine for good.
+    #[tokio::test(flavor = "current_thread")]
+    async fn reset_does_not_wait_on_a_full_mailbox() {
+        let mut eng = SingleThreadedEngine::new();
+        let add = Add::new();
+        let id = *add.id();
+        eng.schedule(add).expect("scheduled");
+        let mut eng = eng.into_state::<Running>();
+
+        // Nothing drives the LocalSet here, so nothing drains these.
+        let mailbox = eng.handles[&id].mailbox.clone();
+        while mailbox
+            .try_send(BlockMailboxCmd::RefreshInput {
+                name: "in0".to_string(),
+            })
+            .is_ok()
+        {}
+
+        timeout(Duration::from_secs(2), eng.reset())
+            .await
+            .expect("reset completes despite the full mailbox");
+        assert!(eng.handles.is_empty());
+    }
 }

@@ -4,7 +4,8 @@
 //!
 //! Same shape as the single-threaded variant: the actor task **owns the
 //! block by value** and [`tokio::select!`]s between `block.execute()` and a
-//! per-block mailbox. The MT-specific differences are:
+//! per-block mailbox, one shared `actor_step` at a time. The MT-specific
+//! differences are:
 //!
 //! - The block is sent across thread boundaries (worker thread) once, then
 //!   stays put. `B: `[`Send`] is required at scheduling time, but the actor
@@ -22,7 +23,8 @@ use tokio::sync::{
 };
 use uuid::Uuid;
 
-use super::super::block_mailbox::{BlockMailboxCmd, handle_cmd};
+use super::super::actor_step::{ExecutionGate, Step, run_one_step};
+use super::super::block_mailbox::BlockMailboxCmd;
 use crate::base::Status;
 use crate::base::block::{Block, BlockState};
 use crate::base::engine::messages::{ChangeSource, WatchMessage};
@@ -32,25 +34,36 @@ use crate::tokio_impl::MtBlock;
 pub(super) type WatchersHandle = Arc<RwLock<BTreeMap<Uuid, UnboundedSender<WatchMessage>>>>;
 
 /// Per-block actor task. Owns the block by value; processes mailbox
-/// commands interleaved with `block.execute()` cycles.
+/// commands interleaved with `block.execute()` cycles, which run only
+/// while the engine's execution `gate` is open.
 pub(super) async fn block_actor_task<B>(
     mut block: B,
     mut mailbox: mpsc::Receiver<BlockMailboxCmd>,
     watchers: WatchersHandle,
+    mut gate: ExecutionGate,
 ) where
     B: MtBlock + 'static,
 {
     let mut last_pin_values = BTreeMap::<String, Value>::new();
     let mut last_state = BlockState::Running;
-    let mut terminated = false;
 
-    while !terminated {
-        // Optimistic recovery — see single_threaded::actor for rationale.
-        if block.state().is_fault() {
+    loop {
+        let open = *gate.borrow_and_update();
+
+        // Optimistic recovery, for a block about to execute only — see
+        // single_threaded::actor for rationale.
+        let recovering_from = if open && block.state().is_fault() {
+            let fault = block.state();
             block.set_state(BlockState::Running);
-        }
+            Some(fault)
+        } else {
+            None
+        };
 
-        terminated = run_one_step(&mut block, &mut mailbox).await;
+        let step = run_one_step(&mut block, &mut mailbox, &mut gate, open).await;
+        if let (Step::Gated, Some(fault)) = (&step, recovering_from) {
+            block.set_state(fault);
+        }
 
         let current_state = block.state();
         propagate_status(&current_state, &last_state, &mut block);
@@ -66,7 +79,7 @@ pub(super) async fn block_actor_task<B>(
 
         last_state = current_state;
 
-        if matches!(block.state(), BlockState::Terminated) {
+        if matches!(step, Step::Command(true)) || matches!(block.state(), BlockState::Terminated) {
             break;
         }
 
@@ -88,36 +101,6 @@ where
     } else if was_fault {
         for output in block.outputs_mut() {
             output.emit_status(Status::Ok);
-        }
-    }
-}
-
-/// Drive the block one step. Returns `true` if the actor task should exit.
-async fn run_one_step<B>(block: &mut B, mailbox: &mut mpsc::Receiver<BlockMailboxCmd>) -> bool
-where
-    B: MtBlock + 'static,
-{
-    // See single_threaded::actor::run_one_step for the encoding.
-    let mut cmd_to_handle: Option<Option<BlockMailboxCmd>> = None;
-    {
-        let execute_fut = block.execute();
-        tokio::pin!(execute_fut);
-        tokio::select! {
-            biased;
-            cmd = mailbox.recv() => {
-                cmd_to_handle = Some(cmd);
-            }
-            () = &mut execute_fut => {}
-        }
-    }
-
-    match cmd_to_handle {
-        None => false,
-        Some(Some(cmd)) => handle_cmd(cmd, block).await,
-        // Closed mailbox: exit — see single_threaded::actor::run_one_step.
-        Some(None) => {
-            block.set_state(BlockState::Terminated);
-            true
         }
     }
 }
@@ -173,7 +156,10 @@ async fn change_of_value_check<B: Block + 'static>(
 mod test {
     use std::time::Duration;
 
-    use tokio::{sync::mpsc, time::timeout};
+    use tokio::{
+        sync::{mpsc, watch},
+        time::timeout,
+    };
 
     use super::block_actor_task;
     use crate::blocks::math::Add;
@@ -184,7 +170,13 @@ mod test {
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn actor_exits_when_its_mailbox_closes() {
         let (mailbox_tx, mailbox_rx) = mpsc::channel(BLOCK_MAILBOX_CAP);
-        let task = tokio::spawn(block_actor_task(Add::new(), mailbox_rx, Default::default()));
+        let (_gate, gate_rx) = watch::channel(true);
+        let task = tokio::spawn(block_actor_task(
+            Add::new(),
+            mailbox_rx,
+            Default::default(),
+            gate_rx,
+        ));
 
         drop(mailbox_tx);
 

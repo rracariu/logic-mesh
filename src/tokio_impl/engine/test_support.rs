@@ -8,16 +8,23 @@ use std::thread;
 use std::time::Duration;
 
 use futures::FutureExt;
+use libhaystack::val::Value;
 use tokio::{
     runtime::Runtime,
     sync::mpsc::{self, Receiver, Sender},
-    time::timeout,
+    time::{sleep, timeout},
 };
 use uuid::Uuid;
 
-use crate::base::engine::{Engine, messages::EngineMessage};
+use crate::base::block::{BlockProps, connect::connect_output};
+use crate::base::engine::{
+    Engine,
+    messages::{BlockDefinition, EngineMessage},
+};
 use crate::base::program::{Program, ProgramBlock};
+use crate::blocks::math::Add;
 use crate::single_threaded::Messages;
+use crate::tokio_impl::{ReaderImpl, WriterImpl};
 
 /// How long a test waits for a reply before declaring the engine stuck.
 const REPLY_TIMEOUT: Duration = Duration::from_secs(5);
@@ -47,6 +54,43 @@ impl Client {
             .send(message)
             .await
             .expect("the engine is receiving");
+    }
+
+    /// Inspects `block`, failing the test if the engine reports an error.
+    pub(crate) async fn inspect(&mut self, block: Uuid) -> BlockDefinition {
+        match self
+            .request(EngineMessage::InspectBlockReq(self.id, block))
+            .await
+        {
+            EngineMessage::InspectBlockRes(Ok(definition)) => definition,
+            other => panic!("Expected InspectBlockRes(Ok), got {:?}", other),
+        }
+    }
+
+    /// The current value of `block`'s output `pin`.
+    pub(crate) async fn output(&mut self, block: Uuid, pin: &str) -> Value {
+        self.inspect(block).await.outputs[pin].val.clone()
+    }
+
+    /// Writes `value` to `block`'s output `pin`.
+    pub(crate) async fn write_output(&mut self, block: Uuid, pin: &str, value: Value) {
+        let request = EngineMessage::WriteBlockOutputReq(self.id, block, pin.to_string(), value);
+        match self.request(request).await {
+            EngineMessage::WriteBlockOutputRes(Ok(_)) => {}
+            other => panic!("Expected WriteBlockOutputRes(Ok), got {:?}", other),
+        }
+    }
+
+    /// Polls `block` until its output `pin` holds `expected`, failing the
+    /// test after a few seconds.
+    pub(crate) async fn wait_for_output(&mut self, block: Uuid, pin: &str, expected: Value) {
+        for _ in 0..100 {
+            if self.output(block, pin).await == expected {
+                return;
+            }
+            sleep(Duration::from_millis(20)).await;
+        }
+        panic!("{block}.{pin} never became {expected:?}");
     }
 }
 
@@ -94,6 +138,23 @@ where
     engine
 }
 
+/// Schedules two `Add` blocks on `engine`, the first one's `out` linked
+/// to the second one's `in0`, and returns their ids. Writing the first
+/// block's `out` makes the second one's `out` follow — but only once the
+/// second block executes.
+pub(crate) fn schedule_linked_adds<E>(engine: &mut E) -> (Uuid, Uuid)
+where
+    E: Engine<Writer = WriterImpl, Reader = ReaderImpl>,
+{
+    let mut source = Add::new();
+    let mut target = Add::new();
+    connect_output(&mut source.out, target.inputs_mut()[0]).expect("linked");
+    let ids = (*source.id(), *target.id());
+    engine.schedule(source).expect("source scheduled");
+    engine.schedule(target).expect("target scheduled");
+    ids
+}
+
 /// A program of unlinked core `Add` blocks keyed by `ids`, verbatim.
 pub(crate) fn add_program<'a>(ids: impl IntoIterator<Item = &'a str>) -> Program {
     Program {
@@ -116,5 +177,106 @@ pub(crate) fn add_program<'a>(ids: impl IntoIterator<Item = &'a str>) -> Program
             })
             .collect(),
         links: Default::default(),
+    }
+}
+
+/// The [lifecycle contract](crate::base::engine#lifecycle-messages),
+/// written once against the [`Engine`] trait and run by each engine's
+/// tests.
+pub(crate) mod lifecycle {
+    use assert_matches::assert_matches;
+
+    use super::*;
+    use crate::base::engine::messages::EngineMessage::{
+        AddBlockReq, AddBlockRes, InspectBlockReq, InspectBlockRes, Pause, Reset, Resume,
+    };
+
+    /// An engine the lifecycle tests can drive.
+    pub(crate) trait TestEngine:
+        Engine<Channel = Sender<Messages>, Writer = WriterImpl, Reader = ReaderImpl>
+    {
+    }
+    impl<E> TestEngine for E where
+        E: Engine<Channel = Sender<Messages>, Writer = WriterImpl, Reader = ReaderImpl>
+    {
+    }
+
+    /// Blocks survive a shutdown, and values flow again on the next run.
+    pub(crate) async fn blocks_survive_shutdown<E: TestEngine>(mut engine: E) {
+        let (source, target) = schedule_linked_adds(&mut engine);
+
+        let engine = drive(engine, move |mut client| async move {
+            client.write_output(source, "out", 1.into()).await;
+            client.wait_for_output(target, "out", 1.into()).await;
+        })
+        .await;
+
+        drive(engine, move |mut client| async move {
+            assert_eq!(
+                client.output(target, "out").await,
+                1.into(),
+                "the target kept its value across the shutdown"
+            );
+            client.write_output(source, "out", 2.into()).await;
+            client.wait_for_output(target, "out", 2.into()).await;
+        })
+        .await;
+    }
+
+    /// While paused no block executes, yet every request is answered;
+    /// resuming lets the held value through.
+    pub(crate) async fn pause_holds_blocks_and_answers_requests<E: TestEngine>(mut engine: E) {
+        let (source, target) = schedule_linked_adds(&mut engine);
+
+        drive(engine, move |mut client| async move {
+            client.write_output(source, "out", 1.into()).await;
+            client.wait_for_output(target, "out", 1.into()).await;
+
+            client.send(Pause).await;
+            // Answered while paused, and lands on the source directly.
+            client.write_output(source, "out", 2.into()).await;
+            assert_eq!(client.output(source, "out").await, 2.into());
+            // The target does not execute, so it never picks the value
+            // up — however many requests drive the engine meanwhile.
+            for _ in 0..10 {
+                sleep(Duration::from_millis(20)).await;
+                assert_eq!(
+                    client.output(target, "out").await,
+                    1.into(),
+                    "no block executes while paused"
+                );
+            }
+
+            client.send(Resume).await;
+            client.wait_for_output(target, "out", 2.into()).await;
+        })
+        .await;
+    }
+
+    /// A reset while paused removes every block, the engine keeps
+    /// answering, and blocks added afterwards run once resumed.
+    pub(crate) async fn reset_while_paused<E: TestEngine>(mut engine: E) {
+        let (source, _) = schedule_linked_adds(&mut engine);
+
+        drive(engine, move |mut client| async move {
+            client.send(Pause).await;
+            client.send(Reset).await;
+
+            let reply = client.request(InspectBlockReq(client.id, source)).await;
+            assert_matches!(reply, InspectBlockRes(Err(_)), "reset removed the block");
+
+            let reply = client
+                .request(AddBlockReq(client.id, "Add".to_string(), None, None))
+                .await;
+            let added = match reply {
+                AddBlockRes(Ok(id)) => id,
+                other => panic!("Expected AddBlockRes(Ok), got {:?}", other),
+            };
+
+            client.send(Resume).await;
+            client.write_output(added, "out", 3.into()).await;
+            assert_eq!(client.output(added, "out").await, 3.into());
+        })
+        .await;
     }
 }

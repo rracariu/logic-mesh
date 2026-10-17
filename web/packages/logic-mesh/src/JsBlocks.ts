@@ -182,7 +182,7 @@ export class JsBlocks<T extends Record<string, JsBlockFn>> {
    *
    * `command` must be a handle created before `engine.run()` (any
    * {@link EngineSession} handle qualifies), and — like every engine
-   * request — this only resolves while the engine runs unpaused.
+   * request — this only resolves while the engine runs (paused or not).
    *
    * Overlapping attach/detach calls on one instance are serialized
    * internally, so two same-tick attaches both succeed (the second

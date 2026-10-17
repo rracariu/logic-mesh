@@ -6,10 +6,10 @@
 //! The task **owns the block by value** — there is no
 //! [`Rc`](std::rc::Rc), no [`UnsafeCell`](std::cell::UnsafeCell), and no
 //! aliasing. The task loop interleaves `block.execute()` with mailbox
-//! handling via [`tokio::select!`]; when a mailbox command arrives, the
-//! in-flight execute future is dropped (cancellation-safe — see the module
-//! docstring) and the command is handled before a fresh `execute()` is
-//! started.
+//! handling via [`tokio::select!`] (one step at a time, see
+//! `actor_step`); when a mailbox command arrives, the in-flight execute
+//! future is dropped (cancellation-safe — see the module docstring) and
+//! the command is handled before a fresh `execute()` is started.
 
 use std::cell::RefCell;
 use std::collections::{BTreeMap, HashMap};
@@ -19,7 +19,8 @@ use libhaystack::val::Value;
 use tokio::sync::mpsc::{self, UnboundedSender};
 use uuid::Uuid;
 
-use super::super::block_mailbox::{BlockMailboxCmd, handle_cmd};
+use super::super::actor_step::{ExecutionGate, Step, run_one_step};
+use super::super::block_mailbox::BlockMailboxCmd;
 use crate::base::Status;
 use crate::base::block::{Block, BlockState};
 use crate::base::engine::messages::{ChangeSource, WatchMessage};
@@ -29,19 +30,22 @@ use crate::tokio_impl::EngineBlock;
 pub(super) type WatchersHandle = Rc<RefCell<BTreeMap<Uuid, UnboundedSender<WatchMessage>>>>;
 
 /// Per-block actor task. Owns the block by value; processes mailbox commands
-/// interleaved with `block.execute()` cycles.
+/// interleaved with `block.execute()` cycles, which run only while the
+/// engine's execution `gate` is open.
 pub(super) async fn block_actor_task<B>(
     mut block: B,
     mut mailbox: mpsc::Receiver<BlockMailboxCmd>,
     watchers: WatchersHandle,
+    mut gate: ExecutionGate,
 ) where
     B: EngineBlock + 'static,
 {
     let mut last_pin_values = BTreeMap::<String, Value>::new();
     let mut last_state = BlockState::Running;
-    let mut terminated = false;
 
-    while !terminated {
+    loop {
+        let open = *gate.borrow_and_update();
+
         // Optimistic recovery: if the previous cycle left the block in
         // Fault, clear back to Running before drain/execute. If the
         // upstream fault persists or the block re-faults during execute,
@@ -57,13 +61,25 @@ pub(super) async fn block_actor_task<B>(
         // sticky between cycles means: while in Fault, value updates ride
         // out as `(value, Fault)`; on recovery, `emit_status(Ok)` at the
         // end of the recovery cycle is the single authoritative flip.
-        if block.state().is_fault() {
+        //
+        // Only a block about to execute recovers: while the gate is
+        // closed a fault stays put, so pausing never flips a status.
+        let recovering_from = if open && block.state().is_fault() {
+            let fault = block.state();
             block.set_state(BlockState::Running);
-        }
+            Some(fault)
+        } else {
+            None
+        };
 
-        // Drive one step: either execute completes, or a mailbox cmd arrives
-        // (cancelling execute mid-await).
-        terminated = run_one_step(&mut block, &mut mailbox).await;
+        // Drive one step: execute completes, a mailbox cmd arrives
+        // (cancelling execute mid-await), or the gate flips.
+        let step = run_one_step(&mut block, &mut mailbox, &mut gate, open).await;
+        if let (Step::Gated, Some(fault)) = (&step, recovering_from) {
+            // The gate closed before the block got to run, so nothing
+            // could have cleared the fault.
+            block.set_state(fault);
+        }
 
         // Propagate state changes to output statuses. emit_status is a no-op
         // on the wire when nothing changed (send_if_modified comparison).
@@ -80,7 +96,7 @@ pub(super) async fn block_actor_task<B>(
 
         last_state = current_state;
 
-        if matches!(block.state(), BlockState::Terminated) {
+        if matches!(step, Step::Command(true)) || matches!(block.state(), BlockState::Terminated) {
             break;
         }
 
@@ -109,44 +125,6 @@ where
     } else if was_fault {
         for output in block.outputs_mut() {
             output.emit_status(Status::Ok);
-        }
-    }
-}
-
-/// Drive the block one step. Returns `true` if the actor task should exit.
-async fn run_one_step<B>(block: &mut B, mailbox: &mut mpsc::Receiver<BlockMailboxCmd>) -> bool
-where
-    B: EngineBlock + 'static,
-{
-    // `None` — execute completed; `Some(None)` — the mailbox closed;
-    // `Some(Some(cmd))` — a command arrived.
-    let mut cmd_to_handle: Option<Option<BlockMailboxCmd>> = None;
-    {
-        let execute_fut = block.execute();
-        tokio::pin!(execute_fut);
-        tokio::select! {
-            biased;
-            // Prefer mailbox so external commands aren't delayed by
-            // a block that's perpetually ready to execute.
-            cmd = mailbox.recv() => {
-                cmd_to_handle = Some(cmd);
-            }
-            () = &mut execute_fut => {}
-        }
-        // execute_fut goes out of scope here — its borrow on block ends.
-    }
-
-    match cmd_to_handle {
-        None => false,
-        Some(Some(cmd)) => handle_cmd(cmd, block).await,
-        // Every sender is gone — the engine dropped this block's handle
-        // (or the engine itself was dropped), so nothing can reach the
-        // block again. A closed mailbox is always ready, so staying in
-        // the loop would let it win every biased select and spin
-        // forever without ever executing the block.
-        Some(None) => {
-            block.set_state(BlockState::Terminated);
-            true
         }
     }
 }
@@ -213,7 +191,11 @@ fn change_of_value_check<B: Block + 'static>(
 mod test {
     use std::time::Duration;
 
-    use tokio::{sync::mpsc, task::LocalSet, time::timeout};
+    use tokio::{
+        sync::{mpsc, watch},
+        task::LocalSet,
+        time::timeout,
+    };
 
     use super::block_actor_task;
     use crate::blocks::math::Add;
@@ -226,7 +208,13 @@ mod test {
     async fn actor_exits_when_its_mailbox_closes() {
         let local = LocalSet::new();
         let (mailbox_tx, mailbox_rx) = mpsc::channel(BLOCK_MAILBOX_CAP);
-        let task = local.spawn_local(block_actor_task(Add::new(), mailbox_rx, Default::default()));
+        let (_gate, gate_rx) = watch::channel(true);
+        let task = local.spawn_local(block_actor_task(
+            Add::new(),
+            mailbox_rx,
+            Default::default(),
+            gate_rx,
+        ));
 
         drop(mailbox_tx);
 
