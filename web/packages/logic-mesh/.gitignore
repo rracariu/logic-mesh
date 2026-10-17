@@ -1,2 +1,5 @@
 dist/
 pkg/
+# Copied from the repository root by `build:prepare`, so the tarball
+# carries the license text the BSD-3-Clause terms require.
+/LICENSE

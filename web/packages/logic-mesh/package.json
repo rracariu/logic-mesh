@@ -1,53 +1,68 @@
 {
   "name": "logic-mesh",
-  "collaborators": [
-    "Radu Racariu <radu.racariu@gmail.com>"
-  ],
+  "author": "Radu Racariu <radu.racariu@gmail.com>",
   "description": "Control logic engine using event based and reactive blocks written in Rust.",
   "version": "2.0.0",
   "type": "module",
   "license": "BSD-3-Clause",
+  "homepage": "https://github.com/rracariu/logic-mesh/tree/main/web/packages/logic-mesh#readme",
+  "bugs": {
+    "url": "https://github.com/rracariu/logic-mesh/issues"
+  },
   "repository": {
     "type": "git",
-    "url": "https://github.com/rracariu/logic-mesh"
+    "url": "git+https://github.com/rracariu/logic-mesh.git",
+    "directory": "web/packages/logic-mesh"
+  },
+  "engines": {
+    "node": "^22.19.0 || >=24.5.0"
   },
   "scripts": {
-    "build": "wasm-pack build --release --out-dir web/packages/logic-mesh/pkg ../../.. && npm run build:prepare && tsc",
-    "build:dev": "wasm-pack build --dev --out-dir web/packages/logic-mesh/pkg ../../.. && npm run build:prepare && tsc",
-    "build:prepare": "mkdir -p dist && mv ./pkg/*.js ./pkg/*.ts ./pkg/*.wasm ./dist/ && npm version $(node -p \"require('./pkg/package.json').version\") --allow-same-version && rm -rf ./pkg",
+    "clean": "rm -rf ./dist ./pkg ./LICENSE",
+    "build": "npm run clean && wasm-pack build --release --out-dir web/packages/logic-mesh/pkg ../../.. && npm run build:prepare && tsc",
+    "build:dev": "npm run clean && wasm-pack build --dev --out-dir web/packages/logic-mesh/pkg ../../.. && npm run build:prepare && tsc",
+    "build:prepare": "mkdir -p dist && mv ./pkg/*.js ./pkg/*.ts ./pkg/*.wasm ./dist/ && cp ../../../LICENSE ./LICENSE && npm version $(node -p \"require('./pkg/package.json').version\") --allow-same-version && rm -rf ./pkg",
+    "check:package": "publint --strict && attw --pack . --profile esm-only",
     "lint": "eslint .",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
+    "prepublishOnly": "node scripts/check-dist.mjs",
     "test": "vitest run",
+    "test:pack": "node scripts/test-pack.mjs",
     "test:watch": "vitest"
   },
   "files": [
     "dist/"
   ],
-  "module": "dist/index.js",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
-      "import": "./dist/index.js"
-    }
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
   },
   "sideEffects": [
-    "./dist/index.js",
     "./dist/logic_mesh.js"
   ],
-  "dependencies": {
-    "zod": "^4.4.3"
+  "peerDependencies": {
+    "zod": "^4.6.0"
   },
   "devDependencies": {
+    "@arethetypeswrong/cli": "^0.18.5",
     "@eslint/js": "^10.0.1",
     "eslint": "^10.4.0",
     "eslint-config-prettier": "^9",
     "globals": "^15",
     "prettier": "^3",
+    "publint": "^0.3.25",
     "typescript": "^6.0.3",
     "typescript-eslint": "^8",
-    "vitest": "^4.1.6"
+    "vitest": "^4.1.6",
+    "zod": "^4.6.7"
   },
   "keywords": [
     "dataflow",
