@@ -56,8 +56,15 @@ pub enum ConnectError {
 
     /// The source pin already links to the target input. A pin links
     /// to an input at most once.
-    #[error("Input '{target_input}' of block '{target_block}' is already linked to this pin")]
+    #[error(
+        "Pin '{source_pin}' of block '{source_block}' is already linked to input \
+         '{target_input}' of block '{target_block}'"
+    )]
     AlreadyConnected {
+        /// The block of the source pin.
+        source_block: Uuid,
+        /// The source pin's name: an output, or an input that fans out.
+        source_pin: String,
         /// The block of the target input.
         target_block: Uuid,
         /// The target input's name.
@@ -67,16 +74,30 @@ pub enum ConnectError {
     /// An input was linked to an input of its own block. An input fans
     /// out only to inputs of other blocks; an output may link to its
     /// own block's inputs.
-    #[error("An input of block '{block}' cannot link to an input of the same block")]
+    #[error(
+        "Input '{source_input}' of block '{block}' cannot link to input '{target_input}' \
+         of the same block"
+    )]
     SelfLink {
         /// The block both inputs belong to.
         block: Uuid,
+        /// The name of the input the link would read from.
+        source_input: String,
+        /// The name of the input the link would write to.
+        target_input: String,
     },
 
     /// The source pin has no link to the target input, so there is
     /// nothing to disconnect.
-    #[error("Input '{target_input}' of block '{target_block}' is not linked to this pin")]
+    #[error(
+        "Pin '{source_pin}' of block '{source_block}' is not linked to input \
+         '{target_input}' of block '{target_block}'"
+    )]
     NotConnected {
+        /// The block of the source pin.
+        source_block: Uuid,
+        /// The source pin's name: an output, or an input that fans out.
+        source_pin: String,
         /// The block of the target input.
         target_block: Uuid,
         /// The target input's name.
@@ -89,25 +110,53 @@ mod test {
     use super::ConnectError;
     use uuid::Uuid;
 
+    /// Regression: a link failure named only its target input and
+    /// called the source "this pin", which means nothing in an engine
+    /// reply that carries the message alone.
     #[test]
     fn messages_name_the_pins() {
-        let block = Uuid::new_v4();
+        let (source, target) = (Uuid::new_v4(), Uuid::new_v4());
 
         assert_eq!(
             ConnectError::InputNotFound {
-                block,
+                block: target,
                 pin: "in9".to_string()
             }
             .to_string(),
-            format!("Input 'in9' not found on block '{block}'")
+            format!("Input 'in9' not found on block '{target}'")
         );
         assert_eq!(
             ConnectError::AlreadyConnected {
-                target_block: block,
+                source_block: source,
+                source_pin: "out".to_string(),
+                target_block: target,
                 target_input: "in0".to_string()
             }
             .to_string(),
-            format!("Input 'in0' of block '{block}' is already linked to this pin")
+            format!(
+                "Pin 'out' of block '{source}' is already linked to input 'in0' of block '{target}'"
+            )
+        );
+        assert_eq!(
+            ConnectError::NotConnected {
+                source_block: source,
+                source_pin: "in1".to_string(),
+                target_block: target,
+                target_input: "in0".to_string()
+            }
+            .to_string(),
+            format!(
+                "Pin 'in1' of block '{source}' is not linked to input 'in0' of block '{target}'"
+            )
+        );
+        assert_eq!(
+            ConnectError::SelfLink {
+                block: source,
+                source_input: "in0".to_string(),
+                target_input: "in1".to_string()
+            }
+            .to_string(),
+            format!("Input 'in0' of block '{source}' cannot link to input 'in1' of the same block")
         );
     }
 }
