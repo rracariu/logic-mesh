@@ -20,8 +20,10 @@ use uuid::Uuid;
 ///
 /// Phase 1 fault propagation: [`BlockState::Fault`] carries the reason so the engine and
 /// UI can show *why* the block isn't producing trustworthy output. Recovery
-/// is automatic — the actor task optimistically clears Fault at the start
-/// of each cycle and re-enters it only if drain or execute set it again.
+/// is automatic — the actor task optimistically clears Fault before each
+/// execute cycle, and re-enters it if drain or execute set it again or if
+/// the cycle is cut short (by an engine request, a pause or a shutdown)
+/// before it completes, so only a completed cycle clears a fault.
 /// A block whose `execute` panicked is the exception: it stays in Fault
 /// until a cycle completes without panicking (see [`Block`]).
 ///

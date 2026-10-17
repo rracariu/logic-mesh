@@ -198,6 +198,37 @@ pub(crate) fn add_program<'a>(ids: impl IntoIterator<Item = &'a str>) -> Program
     }
 }
 
+/// Blocks for the actor-level fault tests of both engines.
+pub(crate) mod faults {
+    use crate::base::block::{Block, BlockProps, BlockState};
+    use crate::blocks::OutputImpl;
+
+    /// The fault reason a [`FaultOnce`] block leaves.
+    pub(crate) const REASON: &str = "faulted once";
+
+    /// Faults itself on its first execute cycle, then waits forever: a
+    /// block left in an ordinary fault, not a panic hold, whose next
+    /// cycle never completes.
+    #[block]
+    #[derive(BlockProps, Debug)]
+    #[category = "test"]
+    pub(crate) struct FaultOnce {
+        #[output(kind = "Number")]
+        pub(crate) out: OutputImpl,
+        faulted: bool,
+    }
+
+    impl Block for FaultOnce {
+        async fn execute(&mut self) {
+            if self.faulted {
+                std::future::pending::<()>().await;
+            }
+            self.faulted = true;
+            self.set_state(BlockState::fault(REASON));
+        }
+    }
+}
+
 /// The [lifecycle contract](crate::base::engine#lifecycle-messages),
 /// written once against the [`Engine`] trait and run by each engine's
 /// tests.

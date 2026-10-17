@@ -8,6 +8,15 @@
 //! closed the block never executes, but its mailbox is still served, so
 //! every engine request keeps getting answered.
 //!
+//! ## Fault recovery
+//!
+//! A block in Fault is cleared back to Running just before it executes,
+//! optimistically, and the cycle sets Fault again if the cause persists
+//! (see [`recover_optimistically`]). Only a cycle that completes can
+//! clear a fault: one cut short by a mailbox command or by the gate
+//! closing puts the fault back, so a request, a pause or a shutdown
+//! never flips a faulted block, or its outputs, to Ok.
+//!
 //! ## Panicking blocks
 //!
 //! On native targets a panic inside `execute()` is caught and isolated
@@ -94,7 +103,7 @@ impl Default for PanicHold {
 
 impl PanicHold {
     /// `true` from a panic until an `execute()` cycle completes cleanly.
-    pub(super) fn is_holding(&self) -> bool {
+    fn is_holding(&self) -> bool {
         self.fault.is_some()
     }
 
@@ -145,6 +154,16 @@ impl PanicHold {
     }
 }
 
+/// What ended a step that started an `execute()` cycle.
+enum Race {
+    /// The cycle finished; `Err` holds its panic message.
+    Finished(Result<(), String>),
+    /// A mailbox command arrived first — or the mailbox closed.
+    Command(Option<BlockMailboxCmd>),
+    /// The gate closed first.
+    GateClosed,
+}
+
 /// Drives `block` one step. `open` is the gate state the caller read
 /// for this step: the block only executes if it is `true` and `hold` is
 /// not waiting out a retry delay, and a gate that has closed since then
@@ -160,7 +179,8 @@ where
     B: EngineBlock + 'static,
 {
     let cmd = if open && !hold.is_waiting() {
-        let finished = {
+        let recovering_from = recover_optimistically(block, hold);
+        let race = {
             let execute = execute_guarded(block);
             tokio::pin!(execute);
             tokio::select! {
@@ -168,23 +188,32 @@ where
                 // Prefer mailbox so external commands aren't delayed by a
                 // block that's perpetually ready to execute, and the gate
                 // over execute so a paused block never completes a cycle.
-                cmd = mailbox.recv() => Err(cmd),
-                () = wait_for_gate(gate, false) => return Step::Woken,
-                finished = &mut execute => Ok(finished),
+                cmd = mailbox.recv() => Race::Command(cmd),
+                () = wait_for_gate(gate, false) => Race::GateClosed,
+                finished = &mut execute => Race::Finished(finished),
             }
             // `execute` goes out of scope here — its borrow on block ends.
         };
-        match finished {
-            Ok(Ok(())) => {
+        match race {
+            Race::Finished(Ok(())) => {
                 hold.release(block);
                 return Step::Executed;
             }
-            Ok(Err(message)) => {
+            Race::Finished(Err(message)) => {
                 hold.hold(block, &message);
                 return Step::Panicked;
             }
-            // A command arrived first.
-            Err(cmd) => cmd,
+            // The cycle was dropped before it completed, so it proved
+            // nothing: put the fault back before anything — the command
+            // included — reads the state.
+            Race::Command(cmd) => {
+                undo_recovery(block, recovering_from);
+                cmd
+            }
+            Race::GateClosed => {
+                undo_recovery(block, recovering_from);
+                return Step::Woken;
+            }
         }
     } else {
         tokio::select! {
@@ -206,6 +235,47 @@ where
             block.set_state(BlockState::Terminated);
             Step::Command(true)
         }
+    }
+}
+
+/// Optimistic recovery, for a block about to execute: if a previous
+/// cycle left the block in Fault, clear it back to Running and return
+/// that fault. If the upstream fault persists or the block re-faults,
+/// drain or execute set Fault again during the cycle; otherwise the
+/// cycle completes with the block Running, and the actor loop's
+/// end-of-step `emit_status(Ok)` broadcasts the recovery. A cycle that
+/// does not complete hands the fault to [`undo_recovery`].
+///
+/// We deliberately do NOT reset each output's `effective_status` here.
+/// Doing so would mean `output.set(value)` calls inside `execute()` emit
+/// `(value, Ok)` even when the block is about to re-enter Fault this
+/// same cycle — a non-conservative status flicker that can mask a fault.
+/// Keeping `effective_status` sticky between cycles means: while in
+/// Fault, value updates ride out as `(value, Fault)`; on recovery,
+/// `emit_status(Ok)` at the end of the recovery cycle is the single
+/// authoritative flip.
+///
+/// A block held after a panic does not recover here: it stays in Fault
+/// until a cycle completes cleanly (see the [module docs](self)).
+fn recover_optimistically<B: EngineBlock>(block: &mut B, hold: &PanicHold) -> Option<BlockState> {
+    let state = block.state();
+    if hold.is_holding() || !state.is_fault() {
+        return None;
+    }
+    block.set_state(BlockState::Running);
+    Some(state)
+}
+
+/// Puts back the fault [`recover_optimistically`] cleared, for a cycle
+/// that was dropped before it completed: only a completed cycle can
+/// clear a fault, so a mailbox command, a pause or a shutdown never
+/// flips a faulted block — and its outputs — to Ok. A state the
+/// dropped cycle set itself, other than Running, is kept.
+fn undo_recovery<B: EngineBlock>(block: &mut B, recovering_from: Option<BlockState>) {
+    if let Some(fault) = recovering_from
+        && block.state() == BlockState::Running
+    {
+        block.set_state(fault);
     }
 }
 

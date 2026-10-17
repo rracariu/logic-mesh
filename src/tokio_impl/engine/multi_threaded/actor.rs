@@ -51,20 +51,9 @@ pub(super) async fn block_actor_task<B>(
     loop {
         let open = *gate.borrow_and_update();
 
-        // Optimistic recovery, for a block about to execute and not held
-        // after a panic only — see single_threaded::actor for rationale.
-        let recovering_from = if open && !hold.is_holding() && block.state().is_fault() {
-            let fault = block.state();
-            block.set_state(BlockState::Running);
-            Some(fault)
-        } else {
-            None
-        };
-
+        // One step, optimistic fault recovery included — see
+        // single_threaded::actor and `actor_step`.
         let step = run_one_step(&mut block, &mut mailbox, &mut gate, open, &mut hold).await;
-        if let (Step::Woken, Some(fault)) = (&step, recovering_from) {
-            block.set_state(fault);
-        }
 
         let current_state = block.state();
         propagate_status(&current_state, &last_state, &mut block);
@@ -157,14 +146,22 @@ async fn change_of_value_check<B: Block + 'static>(
 mod test {
     use std::time::Duration;
 
+    use assert_matches::assert_matches;
+    use libhaystack::val::kind::HaystackKind;
     use tokio::{
-        sync::{mpsc, watch},
-        time::timeout,
+        sync::{mpsc, oneshot, watch},
+        time::{sleep, timeout},
     };
+    use uuid::Uuid;
 
     use super::block_actor_task;
-    use crate::blocks::math::Add;
-    use crate::tokio_impl::engine::block_mailbox::BLOCK_MAILBOX_CAP;
+    use crate::base::Status;
+    use crate::base::block::connect::connect_output;
+    use crate::base::engine::messages::BlockDefinition;
+    use crate::base::input::Input;
+    use crate::blocks::{InputImpl, math::Add};
+    use crate::tokio_impl::engine::block_mailbox::{BLOCK_MAILBOX_CAP, BlockMailboxCmd};
+    use crate::tokio_impl::engine::test_support::faults::{FaultOnce, REASON};
 
     /// Regression: see the single-threaded
     /// `actor_exits_when_its_mailbox_closes`.
@@ -185,5 +182,67 @@ mod test {
             .await
             .expect("actor task exits once its mailbox closes")
             .expect("actor task completes without panicking");
+    }
+
+    /// Regression: see the single-threaded
+    /// `pausing_with_a_command_queued_keeps_the_fault`.
+    #[tokio::test(flavor = "current_thread")]
+    async fn pausing_with_a_command_queued_keeps_the_fault() {
+        a_queued_command_keeps_the_fault(true).await;
+    }
+
+    /// Regression: see the single-threaded `a_command_keeps_the_fault`.
+    #[tokio::test(flavor = "current_thread")]
+    async fn a_command_keeps_the_fault() {
+        a_queued_command_keeps_the_fault(false).await;
+    }
+
+    /// See the single-threaded `a_queued_command_keeps_the_fault`. A
+    /// current-thread runtime runs the actor only while the test awaits,
+    /// so the gate flip and the queued command reach it together.
+    async fn a_queued_command_keeps_the_fault(pause: bool) {
+        let (mailbox_tx, mailbox_rx) = mpsc::channel(BLOCK_MAILBOX_CAP);
+        let (gate, gate_rx) = watch::channel(true);
+        let mut block = FaultOnce::new();
+        let mut downstream = InputImpl::new("in", HaystackKind::Number, Uuid::new_v4());
+        connect_output(&mut block.out, &mut downstream).expect("linked");
+        let _actor = tokio::spawn(block_actor_task(
+            block,
+            mailbox_rx,
+            Default::default(),
+            gate_rx,
+        ));
+
+        // The block faults, its output tells downstream, and the actor
+        // recovers optimistically into a cycle that never completes.
+        sleep(Duration::from_millis(50)).await;
+        assert_matches!(downstream.try_take(), Some((_, Status::Fault)));
+
+        // Queue an inspection — after pausing, if asked — before the
+        // actor runs again, so it wakes to both at once.
+        if pause {
+            gate.send(false).expect("the actor holds the gate");
+        }
+        for _ in 0..2 {
+            let inspected = queue_inspect(&mailbox_tx);
+            let state = timeout(Duration::from_secs(2), inspected).await;
+            let state = state.expect("answered").expect("replied");
+            assert_eq!(state.state, "fault");
+            assert_eq!(state.fault_reason.as_deref(), Some(REASON));
+            sleep(Duration::from_millis(50)).await;
+        }
+        assert_matches!(downstream.try_take(), None, "downstream saw no Ok");
+    }
+
+    /// Queues an [`Inspect`](BlockMailboxCmd::Inspect) without driving the
+    /// actor, returning where its answer arrives.
+    fn queue_inspect(
+        mailbox: &mpsc::Sender<BlockMailboxCmd>,
+    ) -> oneshot::Receiver<BlockDefinition> {
+        let (reply, inspected) = oneshot::channel();
+        mailbox
+            .try_send(BlockMailboxCmd::Inspect { reply })
+            .unwrap_or_else(|_| panic!("the mailbox has room"));
+        inspected
     }
 }

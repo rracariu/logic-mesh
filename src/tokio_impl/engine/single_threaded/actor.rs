@@ -47,42 +47,12 @@ pub(super) async fn block_actor_task<B>(
     loop {
         let open = *gate.borrow_and_update();
 
-        // Optimistic recovery: if the previous cycle left the block in
-        // Fault, clear back to Running before drain/execute. If the
-        // upstream fault persists or the block re-faults during execute,
-        // drain or execute will re-set Fault on this cycle; otherwise the
-        // block recovers naturally and the end-of-cycle `emit_status(Ok)`
-        // broadcasts the recovery.
-        //
-        // We deliberately do NOT reset each output's `effective_status`
-        // here. Doing so would mean `output.set(value)` calls inside
-        // `execute()` emit `(value, Ok)` even when the block is about to
-        // re-enter Fault this same cycle — a non-conservative status
-        // flicker that can mask a fault. Keeping `effective_status`
-        // sticky between cycles means: while in Fault, value updates ride
-        // out as `(value, Fault)`; on recovery, `emit_status(Ok)` at the
-        // end of the recovery cycle is the single authoritative flip.
-        //
-        // Only a block about to execute recovers: while the gate is
-        // closed a fault stays put, so pausing never flips a status. A
-        // block held after a panic stays in Fault until a cycle
-        // completes cleanly (see `actor_step`).
-        let recovering_from = if open && !hold.is_holding() && block.state().is_fault() {
-            let fault = block.state();
-            block.set_state(BlockState::Running);
-            Some(fault)
-        } else {
-            None
-        };
-
         // Drive one step: execute completes or panics, a mailbox cmd
-        // arrives (cancelling execute mid-await), or the gate flips.
+        // arrives (cancelling execute mid-await), or the gate flips. The
+        // step also clears a fault optimistically before executing, and
+        // puts it back unless the cycle completes (see `actor_step`), so
+        // only a completed cycle ever flips a faulted block to Running.
         let step = run_one_step(&mut block, &mut mailbox, &mut gate, open, &mut hold).await;
-        if let (Step::Woken, Some(fault)) = (&step, recovering_from) {
-            // The gate closed before the block got to run, so nothing
-            // could have cleared the fault.
-            block.set_state(fault);
-        }
 
         // Propagate state changes to output statuses. emit_status is a no-op
         // on the wire when nothing changed (send_if_modified comparison).
@@ -194,15 +164,23 @@ fn change_of_value_check<B: Block + 'static>(
 mod test {
     use std::time::Duration;
 
+    use assert_matches::assert_matches;
+    use libhaystack::val::kind::HaystackKind;
     use tokio::{
-        sync::{mpsc, watch},
+        sync::{mpsc, oneshot, watch},
         task::LocalSet,
-        time::timeout,
+        time::{sleep, timeout},
     };
+    use uuid::Uuid;
 
     use super::block_actor_task;
-    use crate::blocks::math::Add;
-    use crate::tokio_impl::engine::block_mailbox::BLOCK_MAILBOX_CAP;
+    use crate::base::Status;
+    use crate::base::block::connect::connect_output;
+    use crate::base::engine::messages::BlockDefinition;
+    use crate::base::input::Input;
+    use crate::blocks::{InputImpl, math::Add};
+    use crate::tokio_impl::engine::block_mailbox::{BLOCK_MAILBOX_CAP, BlockMailboxCmd};
+    use crate::tokio_impl::engine::test_support::faults::{FaultOnce, REASON};
 
     /// Regression: a closed mailbox used to read as "keep running", and
     /// since it is always ready it won every biased select — the actor
@@ -226,5 +204,74 @@ mod test {
             .await
             .expect("actor task exits once its mailbox closes")
             .expect("actor task completes without panicking");
+    }
+
+    /// Regression: the optimistic fault recovery was only undone when
+    /// the gate flip itself ended the step. With a command already queued
+    /// when the engine paused, the command won the biased select instead,
+    /// and the block stayed Running — its outputs flipped to
+    /// `Status::Ok` — for the whole pause.
+    #[tokio::test(flavor = "current_thread")]
+    async fn pausing_with_a_command_queued_keeps_the_fault() {
+        a_queued_command_keeps_the_fault(true).await;
+    }
+
+    /// Regression: with the gate open, a command that cut a faulted
+    /// block's cycle short left it Running, with `Status::Ok` outputs,
+    /// until a later cycle faulted it again.
+    #[tokio::test(flavor = "current_thread")]
+    async fn a_command_keeps_the_fault() {
+        a_queued_command_keeps_the_fault(false).await;
+    }
+
+    /// A block in an ordinary fault, recovering optimistically into a
+    /// cycle that never completes, gets two inspections — the first one
+    /// queued as the engine pauses, if `pause`. Both must read the fault,
+    /// and downstream must never see `Status::Ok`.
+    async fn a_queued_command_keeps_the_fault(pause: bool) {
+        let local = LocalSet::new();
+        let (mailbox_tx, mailbox_rx) = mpsc::channel(BLOCK_MAILBOX_CAP);
+        let (gate, gate_rx) = watch::channel(true);
+        let mut block = FaultOnce::new();
+        let mut downstream = InputImpl::new("in", HaystackKind::Number, Uuid::new_v4());
+        connect_output(&mut block.out, &mut downstream).expect("linked");
+        let _actor = local.spawn_local(block_actor_task(
+            block,
+            mailbox_rx,
+            Default::default(),
+            gate_rx,
+        ));
+
+        // The block faults, its output tells downstream, and the actor
+        // recovers optimistically into a cycle that never completes.
+        local.run_until(sleep(Duration::from_millis(50))).await;
+        assert_matches!(downstream.try_take(), Some((_, Status::Fault)));
+
+        // Queue an inspection — after pausing, if asked — before the
+        // actor runs again, so it wakes to both at once.
+        if pause {
+            gate.send(false).expect("the actor holds the gate");
+        }
+        for _ in 0..2 {
+            let inspected = queue_inspect(&mailbox_tx);
+            let state = local.run_until(timeout(Duration::from_secs(2), inspected));
+            let state = state.await.expect("answered").expect("replied");
+            assert_eq!(state.state, "fault");
+            assert_eq!(state.fault_reason.as_deref(), Some(REASON));
+            local.run_until(sleep(Duration::from_millis(50))).await;
+        }
+        assert_matches!(downstream.try_take(), None, "downstream saw no Ok");
+    }
+
+    /// Queues an [`Inspect`](BlockMailboxCmd::Inspect) without driving the
+    /// actor, returning where its answer arrives.
+    fn queue_inspect(
+        mailbox: &mpsc::Sender<BlockMailboxCmd>,
+    ) -> oneshot::Receiver<BlockDefinition> {
+        let (reply, inspected) = oneshot::channel();
+        mailbox
+            .try_send(BlockMailboxCmd::Inspect { reply })
+            .unwrap_or_else(|_| panic!("the mailbox has room"));
+        inspected
     }
 }
