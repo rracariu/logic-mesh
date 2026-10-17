@@ -986,7 +986,11 @@ pub(crate) mod atomic_loads {
         drive(engine, move |mut client| async move {
             let before = json(&client.save().await);
             let reply = client.load(program.clone()).await;
-            let err = EngineError::from(ConnectError::SelfLink { block: first });
+            let err = EngineError::from(ConnectError::SelfLink {
+                block: first,
+                source_input: "in0".to_string(),
+                target_input: "in1".to_string(),
+            });
             assert_eq!(reply, Err(err.to_string()));
             assert_eq!(json(&client.save().await), before, "the load was undone");
 
@@ -2034,7 +2038,8 @@ pub(crate) mod rejections {
     }
 
     /// Linking the same two pins twice is rejected as the connect error
-    /// the source block raised, and leaves the first link in place.
+    /// the source block raised, naming both pins, and leaves the first
+    /// link in place.
     pub(crate) async fn linking_the_same_pins_twice_is_a_connect_error<E: TestEngine>(
         mut engine: E,
     ) {
@@ -2043,6 +2048,8 @@ pub(crate) mod rejections {
         drive(engine, move |mut client| async move {
             let reply = client.connect(None, (source, "out"), (target, "in0")).await;
             let expected = EngineError::Connect(ConnectError::AlreadyConnected {
+                source_block: source,
+                source_pin: "out".to_string(),
                 target_block: target,
                 target_input: "in0".to_string(),
             });

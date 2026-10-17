@@ -484,7 +484,11 @@ fn add_output_link_inner<B: Block<Writer = WriterImpl, Reader = ReaderImpl> + ?S
         .find(|o| o.desc().name == output_name)
         .ok_or_else(|| output_not_found(block_id, output_name))?;
 
-    ensure_not_linked(&output.links(), &target_block_id, &target_input_name)?;
+    ensure_not_linked(
+        &output.links(),
+        (&block_id, output_name),
+        (&target_block_id, &target_input_name),
+    )?;
 
     output.add_link(connected_link(
         link_id,
@@ -504,7 +508,9 @@ fn add_input_link_inner<B: Block<Writer = WriterImpl, Reader = ReaderImpl> + ?Si
     target_writer: WriterImpl,
 ) -> Result<(), ConnectError> {
     let block_id = *block.id();
-    ensure_not_self_link(&block_id, &target_block_id)?;
+    let source = (&block_id, input_name);
+    let target = (&target_block_id, target_input_name.as_str());
+    ensure_not_self_link(source, target)?;
 
     let mut inputs = block.inputs_mut();
     let input = inputs
@@ -512,7 +518,7 @@ fn add_input_link_inner<B: Block<Writer = WriterImpl, Reader = ReaderImpl> + ?Si
         .find(|i| i.name() == input_name)
         .ok_or_else(|| input_not_found(block_id, input_name))?;
 
-    ensure_not_linked(&input.links(), &target_block_id, &target_input_name)?;
+    ensure_not_linked(&input.links(), source, target)?;
 
     input.add_link(connected_link(
         link_id,
@@ -566,7 +572,8 @@ mod test {
         handle_cmd(cmd, &mut add).await;
         assert_matches!(
             response.await.expect("answered"),
-            Err(ConnectError::SelfLink { block }) if block == id
+            Err(ConnectError::SelfLink { block, source_input, target_input })
+                if block == id && source_input == "in0" && target_input == "in1"
         );
     }
 }

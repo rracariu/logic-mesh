@@ -142,7 +142,10 @@ impl<T: BlockProps + ?Sized> BlockConnect for T {
         };
 
         let Some(id) = link_id_for_input(source_input.links(), target_input) else {
-            return Err(not_connected(target_input.block_id(), target_input.name()));
+            return Err(not_connected(
+                (source_input.block_id(), source_input.name()),
+                (target_input.block_id(), target_input.name()),
+            ));
         };
         source_input.remove_link_by_id(&id);
         target_input.decrement_conn();
@@ -185,8 +188,8 @@ pub fn connect_output<Reader, Writer: Clone>(
     // Connections should be unique.
     ensure_not_linked(
         &source_output.links(),
-        target_input.block_id(),
-        target_input.name(),
+        (source_output.block_id(), source_output.name()),
+        (target_input.block_id(), target_input.name()),
     )?;
 
     let mut link = BaseLink::new(*target_input.block_id(), target_input.name().to_string());
@@ -232,7 +235,10 @@ pub fn disconnect_output<Reader, Writer: Clone>(
     target_input: &mut dyn InputProps<Reader = Reader, Writer = Writer>,
 ) -> Result<(), ConnectError> {
     let Some(id) = link_id_for_input(source_output.links(), target_input) else {
-        return Err(not_connected(target_input.block_id(), target_input.name()));
+        return Err(not_connected(
+            (source_output.block_id(), source_output.name()),
+            (target_input.block_id(), target_input.name()),
+        ));
     };
     source_output.remove_link_by_id(&id);
     target_input.decrement_conn();
@@ -268,12 +274,10 @@ pub fn connect_input<Reader, Writer: Clone>(
     source_input: &mut dyn InputProps<Reader = Reader, Writer = Writer>,
     target_input: &mut dyn InputProps<Reader = Reader, Writer = Writer>,
 ) -> Result<Uuid, ConnectError> {
-    ensure_not_self_link(source_input.block_id(), target_input.block_id())?;
-    ensure_not_linked(
-        &source_input.links(),
-        target_input.block_id(),
-        target_input.name(),
-    )?;
+    let source = (source_input.block_id(), source_input.name());
+    let target = (target_input.block_id(), target_input.name());
+    ensure_not_self_link(source, target)?;
+    ensure_not_linked(&source_input.links(), source, target)?;
 
     let mut link = BaseLink::new(*target_input.block_id(), target_input.name().to_string());
     let id = link.id;
@@ -299,7 +303,10 @@ pub fn disconnect_input<I: InputProps + ?Sized>(
     target_input: &mut I,
 ) -> Result<(), ConnectError> {
     let Some(id) = link_id_for_input(source_input.links(), target_input) else {
-        return Err(not_connected(target_input.block_id(), target_input.name()));
+        return Err(not_connected(
+            (source_input.block_id(), source_input.name()),
+            (target_input.block_id(), target_input.name()),
+        ));
     };
     source_input.remove_link_by_id(&id);
     target_input.decrement_conn();
@@ -383,31 +390,39 @@ where
     true
 }
 
-/// Rejects linking an input to another input of its own block.
+/// A pin at one end of a link: its block's id and its name.
+pub(crate) type PinRef<'a> = (&'a Uuid, &'a str);
+
+/// Rejects linking the input `source` to the input `target` of its own
+/// block.
 pub(crate) fn ensure_not_self_link(
-    source_block: &Uuid,
-    target_block: &Uuid,
+    (source_block, source_input): PinRef<'_>,
+    (target_block, target_input): PinRef<'_>,
 ) -> Result<(), ConnectError> {
     if source_block == target_block {
         return Err(ConnectError::SelfLink {
             block: *source_block,
+            source_input: source_input.to_string(),
+            target_input: target_input.to_string(),
         });
     }
     Ok(())
 }
 
-/// Rejects a second link from the pin holding `links` to the same
-/// target input.
+/// Rejects a second link from the pin `source`, which holds `links`, to
+/// the same target input.
 pub(crate) fn ensure_not_linked(
     links: &[&(dyn Link + Send)],
-    target_block: &Uuid,
-    target_input: &str,
+    (source_block, source_pin): PinRef<'_>,
+    (target_block, target_input): PinRef<'_>,
 ) -> Result<(), ConnectError> {
     if links
         .iter()
         .any(|link| link.target_block_id() == target_block && link.target_input() == target_input)
     {
         return Err(ConnectError::AlreadyConnected {
+            source_block: *source_block,
+            source_pin: source_pin.to_string(),
             target_block: *target_block,
             target_input: target_input.to_string(),
         });
@@ -431,10 +446,15 @@ pub(crate) fn input_not_found(block: Uuid, pin: &str) -> ConnectError {
     }
 }
 
-/// A [`ConnectError::NotConnected`] for the target input `target_input`
-/// of `target_block`.
-fn not_connected(target_block: &Uuid, target_input: &str) -> ConnectError {
+/// A [`ConnectError::NotConnected`] for the pin `source` and the target
+/// input `target` it does not link to.
+fn not_connected(
+    (source_block, source_pin): PinRef<'_>,
+    (target_block, target_input): PinRef<'_>,
+) -> ConnectError {
     ConnectError::NotConnected {
+        source_block: *source_block,
+        source_pin: source_pin.to_string(),
         target_block: *target_block,
         target_input: target_input.to_string(),
     }
@@ -620,28 +640,38 @@ mod test {
             block1.connect_input("nope", input),
             Err(ConnectError::InputNotFound { block, pin }) if block == id1 && pin == "nope"
         );
+        // Both ends of the link are named, the source pin included.
         assert_matches!(
             block1.disconnect_output("out", input),
-            Err(ConnectError::NotConnected { target_block, target_input })
-                if target_block == id2 && target_input == "input1"
+            Err(ConnectError::NotConnected { source_block, source_pin, target_block, target_input })
+                if source_block == id1 && source_pin == "out"
+                    && target_block == id2 && target_input == "input1"
         );
         assert_matches!(
             block1.disconnect_input("input1", input),
-            Err(ConnectError::NotConnected { .. })
+            Err(ConnectError::NotConnected { source_block, source_pin, target_block, .. })
+                if source_block == id1 && source_pin == "input1" && target_block == id2
         );
 
         block1.connect_output("out", input).expect("linked");
         assert_matches!(
             block1.connect_output("out", input),
-            Err(ConnectError::AlreadyConnected { target_block, target_input })
-                if target_block == id2 && target_input == "input1"
+            Err(ConnectError::AlreadyConnected { source_block, source_pin, target_block, target_input })
+                if source_block == id1 && source_pin == "out"
+                    && target_block == id2 && target_input == "input1"
+        );
+        block1.connect_input("input1", input).expect("linked");
+        assert_matches!(
+            block1.connect_input("input1", input),
+            Err(ConnectError::AlreadyConnected { source_pin, .. }) if source_pin == "input1"
         );
 
         // An input of the same block, as a block with two inputs has.
         let mut sibling = InputImpl::new("sibling", HaystackKind::Number, id1);
         assert_matches!(
             connect_input(&mut block1.input1, &mut sibling),
-            Err(ConnectError::SelfLink { block }) if block == id1
+            Err(ConnectError::SelfLink { block, source_input, target_input })
+                if block == id1 && source_input == "input1" && target_input == "sibling"
         );
     }
 }
