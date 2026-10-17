@@ -8,6 +8,7 @@
 use proc_macro2::Span;
 use syn::{
     Attribute, DeriveInput, Expr, ExprLit, Field, Ident, Lit, LitInt, LitStr, Meta, Type, TypePath,
+    ext::IdentExt,
 };
 
 /// The block-level attributes of a block, as written.
@@ -240,19 +241,26 @@ fn pin_args(attr: &Attribute, allowed: &[&str]) -> syn::Result<PinArgs> {
 }
 
 /// The `HaystackKind` variant `kind = "..."` names, `Null` if none.
+///
+/// The identifier is spanned on the literal, so a compiler error about
+/// the variant points there. A raw identifier (`r#Number`) is rejected:
+/// the value is a variant's name, and no variant needs the raw form.
 fn kind_ident(kind: Option<&LitStr>) -> syn::Result<Ident> {
-    match kind {
-        Some(kind) => {
-            let ident: Ident = kind.parse().map_err(|_| {
-                syn::Error::new(
-                    kind.span(),
-                    "expected the name of a `HaystackKind` variant, such as \"Number\"",
-                )
-            })?;
-            Ok(Ident::new(&ident.to_string(), kind.span()))
-        }
-        None => Ok(Ident::new("Null", Span::call_site())),
+    let Some(kind) = kind else {
+        return Ok(Ident::new("Null", Span::call_site()));
+    };
+    let expected = || {
+        syn::Error::new(
+            kind.span(),
+            "expected the name of a `HaystackKind` variant, such as \"Number\"",
+        )
+    };
+    // `LitStr::parse` spans what it parses on the literal.
+    let ident: Ident = kind.parse().map_err(|_| expected())?;
+    if ident.unraw() != ident {
+        return Err(expected());
     }
+    Ok(ident)
 }
 
 /// Reads the block-level `#[input(...)]` attribute, if there is one.
@@ -358,9 +366,10 @@ pub(crate) fn field_pins(ast: &DeriveInput, pin_type: PinType) -> syn::Result<Ve
         let args = pin_args(attr, &["name", "kind"])?;
         pins.push(FieldPin {
             field: field_ident.clone(),
-            name: args
-                .name
-                .unwrap_or_else(|| LitStr::new(&field_ident.to_string(), field_ident.span())),
+            // A field named with a keyword, `r#in`, names the pin `in`.
+            name: args.name.unwrap_or_else(|| {
+                LitStr::new(&field_ident.unraw().to_string(), field_ident.span())
+            }),
             kind: kind_ident(args.kind.as_ref())?,
         });
     }
