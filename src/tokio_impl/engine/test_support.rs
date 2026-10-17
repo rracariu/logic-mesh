@@ -351,6 +351,7 @@ pub(crate) mod panics {
     use crate::base::input::input_reader::InputReader;
     use crate::base::output::Output;
     use crate::blocks::{InputImpl, OutputImpl};
+    use crate::tokio_impl::engine::actor_step::PANIC_RETRY_INITIAL;
 
     /// The fault reason a [`PanicOnTrigger`] panic leaves.
     const REASON: &str = "block panicked: trigger is set";
@@ -448,7 +449,9 @@ pub(crate) mod panics {
                 other => panic!("Expected GetCurrentProgramRes(Ok), got {:?}", other),
             }
 
-            // Held for the retry delay rather than re-run at once.
+            // Not repeated, since no new trigger value arrives; the hold
+            // for a block that panics on every cycle is covered by
+            // `a_block_panicking_every_cycle_backs_off`.
             sleep(Duration::from_millis(200)).await;
             assert_eq!(chain.panics.load(Ordering::SeqCst), 1);
             assert_eq!(client.inspect(chain.panicker).await.state, "fault");
@@ -485,6 +488,68 @@ pub(crate) mod panics {
             assert_eq!(chain.panics.load(Ordering::SeqCst), 1);
         })
         .await;
+    }
+
+    /// Panics on every execute cycle, without waiting for anything.
+    #[block]
+    #[derive(BlockProps, Debug)]
+    #[category = "test"]
+    pub(crate) struct AlwaysPanic {
+        #[output(kind = "Number")]
+        out: OutputImpl,
+        /// Counts the panics.
+        panics: Arc<AtomicUsize>,
+    }
+
+    impl Block for AlwaysPanic {
+        async fn execute(&mut self) {
+            self.panics.fetch_add(1, Ordering::SeqCst);
+            panic!("always");
+        }
+    }
+
+    /// A block that panics on every cycle is held between retries, with
+    /// the delay doubling each time, rather than re-run in a hot loop.
+    pub(crate) async fn a_block_panicking_every_cycle_backs_off<E: TestEngine>(mut engine: E) {
+        let block = AlwaysPanic::new();
+        let (id, panics) = (*block.id(), block.panics.clone());
+        engine.schedule(block).expect("scheduled");
+
+        drive(engine, move |mut client| async move {
+            let held = client.wait_for_state(id, "fault").await;
+            assert_eq!(held.fault_reason.as_deref(), Some("block panicked: always"));
+
+            sleep(PANIC_RETRY_INITIAL / 4).await;
+            assert_eq!(
+                panics.load(Ordering::SeqCst),
+                1,
+                "held for the first retry delay, not re-run at once"
+            );
+
+            // Retried once the first delay runs out, then held twice as
+            // long: still one retry after one and a half first delays.
+            wait_for_panics(&panics, 2).await;
+            sleep(PANIC_RETRY_INITIAL * 3 / 2).await;
+            assert_eq!(
+                panics.load(Ordering::SeqCst),
+                2,
+                "the second retry delay is doubled"
+            );
+            assert_eq!(client.inspect(id).await.state, "fault");
+        })
+        .await;
+    }
+
+    /// Waits until `panics` reaches `count`, failing the test after a few
+    /// seconds.
+    async fn wait_for_panics(panics: &AtomicUsize, count: usize) {
+        for _ in 0..POLLS {
+            if panics.load(Ordering::SeqCst) >= count {
+                return;
+            }
+            sleep(POLL_INTERVAL).await;
+        }
+        panic!("the block never panicked {count} times");
     }
 }
 

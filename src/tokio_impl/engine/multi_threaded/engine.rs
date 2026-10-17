@@ -1275,6 +1275,11 @@ mod test {
         async fn panicked_block_recovers_after_a_clean_cycle() {
             panics::panicked_block_recovers_after_a_clean_cycle(MultiThreadedEngine::new()).await;
         }
+
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn a_block_panicking_every_cycle_backs_off() {
+            panics::a_block_panicking_every_cycle_backs_off(MultiThreadedEngine::new()).await;
+        }
     }
 
     /// Actor tasks are detached on the ambient runtime, so they must end

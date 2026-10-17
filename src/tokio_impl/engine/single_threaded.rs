@@ -329,6 +329,11 @@ mod tests {
         async fn panicked_block_recovers_after_a_clean_cycle() {
             panics::panicked_block_recovers_after_a_clean_cycle(SingleThreadedEngine::new()).await;
         }
+
+        #[tokio::test(flavor = "current_thread")]
+        async fn a_block_panicking_every_cycle_backs_off() {
+            panics::a_block_panicking_every_cycle_backs_off(SingleThreadedEngine::new()).await;
+        }
     }
 
     /// Dropping the engine drops its `LocalSet`, and every actor task
