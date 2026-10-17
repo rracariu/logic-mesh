@@ -75,10 +75,7 @@ impl<L: Link> BaseOutput<L> {
     /// Creates a new output pin with the given `name` and `kind`.
     pub fn new_named(name: &str, kind: HaystackKind, block_id: Uuid) -> Self {
         Self {
-            desc: OutDesc {
-                name: name.to_string(),
-                kind,
-            },
+            desc: OutDesc::new(name, kind),
             value: Value::default(),
             links: Vec::new(),
             block_id,

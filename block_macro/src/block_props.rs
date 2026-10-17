@@ -175,15 +175,11 @@ pub(super) fn block_props_impl(ast: &syn::DeriveInput) -> TokenStream {
         impl #krate::base::block::BlockStaticDesc for #block_ident {
             fn static_desc() -> &'static #krate::base::block::BlockDesc {
                 static DESC: std::sync::LazyLock<#krate::base::block::BlockDesc> = std::sync::LazyLock::new(|| {
-                    let desc = #krate::base::block::BlockDesc {
-                        implementation: #krate::base::block::desc::BlockImplementation::Native,
-                        run_condition: None,
-                        #(#block_prop_names : #block_prop_values.to_string(),)*
+                    #krate::__private::native_desc(#krate::__private::NativeDesc {
+                        #(#block_prop_names : #block_prop_values,)*
                         #out_desc,
                         #input_desc
-                    };
-
-                    desc
+                    })
                 });
 
                 &*DESC
@@ -224,7 +220,7 @@ fn create_block_input_fields_init(
         });
 
         quote! {
-            #(#input_field: #krate::blocks::InputImpl::new(#input_name, #krate::HaystackKind::#kind, uuid.clone())),*
+            #(#input_field: #krate::__private::input(#input_name, #krate::HaystackKind::#kind, uuid)),*
         }
     }
 }
@@ -289,7 +285,7 @@ fn create_block_defined_input_init(
         let names = (0..count).map(|i| format!("{name}{i}"));
 
         quote! {
-            _inputs: vec![ #(#krate::blocks::InputImpl::new(#names, #krate::HaystackKind::#kind, uuid.clone())),* ],
+            _inputs: vec![ #(#krate::__private::input(#names, #krate::HaystackKind::#kind, uuid)),* ],
         }
     }
 }
@@ -315,7 +311,7 @@ fn create_block_outputs_field_init(
         });
 
         quote! {
-            #(#out_field: #krate::blocks::OutputImpl::new_named(#output_name, #krate::HaystackKind::#kind, uuid)),*
+            #(#out_field: #krate::__private::output(#output_name, #krate::HaystackKind::#kind, uuid)),*
         }
     }
 }
@@ -430,8 +426,8 @@ fn create_input_desc(
     let block_defined_inputs = (0..count).map(|i| format!("{name}{i}"));
 
     quote! {
-        inputs: vec![#(#krate::base::block::BlockPin { name: #input_field_names.to_string(), kind: #krate::HaystackKind::#input_field_kinds },)*
-        #(#krate::base::block::BlockPin { name: #block_defined_inputs.to_string(), kind: #krate::HaystackKind::#kind },)*],
+        inputs: &[#((#input_field_names, #krate::HaystackKind::#input_field_kinds),)*
+        #((#block_defined_inputs, #krate::HaystackKind::#kind),)*],
     }
 }
 
@@ -449,7 +445,7 @@ fn create_output_desc(
         .map(|(_, props)| format_ident!("{}", props.get("kind").cloned().unwrap_or("Null".into())));
 
     quote! {
-        outputs: vec![#(#krate::base::block::BlockPin { name: #output_names.to_string(), kind: #krate::HaystackKind::#output_kinds },)*]
+        outputs: &[#((#output_names, #krate::HaystackKind::#output_kinds),)*]
     }
 }
 

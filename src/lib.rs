@@ -27,3 +27,8 @@ pub use base::error::{
 
 #[cfg(target_arch = "wasm32")]
 pub mod wasm;
+
+/// Not public API: what the block macros' generated code calls.
+#[doc(hidden)]
+#[path = "macro_support.rs"]
+pub mod __private;
