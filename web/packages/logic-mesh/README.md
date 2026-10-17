@@ -24,7 +24,9 @@ npm install logic-mesh zod
 
 [Zod](https://zod.dev) 4 is a peer dependency: `defineBlock` describes pins
 with your Zod schemas, so the package must use the same `zod` your code
-imports.
+imports. Upgrade an app on Zod 3 first: npm refuses to install the package
+next to it (`ERESOLVE ... peer zod@"^4.0.0"`), even in apps that never call
+`defineBlock`.
 
 ## Environment support
 
