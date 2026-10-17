@@ -122,7 +122,10 @@ pub enum EngineMessage<WatchEventSender: Clone> {
     /// Response to [`WatchBlockUnsubReq`](Self::WatchBlockUnsubReq).
     WatchBlockUnsubRes(Result<Uuid, &'static str>),
 
-    /// Request the current program in save format.
+    /// Request the current program in save format: the name and
+    /// description of the program loaded last (none after a
+    /// [`Reset`](Self::Reset)), and every block and link the engine
+    /// holds.
     GetCurrentProgramReq(Uuid),
     /// Response to [`GetCurrentProgramReq`](Self::GetCurrentProgramReq).
     GetCurrentProgramRes(Result<Program, String>),
@@ -213,7 +216,8 @@ pub enum EngineMessage<WatchEventSender: Clone> {
     /// Resume block execution. See the
     /// [lifecycle contract](crate::base::engine#lifecycle-messages).
     Resume,
-    /// Reset the engine, removing all blocks and links, paused or not.
-    /// See the [lifecycle contract](crate::base::engine#lifecycle-messages).
+    /// Reset the engine, removing all blocks and links and forgetting
+    /// the loaded program's name and description, paused or not. See the
+    /// [lifecycle contract](crate::base::engine#lifecycle-messages).
     Reset,
 }

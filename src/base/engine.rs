@@ -48,8 +48,9 @@
 //!   execution; resuming an engine that is not paused does nothing.
 //!   Every `run()` starts unpaused.
 //! - [`Reset`](messages::EngineMessage::Reset) terminates and removes
-//!   every block and link and unregisters the managed connectors,
-//!   whether or not the engine is paused. A paused engine stays paused.
+//!   every block and link, forgets the loaded program's name and
+//!   description, and unregisters the managed connectors, whether or
+//!   not the engine is paused. A paused engine stays paused.
 
 use super::error::Result;
 use super::{block::Block, program::Program};

@@ -141,6 +141,7 @@ impl Engine for MultiThreadedEngine<Idle> {
     fn schedule_program_blocks(&mut self, program: &Program) -> Result<()> {
         let links = stage_program(self, program)?;
         self.pending_links.extend(links);
+        self.graph.set_identity(program);
         Ok(())
     }
 
@@ -442,7 +443,9 @@ impl MultiThreadedEngine<Running> {
     /// scheduled.
     async fn load_program(&mut self, program: Program) -> Result<()> {
         let links = stage_program(self, &program)?;
-        self.graph.apply_program(&program, links).await
+        self.graph.apply_program(&program, links).await?;
+        self.graph.set_identity(&program);
+        Ok(())
     }
 
     /// Disconnects a link by its UUID.
@@ -915,6 +918,30 @@ mod test {
         #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
         async fn a_fix_written_to_an_unlinked_input_clears_a_fault() {
             pin_writes::a_fix_written_to_an_unlinked_input_clears_a_fault(
+                MultiThreadedEngine::new(),
+            )
+            .await;
+        }
+    }
+
+    /// Regression: see the single-threaded `round_trip`.
+    mod round_trip {
+        use super::*;
+        use crate::tokio_impl::engine::test_support::round_trip;
+
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn a_saved_program_reloads_unchanged() {
+            round_trip::a_saved_program_reloads_unchanged(MultiThreadedEngine::new()).await;
+        }
+
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn reset_forgets_the_program_identity() {
+            round_trip::reset_forgets_the_program_identity(MultiThreadedEngine::new()).await;
+        }
+
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn a_program_scheduled_while_idle_saves_its_identity() {
+            round_trip::a_program_scheduled_while_idle_saves_its_identity(
                 MultiThreadedEngine::new(),
             )
             .await;

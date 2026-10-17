@@ -121,6 +121,12 @@ pub(super) struct BlockGraph {
     /// Every link, mirroring the links the actors hold — see the
     /// [module docs](self#links).
     links: BTreeMap<Uuid, LinkRecord>,
+    /// The [`Program::name`] of the program loaded last, until a reset.
+    /// Pure passthrough, like a block's label: kept so a save returns it.
+    name: Option<String>,
+    /// The [`Program::description`] of the program loaded last, until a
+    /// reset. Same passthrough role as `name`.
+    description: Option<String>,
 }
 
 impl BlockGraph {
@@ -218,7 +224,15 @@ impl BlockGraph {
         }
     }
 
-    /// Removes every block and link, telling each actor to terminate.
+    /// Records `program`'s name and description as those of the program
+    /// the engine runs, replacing any earlier program's.
+    pub(super) fn set_identity(&mut self, program: &Program) {
+        self.name.clone_from(&program.name);
+        self.description.clone_from(&program.description);
+    }
+
+    /// Removes every block and link, and the loaded program's identity,
+    /// telling each actor to terminate.
     ///
     /// The actors are told without waiting on their mailboxes: on a
     /// single-threaded engine no actor makes progress while the engine
@@ -228,6 +242,8 @@ impl BlockGraph {
             terminate_actor(handle.mailbox);
         }
         self.links.clear();
+        self.name = None;
+        self.description = None;
     }
 
     /// Validates `link_data` against the scheduled blocks and the links
@@ -530,9 +546,10 @@ impl BlockGraph {
         }
     }
 
-    /// Snapshot the full program: every scheduled block with its UI
-    /// metadata + current pin values, plus every link. This is the
-    /// canonical save format — round-trips through a program load.
+    /// Snapshot the full program: the loaded program's name and
+    /// description, every scheduled block with its UI metadata + current
+    /// pin values, plus every link under its id. This is the canonical
+    /// save format — round-trips through a program load.
     pub(super) async fn save_program(&self) -> Result<Program> {
         let mut blocks = BTreeMap::new();
         let mut links = BTreeMap::new();
@@ -600,8 +617,8 @@ impl BlockGraph {
         }
 
         Ok(Program {
-            name: None,
-            description: None,
+            name: self.name.clone(),
+            description: self.description.clone(),
             blocks,
             links,
         })

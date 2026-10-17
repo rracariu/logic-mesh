@@ -131,6 +131,7 @@ impl Engine for SingleThreadedEngine<Idle> {
         // links for processing at `run()` start.
         let links = stage_program(self, program)?;
         self.pending_links.extend(links);
+        self.graph.set_identity(program);
         Ok(())
     }
 
@@ -554,7 +555,9 @@ impl SingleThreadedEngine<Running> {
         // Sync: schedule blocks + validate links. After this the
         // per-block actor tasks have been spawned.
         let links = stage_program(self, &program)?;
-        self.graph.apply_program(&program, links).await
+        self.graph.apply_program(&program, links).await?;
+        self.graph.set_identity(&program);
+        Ok(())
     }
 
     pub(crate) async fn disconnect_link_by_id(&mut self, link_id: &Uuid) -> Result<bool> {

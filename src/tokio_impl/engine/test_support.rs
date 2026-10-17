@@ -636,6 +636,182 @@ pub(crate) mod link_ids {
     }
 }
 
+/// Program save and load, written once against the [`Engine`] trait and
+/// run by each engine's tests: a saved program loads back as it was
+/// saved, and saves the same again.
+pub(crate) mod round_trip {
+    use super::lifecycle::TestEngine;
+    use super::*;
+    use crate::base::engine::messages::EngineMessage::Reset;
+    use crate::base::program::{PinValue, Position};
+
+    /// The ids in a [`sample`] program.
+    #[derive(Clone, Copy)]
+    struct Ids {
+        /// An `Add` with two constant inputs.
+        first: Uuid,
+        /// An `Add` both of whose first two inputs follow `first`.
+        second: Uuid,
+        /// The link into `second.in0`, saved under its key alone.
+        keyed: Uuid,
+        /// The link into `second.in1`, naming its id.
+        named: Uuid,
+    }
+
+    /// A program using everything a save keeps: a name and description,
+    /// block labels and positions, constant inputs, and links.
+    fn sample() -> (Program, Ids) {
+        let ids = Ids {
+            first: Uuid::new_v4(),
+            second: Uuid::new_v4(),
+            keyed: Uuid::new_v4(),
+            named: Uuid::new_v4(),
+        };
+        let mut program = add_program([ids.first.to_string().as_str(), &ids.second.to_string()]);
+        program.name = Some("round trip".to_string());
+        program.description = Some("Saved, loaded, and saved again.".to_string());
+        for (id, label, x) in [(ids.first, "First", 10.0), (ids.second, "Second", 200.0)] {
+            let block = program
+                .blocks
+                .get_mut(&id.to_string())
+                .expect("in the program");
+            block.label = Some(label.to_string());
+            block.positions = Some(Position { x, y: 20.5 });
+        }
+        let first = program
+            .blocks
+            .get_mut(&ids.first.to_string())
+            .expect("in the program");
+        for (pin, value) in [("in0", 42), ("in1", 3)] {
+            let value = PinValue {
+                value: value.into(),
+                is_connected: false,
+            };
+            first.inputs.insert(pin.to_string(), value);
+        }
+        program.links.insert(
+            ids.keyed.to_string(),
+            program_link(ids.first, ids.second, "in0", None),
+        );
+        program.links.insert(
+            ids.named.to_string(),
+            program_link(ids.first, ids.second, "in1", Some(ids.named)),
+        );
+        (program, ids)
+    }
+
+    /// `program` as JSON, for comparing two programs whole.
+    fn json(program: &Program) -> serde_json::Value {
+        serde_json::to_value(program).expect("a program serializes")
+    }
+
+    /// Polls the running program until it saves as `expected`, failing
+    /// the test after a few seconds.
+    async fn wait_for_save(client: &mut Client, expected: &Program) {
+        let expected = json(expected);
+        let mut saved = serde_json::Value::Null;
+        for _ in 0..POLLS {
+            saved = json(&client.save().await);
+            if saved == expected {
+                return;
+            }
+            sleep(POLL_INTERVAL).await;
+        }
+        panic!("the program never saved as {expected:#}, last saved as {saved:#}");
+    }
+
+    /// Checks that `saved` keeps everything [`sample`] put in `program`.
+    fn assert_keeps_the_sample(saved: &Program, program: &Program, ids: Ids) {
+        assert_eq!(saved.name, program.name);
+        assert_eq!(saved.description, program.description);
+        assert_eq!(
+            saved.blocks.keys().collect::<Vec<_>>(),
+            program.blocks.keys().collect::<Vec<_>>()
+        );
+        for (id, block) in &program.blocks {
+            let saved = &saved.blocks[id];
+            assert_eq!((&saved.name, &saved.lib), (&block.name, &block.lib));
+            assert_eq!(saved.label, block.label);
+            assert_eq!(saved.positions, block.positions);
+            for (pin, value) in &block.inputs {
+                assert_eq!(saved.inputs[pin].value, value.value, "{id}.{pin}");
+            }
+        }
+        assert_eq!(
+            saved.links.keys().collect::<Vec<_>>(),
+            program.links.keys().collect::<Vec<_>>()
+        );
+        for (id, link) in &program.links {
+            let saved = &saved.links[id];
+            assert_eq!(saved.id.as_deref(), Some(id.as_str()));
+            assert_eq!(saved.source_block_uuid, link.source_block_uuid);
+            assert_eq!(saved.target_block_uuid, link.target_block_uuid);
+            assert_eq!(saved.source_block_pin_name, link.source_block_pin_name);
+            assert_eq!(saved.target_block_pin_name, link.target_block_pin_name);
+        }
+        assert!(saved.blocks[&ids.second.to_string()].inputs["in0"].is_connected);
+    }
+
+    /// A loaded program saves with everything it was loaded with; that
+    /// save loads back and saves the same again; and a saved link id
+    /// removes the link.
+    pub(crate) async fn a_saved_program_reloads_unchanged<E: TestEngine>(engine: E) {
+        let (program, ids) = sample();
+
+        drive(engine, move |mut client| async move {
+            client.load(program.clone()).await.expect("loaded");
+            client.wait_for_output(ids.second, "out", 90.into()).await;
+            let saved = client.save().await;
+            assert_keeps_the_sample(&saved, &program, ids);
+
+            client.send(Reset).await;
+            client.load(saved.clone()).await.expect("reloaded");
+            wait_for_save(&mut client, &saved).await;
+
+            assert_eq!(client.remove_link(ids.keyed).await, Ok(true));
+            assert!(!client.inspect(ids.second).await.inputs["in0"].is_connected);
+        })
+        .await;
+    }
+
+    /// A reset forgets the loaded program's name and description.
+    pub(crate) async fn reset_forgets_the_program_identity<E: TestEngine>(engine: E) {
+        let (program, _) = sample();
+
+        drive(engine, move |mut client| async move {
+            client.load(program).await.expect("loaded");
+            assert!(client.save().await.name.is_some());
+
+            client.send(Reset).await;
+            let saved = client.save().await;
+            assert_eq!((saved.name, saved.description), (None, None));
+            assert!(saved.blocks.is_empty() && saved.links.is_empty());
+        })
+        .await;
+    }
+
+    /// A program scheduled while idle keeps its name, description and
+    /// link ids too.
+    pub(crate) async fn a_program_scheduled_while_idle_saves_its_identity<E: TestEngine>(
+        mut engine: E,
+    ) {
+        let (program, ids) = sample();
+        engine.schedule_program_blocks(&program).expect("scheduled");
+
+        drive(engine, move |mut client| async move {
+            let saved = client.save().await;
+            assert_eq!(saved.name, program.name);
+            assert_eq!(saved.description, program.description);
+            assert_eq!(
+                saved.links.keys().collect::<Vec<_>>(),
+                program.links.keys().collect::<Vec<_>>()
+            );
+            assert_eq!(client.remove_link(ids.named).await, Ok(true));
+        })
+        .await;
+    }
+}
+
 /// Connector deadlines, written once against the [`Engine`] trait and
 /// run by each engine's tests: every engine request addressed to a
 /// block cancels its `execute` cycle, yet a slow connector operation
