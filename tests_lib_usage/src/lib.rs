@@ -145,6 +145,22 @@ impl Block for Attributed {
     async fn execute(&mut self) {}
 }
 
+/// Declares its pins with bare `#[input]` / `#[output]` attributes.
+#[block]
+#[derive(BlockProps, Debug)]
+#[library = "downstream"]
+#[category = "test"]
+pub struct BarePins {
+    #[input]
+    pub a: InputImpl,
+    #[output]
+    pub out: OutputImpl,
+}
+
+impl Block for BarePins {
+    async fn execute(&mut self) {}
+}
+
 /// Pads its attribute values with whitespace.
 #[block]
 #[derive(BlockProps, Debug)]
@@ -316,6 +332,25 @@ mod tests {
         let block = Attributed::new();
         assert_eq!(block.inputs().len(), 2);
         assert_eq!(block.outputs()[0].name(), "y");
+    }
+
+    /// A bare `#[input]` / `#[output]` declares a pin named after its
+    /// field, of kind `Null`. The derive used to ignore it and leave the
+    /// field a default-built `InputImpl` / `OutputImpl` that was no pin.
+    #[test]
+    fn bare_pin_attributes_declare_pins() {
+        use logic_mesh::HaystackKind;
+        use logic_mesh::base::block::{BlockPin, BlockStaticDesc};
+
+        let desc = <BarePins as BlockStaticDesc>::static_desc();
+        assert_eq!(desc.inputs, [BlockPin::new("a", HaystackKind::Null)]);
+        assert_eq!(desc.outputs, [BlockPin::new("out", HaystackKind::Null)]);
+
+        let block = BarePins::new();
+        let inputs: Vec<_> = block.inputs().iter().map(|pin| pin.name()).collect();
+        assert_eq!(inputs, ["a"]);
+        let outputs: Vec<_> = block.outputs().iter().map(|pin| pin.name()).collect();
+        assert_eq!(outputs, ["out"]);
     }
 
     /// Regression: the derive's rewrite took attribute values verbatim,
