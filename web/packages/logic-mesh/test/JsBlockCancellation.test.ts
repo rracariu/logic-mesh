@@ -114,11 +114,11 @@ async function gatedBlockSession(pins: { drive: string; poke: string }) {
 
   const jsId = await session.command.addBlock(name, undefined, 'cancel-test');
 
-  // A reactive (non-`always`) block only fires on watch traffic, and
-  // an engine pin write is a direct cache write that produces none —
-  // so the trigger must travel over a link. The Add block never
-  // executes here (its inputs stay unconnected); it is just an output
-  // pin whose writes propagate through the link.
+  // The trigger travels over a link, so the engine pin write that
+  // pokes the block mid-flight is the only command addressed to it
+  // while a call is parked. The Add block never executes here (none of
+  // its inputs is ever written); it is just an output pin whose writes
+  // propagate through the link.
   const srcId = await session.command.addBlock('Add');
   await session.command.createLink(srcId, jsId, 'out', pins.drive);
 
@@ -188,11 +188,12 @@ describe('registered JS block under mailbox cancellation', () => {
     await s.drive(21);
     await firstStart; // invocation 1 saw b unset
 
-    // The cancelling command is itself a pin write on the block: a
-    // direct cache write with no watch traffic. The retry must read
-    // the freshest caches — the new `b` rides along instead of the
-    // reaction replaying its stale drain (ExternalOut's "a fresh
-    // value replaces any held retry", extended to cache writes).
+    // The cancelling command is itself a pin write on the block, which
+    // lands in the input cache at once. The retry must read the
+    // freshest caches — the new `b` rides along instead of the
+    // reaction replaying its stale drain (ExternalOut's "a fresh value
+    // replaces any held retry", extended to pin writes) — and must not
+    // queue a second call behind it.
     const retryStart = s.nextStart();
     await s.session.command.writeBlockInput(s.jsId, 'b', 5);
     await retryStart;

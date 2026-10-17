@@ -382,6 +382,35 @@ mod tests {
         }
     }
 
+    /// Regression: a pin write landed in the input's cache only, and an
+    /// actor wakes on linked inputs alone, so a write to an unlinked
+    /// input never ran the block — see `test_support::pin_writes`.
+    mod pin_writes {
+        use super::*;
+        use crate::tokio_impl::engine::test_support::pin_writes;
+
+        #[tokio::test(flavor = "current_thread")]
+        async fn writing_an_unlinked_block_recomputes_it() {
+            pin_writes::writing_an_unlinked_block_recomputes_it(SingleThreadedEngine::new()).await;
+        }
+
+        #[tokio::test(flavor = "current_thread")]
+        async fn writing_a_constant_input_recomputes_a_linked_block() {
+            pin_writes::writing_a_constant_input_recomputes_a_linked_block(
+                SingleThreadedEngine::new(),
+            )
+            .await;
+        }
+
+        #[tokio::test(flavor = "current_thread")]
+        async fn a_fix_written_to_an_unlinked_input_clears_a_fault() {
+            pin_writes::a_fix_written_to_an_unlinked_input_clears_a_fault(
+                SingleThreadedEngine::new(),
+            )
+            .await;
+        }
+    }
+
     /// Regression: a reply variant sent to the engine hit an
     /// `unreachable!` and panicked the event loop. It is now ignored,
     /// and the engine keeps answering.

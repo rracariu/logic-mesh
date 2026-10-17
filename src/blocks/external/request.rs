@@ -71,11 +71,11 @@ pub struct Request {
     /// The last `in` cache value `execute` has taken note of — the
     /// freshness baseline. Persisted on the block rather than
     /// snapshotted per `execute` call because the cache can move while
-    /// no `execute` is running: the engine's `WriteInput` mailbox
-    /// command writes the cache directly (no watch traffic), and its
-    /// own arrival is what cancels the in-flight `execute` — so a
-    /// snapshot taken at the next entry would already contain the new
-    /// value and the freshness compare could never fire.
+    /// no `execute` is running: an engine pin write lands in the cache
+    /// as it arrives, and its arrival is what cancels the in-flight
+    /// `execute` — so a snapshot taken at the next entry would already
+    /// contain the new value and the freshness compare could never
+    /// fire.
     last_input: Option<Value>,
 }
 
@@ -102,17 +102,11 @@ impl Request {
 
 impl Block for Request {
     async fn execute(&mut self) {
-        // Promote before deciding whether to block on inputs: a value
-        // the engine wrote into the `in` cache between `execute` calls
-        // (a UI pin write, `load_program` seeding — both take the
-        // `WriteInput` mailbox path) produces no watch traffic, so
-        // waiting on inputs would park right past it.
-        self.promote_fresh_input();
-
         // Drain without blocking only when the held request can be
         // issued right away; otherwise block on inputs so the actor
         // does not spin. Config pins are still drained either way, so
-        // rebinds are honored before every attempt.
+        // rebinds are honored before every attempt — and an engine pin
+        // write wakes the input read like linked value flow does.
         let can_send_now = self.pending.is_some()
             && input_as_str(&self.connector).is_some()
             && input_as_str(&self.address).is_some();
@@ -398,17 +392,16 @@ mod test {
         assert!(block.state().is_fault());
     }
 
-    /// The engine's `WriteInput` mailbox command writes the `in` cache
-    /// directly — no watch traffic — and the command's own arrival is
-    /// what cancels the in-flight `execute`, so the write always lands
-    /// between two `execute` calls. The next `execute` must still
-    /// treat the value as fresh and send the request.
+    /// An engine pin write lands in the `in` cache as its mailbox
+    /// command arrives, and that arrival is what cancels the in-flight
+    /// `execute`, so the write always lands between two `execute`
+    /// calls — on an unlinked `in`, too. The next `execute` must treat
+    /// the value as fresh and send the request.
     #[tokio::test]
-    async fn cache_write_between_executes_sends() {
-        use crate::base::Status;
-        use crate::base::input::Input;
+    async fn pin_write_between_executes_sends() {
+        use crate::tokio_impl::block::write_input_value;
 
-        let name = unique_name("req-cache-write");
+        let name = unique_name("req-pin-write");
         let mock = Arc::new(MockConnector::default());
         register_connector(&name, mock.clone()).expect("registered");
 
@@ -419,18 +412,17 @@ mod test {
         ])
         .await;
 
-        // Mimic `BlockMailboxCmd::WriteInput`: a direct cache write on
-        // the `in` pin, invisible to the watch machinery.
-        block.input.set_value(42.into(), Status::Ok);
+        // What `BlockMailboxCmd::WriteInput` does to the unlinked `in`.
+        write_input_value(&mut block.input, 42.into());
 
         tokio::time::timeout(Duration::from_secs(1), block.execute())
             .await
-            .expect("execute sends the cache-written value instead of parking");
+            .expect("execute sends the written value instead of parking");
 
         assert_eq!(
             mock.requests.lock().unwrap().clone(),
             vec![("route".to_string(), 42.into())],
-            "a cache-written `in` value is sent"
+            "an `in` value from a pin write is sent"
         );
         assert_eq!(block.out.value, 42.into());
         assert!(!block.state().is_fault());

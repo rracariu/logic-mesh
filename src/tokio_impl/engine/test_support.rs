@@ -86,6 +86,15 @@ impl Client {
         }
     }
 
+    /// Writes `value` to `block`'s input `pin`.
+    pub(crate) async fn write_input(&mut self, block: Uuid, pin: &str, value: Value) {
+        let request = EngineMessage::WriteBlockInputReq(self.id, block, pin.to_string(), value);
+        match self.request(request).await {
+            EngineMessage::WriteBlockInputRes(Ok(_)) => {}
+            other => panic!("Expected WriteBlockInputRes(Ok), got {:?}", other),
+        }
+    }
+
     /// Polls `block` until its output `pin` holds `expected`, failing the
     /// test after a few seconds.
     pub(crate) async fn wait_for_output(&mut self, block: Uuid, pin: &str, expected: Value) {
@@ -325,6 +334,74 @@ pub(crate) mod lifecycle {
             client.send(Resume).await;
             client.write_output(added, "out", 3.into()).await;
             assert_eq!(client.output(added, "out").await, 3.into());
+        })
+        .await;
+    }
+}
+
+/// Engine pin writes, written once against the [`Engine`] trait and run
+/// by each engine's tests: a write to any input runs the block, linked
+/// or not.
+pub(crate) mod pin_writes {
+    use super::lifecycle::TestEngine;
+    use super::*;
+
+    /// A number carrying `unit`.
+    fn with_unit(value: f64, unit: &str) -> Value {
+        Value::make_number_unit(value, unit.into())
+    }
+
+    /// A block with no links at all recomputes on a write to one of its
+    /// inputs.
+    pub(crate) async fn writing_an_unlinked_block_recomputes_it<E: TestEngine>(mut engine: E) {
+        let add = Add::new();
+        let id = *add.id();
+        engine.schedule(add).expect("scheduled");
+
+        drive(engine, move |mut client| async move {
+            client.write_input(id, "in0", 5.into()).await;
+            client.wait_for_output(id, "out", 5.into()).await;
+            client.write_input(id, "in1", 2.into()).await;
+            client.wait_for_output(id, "out", 7.into()).await;
+        })
+        .await;
+    }
+
+    /// A write to a constant input of a linked block recomputes it at
+    /// once, without waiting for a linked input to change.
+    pub(crate) async fn writing_a_constant_input_recomputes_a_linked_block<E: TestEngine>(
+        mut engine: E,
+    ) {
+        let (source, target) = schedule_linked_adds(&mut engine);
+
+        drive(engine, move |mut client| async move {
+            client.write_output(source, "out", 1.into()).await;
+            client.wait_for_output(target, "out", 1.into()).await;
+
+            client.write_input(target, "in1", 2.into()).await;
+            client.wait_for_output(target, "out", 3.into()).await;
+        })
+        .await;
+    }
+
+    /// Faults only clear on a completed cycle, so a fix written to an
+    /// unlinked input clears the fault only because the write runs the
+    /// block.
+    pub(crate) async fn a_fix_written_to_an_unlinked_input_clears_a_fault<E: TestEngine>(
+        mut engine: E,
+    ) {
+        let add = Add::new();
+        let id = *add.id();
+        engine.schedule(add).expect("scheduled");
+
+        drive(engine, move |mut client| async move {
+            client.write_input(id, "in0", with_unit(1.0, "m")).await;
+            client.write_input(id, "in1", with_unit(1.0, "s")).await;
+            client.wait_for_state(id, "fault").await;
+
+            client.write_input(id, "in1", with_unit(2.0, "m")).await;
+            client.wait_for_state(id, "running").await;
+            client.wait_for_output(id, "out", with_unit(3.0, "m")).await;
         })
         .await;
     }

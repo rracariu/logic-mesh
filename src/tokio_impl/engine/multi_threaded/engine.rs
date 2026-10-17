@@ -1373,6 +1373,33 @@ mod test {
         }
     }
 
+    /// Regression: see the single-threaded `pin_writes`.
+    mod pin_writes {
+        use super::*;
+        use crate::tokio_impl::engine::test_support::pin_writes;
+
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn writing_an_unlinked_block_recomputes_it() {
+            pin_writes::writing_an_unlinked_block_recomputes_it(MultiThreadedEngine::new()).await;
+        }
+
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn writing_a_constant_input_recomputes_a_linked_block() {
+            pin_writes::writing_a_constant_input_recomputes_a_linked_block(
+                MultiThreadedEngine::new(),
+            )
+            .await;
+        }
+
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn a_fix_written_to_an_unlinked_input_clears_a_fault() {
+            pin_writes::a_fix_written_to_an_unlinked_input_clears_a_fault(
+                MultiThreadedEngine::new(),
+            )
+            .await;
+        }
+    }
+
     /// Regression: a reply variant sent to the engine hit an
     /// `unreachable!` and panicked the event loop. It is now ignored,
     /// and the engine keeps answering.
