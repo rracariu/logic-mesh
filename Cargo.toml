@@ -2,6 +2,9 @@
 name = "logic-mesh"
 version = "2.0.0"
 edition = "2024"
+# The lowest toolchain that builds the workspace (CI's `msrv` job reads
+# it from here). Let-chains need 1.88, and so do several dependencies.
+rust-version = "1.88"
 authors = ["Radu Racariu <radu.racariu@gmail.com>"]
 description = "Control logic engine using event based and reactive blocks written in Rust."
 repository = "https://github.com/rracariu/logic-mesh"
@@ -72,6 +75,11 @@ console_error_panic_hook = "^0.1"
 getrandom = { version = "^0.3", default-features = false, features = [
 	"wasm_js",
 ] }
+
+# Document the multi-threaded engine on docs.rs too; it is behind a
+# feature, so a default build would leave it out.
+[package.metadata.docs.rs]
+features = ["multi-threaded"]
 
 [package.metadata.wasm-pack.profile.release]
 wasm-opt = ["-Oz", "--enable-bulk-memory", "--enable-nontrapping-float-to-int"]

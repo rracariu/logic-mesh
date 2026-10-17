@@ -31,7 +31,15 @@ jobs:
           toolchain: ${{ matrix.rust }}
 
       - name: Run cargo check
-        run: cargo check ${{ matrix.features && format('--features {0}', matrix.features) || '' }}
+        run: cargo check --workspace --all-targets ${{ matrix.features && format('--features {0}', matrix.features) || '' }}
+
+      # `--workspace` unifies features across the members it builds, and
+      # tests_lib_usage enables `multi-threaded`, so the step above never
+      # builds logic-mesh with its default features alone. Selecting
+      # only logic-mesh does. The clippy and docs jobs do the same.
+      - name: Run cargo check (logic-mesh, default features)
+        if: matrix.features == ''
+        run: cargo check -p logic-mesh --all-targets
 
   test:
     name: Test Suite (${{ matrix.features == '' && 'default' || matrix.features }})
@@ -96,7 +104,13 @@ jobs:
           components: clippy
 
       - name: Run cargo clippy
-        run: cargo clippy ${{ matrix.features && format('--features {0}', matrix.features) || '' }} -- -D warnings
+        run: cargo clippy --workspace --all-targets ${{ matrix.features && format('--features {0}', matrix.features) || '' }} -- -D warnings
+
+      # See the check job: without this, logic-mesh is only linted with
+      # `multi-threaded` on.
+      - name: Run cargo clippy (logic-mesh, default features)
+        if: matrix.features == ''
+        run: cargo clippy -p logic-mesh --all-targets -- -D warnings
 
   docs:
     name: Docs (${{ matrix.features == '' && 'default' || matrix.features }})
@@ -120,7 +134,15 @@ jobs:
       - name: Run cargo doc
         env:
           RUSTDOCFLAGS: "-D warnings"
-        run: cargo doc --no-deps ${{ matrix.features && format('--features {0}', matrix.features) || '' }}
+        run: cargo doc --no-deps --workspace ${{ matrix.features && format('--features {0}', matrix.features) || '' }}
+
+      # See the check job: without this, a doc link from default code
+      # to a `multi-threaded`-only item would go unnoticed.
+      - name: Run cargo doc (logic-mesh, default features)
+        if: matrix.features == ''
+        env:
+          RUSTDOCFLAGS: "-D warnings"
+        run: cargo doc --no-deps -p logic-mesh
 
   docs-wasm:
     name: Docs (wasm32)
@@ -166,4 +188,72 @@ jobs:
       # dev-dependencies of the native `tui_runner` example (crossterm),
       # which do not build for wasm32.
       - name: Run cargo clippy
-        run: cargo clippy --target wasm32-unknown-unknown -- -D warnings
+        run: cargo clippy --lib --target wasm32-unknown-unknown -- -D warnings
+
+  package:
+    name: Package
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v6
+
+      - name: Install toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      # Builds the two crates `cargo publish` would upload and compiles
+      # each from its .crate file. logic-mesh is verified against the
+      # freshly packaged block macro through a temporary local registry,
+      # so this works before that macro version is on crates.io. The
+      # crates are named instead of using `--workspace`, which would
+      # also package the `publish = false` test crates and fail on
+      # their path-only dependency on logic-mesh.
+      - name: Run cargo package
+        run: cargo package --locked -p logic_mesh_block_macro -p logic-mesh
+
+  msrv:
+    name: MSRV
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v6
+
+      - name: Install toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      # The MSRV is logic-mesh's `rust-version`; changing it in
+      # Cargo.toml moves this job with it.
+      - name: Install MSRV toolchain
+        id: msrv
+        run: |
+          msrv=$(cargo metadata --no-deps --format-version 1 \
+            | jq -er '.packages[] | select(.name == "logic-mesh") | .rust_version')
+          rustup toolchain install "$msrv" --profile minimal --target wasm32-unknown-unknown
+          echo "toolchain=$msrv" >> "$GITHUB_OUTPUT"
+
+      # rust-toolchain.toml pins `stable`, which a bare `cargo` would
+      # pick; `cargo +<toolchain>` overrides it. As in the check job,
+      # `--workspace` builds logic-mesh with `multi-threaded` on either
+      # way, so the default-features check selects logic-mesh alone.
+      - name: Run cargo check (logic-mesh, default features)
+        run: cargo +${{ steps.msrv.outputs.toolchain }} check --locked -p logic-mesh --all-targets
+
+      - name: Run cargo check (multi-threaded)
+        run: cargo +${{ steps.msrv.outputs.toolchain }} check --locked --workspace --all-targets --features multi-threaded
+
+      - name: Run cargo check (wasm32)
+        run: cargo +${{ steps.msrv.outputs.toolchain }} check --locked --lib --target wasm32-unknown-unknown
+
+  version-sync:
+    name: Version sync
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v6
+
+      - name: Install toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      # The release workflows run the same check against the release
+      # tag; failing here first keeps main releasable.
+      - name: Check that the crate and npm versions agree
+        run: .github/scripts/check-versions.sh

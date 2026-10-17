@@ -4,6 +4,12 @@ on:
   release:
     types: [published]
 
+# Publishing authenticates with npm Trusted Publishing (OIDC), and
+# there is deliberately no NPM_TOKEN fallback. It only works once the
+# logic-mesh package settings on npmjs.com list repository
+# rracariu/logic-mesh with workflow npm-publish.yml as a trusted
+# publisher. `id-token: write` lets npm request the OIDC token it
+# authenticates with and signs the provenance statement with.
 permissions:
   id-token: write
   contents: read
@@ -17,19 +23,49 @@ jobs:
         working-directory: ./web
     steps:
       - uses: actions/checkout@v6
+
+      - name: Match the release tag against the package versions
+        working-directory: .
+        env:
+          TAG: ${{ github.event.release.tag_name }}
+        run: .github/scripts/check-versions.sh "$TAG"
+
       - uses: actions/setup-node@v6
         with:
           node-version: lts/*
           registry-url: 'https://registry.npmjs.org'
           package-manager-cache: false
 
-
+      # The same checks web-check.yml runs on pull requests.
+      - name: wasm-pack installer
+        run: curl https://wasm-bindgen.github.io/wasm-pack/installer/init.sh -sSf | bash
       - name: install
-        run: npm install -g wasm-pack && npm ci
+        run: npm ci
+
+      - name: format check
+        run: |
+          npm run format:check --workspace=logic-mesh
+          npm run format:check --workspace=web-app
 
       - name: wasm-build
         run: npm run build --workspace=logic-mesh
 
+      - name: lint
+        run: |
+          npm run lint --workspace=logic-mesh
+          npm run lint --workspace=web-app
+
+      - name: test
+        run: npm test --workspace=logic-mesh
+
+      # Prereleases (2.1.0-rc.1) go to the `next` dist-tag so that
+      # `npm install logic-mesh` keeps resolving to the latest release.
       - name: publish
-        run: npm publish --provenance --access public
         working-directory: ./web/packages/logic-mesh
+        run: |
+          version=$(node -p "require('./package.json').version")
+          if [[ $version == *-* ]]; then
+            npm publish --provenance --access public --tag next
+          else
+            npm publish --provenance --access public
+          fi
