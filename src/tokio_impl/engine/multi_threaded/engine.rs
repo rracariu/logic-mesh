@@ -1277,6 +1277,48 @@ mod test {
         }
     }
 
+    /// Actor tasks are detached on the ambient runtime, so they must end
+    /// on their own once the engine is gone — see `test_support::drops`.
+    mod drops {
+        use super::*;
+        use crate::tokio_impl::engine::test_support::drops;
+
+        /// Regression: the dropped engine's closed mailboxes left every
+        /// actor spinning on the runtime forever.
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn dropping_an_idle_engine_ends_its_actors() {
+            drops::dropping_an_idle_engine_ends_its_actors(MultiThreadedEngine::new()).await;
+        }
+
+        /// Shutdown keeps the actors now, so these too end only through
+        /// their closed mailboxes.
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn dropping_a_shut_down_engine_ends_its_actors() {
+            drops::dropping_a_shut_down_engine_ends_its_actors(MultiThreadedEngine::new()).await;
+        }
+
+        /// Regression: as for the idle engine.
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn dropping_the_run_future_ends_its_actors() {
+            drops::dropping_the_run_future_ends_its_actors(MultiThreadedEngine::new()).await;
+        }
+
+        /// Regression: as for the idle engine, with `run()` on its own
+        /// task, as an application spawns it.
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn aborting_the_run_task_ends_its_actors() {
+            let mut eng = MultiThreadedEngine::new();
+            let alive = drops::schedule_tracked(&mut eng);
+
+            let run = tokio::spawn(eng.run());
+            sleep(Duration::from_millis(100)).await;
+            run.abort();
+            assert!(run.await.is_err_and(|err| err.is_cancelled()));
+
+            drops::wait_for_actors_to_end(&alive).await;
+        }
+    }
+
     /// The lifecycle contract — see `test_support::lifecycle`.
     mod lifecycle {
         use super::*;

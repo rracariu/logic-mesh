@@ -456,3 +456,86 @@ pub(crate) mod panics {
         .await;
     }
 }
+
+/// Actor task lifetime, written once against the [`Engine`] trait and
+/// run by each engine's tests: dropping an engine ends every actor task.
+pub(crate) mod drops {
+    use std::sync::Arc;
+
+    use super::lifecycle::TestEngine;
+    use super::*;
+    use crate::base::block::Block;
+    use crate::base::input::input_reader::InputReader;
+    use crate::blocks::OutputImpl;
+
+    /// How many blocks each test schedules.
+    const BLOCKS: usize = 4;
+
+    /// A block whose only job is to count its live instances: every
+    /// instance holds a clone of `alive`, and an actor task drops its
+    /// block when it ends.
+    #[block]
+    #[derive(BlockProps, Debug)]
+    #[category = "test"]
+    pub(crate) struct Tracked {
+        #[output(kind = "Number")]
+        out: OutputImpl,
+        alive: Arc<()>,
+    }
+
+    impl Block for Tracked {
+        async fn execute(&mut self) {
+            self.read_inputs_until_ready().await;
+        }
+    }
+
+    /// Schedules [`BLOCKS`] tracked blocks and returns their counter.
+    pub(crate) fn schedule_tracked<E: TestEngine>(engine: &mut E) -> Arc<()> {
+        let alive = Arc::new(());
+        for _ in 0..BLOCKS {
+            let mut block = Tracked::new();
+            block.alive = alive.clone();
+            engine.schedule(block).expect("scheduled");
+        }
+        assert_eq!(Arc::strong_count(&alive), BLOCKS + 1);
+        alive
+    }
+
+    /// Waits until every tracked block was dropped — that is, every
+    /// actor task has ended — failing the test after a few seconds.
+    pub(crate) async fn wait_for_actors_to_end(alive: &Arc<()>) {
+        for _ in 0..POLLS {
+            if Arc::strong_count(alive) == 1 {
+                return;
+            }
+            sleep(POLL_INTERVAL).await;
+        }
+        panic!(
+            "{} actor task(s) outlived their engine",
+            Arc::strong_count(alive) - 1
+        );
+    }
+
+    /// An engine dropped before it ever ran.
+    pub(crate) async fn dropping_an_idle_engine_ends_its_actors<E: TestEngine>(mut engine: E) {
+        let alive = schedule_tracked(&mut engine);
+        drop(engine);
+        wait_for_actors_to_end(&alive).await;
+    }
+
+    /// An engine dropped after `run()` handed it back.
+    pub(crate) async fn dropping_a_shut_down_engine_ends_its_actors<E: TestEngine>(mut engine: E) {
+        let alive = schedule_tracked(&mut engine);
+        let engine = drive(engine, |_| async {}).await;
+        drop(engine);
+        wait_for_actors_to_end(&alive).await;
+    }
+
+    /// An engine dropped together with its unfinished `run()` future.
+    pub(crate) async fn dropping_the_run_future_ends_its_actors<E: TestEngine>(mut engine: E) {
+        let alive = schedule_tracked(&mut engine);
+        let unfinished = timeout(Duration::from_millis(100), engine.run()).await;
+        assert!(unfinished.is_err(), "run() only ends on Shutdown");
+        wait_for_actors_to_end(&alive).await;
+    }
+}

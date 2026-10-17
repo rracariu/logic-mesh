@@ -17,6 +17,10 @@
 //! command is handled immediately, so external commands (UI input writes,
 //! link rewiring) do not have to wait a full polling cycle.
 //!
+//! The actor tasks live on the engine's own `LocalSet`, so dropping the
+//! engine — idle, or along with an unfinished `run()` future — drops
+//! every actor task with it.
+//!
 //! ### Cancellation safety
 //!
 //! Dropping `block.execute()` mid-poll is safe in this codebase because
@@ -324,6 +328,28 @@ mod tests {
         #[tokio::test(flavor = "current_thread")]
         async fn panicked_block_recovers_after_a_clean_cycle() {
             panics::panicked_block_recovers_after_a_clean_cycle(SingleThreadedEngine::new()).await;
+        }
+    }
+
+    /// Dropping the engine drops its `LocalSet`, and every actor task
+    /// with it — see `test_support::drops`.
+    mod drops {
+        use super::*;
+        use crate::tokio_impl::engine::test_support::drops;
+
+        #[tokio::test(flavor = "current_thread")]
+        async fn dropping_an_idle_engine_ends_its_actors() {
+            drops::dropping_an_idle_engine_ends_its_actors(SingleThreadedEngine::new()).await;
+        }
+
+        #[tokio::test(flavor = "current_thread")]
+        async fn dropping_a_shut_down_engine_ends_its_actors() {
+            drops::dropping_a_shut_down_engine_ends_its_actors(SingleThreadedEngine::new()).await;
+        }
+
+        #[tokio::test(flavor = "current_thread")]
+        async fn dropping_the_run_future_ends_its_actors() {
+            drops::dropping_the_run_future_ends_its_actors(SingleThreadedEngine::new()).await;
         }
     }
 
