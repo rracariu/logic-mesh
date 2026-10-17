@@ -177,7 +177,8 @@ impl Block for Padded {
     async fn execute(&mut self) {}
 }
 
-/// Names its pins after fields whose names are keywords.
+/// Names its pins after fields whose names are keywords, and one kind
+/// with a raw identifier.
 #[block]
 #[derive(BlockProps, Debug)]
 #[library = "downstream"]
@@ -185,7 +186,7 @@ impl Block for Padded {
 pub struct Keywords {
     #[input(kind = "Number")]
     pub r#in: InputImpl,
-    #[output(kind = "Number")]
+    #[output(kind = "r#Number")]
     pub r#type: OutputImpl,
 }
 
@@ -381,6 +382,17 @@ mod tests {
         let block = Keywords::new();
         assert_eq!(block.inputs()[0].name(), "in");
         assert_eq!(block.outputs()[0].name(), "type");
+    }
+
+    /// Regression: `kind = "r#Number"` made the derive panic, where it
+    /// had always named the `Number` variant.
+    #[test]
+    fn raw_kind_names_the_variant() {
+        use logic_mesh::HaystackKind;
+        use logic_mesh::base::block::BlockStaticDesc;
+
+        let desc = <Keywords as BlockStaticDesc>::static_desc();
+        assert_eq!(desc.outputs[0].kind, HaystackKind::Number);
     }
 
     /// A block written by hand describes itself with the builder:
