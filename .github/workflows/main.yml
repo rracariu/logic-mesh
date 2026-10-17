@@ -231,9 +231,11 @@ jobs:
           echo "toolchain=$msrv" >> "$GITHUB_OUTPUT"
 
       # rust-toolchain.toml pins `stable`, which a bare `cargo` would
-      # pick; `cargo +<toolchain>` overrides it.
-      - name: Run cargo check (default)
-        run: cargo +${{ steps.msrv.outputs.toolchain }} check --locked --workspace --all-targets
+      # pick; `cargo +<toolchain>` overrides it. As in the check job,
+      # `--workspace` builds logic-mesh with `multi-threaded` on either
+      # way, so the default-features check selects logic-mesh alone.
+      - name: Run cargo check (logic-mesh, default features)
+        run: cargo +${{ steps.msrv.outputs.toolchain }} check --locked -p logic-mesh --all-targets
 
       - name: Run cargo check (multi-threaded)
         run: cargo +${{ steps.msrv.outputs.toolchain }} check --locked --workspace --all-targets --features multi-threaded
