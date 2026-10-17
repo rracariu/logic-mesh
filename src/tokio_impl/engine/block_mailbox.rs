@@ -14,9 +14,12 @@ use uuid::Uuid;
 
 use crate::base::{
     Status,
-    block::{Block, BlockProps, BlockState},
+    block::{
+        Block, BlockProps, BlockState,
+        connect::{ensure_not_linked, ensure_not_self_link, input_not_found, output_not_found},
+    },
     engine::messages::{BlockDefinition, BlockInputData, BlockOutputData},
-    error::EngineError,
+    error::{ConnectError, EngineError},
     link::{BaseLink, LinkState},
     program::data::{BlockData, LinkData},
 };
@@ -33,20 +36,20 @@ pub(super) enum BlockMailboxCmd {
     WriteInput {
         name: String,
         value: Value,
-        reply: oneshot::Sender<Result<Option<Value>, String>>,
+        reply: oneshot::Sender<Result<Option<Value>, EngineError>>,
     },
     /// Sets an output value. Returns the previous value.
     WriteOutput {
         name: String,
         value: Value,
-        reply: oneshot::Sender<Result<Value, String>>,
+        reply: oneshot::Sender<Result<Value, EngineError>>,
     },
     /// Clone the writer for one of this block's inputs. Used by the engine
     /// when wiring a link: the source block adds a link whose `tx` is the
     /// writer of the target input.
     GetInputWriter {
         name: String,
-        reply: oneshot::Sender<Result<WriterImpl, String>>,
+        reply: oneshot::Sender<Result<WriterImpl, EngineError>>,
     },
     /// Gets the current cached value of one of this block's inputs.
     GetInputValue {
@@ -71,7 +74,7 @@ pub(super) enum BlockMailboxCmd {
         target_block_id: Uuid,
         target_input_name: String,
         target_writer: WriterImpl,
-        reply: oneshot::Sender<Result<(), String>>,
+        reply: oneshot::Sender<Result<(), ConnectError>>,
     },
     /// Adds link `link_id` from one of this block's inputs (chained as a
     /// source) to a target input.
@@ -81,7 +84,7 @@ pub(super) enum BlockMailboxCmd {
         target_block_id: Uuid,
         target_input_name: String,
         target_writer: WriterImpl,
-        reply: oneshot::Sender<Result<(), String>>,
+        reply: oneshot::Sender<Result<(), ConnectError>>,
     },
     /// Push a value directly into the named input's writer. Used to seed a
     /// freshly linked input with the source's current value.
@@ -196,7 +199,10 @@ where
                     write_input_value(input, value);
                     Ok(prev)
                 }
-                None => Err("Input not found".to_string()),
+                None => Err(EngineError::InputNotFound {
+                    block: *block.id(),
+                    pin: name,
+                }),
             };
             let _ = reply.send(result);
         }
@@ -208,7 +214,10 @@ where
                     output.set(value);
                     Ok(prev)
                 }
-                None => Err("Output not found".to_string()),
+                None => Err(EngineError::OutputNotFound {
+                    block: *block.id(),
+                    pin: name,
+                }),
             };
             let _ = reply.send(result);
         }
@@ -216,7 +225,10 @@ where
         BlockMailboxCmd::GetInputWriter { name, reply } => {
             let result = match block.get_input_mut(&name) {
                 Some(input) => Ok(input.writer().clone()),
-                None => Err("Input not found".to_string()),
+                None => Err(EngineError::InputNotFound {
+                    block: *block.id(),
+                    pin: name,
+                }),
             };
             let _ = reply.send(result);
         }
@@ -464,18 +476,15 @@ fn add_output_link_inner<B: Block<Writer = WriterImpl, Reader = ReaderImpl> + ?S
     target_block_id: Uuid,
     target_input_name: String,
     target_writer: WriterImpl,
-) -> Result<(), String> {
+) -> Result<(), ConnectError> {
+    let block_id = *block.id();
     let mut outputs = block.outputs_mut();
     let output = outputs
         .iter_mut()
         .find(|o| o.desc().name == output_name)
-        .ok_or_else(|| "Output not found".to_string())?;
+        .ok_or_else(|| output_not_found(block_id, output_name))?;
 
-    if output.links().iter().any(|link| {
-        link.target_block_id() == &target_block_id && link.target_input() == target_input_name
-    }) {
-        return Err("Already connected".to_string());
-    }
+    ensure_not_linked(&output.links(), &target_block_id, &target_input_name)?;
 
     output.add_link(connected_link(
         link_id,
@@ -493,23 +502,17 @@ fn add_input_link_inner<B: Block<Writer = WriterImpl, Reader = ReaderImpl> + ?Si
     target_block_id: Uuid,
     target_input_name: String,
     target_writer: WriterImpl,
-) -> Result<(), String> {
+) -> Result<(), ConnectError> {
     let block_id = *block.id();
-    if block_id == target_block_id {
-        return Err("Cannot connect to the same block".to_string());
-    }
+    ensure_not_self_link(&block_id, &target_block_id)?;
 
     let mut inputs = block.inputs_mut();
     let input = inputs
         .iter_mut()
         .find(|i| i.name() == input_name)
-        .ok_or_else(|| "Input not found".to_string())?;
+        .ok_or_else(|| input_not_found(block_id, input_name))?;
 
-    if input.links().iter().any(|link| {
-        link.target_block_id() == &target_block_id && link.target_input() == target_input_name
-    }) {
-        return Err("Already connected".to_string());
-    }
+    ensure_not_linked(&input.links(), &target_block_id, &target_input_name)?;
 
     input.add_link(connected_link(
         link_id,
@@ -518,4 +521,52 @@ fn add_input_link_inner<B: Block<Writer = WriterImpl, Reader = ReaderImpl> + ?Si
         target_writer,
     ));
     Ok(())
+}
+
+#[cfg(test)]
+mod test {
+    use assert_matches::assert_matches;
+    use tokio::sync::oneshot;
+    use uuid::Uuid;
+
+    use super::{BlockMailboxCmd, handle_cmd};
+    use crate::base::block::BlockProps;
+    use crate::base::error::{ConnectError, EngineError};
+    use crate::blocks::math::Add;
+
+    /// A block rejecting a command answers with what it rejected, typed:
+    /// the pin it does not have, or the link it cannot take.
+    #[tokio::test]
+    async fn rejections_are_typed() {
+        let mut add = Add::new();
+        let id = *add.id();
+
+        let (reply, response) = oneshot::channel();
+        let cmd = BlockMailboxCmd::WriteInput {
+            name: "nope".to_string(),
+            value: 1.into(),
+            reply,
+        };
+        handle_cmd(cmd, &mut add).await;
+        assert_matches!(
+            response.await.expect("answered"),
+            Err(EngineError::InputNotFound { block, pin }) if block == id && pin == "nope"
+        );
+
+        let (reply, response) = oneshot::channel();
+        let target_writer = add.inputs_mut()[1].writer().clone();
+        let cmd = BlockMailboxCmd::AddInputLink {
+            link_id: Uuid::new_v4(),
+            input_name: "in0".to_string(),
+            target_block_id: id,
+            target_input_name: "in1".to_string(),
+            target_writer,
+            reply,
+        };
+        handle_cmd(cmd, &mut add).await;
+        assert_matches!(
+            response.await.expect("answered"),
+            Err(ConnectError::SelfLink { block }) if block == id
+        );
+    }
 }

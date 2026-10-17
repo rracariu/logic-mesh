@@ -4,8 +4,8 @@
 //! Defines the errors reported by this crate.
 //!
 //! Each subsystem owns its own error enum — [`RegistryError`],
-//! [`EngineError`], [`ValueError`], [`ExternalError`] and
-//! [`ConnectorError`] — so a failure
+//! [`EngineError`], [`ConnectError`], [`ValueError`], [`ExternalError`]
+//! and [`ConnectorError`] — so a failure
 //! carries the data of the thing that failed and can be matched on
 //! without inspecting a formatted message. [`enum@Error`] is the aggregate
 //! that the crate's entry points return; it forwards `Display` to the
@@ -24,12 +24,14 @@
 //! ```
 //!
 
+pub mod connect;
 pub mod connector;
 pub mod engine;
 pub mod external;
 pub mod registry;
 pub mod value;
 
+pub use connect::ConnectError;
 pub use connector::ConnectorError;
 pub use engine::{EngineError, LinkEnd};
 pub use external::ExternalError;
@@ -65,6 +67,11 @@ pub enum Error {
     /// failed.
     #[error(transparent)]
     Engine(#[from] EngineError),
+
+    /// Linking two block pins directly, without an engine, failed. An
+    /// engine reports the same failures as [`EngineError::Connect`].
+    #[error(transparent)]
+    Connect(#[from] ConnectError),
 
     /// Converting a value to the type a pin expects failed.
     #[error(transparent)]

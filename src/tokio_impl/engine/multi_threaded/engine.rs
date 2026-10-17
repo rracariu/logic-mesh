@@ -1035,6 +1035,23 @@ mod test {
         }
     }
 
+    /// Regression: see the single-threaded `rejections`.
+    mod rejections {
+        use super::*;
+        use crate::tokio_impl::engine::test_support::rejections;
+
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn writing_a_missing_pin_names_it() {
+            rejections::writing_a_missing_pin_names_it(MultiThreadedEngine::new()).await;
+        }
+
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn linking_the_same_pins_twice_is_a_connect_error() {
+            rejections::linking_the_same_pins_twice_is_a_connect_error(MultiThreadedEngine::new())
+                .await;
+        }
+    }
+
     /// Regression: see the single-threaded `link_ids`.
     mod link_ids {
         use super::*;

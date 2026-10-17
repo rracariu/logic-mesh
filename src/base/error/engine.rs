@@ -10,6 +10,8 @@ use std::fmt;
 use thiserror::Error;
 use uuid::Uuid;
 
+use super::ConnectError;
+
 /// Which end of a link a failure refers to.
 ///
 /// A link is validated at both ends, and for a self-link both ends carry
@@ -34,11 +36,13 @@ impl fmt::Display for LinkEnd {
 
 /// Failures of the block execution engine.
 ///
-/// The `BlockTaskGone` / `BlockDroppedReply` / `BlockRequestRejected`
-/// trio describes the actor round-trip an engine performs for every
-/// block operation: the request could not be delivered, it was delivered
-/// but never answered, or the block answered with a failure. All three
-/// name the block that was addressed.
+/// The `BlockTaskGone` / `BlockDroppedReply` pair describes the actor
+/// round-trip an engine performs for every block operation: the request
+/// could not be delivered, or it was delivered but never answered. Both
+/// name the block that was addressed. A block that answers with a
+/// failure reports it in its own terms: a missing pin as
+/// `InputNotFound` / `OutputNotFound`, a link it cannot take as
+/// `Connect`.
 #[derive(Debug, Error)]
 #[non_exhaustive]
 pub enum EngineError {
@@ -154,9 +158,11 @@ pub enum EngineError {
         id: Uuid,
     },
 
-    /// The block's actor task answered the request with a failure.
-    #[error("Block actor rejected the request: {0}")]
-    BlockRequestRejected(String),
+    /// A block rejected a link while the engine wired it, after the
+    /// engine's own checks passed — for example an input linked to
+    /// another input of its own block.
+    #[error(transparent)]
+    Connect(#[from] ConnectError),
 }
 
 /// Parses a block id, tagging a failure with the string that was rejected.
