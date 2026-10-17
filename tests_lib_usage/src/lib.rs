@@ -145,6 +145,22 @@ impl Block for Attributed {
     async fn execute(&mut self) {}
 }
 
+/// Names its pins after fields whose names are keywords.
+#[block]
+#[derive(BlockProps, Debug)]
+#[library = "downstream"]
+#[category = "test"]
+pub struct Keywords {
+    #[input(kind = "Number")]
+    pub r#in: InputImpl,
+    #[output(kind = "Number")]
+    pub r#type: OutputImpl,
+}
+
+impl Block for Keywords {
+    async fn execute(&mut self) {}
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -284,6 +300,21 @@ mod tests {
         let block = Attributed::new();
         assert_eq!(block.inputs().len(), 2);
         assert_eq!(block.outputs()[0].name(), "y");
+    }
+
+    /// Regression: a pin named after a raw field identifier kept its
+    /// `r#` prefix, so the field `r#in` declared a pin named `r#in`.
+    #[test]
+    fn raw_field_names_name_pins_without_the_prefix() {
+        use logic_mesh::base::block::BlockStaticDesc;
+
+        let desc = <Keywords as BlockStaticDesc>::static_desc();
+        assert_eq!(desc.inputs[0].name, "in");
+        assert_eq!(desc.outputs[0].name, "type");
+
+        let block = Keywords::new();
+        assert_eq!(block.inputs()[0].name(), "in");
+        assert_eq!(block.outputs()[0].name(), "type");
     }
 
     /// A block written by hand describes itself with the builder:
