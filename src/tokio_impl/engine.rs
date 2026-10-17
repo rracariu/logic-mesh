@@ -21,6 +21,7 @@ use crate::{
 mod actor_step;
 mod block_mailbox;
 mod connectors;
+mod graph;
 mod message_dispatch;
 pub mod single_threaded;
 #[cfg(not(target_arch = "wasm32"))]

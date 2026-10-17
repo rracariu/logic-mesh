@@ -50,13 +50,17 @@
 //! - [`engine`] — [`SingleThreadedEngine`] itself: lifecycle, the [`Engine`]
 //!   trait impl, sync configuration helpers, and the async APIs that
 //!   `message_dispatch` routes external requests to.
+//! - `graph` (shared with the multi-threaded engine) — the
+//!   [`BlockHandle`]s and the running-phase operations over them: pin
+//!   writes, link wiring, block removal, program save and load.
 //!
 //! [`Engine`]: crate::base::engine::Engine
 
 mod actor;
 mod engine;
 
-pub use engine::{BlockHandle, Messages, SingleThreadedEngine};
+pub use super::graph::BlockHandle;
+pub use engine::{Messages, SingleThreadedEngine};
 
 #[cfg(not(target_arch = "wasm32"))]
 #[cfg(test)]

@@ -47,4 +47,5 @@
 mod actor;
 pub mod engine;
 
-pub use engine::{BlockHandle, Messages, MultiThreadedEngine};
+pub use super::graph::BlockHandle;
+pub use engine::{Messages, MultiThreadedEngine};
