@@ -2,6 +2,8 @@
 name = "logic_mesh_block_macro"
 version = "2.0.0"
 edition = "2021"
+# Released in lockstep with logic-mesh, so it shares its MSRV.
+rust-version = "1.88"
 authors = ["Radu Racariu <radu.racariu@gmail.com>"]
 repository = "https://github.com/rracariu/logic-mesh"
 description = "Macros for easy defining of block."
