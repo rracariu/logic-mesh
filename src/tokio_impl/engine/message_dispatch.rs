@@ -201,7 +201,11 @@ pub(super) async fn dispatch_message(engine: &mut SingleThreadedEngine<Running>,
             reply_to_sender(engine, sender_uuid, EngineMessage::ListConnectorsRes(res));
         }
 
-        _ => unreachable!("Invalid message"),
+        // The event loop handles the lifecycle messages before dispatch,
+        // which leaves the replies: the engine's own output, but any
+        // channel holder can still send one. Drop it rather than panic —
+        // on wasm a panic kills the whole instance.
+        other => log::warn!("Ignoring a message the engine does not handle: {other:?}"),
     }
 }
 

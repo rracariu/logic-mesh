@@ -1064,7 +1064,9 @@ impl MultiThreadedEngine<Running> {
                 self.reply_to_sender(sender_uuid, EngineMessage::ListConnectorsRes(res));
             }
 
-            _ => unreachable!("Invalid message"),
+            // Lifecycle messages never reach dispatch, which leaves the
+            // replies — see the single-threaded `dispatch_message`.
+            other => log::warn!("Ignoring a message the engine does not handle: {other:?}"),
         }
     }
 }
@@ -1249,6 +1251,29 @@ mod test {
             !in0_after.is_connected,
             "after disconnect, B.in0 should report is_connected=false"
         );
+    }
+
+    /// Regression: a reply variant sent to the engine hit an
+    /// `unreachable!` and panicked the event loop. It is now ignored,
+    /// and the engine keeps answering.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn stray_reply_is_ignored() {
+        use crate::base::engine::messages::EngineMessage::{
+            AddBlockRes, ListConnectorsReq, ListConnectorsRes,
+        };
+        use crate::tokio_impl::engine::test_support::drive;
+
+        drive(MultiThreadedEngine::new(), |mut client| async move {
+            client.send(AddBlockRes(Ok(Uuid::new_v4()))).await;
+
+            let reply = client.request(ListConnectorsReq(client.id)).await;
+            assert!(
+                matches!(reply, ListConnectorsRes(Ok(_))),
+                "Expected ListConnectorsRes(Ok), got {:?}",
+                reply
+            );
+        })
+        .await;
     }
 
     /// Regression: scheduling an id that is already taken used to

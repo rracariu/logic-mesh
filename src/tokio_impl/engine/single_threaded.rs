@@ -309,6 +309,29 @@ mod tests {
         eng.run().await;
     }
 
+    /// Regression: a reply variant sent to the engine hit an
+    /// `unreachable!` and panicked the event loop. It is now ignored,
+    /// and the engine keeps answering.
+    #[tokio::test(flavor = "current_thread")]
+    async fn stray_reply_is_ignored() {
+        use crate::base::engine::messages::EngineMessage::{
+            AddBlockRes, ListConnectorsReq, ListConnectorsRes,
+        };
+        use crate::tokio_impl::engine::test_support::drive;
+
+        drive(SingleThreadedEngine::new(), |mut client| async move {
+            client.send(AddBlockRes(Ok(Uuid::new_v4()))).await;
+
+            let reply = client.request(ListConnectorsReq(client.id)).await;
+            assert!(
+                matches!(reply, ListConnectorsRes(Ok(_))),
+                "Expected ListConnectorsRes(Ok), got {:?}",
+                reply
+            );
+        })
+        .await;
+    }
+
     /// Regression: scheduling an id that is already taken used to
     /// replace the scheduled block's handle, orphaning its actor.
     mod duplicate_ids {
