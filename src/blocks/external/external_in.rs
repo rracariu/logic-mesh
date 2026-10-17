@@ -12,7 +12,9 @@ use crate::base::{
     input::input_reader::InputReader,
     output::Output,
 };
-use crate::blocks::external::support::{ActiveSubscription, input_as_str};
+use crate::blocks::external::support::{
+    ActiveSubscription, Deadline, input_as_str, input_as_timeout_millis,
+};
 use crate::blocks::utils::get_sleep_dur;
 use crate::tokio_impl::block::drain_ready_inputs;
 use crate::tokio_impl::sleep::sleep_millis;
@@ -26,11 +28,20 @@ use crate::{blocks::InputImpl, blocks::OutputImpl};
 /// the address on the `address` pin. Every value the subscription
 /// yields is set on `out`. Changing either pin drops the current
 /// subscription — which ends it — and opens a new one; the block
-/// faults when the connector is missing, the subscribe fails, the
-/// stream yields an error, or the stream ends. A stream ended by a
-/// connector stop is re-subscribed automatically on the next cycle
-/// (throttled by the polling interval), so the block recovers by
-/// itself after the connector restarts.
+/// faults when the connector is missing, the subscribe fails or does
+/// not settle within the deadline on the `timeout` pin, the stream
+/// yields an error, or the stream ends. A stream ended by a connector
+/// stop, and a subscribe that failed or timed out, are retried
+/// automatically on a later cycle (throttled by the polling interval),
+/// so the block recovers by itself after the connector restarts.
+///
+/// The deadline is read like ExternalOut's: as raw milliseconds — the
+/// Number's unit is ignored — finite and greater than zero, fractions
+/// rounding up, and anything else falling back to 5000. It starts when
+/// a binding's subscribe is first issued and keeps running when an
+/// engine request addressed to the block cancels the cycle — the
+/// subscribe is then re-issued with what is left of it — so steady
+/// request traffic cannot keep a slow subscribe from timing out.
 #[block]
 #[derive(BlockProps, Debug)]
 #[category = "external"]
@@ -39,18 +50,36 @@ pub struct ExternalIn {
     pub connector: InputImpl,
     #[input(kind = "Str")]
     pub address: InputImpl,
+    #[input(kind = "Number")]
+    pub timeout: InputImpl,
     #[output(kind = "Null")]
     pub out: OutputImpl,
     subscription: Option<ActiveSubscription>,
+    /// The subscribe owed while it has not settled: kept across a
+    /// cancelled `execute`, deadline included, until the subscribe
+    /// completes, fails or times out, or the binding changes.
+    binding: Option<PendingBinding>,
+}
+
+/// A subscribe [`ExternalIn`] has issued and not seen settle.
+#[derive(Debug)]
+struct PendingBinding {
+    /// Name the connector was resolved under.
+    connector: String,
+    /// Address the subscribe targets.
+    address: String,
+    /// When the subscribe times out.
+    deadline: Deadline,
 }
 
 impl Block for ExternalIn {
     async fn execute(&mut self) {
         let poll = get_sleep_dur();
 
-        if self.subscription.is_some() {
-            // Already streaming — pick up pin rewrites without stalling
-            // the stream behind an input wait.
+        if self.subscription.is_some() || self.binding.is_some() {
+            // Already streaming, or owing a subscribe a cancelled cycle
+            // cut short — pick up pin rewrites without stalling behind
+            // an input wait.
             drain_ready_inputs(self);
         } else {
             self.wait_on_inputs(Duration::from_millis(poll)).await;
@@ -60,6 +89,7 @@ impl Block for ExternalIn {
             (input_as_str(&self.connector), input_as_str(&self.address))
         else {
             self.subscription = None;
+            self.binding = None;
             return;
         };
 
@@ -74,13 +104,42 @@ impl Block for ExternalIn {
             self.subscription = None;
 
             let Some(handle) = get_connector(&connector) else {
+                self.binding = None;
                 self.set_state(BlockState::fault(format!(
                     "ExternalIn: no connector named '{connector}'"
                 )));
                 return;
             };
 
-            match handle.subscribe(&address).await {
+            // The same binding keeps the deadline its first subscribe
+            // started; a new one starts its own.
+            let deadline = match &self.binding {
+                Some(binding) if binding.connector == connector && binding.address == address => {
+                    binding.deadline
+                }
+                _ => Deadline::after(input_as_timeout_millis(&self.timeout)),
+            };
+            if deadline.has_passed() {
+                self.binding = None;
+                let err = deadline.timeout_error(address);
+                self.set_state(BlockState::fault(format!("ExternalIn: {err}")));
+                return;
+            }
+            self.binding = Some(PendingBinding {
+                connector: connector.clone(),
+                address: address.clone(),
+                deadline,
+            });
+
+            // `biased`: a subscribe settling exactly on the deadline
+            // beats the timeout, as for ExternalOut's publish.
+            let subscribed = tokio::select! {
+                biased;
+                subscribed = handle.subscribe(&address) => subscribed,
+                () = deadline.passed() => Err(deadline.timeout_error(address.clone())),
+            };
+            self.binding = None;
+            match subscribed {
                 Ok(stream) => {
                     self.subscription = Some(ActiveSubscription {
                         connector,
@@ -175,6 +234,66 @@ mod test {
         let mut block = ExternalIn::new();
         bind(&mut block, &unique_name("in-missing"), "topic").await;
         assert!(block.state().is_fault());
+    }
+
+    /// Regression: a subscribe had no deadline, so one that never
+    /// settled parked the block for good.
+    #[tokio::test]
+    async fn slow_subscribe_times_out() {
+        let name = unique_name("in-timeout");
+        let mock = Arc::new(MockConnector {
+            subscribe_delay_millis: Some(10_000),
+            ..Default::default()
+        });
+        register_connector(&name, mock.clone()).expect("registered");
+
+        let mut block = ExternalIn::new();
+        write_block_inputs([(&mut block.timeout, Value::from(50))]).await;
+        tokio::time::timeout(
+            std::time::Duration::from_secs(2),
+            bind(&mut block, &name, "topic"),
+        )
+        .await
+        .expect("the subscribe times out instead of parking");
+
+        assert!(block.state().is_fault());
+        assert!(!mock.has_subscription("topic"), "no subscription opened");
+
+        unregister_connector(&name);
+    }
+
+    /// A subscribe cut short by a cancelled cycle keeps its deadline:
+    /// re-issuing it does not restart the clock.
+    #[tokio::test]
+    async fn cancelled_subscribe_keeps_its_deadline() {
+        let name = unique_name("in-cancelled-timeout");
+        let mock = Arc::new(MockConnector {
+            subscribe_delay_millis: Some(10_000),
+            ..Default::default()
+        });
+        register_connector(&name, mock).expect("registered");
+
+        let mut block = ExternalIn::new();
+        write_block_inputs([
+            (&mut block.timeout, Value::from(100)),
+            (&mut block.connector, Value::make_str(&name)),
+            (&mut block.address, Value::make_str("topic")),
+        ])
+        .await;
+
+        // Drop `execute` every 20 ms, as the block actor does when
+        // mailbox commands keep arriving.
+        let started = std::time::Instant::now();
+        while !block.state().is_fault() {
+            assert!(
+                started.elapsed() < std::time::Duration::from_secs(2),
+                "the subscribe never timed out"
+            );
+            let _ =
+                tokio::time::timeout(std::time::Duration::from_millis(20), block.execute()).await;
+        }
+
+        unregister_connector(&name);
     }
 
     #[tokio::test]

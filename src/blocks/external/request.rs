@@ -4,16 +4,14 @@
 
 use libhaystack::val::Value;
 
-use crate::base::error::ConnectorError;
 use crate::base::{
     block::{Block, BlockProps, BlockState},
     connector::get_connector,
     input::{InputProps, input_reader::InputReader},
     output::Output,
 };
-use crate::blocks::external::support::{input_as_str, input_as_timeout_millis};
+use crate::blocks::external::support::{PendingOp, input_as_str, input_as_timeout_millis};
 use crate::tokio_impl::block::drain_ready_inputs;
-use crate::tokio_impl::sleep::sleep_millis;
 
 use crate::{blocks::InputImpl, blocks::OutputImpl};
 
@@ -49,6 +47,15 @@ use crate::{blocks::InputImpl, blocks::OutputImpl};
 /// request cancelled mid-flight may already have reached the server
 /// and will be sent again, so request handlers should be idempotent
 /// or deduplicate by key (at-least-once semantics).
+///
+/// The deadline starts when a value's request is first issued and
+/// keeps running across those cancellations — any engine request
+/// addressed to the block cancels its cycle — so a re-issued request
+/// only gets what is left of it, and steady request traffic cannot
+/// keep a slow request from timing out. A request whose deadline ran
+/// out while its cycle was cancelled times out without being issued
+/// again. The deadline is read from `timeout` when the request is
+/// first issued; rewriting the pin affects the next value's request.
 #[block]
 #[derive(BlockProps, Debug)]
 #[category = "external"]
@@ -63,11 +70,11 @@ pub struct Request {
     pub timeout: InputImpl,
     #[output(kind = "Null")]
     pub out: OutputImpl,
-    /// The value awaiting a completed request: set when a fresh `in`
-    /// value arrives, kept across a cancelled `execute` so the request
+    /// The request owed: set when a fresh `in` value arrives, kept —
+    /// deadline included — across a cancelled `execute` so the request
     /// is re-issued, and cleared on any completion — response, request
     /// error, connector miss, or timeout.
-    pending: Option<Value>,
+    pending: Option<PendingOp>,
     /// The last `in` cache value `execute` has taken note of — the
     /// freshness baseline. Persisted on the block rather than
     /// snapshotted per `execute` call because the cache can move while
@@ -95,7 +102,7 @@ impl Request {
         if let Some(value) = &self.last_input
             && !matches!(value, Value::Null)
         {
-            self.pending = Some(value.clone());
+            self.pending = Some(PendingOp::new(value.clone()));
         }
     }
 }
@@ -118,17 +125,17 @@ impl Block for Request {
         }
         self.promote_fresh_input();
 
-        let Some(value) = self.pending.clone() else {
-            return;
-        };
-
         let (Some(connector), Some(address)) =
             (input_as_str(&self.connector), input_as_str(&self.address))
         else {
             return;
         };
 
-        let timeout_millis = input_as_timeout_millis(&self.timeout);
+        let Some(pending) = self.pending.as_mut() else {
+            return;
+        };
+        let value = pending.value.clone();
+        let deadline = pending.deadline(input_as_timeout_millis(&self.timeout));
 
         let Some(handle) = get_connector(&connector) else {
             self.pending = None;
@@ -137,6 +144,16 @@ impl Block for Request {
             )));
             return;
         };
+
+        // A request cut short by a cancelled cycle is re-issued with
+        // what is left of its deadline; once none is left it times out
+        // without being issued again.
+        if deadline.has_passed() {
+            self.pending = None;
+            let err = deadline.timeout_error(address);
+            self.set_state(BlockState::fault(format!("Request: {err}")));
+            return;
+        }
 
         // `biased` polls the response arm first, so a response landing
         // exactly on the deadline deterministically beats the timeout.
@@ -155,12 +172,9 @@ impl Block for Request {
                     }
                 }
             }
-            _ = sleep_millis(timeout_millis) => {
+            () = deadline.passed() => {
                 self.pending = None;
-                let err = ConnectorError::Timeout {
-                    address,
-                    millis: timeout_millis,
-                };
+                let err = deadline.timeout_error(address);
                 self.set_state(BlockState::fault(format!("Request: {err}")));
             }
         }

@@ -407,6 +407,132 @@ pub(crate) mod pin_writes {
     }
 }
 
+/// Connector deadlines, written once against the [`Engine`] trait and
+/// run by each engine's tests: every engine request addressed to a
+/// block cancels its `execute` cycle, yet a slow connector operation
+/// still times out on time.
+pub(crate) mod connector_deadlines {
+    use std::sync::Arc;
+    use std::time::Instant;
+
+    use super::lifecycle::TestEngine;
+    use super::*;
+    use crate::base::connector::{register_connector, unregister_connector};
+    use crate::blocks::external::support::mock::MockConnector;
+    use crate::blocks::external::{ExternalIn, ExternalOut, Request};
+
+    /// The deadline each slow operation is given, in milliseconds.
+    const TIMEOUT_MILLIS: f64 = 150.0;
+
+    /// How long the fake connector takes over each operation: far past
+    /// the deadline.
+    const DELAY_MILLIS: u64 = 10_000;
+
+    /// How late a timeout may fire: generous for a loaded machine, yet
+    /// far short of the operation completing — or of never timing out.
+    const SLACK: Duration = Duration::from_secs(2);
+
+    /// Writes `pins` to `block`, then inspects it every few
+    /// milliseconds — each inspection cancelling its cycle — until it
+    /// faults, and checks it faulted by timing out, on time.
+    async fn times_out_under_requests(client: &mut Client, block: Uuid, pins: Vec<(&str, Value)>) {
+        let deadline = Duration::from_millis(TIMEOUT_MILLIS as u64) + SLACK;
+        for (pin, value) in pins {
+            client.write_input(block, pin, value).await;
+        }
+        let started = Instant::now();
+        let faulted = loop {
+            let definition = client.inspect(block).await;
+            if definition.state == "fault" {
+                break definition;
+            }
+            assert!(
+                started.elapsed() < deadline,
+                "the operation never timed out under steady requests"
+            );
+            sleep(Duration::from_millis(5)).await;
+        };
+        let reason = faulted.fault_reason.unwrap_or_default();
+        assert!(
+            reason.contains("timed out after 150ms"),
+            "faulted by its timeout, got: {reason}"
+        );
+    }
+
+    /// Registers a [`MockConnector`] under a fresh name, with `slow`
+    /// applied, and returns the name.
+    fn register_slow(prefix: &str, slow: impl FnOnce(&mut MockConnector)) -> String {
+        let name = format!("{prefix}-{}", Uuid::new_v4());
+        let mut connector = MockConnector::default();
+        slow(&mut connector);
+        register_connector(&name, Arc::new(connector)).expect("registered");
+        name
+    }
+
+    /// The pins binding an external block to `connector`, its timeout
+    /// first, so the deadline is set by the time the operation starts.
+    fn binding(connector: &str, address: &str) -> Vec<(&'static str, Value)> {
+        vec![
+            ("timeout", Value::make_number(TIMEOUT_MILLIS)),
+            ("connector", Value::make_str(connector)),
+            ("address", Value::make_str(address)),
+        ]
+    }
+
+    /// A slow publish times out.
+    pub(crate) async fn external_out_times_out_under_requests<E: TestEngine>(mut engine: E) {
+        let name = register_slow("deadline-out", |mock| {
+            mock.publish_delay_millis = Some(DELAY_MILLIS);
+        });
+        let block = ExternalOut::new();
+        let id = *block.id();
+        engine.schedule(block).expect("scheduled");
+
+        let mut pins = binding(&name, "topic");
+        pins.push(("in", 42.into()));
+        drive(engine, move |mut client| async move {
+            times_out_under_requests(&mut client, id, pins).await;
+        })
+        .await;
+        unregister_connector(&name);
+    }
+
+    /// A slow request times out.
+    pub(crate) async fn request_times_out_under_requests<E: TestEngine>(mut engine: E) {
+        let name = register_slow("deadline-req", |mock| {
+            mock.request_delay_millis = Some(DELAY_MILLIS);
+        });
+        let block = Request::new();
+        let id = *block.id();
+        engine.schedule(block).expect("scheduled");
+
+        let mut pins = binding(&name, "route");
+        pins.push(("in", 42.into()));
+        drive(engine, move |mut client| async move {
+            times_out_under_requests(&mut client, id, pins).await;
+        })
+        .await;
+        unregister_connector(&name);
+    }
+
+    /// A slow subscribe times out.
+    pub(crate) async fn external_in_times_out_under_requests<E: TestEngine>(mut engine: E) {
+        let name = register_slow("deadline-in", |mock| {
+            mock.subscribe_delay_millis = Some(DELAY_MILLIS);
+        });
+        let block = ExternalIn::new();
+        let id = *block.id();
+        engine.schedule(block).expect("scheduled");
+
+        let pins = binding(&name, "sensor");
+        drive(engine, move |mut client| async move {
+            times_out_under_requests(&mut client, id, pins).await;
+        })
+        .await;
+        unregister_connector(&name);
+    }
+}
+
 /// Panic isolation, written once against the [`Engine`] trait and run by
 /// each engine's tests. See `actor_step` for the contract.
 pub(crate) mod panics {

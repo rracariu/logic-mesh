@@ -4,16 +4,14 @@
 
 use libhaystack::val::Value;
 
-use crate::base::error::ConnectorError;
 use crate::base::{
     block::{Block, BlockProps, BlockState},
     connector::get_connector,
     input::{InputProps, input_reader::InputReader},
     output::Output,
 };
-use crate::blocks::external::support::{input_as_str, input_as_timeout_millis};
+use crate::blocks::external::support::{PendingOp, input_as_str, input_as_timeout_millis};
 use crate::tokio_impl::block::drain_ready_inputs;
-use crate::tokio_impl::sleep::sleep_millis;
 
 use crate::{blocks::InputImpl, blocks::OutputImpl};
 
@@ -50,6 +48,15 @@ use crate::{blocks::InputImpl, blocks::OutputImpl};
 /// publish cancelled mid-flight may already have reached the external
 /// system and will be sent again, so subscribers should tolerate
 /// duplicates (at-least-once semantics).
+///
+/// The deadline starts when a value's publish is first issued and
+/// keeps running across those cancellations — any engine request
+/// addressed to the block cancels its cycle — so a re-issued publish
+/// only gets what is left of it, and steady request traffic cannot
+/// keep a slow publish from timing out. A publish whose deadline ran
+/// out while its cycle was cancelled times out without being issued
+/// again. The deadline is read from `timeout` when the publish is
+/// first issued; rewriting the pin affects the next value's publish.
 #[block]
 #[derive(BlockProps, Debug)]
 #[category = "external"]
@@ -64,11 +71,11 @@ pub struct ExternalOut {
     pub timeout: InputImpl,
     #[output(kind = "Null")]
     pub out: OutputImpl,
-    /// The value awaiting a completed publish: set when a fresh `in`
-    /// value arrives, kept across a cancelled `execute` so the publish
+    /// The publish owed: set when a fresh `in` value arrives, kept —
+    /// deadline included — across a cancelled `execute` so the publish
     /// is re-issued, and cleared on any completion — publish success,
     /// publish error, connector miss, or timeout.
-    pending: Option<Value>,
+    pending: Option<PendingOp>,
     /// The last `in` cache value `execute` has taken note of — the
     /// freshness baseline. Persisted on the block rather than
     /// snapshotted per `execute` call because the cache can move while
@@ -96,7 +103,7 @@ impl ExternalOut {
         if let Some(value) = &self.last_input
             && !matches!(value, Value::Null)
         {
-            self.pending = Some(value.clone());
+            self.pending = Some(PendingOp::new(value.clone()));
         }
     }
 }
@@ -120,17 +127,17 @@ impl Block for ExternalOut {
         }
         self.promote_fresh_input();
 
-        let Some(value) = self.pending.clone() else {
-            return;
-        };
-
         let (Some(connector), Some(address)) =
             (input_as_str(&self.connector), input_as_str(&self.address))
         else {
             return;
         };
 
-        let timeout_millis = input_as_timeout_millis(&self.timeout);
+        let Some(pending) = self.pending.as_mut() else {
+            return;
+        };
+        let value = pending.value.clone();
+        let deadline = pending.deadline(input_as_timeout_millis(&self.timeout));
 
         let Some(handle) = get_connector(&connector) else {
             self.pending = None;
@@ -139,6 +146,16 @@ impl Block for ExternalOut {
             )));
             return;
         };
+
+        // A publish cut short by a cancelled cycle is re-issued with
+        // what is left of its deadline; once none is left it times out
+        // without being issued again.
+        if deadline.has_passed() {
+            self.pending = None;
+            let err = deadline.timeout_error(address);
+            self.set_state(BlockState::fault(format!("ExternalOut: {err}")));
+            return;
+        }
 
         // `biased` polls the publish arm first, so a publish settling
         // exactly on the deadline deterministically beats the timeout.
@@ -157,12 +174,9 @@ impl Block for ExternalOut {
                     }
                 }
             }
-            _ = sleep_millis(timeout_millis) => {
+            () = deadline.passed() => {
                 self.pending = None;
-                let err = ConnectorError::Timeout {
-                    address,
-                    millis: timeout_millis,
-                };
+                let err = deadline.timeout_error(address);
                 self.set_state(BlockState::fault(format!("ExternalOut: {err}")));
             }
         }

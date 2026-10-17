@@ -411,6 +411,34 @@ mod tests {
         }
     }
 
+    /// Regression: every request addressed to a block cancels its
+    /// cycle, and the re-issued operation restarted its timeout, so
+    /// steady requests kept a slow publish or request from ever timing
+    /// out; a subscribe had no timeout at all — see
+    /// `test_support::connector_deadlines`.
+    mod connector_deadlines {
+        use super::*;
+        use crate::tokio_impl::engine::test_support::connector_deadlines;
+
+        #[tokio::test(flavor = "current_thread")]
+        async fn external_out_times_out_under_requests() {
+            connector_deadlines::external_out_times_out_under_requests(SingleThreadedEngine::new())
+                .await;
+        }
+
+        #[tokio::test(flavor = "current_thread")]
+        async fn request_times_out_under_requests() {
+            connector_deadlines::request_times_out_under_requests(SingleThreadedEngine::new())
+                .await;
+        }
+
+        #[tokio::test(flavor = "current_thread")]
+        async fn external_in_times_out_under_requests() {
+            connector_deadlines::external_in_times_out_under_requests(SingleThreadedEngine::new())
+                .await;
+        }
+    }
+
     /// Regression: a reply variant sent to the engine hit an
     /// `unreachable!` and panicked the event loop. It is now ignored,
     /// and the engine keeps answering.

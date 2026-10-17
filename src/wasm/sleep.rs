@@ -8,6 +8,11 @@ extern "C" {
     /// Binds to the global `setTimeout` function.
     #[wasm_bindgen]
     fn setTimeout(handler: &::js_sys::Function, timeout: i32);
+
+    /// Binds to the global `performance.now()` — present in browsers,
+    /// workers and Node alike.
+    #[wasm_bindgen(js_namespace = performance, js_name = now)]
+    fn performance_now() -> f64;
 }
 
 /// Sleeps for the given number of milliseconds.
@@ -28,4 +33,11 @@ pub(crate) async fn sleep_millis(millis: u64) {
 /// (Sun, Schedule, Calendar, Now) somewhere in January 1970.
 pub(crate) fn current_time_millis() -> u64 {
     js_sys::Date::now() as u64
+}
+
+/// Milliseconds on a monotonic clock: `performance.now()`, which only
+/// counts from the time origin of the page or process, but which
+/// wall-clock changes do not move — what deadlines are measured on.
+pub(crate) fn monotonic_millis() -> u64 {
+    performance_now() as u64
 }

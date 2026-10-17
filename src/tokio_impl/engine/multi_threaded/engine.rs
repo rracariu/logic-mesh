@@ -1400,6 +1400,29 @@ mod test {
         }
     }
 
+    /// Regression: see the single-threaded `connector_deadlines`.
+    mod connector_deadlines {
+        use super::*;
+        use crate::tokio_impl::engine::test_support::connector_deadlines;
+
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn external_out_times_out_under_requests() {
+            connector_deadlines::external_out_times_out_under_requests(MultiThreadedEngine::new())
+                .await;
+        }
+
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn request_times_out_under_requests() {
+            connector_deadlines::request_times_out_under_requests(MultiThreadedEngine::new()).await;
+        }
+
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn external_in_times_out_under_requests() {
+            connector_deadlines::external_in_times_out_under_requests(MultiThreadedEngine::new())
+                .await;
+        }
+    }
+
     /// Regression: a reply variant sent to the engine hit an
     /// `unreachable!` and panicked the event loop. It is now ignored,
     /// and the engine keeps answering.
