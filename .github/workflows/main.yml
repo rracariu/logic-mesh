@@ -189,3 +189,69 @@ jobs:
       # which do not build for wasm32.
       - name: Run cargo clippy
         run: cargo clippy --lib --target wasm32-unknown-unknown -- -D warnings
+
+  package:
+    name: Package
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v6
+
+      - name: Install toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      # Builds the two crates `cargo publish` would upload and compiles
+      # each from its .crate file. logic-mesh is verified against the
+      # freshly packaged block macro through a temporary local registry,
+      # so this works before that macro version is on crates.io. The
+      # crates are named instead of using `--workspace`, which would
+      # also package the `publish = false` test crates and fail on
+      # their path-only dependency on logic-mesh.
+      - name: Run cargo package
+        run: cargo package --locked -p logic_mesh_block_macro -p logic-mesh
+
+  msrv:
+    name: MSRV
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v6
+
+      - name: Install toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      # The MSRV is logic-mesh's `rust-version`; changing it in
+      # Cargo.toml moves this job with it.
+      - name: Install MSRV toolchain
+        id: msrv
+        run: |
+          msrv=$(cargo metadata --no-deps --format-version 1 \
+            | jq -er '.packages[] | select(.name == "logic-mesh") | .rust_version')
+          rustup toolchain install "$msrv" --profile minimal --target wasm32-unknown-unknown
+          echo "toolchain=$msrv" >> "$GITHUB_OUTPUT"
+
+      # rust-toolchain.toml pins `stable`, which a bare `cargo` would
+      # pick; `cargo +<toolchain>` overrides it.
+      - name: Run cargo check (default)
+        run: cargo +${{ steps.msrv.outputs.toolchain }} check --locked --workspace --all-targets
+
+      - name: Run cargo check (multi-threaded)
+        run: cargo +${{ steps.msrv.outputs.toolchain }} check --locked --workspace --all-targets --features multi-threaded
+
+      - name: Run cargo check (wasm32)
+        run: cargo +${{ steps.msrv.outputs.toolchain }} check --locked --lib --target wasm32-unknown-unknown
+
+  version-sync:
+    name: Version sync
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v6
+
+      - name: Install toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      # The release workflows run the same check against the release
+      # tag; failing here first keeps main releasable.
+      - name: Check that the crate and npm versions agree
+        run: .github/scripts/check-versions.sh
