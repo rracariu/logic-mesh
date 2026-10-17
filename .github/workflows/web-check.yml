@@ -34,6 +34,13 @@ jobs:
       - name: wasm-build
         run: npm run build --workspace=logic-mesh
 
+      # publint + attw on the manifest, then pack the package, install the
+      # tarball into a scratch project and import it with plain `node`.
+      - name: package check
+        run: |
+          npm run check:package --workspace=logic-mesh
+          npm run test:pack --workspace=logic-mesh
+
       - name: lint
         run: |
           npm run lint --workspace=logic-mesh
@@ -44,3 +51,12 @@ jobs:
 
       - name: build
         run: npm run build --workspace=web-app
+
+      # The low end of the package's `engines` range: 22.19 is the first
+      # Node 22 release that imports the wasm module without
+      # --experimental-wasm-modules. Kept last, as it swaps the job's Node.
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22.19.0
+      - name: package smoke test on the minimum Node
+        run: npm run test:pack --workspace=logic-mesh

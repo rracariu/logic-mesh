@@ -22,11 +22,13 @@
     "build": "npm run clean && wasm-pack build --release --out-dir web/packages/logic-mesh/pkg ../../.. && npm run build:prepare && tsc",
     "build:dev": "npm run clean && wasm-pack build --dev --out-dir web/packages/logic-mesh/pkg ../../.. && npm run build:prepare && tsc",
     "build:prepare": "mkdir -p dist && mv ./pkg/*.js ./pkg/*.ts ./pkg/*.wasm ./dist/ && cp ../../../LICENSE ./LICENSE && npm version $(node -p \"require('./pkg/package.json').version\") --allow-same-version && rm -rf ./pkg",
+    "check:package": "publint --strict && attw --pack . --profile esm-only",
     "lint": "eslint .",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "prepublishOnly": "node scripts/check-dist.mjs",
     "test": "vitest run",
+    "test:pack": "node scripts/test-pack.mjs",
     "test:watch": "vitest"
   },
   "files": [
@@ -50,11 +52,13 @@
     "zod": "^4.0.0"
   },
   "devDependencies": {
+    "@arethetypeswrong/cli": "^0.18.5",
     "@eslint/js": "^10.0.1",
     "eslint": "^10.4.0",
     "eslint-config-prettier": "^9",
     "globals": "^15",
     "prettier": "^3",
+    "publint": "^0.3.25",
     "typescript": "^6.0.3",
     "typescript-eslint": "^8",
     "vitest": "^4.1.6",
