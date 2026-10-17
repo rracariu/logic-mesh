@@ -31,7 +31,15 @@ jobs:
           toolchain: ${{ matrix.rust }}
 
       - name: Run cargo check
-        run: cargo check ${{ matrix.features && format('--features {0}', matrix.features) || '' }}
+        run: cargo check --workspace --all-targets ${{ matrix.features && format('--features {0}', matrix.features) || '' }}
+
+      # `--workspace` unifies features across the members it builds, and
+      # tests_lib_usage enables `multi-threaded`, so the step above never
+      # builds logic-mesh with its default features alone. Selecting
+      # only logic-mesh does. The clippy and docs jobs do the same.
+      - name: Run cargo check (logic-mesh, default features)
+        if: matrix.features == ''
+        run: cargo check -p logic-mesh --all-targets
 
   test:
     name: Test Suite (${{ matrix.features == '' && 'default' || matrix.features }})
@@ -96,7 +104,13 @@ jobs:
           components: clippy
 
       - name: Run cargo clippy
-        run: cargo clippy ${{ matrix.features && format('--features {0}', matrix.features) || '' }} -- -D warnings
+        run: cargo clippy --workspace --all-targets ${{ matrix.features && format('--features {0}', matrix.features) || '' }} -- -D warnings
+
+      # See the check job: without this, logic-mesh is only linted with
+      # `multi-threaded` on.
+      - name: Run cargo clippy (logic-mesh, default features)
+        if: matrix.features == ''
+        run: cargo clippy -p logic-mesh --all-targets -- -D warnings
 
   docs:
     name: Docs (${{ matrix.features == '' && 'default' || matrix.features }})
@@ -120,7 +134,15 @@ jobs:
       - name: Run cargo doc
         env:
           RUSTDOCFLAGS: "-D warnings"
-        run: cargo doc --no-deps ${{ matrix.features && format('--features {0}', matrix.features) || '' }}
+        run: cargo doc --no-deps --workspace ${{ matrix.features && format('--features {0}', matrix.features) || '' }}
+
+      # See the check job: without this, a doc link from default code
+      # to a `multi-threaded`-only item would go unnoticed.
+      - name: Run cargo doc (logic-mesh, default features)
+        if: matrix.features == ''
+        env:
+          RUSTDOCFLAGS: "-D warnings"
+        run: cargo doc --no-deps -p logic-mesh
 
   docs-wasm:
     name: Docs (wasm32)
@@ -166,4 +188,4 @@ jobs:
       # dev-dependencies of the native `tui_runner` example (crossterm),
       # which do not build for wasm32.
       - name: Run cargo clippy
-        run: cargo clippy --target wasm32-unknown-unknown -- -D warnings
+        run: cargo clippy --lib --target wasm32-unknown-unknown -- -D warnings
