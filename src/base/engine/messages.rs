@@ -131,11 +131,17 @@ pub enum EngineMessage<WatchEventSender: Clone> {
     GetCurrentProgramRes(Result<Program, String>),
 
     /// Atomically load a full [`Program`] (blocks, links, pin values, UI
-    /// metadata) into the engine. Replaces the multi-call JS chain of
-    /// `addBlock` + `createLink` + `writeBlockInput` per block.
+    /// metadata, name and description) into the engine. Replaces the
+    /// multi-call JS chain of `addBlock` + `createLink` +
+    /// `writeBlockInput` per block.
     ///
-    /// A program naming a block id that is already scheduled, or naming
-    /// one twice, is rejected before any of its blocks is scheduled.
+    /// All or nothing: the program is checked whole before any of its
+    /// blocks is scheduled — the checks of
+    /// [`Engine::schedule_program_blocks`](crate::base::engine::Engine::schedule_program_blocks),
+    /// so a block or link id the engine holds already is rejected — and
+    /// a failure while wiring it removes its blocks again. A failed load
+    /// leaves the engine as it was, though blocks that ran meanwhile may
+    /// have had effects outside it, such as a connector publish.
     ///
     /// Every link keeps the id it was saved under — its
     /// [`LinkData::id`], or else its key in [`Program::links`] — so a

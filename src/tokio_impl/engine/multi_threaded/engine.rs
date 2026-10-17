@@ -39,7 +39,7 @@ use uuid::Uuid;
 
 use super::super::block_mailbox::{BLOCK_MAILBOX_CAP, BlockMailboxCmd};
 use super::super::connectors::{self, ManagedConnectors};
-use super::super::graph::{BlockGraph, BlockHandle, LinkRecord, ProgramHost, stage_program};
+use super::super::graph::{BlockGraph, BlockHandle, ProgramHost, StagedProgram, stage_program};
 use super::actor::{WatchersHandle, block_actor_task};
 use crate::base::connector::{ConnectorHandle, register_connector};
 use crate::base::{
@@ -51,7 +51,7 @@ use crate::base::{
     program::{Program, data::LinkData},
 };
 use crate::blocks::registry::{BlockSink, CORE_LIB, get_block};
-use crate::tokio_impl::engine::schedule_block_on_engine_mt;
+use crate::tokio_impl::engine::{ensure_schedulable_mt, schedule_block_on_engine_mt};
 use crate::tokio_impl::{MtBlock, ReaderImpl, WriterImpl};
 
 /// Concrete engine-message type.
@@ -92,8 +92,9 @@ pub type Messages = EngineMessage<UnboundedSender<WatchMessage>>;
 pub struct MultiThreadedEngine<S: EngineState = Idle> {
     /// Every scheduled block's handle.
     graph: BlockGraph,
-    /// Links queued while idle, by id; wired at `run()` start.
-    pending_links: Vec<(Uuid, LinkRecord)>,
+    /// Programs scheduled while idle, whose links and pin values are
+    /// applied at `run()` start.
+    pending: Vec<StagedProgram>,
     sender: Sender<Messages>,
     receiver: Receiver<Messages>,
     pub(in super::super) reply_senders: BTreeMap<Uuid, Sender<Messages>>,
@@ -139,9 +140,10 @@ impl Engine for MultiThreadedEngine<Idle> {
     }
 
     fn schedule_program_blocks(&mut self, program: &Program) -> Result<()> {
-        let links = stage_program(self, program)?;
-        self.pending_links.extend(links);
-        self.graph.set_identity(program);
+        let staged = stage_program(self, program)?;
+        let (name, description) = staged.identity();
+        self.graph.set_identity(name, description);
+        self.pending.push(staged);
         Ok(())
     }
 
@@ -170,7 +172,7 @@ impl MultiThreadedEngine<Idle> {
 
         Self {
             graph: BlockGraph::default(),
-            pending_links: Vec::new(),
+            pending: Vec::new(),
             sender,
             receiver,
             reply_senders: BTreeMap::new(),
@@ -214,7 +216,7 @@ impl<S: EngineState> MultiThreadedEngine<S> {
     fn into_state<T: EngineState>(self) -> MultiThreadedEngine<T> {
         let Self {
             graph,
-            pending_links,
+            pending,
             sender,
             receiver,
             reply_senders,
@@ -225,7 +227,7 @@ impl<S: EngineState> MultiThreadedEngine<S> {
         } = self;
         MultiThreadedEngine {
             graph,
-            pending_links,
+            pending,
             sender,
             receiver,
             reply_senders,
@@ -300,6 +302,10 @@ impl<S: EngineState> ProgramHost for MultiThreadedEngine<S> {
         &mut self.graph
     }
 
+    fn ensure_schedulable(&self, desc: &BlockDesc) -> Result<()> {
+        ensure_schedulable_mt(desc)
+    }
+
     fn schedule_desc(&mut self, desc: &BlockDesc, id: Uuid) -> Result<Uuid> {
         schedule_block_on_engine_mt(desc, Some(id), self)
     }
@@ -307,8 +313,9 @@ impl<S: EngineState> ProgramHost for MultiThreadedEngine<S> {
 
 impl MultiThreadedEngine<Running> {
     /// The event loop: starts the managed connectors, wires the links
-    /// queued while idle, opens the execution gate, then services engine
-    /// messages until [`Shutdown`](EngineMessage::Shutdown) — see the
+    /// and pushes the pin values of the programs scheduled while idle,
+    /// opens the execution gate, then services engine messages until
+    /// [`Shutdown`](EngineMessage::Shutdown) — see the
     /// [lifecycle contract](crate::base::engine#lifecycle-messages).
     async fn event_loop(&mut self) {
         // Start connectors first. MT actor tasks were spawned onto the
@@ -317,13 +324,14 @@ impl MultiThreadedEngine<Running> {
         // has not started yet.
         connectors::start_connectors(&self.connectors).await;
 
-        // Process any links queued during configuration. Actor tasks are
-        // already live on the tokio MT runtime (they were spawned at
-        // `schedule` time), so the mailbox round-trips resolve
-        // immediately; with the gate closed, blocks first run with their
-        // links in place.
-        let pending_links = std::mem::take(&mut self.pending_links);
-        self.graph.wire_staged(pending_links).await;
+        // Complete the programs scheduled during configuration. Actor
+        // tasks are already live on the tokio MT runtime (they were
+        // spawned at `schedule` time), so the mailbox round-trips
+        // resolve immediately; with the gate closed, blocks first run
+        // with their links and saved pin values in place.
+        for staged in std::mem::take(&mut self.pending) {
+            self.graph.complete_staged(staged).await;
+        }
 
         // A run always starts unpaused.
         self.set_execution(true);
@@ -435,17 +443,13 @@ impl MultiThreadedEngine<Running> {
         self.graph.save_program().await
     }
 
-    /// Atomically loads a full [`Program`]: schedules every block, wires
-    /// every link, pushes initial input/output values, and stores UI
-    /// metadata. The engine must not already hold any of the program's
-    /// block ids (reset it first via [`Reset`](EngineMessage::Reset)): a
-    /// program naming a scheduled id is rejected before anything is
-    /// scheduled.
+    /// Loads a full [`Program`], all or nothing — see `load_program` on
+    /// the [`SingleThreadedEngine`](crate::single_threaded::SingleThreadedEngine):
+    /// the whole program is checked before anything is scheduled, and a
+    /// failure while wiring removes the program's blocks again.
     async fn load_program(&mut self, program: Program) -> Result<()> {
-        let links = stage_program(self, &program)?;
-        self.graph.apply_program(&program, links).await?;
-        self.graph.set_identity(&program);
-        Ok(())
+        let staged = stage_program(self, &program)?;
+        self.graph.load_staged(staged).await
     }
 
     /// Disconnects a link by its UUID.
@@ -918,6 +922,48 @@ mod test {
         #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
         async fn a_fix_written_to_an_unlinked_input_clears_a_fault() {
             pin_writes::a_fix_written_to_an_unlinked_input_clears_a_fault(
+                MultiThreadedEngine::new(),
+            )
+            .await;
+        }
+    }
+
+    /// Regression: see the single-threaded `atomic_loads`.
+    mod atomic_loads {
+        use super::*;
+        use crate::tokio_impl::engine::test_support::atomic_loads;
+
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn a_program_failing_its_checks_loads_nothing() {
+            atomic_loads::a_program_failing_its_checks_loads_nothing(MultiThreadedEngine::new())
+                .await;
+        }
+
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn a_program_failing_its_checks_schedules_nothing() {
+            atomic_loads::a_program_failing_its_checks_schedules_nothing(
+                MultiThreadedEngine::new(),
+            )
+            .await;
+        }
+
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn a_program_failing_to_wire_is_removed_again() {
+            atomic_loads::a_program_failing_to_wire_is_removed_again(MultiThreadedEngine::new())
+                .await;
+        }
+
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn a_program_scheduled_while_idle_drops_a_link_it_fails_to_wire() {
+            atomic_loads::a_program_scheduled_while_idle_drops_a_link_it_fails_to_wire(
+                MultiThreadedEngine::new(),
+            )
+            .await;
+        }
+
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn a_program_scheduled_while_idle_gets_its_pin_values() {
+            atomic_loads::a_program_scheduled_while_idle_gets_its_pin_values(
                 MultiThreadedEngine::new(),
             )
             .await;

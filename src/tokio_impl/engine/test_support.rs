@@ -465,6 +465,11 @@ pub(crate) mod pin_writes {
     }
 }
 
+/// `program` as JSON, for comparing two programs whole.
+pub(crate) fn json(program: &Program) -> serde_json::Value {
+    serde_json::to_value(program).expect("a program serializes")
+}
+
 /// A link from `source`'s `out` to `target`'s `pin`, naming `id` if
 /// given, for a [`Program`].
 pub(crate) fn program_link(source: Uuid, target: Uuid, pin: &str, id: Option<Uuid>) -> LinkData {
@@ -700,11 +705,6 @@ pub(crate) mod round_trip {
         (program, ids)
     }
 
-    /// `program` as JSON, for comparing two programs whole.
-    fn json(program: &Program) -> serde_json::Value {
-        serde_json::to_value(program).expect("a program serializes")
-    }
-
     /// Polls the running program until it saves as `expected`, failing
     /// the test after a few seconds.
     async fn wait_for_save(client: &mut Client, expected: &Program) {
@@ -807,6 +807,230 @@ pub(crate) mod round_trip {
                 program.links.keys().collect::<Vec<_>>()
             );
             assert_eq!(client.remove_link(ids.named).await, Ok(true));
+        })
+        .await;
+    }
+}
+
+/// Program loads are all or nothing, written once against the
+/// [`Engine`] trait and run by each engine's tests: a program that
+/// fails to load leaves the engine as it was.
+pub(crate) mod atomic_loads {
+    use super::lifecycle::TestEngine;
+    use super::*;
+    use crate::base::error::{EngineError, LinkEnd, RegistryError};
+    use crate::base::program::PinValue;
+
+    /// Two fresh ids, in the order a program's maps hold them: the
+    /// first is staged before the second.
+    fn ordered_ids() -> (Uuid, Uuid) {
+        let (a, b) = (Uuid::new_v4(), Uuid::new_v4());
+        if a.to_string() < b.to_string() {
+            (a, b)
+        } else {
+            (b, a)
+        }
+    }
+
+    /// A program of two `Add` blocks, in staging order, and their ids.
+    fn two_adds() -> (Program, Uuid, Uuid) {
+        let (first, second) = ordered_ids();
+        let program = add_program([first.to_string().as_str(), &second.to_string()]);
+        (program, first, second)
+    }
+
+    /// Programs failing each check a load makes before scheduling a
+    /// block, with the error each fails with. `outside` is a block
+    /// already on the engine.
+    fn failing_programs(outside: Uuid) -> Vec<(&'static str, Program, String)> {
+        let mut cases = Vec::new();
+
+        let (mut program, _, second) = two_adds();
+        let block = program.blocks.get_mut(&second.to_string()).expect("block");
+        block.name = "NoSuchBlock".to_string();
+        let err = RegistryError::BlockNotFound {
+            library: "core".to_string(),
+            name: "NoSuchBlock".to_string(),
+        };
+        cases.push(("an unknown block type", program, err.to_string()));
+
+        let (mut program, first, second) = two_adds();
+        let id = Uuid::new_v4();
+        let link = program_link(first, second, "nope", Some(id));
+        program.links.insert(id.to_string(), link);
+        let err = EngineError::PinNotFound {
+            end: LinkEnd::Target,
+            block: second,
+            pin: "nope".to_string(),
+        };
+        cases.push(("a link to an unknown pin", program, err.to_string()));
+
+        let (mut program, first, _) = two_adds();
+        let id = Uuid::new_v4();
+        let link = program_link(first, outside, "in0", Some(id));
+        program.links.insert(id.to_string(), link);
+        let err = EngineError::LinkBlockNotInProgram {
+            link: id,
+            end: LinkEnd::Target,
+            block: outside,
+        };
+        cases.push(("a link out of the program", program, err.to_string()));
+
+        for output in [false, true] {
+            let (mut program, _, second) = two_adds();
+            let block = program.blocks.get_mut(&second.to_string()).expect("block");
+            let pins = if output {
+                &mut block.outputs
+            } else {
+                &mut block.inputs
+            };
+            let value = PinValue {
+                value: 1.into(),
+                is_connected: false,
+            };
+            pins.insert("nope".to_string(), value);
+            let (block, pin) = (second, "nope".to_string());
+            let err = if output {
+                EngineError::OutputNotFound { block, pin }
+            } else {
+                EngineError::InputNotFound { block, pin }
+            };
+            cases.push(("a value for an unknown pin", program, err.to_string()));
+        }
+
+        let (mut program, first, second) = two_adds();
+        let (existing, repeated) = ordered_ids();
+        for id in [existing, repeated] {
+            let link = program_link(first, second, "in0", Some(id));
+            program.links.insert(id.to_string(), link);
+        }
+        let err = EngineError::DuplicateLink {
+            link: repeated,
+            existing,
+        };
+        cases.push(("two links joining the same pins", program, err.to_string()));
+
+        cases
+    }
+
+    /// A program failing any check loads nothing: the engine saves as it
+    /// did before, and goes on loading.
+    pub(crate) async fn a_program_failing_its_checks_loads_nothing<E: TestEngine>(mut engine: E) {
+        let (_, outside) = schedule_linked_adds(&mut engine);
+
+        drive(engine, move |mut client| async move {
+            let before = json(&client.save().await);
+            for (case, program, expected) in failing_programs(outside) {
+                let reply = client.load(program).await;
+                assert_eq!(reply, Err(expected), "{case}");
+                assert_eq!(json(&client.save().await), before, "{case} loads nothing");
+            }
+
+            let (program, first, _) = two_adds();
+            client.load(program).await.expect("a valid program loads");
+            client.inspect(first).await;
+        })
+        .await;
+    }
+
+    /// A program failing any check while idle schedules nothing.
+    pub(crate) async fn a_program_failing_its_checks_schedules_nothing<E: TestEngine>(
+        mut engine: E,
+    ) {
+        let (_, outside) = schedule_linked_adds(&mut engine);
+        for (case, program, expected) in failing_programs(outside) {
+            let err = engine
+                .schedule_program_blocks(&program)
+                .expect_err("rejected");
+            assert_eq!(err.to_string(), expected, "{case}");
+        }
+
+        drive(engine, move |mut client| async move {
+            assert_eq!(client.save().await.blocks.len(), 2, "nothing was scheduled");
+        })
+        .await;
+    }
+
+    /// A program with a link the actors fail to wire — a link from an
+    /// input of a block to another input of the same block passes every
+    /// check, but its block rejects it — sorting after a link they wire,
+    /// and the ids of both links.
+    fn failing_to_wire() -> (Program, Uuid, Uuid, Uuid, Uuid) {
+        let (mut program, first, second) = two_adds();
+        let (wired, rejected) = ordered_ids();
+        let link = program_link(first, second, "in0", Some(wired));
+        program.links.insert(wired.to_string(), link);
+        let mut fan_out = program_link(first, first, "in1", Some(rejected));
+        fan_out.source_block_pin_name = "in0".to_string();
+        program.links.insert(rejected.to_string(), fan_out);
+        (program, first, second, wired, rejected)
+    }
+
+    /// A program the actors fail to wire is removed again, links and
+    /// all: the engine saves as before, and the program's ids are free
+    /// again.
+    pub(crate) async fn a_program_failing_to_wire_is_removed_again<E: TestEngine>(engine: E) {
+        let (mut program, _, second, wired, rejected) = failing_to_wire();
+
+        drive(engine, move |mut client| async move {
+            let before = json(&client.save().await);
+            let reply = client.load(program.clone()).await;
+            let err =
+                EngineError::BlockRequestRejected("Cannot connect to the same block".to_string());
+            assert_eq!(reply, Err(err.to_string()));
+            assert_eq!(json(&client.save().await), before, "the load was undone");
+
+            program.links.remove(&rejected.to_string());
+            client.load(program).await.expect("the ids are free again");
+            assert!(client.inspect(second).await.inputs["in0"].is_connected);
+            assert_eq!(client.remove_link(wired).await, Ok(true));
+        })
+        .await;
+    }
+
+    /// Scheduled while idle, the same program keeps its blocks — there
+    /// is no load to undo by then — and `run` drops the rejected link
+    /// alone.
+    pub(crate) async fn a_program_scheduled_while_idle_drops_a_link_it_fails_to_wire<
+        E: TestEngine,
+    >(
+        mut engine: E,
+    ) {
+        let (program, _, second, wired, rejected) = failing_to_wire();
+        engine.schedule_program_blocks(&program).expect("scheduled");
+
+        drive(engine, move |mut client| async move {
+            let saved = client.save().await;
+            assert_eq!(saved.blocks.len(), 2);
+            assert_eq!(
+                saved.links.into_keys().collect::<Vec<_>>(),
+                vec![wired.to_string()]
+            );
+            assert!(client.inspect(second).await.inputs["in0"].is_connected);
+            assert_eq!(client.remove_link(rejected).await, Ok(false));
+        })
+        .await;
+    }
+
+    /// Regression: a program scheduled while idle never got its saved
+    /// pin values.
+    pub(crate) async fn a_program_scheduled_while_idle_gets_its_pin_values<E: TestEngine>(
+        mut engine: E,
+    ) {
+        let (mut program, first, second) = two_adds();
+        let block = program.blocks.get_mut(&first.to_string()).expect("block");
+        let value = PinValue {
+            value: 4.into(),
+            is_connected: false,
+        };
+        block.inputs.insert("in0".to_string(), value);
+        let link = program_link(first, second, "in0", None);
+        program.links.insert(Uuid::new_v4().to_string(), link);
+        engine.schedule_program_blocks(&program).expect("scheduled");
+
+        drive(engine, move |mut client| async move {
+            assert_eq!(client.inspect(first).await.inputs["in0"].val, 4.into());
+            client.wait_for_output(second, "out", 4.into()).await;
         })
         .await;
     }

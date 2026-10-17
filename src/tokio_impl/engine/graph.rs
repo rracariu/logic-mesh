@@ -224,11 +224,11 @@ impl BlockGraph {
         }
     }
 
-    /// Records `program`'s name and description as those of the program
-    /// the engine runs, replacing any earlier program's.
-    pub(super) fn set_identity(&mut self, program: &Program) {
-        self.name.clone_from(&program.name);
-        self.description.clone_from(&program.description);
+    /// Records `name` and `description` as those of the program the
+    /// engine runs, replacing any earlier program's.
+    pub(super) fn set_identity(&mut self, name: Option<String>, description: Option<String>) {
+        self.name = name;
+        self.description = description;
     }
 
     /// Removes every block and link, and the loaded program's identity,
@@ -624,55 +624,83 @@ impl BlockGraph {
         })
     }
 
-    /// Wires `links` — `program`'s, staged by [`stage_program`] — then
-    /// pushes `program`'s saved input/output values to its blocks.
-    pub(super) async fn apply_program(
-        &mut self,
-        program: &Program,
-        links: Vec<(Uuid, LinkRecord)>,
-    ) -> Result<()> {
-        // Wire each link asynchronously (mailbox round-trips between
-        // source and target blocks). The staged links already hold their
-        // ids in the index: a link that is not wired gives its id back.
-        let mut links = links.into_iter();
-        while let Some((id, link)) = links.next() {
-            if let Err(err) = self.wire(id, &link).await {
-                self.links.remove(&id);
-                for (id, _) in links {
-                    self.links.remove(&id);
-                }
-                return Err(err);
-            }
+    /// Completes the load of a program [`stage_program`] staged: wires
+    /// its links, then pushes its saved pin values.
+    ///
+    /// All or nothing: validation caught every failure it could before
+    /// the blocks were scheduled, so what can still fail here is the
+    /// wiring itself — a link the actors reject, an actor that is gone.
+    /// Then the program's blocks are removed again, links and all, and
+    /// the engine is left as it was before the load. The blocks may
+    /// have run in between, so an effect one of them had outside the
+    /// engine — a connector publish, say — is not undone.
+    pub(super) async fn load_staged(&mut self, staged: StagedProgram) -> Result<()> {
+        if let Err(err) = self.apply_staged(&staged).await {
+            self.discard(&staged.blocks);
+            return Err(err);
         }
-
-        // Push each block's saved input/output values.
-        for (uuid_str, pb) in &program.blocks {
-            let id = parse_block_uuid(uuid_str)?;
-            for (name, pin) in &pb.inputs {
-                if has_initial_value(&pin.value) {
-                    let _ = self.write_input(&id, name.clone(), pin.value.clone()).await;
-                }
-            }
-            for (name, pin) in &pb.outputs {
-                if has_initial_value(&pin.value) {
-                    let _ = self
-                        .write_output(&id, name.clone(), pin.value.clone())
-                        .await;
-                }
-            }
-        }
-
+        self.set_identity(staged.name, staged.description);
         Ok(())
     }
 
-    /// Wires the links staged while the engine was idle, once its actors
-    /// answer. A link that cannot be wired is dropped.
-    pub(super) async fn wire_staged(&mut self, links: Vec<(Uuid, LinkRecord)>) {
-        for (id, link) in links {
-            if self.wire(id, &link).await.is_err() {
+    /// The fallible half of [`load_staged`](Self::load_staged).
+    async fn apply_staged(&self, staged: &StagedProgram) -> Result<()> {
+        for (id, link) in &staged.links {
+            self.wire(*id, link).await?;
+        }
+        for pin in &staged.pins {
+            self.write_pin(pin).await?;
+        }
+        Ok(())
+    }
+
+    /// Wires the links and pushes the pin values of a program staged
+    /// while the engine was idle, once its actors answer.
+    ///
+    /// Its blocks are scheduled already, so there is nothing to roll
+    /// back to: validation caught every failure it could up front, and
+    /// a link that still cannot be wired — or a pin that cannot be
+    /// written — is dropped with a warning.
+    pub(super) async fn complete_staged(&mut self, staged: StagedProgram) {
+        for (id, link) in staged.links {
+            if let Err(err) = self.wire(id, &link).await {
+                log::warn!("Dropping link {id} of a scheduled program: {err}");
                 self.links.remove(&id);
             }
         }
+        for pin in &staged.pins {
+            if let Err(err) = self.write_pin(pin).await {
+                log::warn!(
+                    "Dropping the value of {}.{} of a scheduled program: {err}",
+                    pin.block,
+                    pin.name,
+                );
+            }
+        }
+    }
+
+    /// Pushes one saved pin value.
+    async fn write_pin(&self, pin: &PinWrite) -> Result<(), EngineError> {
+        let name = pin.name.clone();
+        let value = pin.value.clone();
+        if pin.output {
+            self.write_output(&pin.block, name, value).await?;
+        } else {
+            self.write_input(&pin.block, name, value).await?;
+        }
+        Ok(())
+    }
+
+    /// Removes `blocks`, freshly scheduled by a load that failed, and
+    /// every link touching them.
+    fn discard(&mut self, blocks: &[Uuid]) {
+        for id in blocks {
+            if let Some(handle) = self.handles.remove(id) {
+                terminate_actor(handle.mailbox);
+            }
+        }
+        self.links
+            .retain(|_, link| !blocks.contains(&link.source) && !blocks.contains(&link.target));
     }
 
     /// Disconnects the link `link_id`, reporting whether it was found.
@@ -747,57 +775,191 @@ pub(super) trait ProgramHost {
     /// The engine's block graph, mutably.
     fn graph_mut(&mut self) -> &mut BlockGraph;
 
+    /// Checks, without constructing anything, that
+    /// [`schedule_desc`](Self::schedule_desc) supports the kind of block
+    /// `desc` describes.
+    fn ensure_schedulable(&self, desc: &BlockDesc) -> Result<()>;
+
     /// Constructs the block `desc` describes under `id` and schedules
     /// it, as the engine's [`schedule`](crate::base::engine::Engine::schedule)
     /// does.
     fn schedule_desc(&mut self, desc: &BlockDesc, id: Uuid) -> Result<Uuid>;
 }
 
-/// Schedules every block of `program` on `host`, recording its UI
-/// metadata, and returns the program's links once validated, ready to
-/// wire. Their ids are taken in the index from here on.
+/// One saved pin value of a program, to push once its block is wired.
+#[derive(Debug)]
+struct PinWrite {
+    /// The block the pin belongs to.
+    block: Uuid,
+    /// The pin name.
+    name: String,
+    /// The saved value.
+    value: Value,
+    /// Whether the pin is an output rather than an input.
+    output: bool,
+}
+
+/// A program whose blocks [`stage_program`] scheduled: what is left to
+/// do once the actors answer, and the program's identity, to record
+/// once that is done.
+pub(super) struct StagedProgram {
+    /// The program's blocks, as scheduled.
+    blocks: Vec<Uuid>,
+    /// The program's links, their ids taken in the index already.
+    links: Vec<(Uuid, LinkRecord)>,
+    /// The program's saved pin values.
+    pins: Vec<PinWrite>,
+    /// [`Program::name`].
+    name: Option<String>,
+    /// [`Program::description`].
+    description: Option<String>,
+}
+
+impl StagedProgram {
+    /// The program's name and description.
+    pub(super) fn identity(&self) -> (Option<String>, Option<String>) {
+        (self.name.clone(), self.description.clone())
+    }
+}
+
+/// A program that passed every check of [`stage_program`], with no
+/// block scheduled yet.
+struct CheckedProgram<'p> {
+    /// Every block, with its descriptor.
+    blocks: Vec<(Uuid, &'p ProgramBlock, BlockDesc)>,
+    /// Every link, by id.
+    links: Vec<(Uuid, LinkRecord)>,
+    /// Every saved pin value worth pushing.
+    pins: Vec<PinWrite>,
+}
+
+/// Checks all of `program` against the registry and `host`'s graph,
+/// then schedules its blocks, recording their UI metadata, and takes
+/// its link ids — or changes nothing and fails.
 ///
-/// Every block id is checked before anything is scheduled, so a
-/// program naming an invalid or already-scheduled id schedules no
-/// block at all.
+/// The checks cover everything that can be checked before a block
+/// exists: every block id parses and is free, on the engine and in the
+/// program; every block type resolves, and `host` can schedule it;
+/// every pin a saved value names exists on its block
+/// ([`EngineError::InputNotFound`], [`EngineError::OutputNotFound`]);
+/// and every link has an id that parses and is free, joins two pins
+/// that exist on blocks of the same program
+/// ([`EngineError::LinkBlockNotInProgram`]), and joins pins no other of
+/// its links joins ([`EngineError::DuplicateLink`]). Should scheduling
+/// a block still fail, the blocks scheduled before it are removed
+/// again.
 ///
 /// A link keeps the id the program saved it under: its `id`, or else
 /// the key the program's links are keyed by.
 pub(super) fn stage_program<H: ProgramHost>(
     host: &mut H,
     program: &Program,
-) -> Result<Vec<(Uuid, LinkRecord)>> {
-    let blocks = program_block_ids(program, |id| host.graph().contains(id))?;
-    for (id, pb) in blocks {
-        let block_def =
-            get_block(&pb.name, Some(&pb.lib)).ok_or_else(|| RegistryError::BlockNotFound {
-                library: pb.lib.clone(),
-                name: pb.name.clone(),
-            })?;
-        host.schedule_desc(&block_def.desc, id)?;
+) -> Result<StagedProgram> {
+    let checked = check_program(host, program)?;
+
+    let mut scheduled = Vec::with_capacity(checked.blocks.len());
+    for (id, block, desc) in &checked.blocks {
+        if let Err(err) = host.schedule_desc(desc, *id) {
+            host.graph_mut().discard(&scheduled);
+            return Err(err);
+        }
+        scheduled.push(*id);
         // Record UI metadata on the handle so it round-trips on save.
-        if let Some(handle) = host.graph_mut().handles.get_mut(&id) {
-            handle.label = pb.label.clone();
-            handle.position = pb.positions;
+        if let Some(handle) = host.graph_mut().handles.get_mut(id) {
+            handle.label = block.label.clone();
+            handle.position = block.positions;
         }
     }
+
     let graph = host.graph_mut();
+    for (id, link) in &checked.links {
+        graph.links.insert(*id, link.clone());
+    }
+    Ok(StagedProgram {
+        blocks: scheduled,
+        links: checked.links,
+        pins: checked.pins,
+        name: program.name.clone(),
+        description: program.description.clone(),
+    })
+}
+
+/// The checks of [`stage_program`].
+fn check_program<'p, H: ProgramHost>(host: &H, program: &'p Program) -> Result<CheckedProgram<'p>> {
+    let graph = host.graph();
+    let mut blocks = Vec::new();
+    let mut pins = Vec::new();
+    for (id, block) in program_block_ids(program, |id| graph.contains(id))? {
+        let entry = get_block(&block.name, Some(&block.lib)).ok_or_else(|| {
+            RegistryError::BlockNotFound {
+                library: block.lib.clone(),
+                name: block.name.clone(),
+            }
+        })?;
+        host.ensure_schedulable(&entry.desc)?;
+        for (output, pins_of, values) in [
+            (false, &entry.desc.inputs, &block.inputs),
+            (true, &entry.desc.outputs, &block.outputs),
+        ] {
+            for (name, value) in values {
+                if !pins_of.iter().any(|pin| pin.name == *name) {
+                    let (block, pin) = (id, name.clone());
+                    return Err(if output {
+                        EngineError::OutputNotFound { block, pin }
+                    } else {
+                        EngineError::InputNotFound { block, pin }
+                    }
+                    .into());
+                }
+                if has_initial_value(&value.value) {
+                    pins.push(PinWrite {
+                        block: id,
+                        name: name.clone(),
+                        value: value.value.clone(),
+                        output,
+                    });
+                }
+            }
+        }
+        blocks.push((id, block, entry.desc));
+    }
+
+    let descs: BTreeMap<_, _> = blocks.iter().map(|(id, _, desc)| (*id, desc)).collect();
     let mut ids = BTreeSet::new();
+    let mut joined = BTreeMap::new();
     let mut links = Vec::new();
     for (key, link) in &program.links {
         let id = parse_link_uuid(link.id.as_deref().unwrap_or(key))?;
         if graph.links.contains_key(&id) || !ids.insert(id) {
             return Err(EngineError::DuplicateLinkId { id }.into());
         }
-        let record = link_record(link, |_, block| {
-            graph.handle_or_err(block).map(BlockHandle::desc)
+        let record = link_record(link, |end, block| {
+            descs
+                .get(block)
+                .copied()
+                .ok_or(EngineError::LinkBlockNotInProgram {
+                    link: id,
+                    end,
+                    block: *block,
+                })
         })?;
+        let ends = (
+            record.source,
+            record.source_pin.clone(),
+            record.target,
+            record.target_pin.clone(),
+        );
+        if let Some(existing) = joined.insert(ends, id) {
+            return Err(EngineError::DuplicateLink { link: id, existing }.into());
+        }
         links.push((id, record));
     }
-    for (id, link) in &links {
-        graph.links.insert(*id, link.clone());
-    }
-    Ok(links)
+
+    Ok(CheckedProgram {
+        blocks,
+        links,
+        pins,
+    })
 }
 
 /// Filter for "this is a real saved value, not a placeholder."

@@ -215,6 +215,51 @@ mod tests {
         }
     }
 
+    /// Regression: a load that failed on a block type, a link or a pin
+    /// left the blocks scheduled before the failure in place, half
+    /// wired, and ignored unknown pin names in saved values — see
+    /// `test_support::atomic_loads`.
+    mod atomic_loads {
+        use super::*;
+        use crate::tokio_impl::engine::test_support::atomic_loads;
+
+        #[tokio::test(flavor = "current_thread")]
+        async fn a_program_failing_its_checks_loads_nothing() {
+            atomic_loads::a_program_failing_its_checks_loads_nothing(SingleThreadedEngine::new())
+                .await;
+        }
+
+        #[tokio::test(flavor = "current_thread")]
+        async fn a_program_failing_its_checks_schedules_nothing() {
+            atomic_loads::a_program_failing_its_checks_schedules_nothing(
+                SingleThreadedEngine::new(),
+            )
+            .await;
+        }
+
+        #[tokio::test(flavor = "current_thread")]
+        async fn a_program_failing_to_wire_is_removed_again() {
+            atomic_loads::a_program_failing_to_wire_is_removed_again(SingleThreadedEngine::new())
+                .await;
+        }
+
+        #[tokio::test(flavor = "current_thread")]
+        async fn a_program_scheduled_while_idle_drops_a_link_it_fails_to_wire() {
+            atomic_loads::a_program_scheduled_while_idle_drops_a_link_it_fails_to_wire(
+                SingleThreadedEngine::new(),
+            )
+            .await;
+        }
+
+        #[tokio::test(flavor = "current_thread")]
+        async fn a_program_scheduled_while_idle_gets_its_pin_values() {
+            atomic_loads::a_program_scheduled_while_idle_gets_its_pin_values(
+                SingleThreadedEngine::new(),
+            )
+            .await;
+        }
+    }
+
     /// Regression: a panic in `execute` killed the block's actor task —
     /// the block never showed Fault, downstream never faulted, and the
     /// block could no longer be saved or removed.

@@ -88,6 +88,38 @@ pub enum EngineError {
         pin: String,
     },
 
+    /// The named output does not exist on the block.
+    #[error("Output '{pin}' not found on block '{block}'")]
+    OutputNotFound {
+        /// The block the output was looked up on.
+        block: Uuid,
+        /// The output name that was not found.
+        pin: String,
+    },
+
+    /// A program's link names a block that is not part of the same
+    /// program. A [`Program`](crate::base::program::Program) loads as a
+    /// self-contained unit, so its links only join its own blocks.
+    #[error("{end} block '{block}' of link '{link}' is not part of the program")]
+    LinkBlockNotInProgram {
+        /// The link that failed validation.
+        link: Uuid,
+        /// Which end of the link names the block.
+        end: LinkEnd,
+        /// The block id the link names.
+        block: Uuid,
+    },
+
+    /// Two links of a program join the same two pins. A pin links to an
+    /// input at most once.
+    #[error("Link '{link}' joins the same pins as link '{existing}'")]
+    DuplicateLink {
+        /// The link that repeats an earlier one.
+        link: Uuid,
+        /// The earlier link joining the same pins.
+        existing: Uuid,
+    },
+
     /// A link with this id already exists on the engine. Link ids are
     /// unique per engine, like block ids, and an existing link is never
     /// silently replaced.

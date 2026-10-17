@@ -18,7 +18,9 @@ use uuid::Uuid;
 
 use super::super::block_mailbox::{BLOCK_MAILBOX_CAP, BlockMailboxCmd};
 use super::super::connectors::{self, ManagedConnectors};
-use super::super::graph::{BlockGraph, BlockHandle, LinkRecord, ProgramHost, stage_program};
+#[cfg(test)]
+use super::super::graph::LinkRecord;
+use super::super::graph::{BlockGraph, BlockHandle, ProgramHost, StagedProgram, stage_program};
 use super::actor::block_actor_task;
 use crate::base::connector::{ConnectorHandle, register_connector};
 use crate::base::{
@@ -34,7 +36,7 @@ use crate::base::{
 };
 use crate::blocks::registry::{BlockSink, CORE_LIB, get_block};
 use crate::tokio_impl::engine::message_dispatch::dispatch_message;
-use crate::tokio_impl::engine::schedule_block_on_engine;
+use crate::tokio_impl::engine::{ensure_schedulable, schedule_block_on_engine};
 use crate::tokio_impl::{ReaderImpl, WriterImpl};
 
 /// Concrete engine-message type.
@@ -82,9 +84,10 @@ pub struct SingleThreadedEngine<S: EngineState = Idle> {
     /// Every scheduled block's handle. Populated by `schedule()` (each
     /// block spawns its actor task immediately).
     graph: BlockGraph,
-    /// Links queued while idle, by id; wired at `run()` start (which
-    /// pumps the LocalSet so the actor tasks can answer the round-trips).
-    pending_links: Vec<(Uuid, LinkRecord)>,
+    /// Programs scheduled while idle, whose links and pin values are
+    /// applied at `run()` start (which pumps the LocalSet so the actor
+    /// tasks can answer the round-trips).
+    pending: Vec<StagedProgram>,
     /// External-command channel (receiving end).
     sender: Sender<Messages>,
     receiver: Receiver<Messages>,
@@ -127,11 +130,12 @@ impl Engine for SingleThreadedEngine<Idle> {
     }
 
     fn schedule_program_blocks(&mut self, program: &Program) -> Result<()> {
-        // Wiring is async (mailbox round-trips); queue the validated
-        // links for processing at `run()` start.
-        let links = stage_program(self, program)?;
-        self.pending_links.extend(links);
-        self.graph.set_identity(program);
+        // Wiring and pin writes are async (mailbox round-trips); queue
+        // the checked program for completion at `run()` start.
+        let staged = stage_program(self, program)?;
+        let (name, description) = staged.identity();
+        self.graph.set_identity(name, description);
+        self.pending.push(staged);
         Ok(())
     }
 
@@ -158,7 +162,7 @@ impl SingleThreadedEngine<Idle> {
         Self {
             local: Rc::new(LocalSet::new()),
             graph: BlockGraph::default(),
-            pending_links: Vec::new(),
+            pending: Vec::new(),
             sender,
             receiver,
             reply_senders: BTreeMap::new(),
@@ -253,7 +257,7 @@ impl<S: EngineState> SingleThreadedEngine<S> {
         let Self {
             local,
             graph,
-            pending_links,
+            pending,
             sender,
             receiver,
             reply_senders,
@@ -265,7 +269,7 @@ impl<S: EngineState> SingleThreadedEngine<S> {
         SingleThreadedEngine {
             local,
             graph,
-            pending_links,
+            pending,
             sender,
             receiver,
             reply_senders,
@@ -362,6 +366,10 @@ impl<S: EngineState> ProgramHost for SingleThreadedEngine<S> {
         &mut self.graph
     }
 
+    fn ensure_schedulable(&self, desc: &BlockDesc) -> Result<()> {
+        ensure_schedulable(desc)
+    }
+
     fn schedule_desc(&mut self, desc: &BlockDesc, id: Uuid) -> Result<Uuid> {
         schedule_block_on_engine(desc, Some(id), self)
     }
@@ -369,8 +377,9 @@ impl<S: EngineState> ProgramHost for SingleThreadedEngine<S> {
 
 impl SingleThreadedEngine<Running> {
     /// The event loop: starts the managed connectors, wires the links
-    /// queued while idle, opens the execution gate, then services engine
-    /// messages until [`Shutdown`](EngineMessage::Shutdown) — see the
+    /// and pushes the pin values of the programs scheduled while idle,
+    /// opens the execution gate, then services engine messages until
+    /// [`Shutdown`](EngineMessage::Shutdown) — see the
     /// [lifecycle contract](crate::base::engine#lifecycle-messages).
     async fn event_loop(&mut self) {
         // Clone the LocalSet handle so the loop body can drive `local`
@@ -384,11 +393,13 @@ impl SingleThreadedEngine<Running> {
         // LocalSet, so every connector is started before any actor runs.
         connectors::start_connectors(&self.connectors).await;
 
-        // Process any links queued during configuration. The gate is
-        // still closed, so actors answer the wiring round-trips without
-        // executing: blocks first run with their links in place.
-        let pending_links = std::mem::take(&mut self.pending_links);
-        local.run_until(self.graph.wire_staged(pending_links)).await;
+        // Complete the programs scheduled during configuration. The gate
+        // is still closed, so actors answer the round-trips without
+        // executing: blocks first run with their links and saved pin
+        // values in place.
+        for staged in std::mem::take(&mut self.pending) {
+            local.run_until(self.graph.complete_staged(staged)).await;
+        }
 
         // A run always starts unpaused.
         self.set_execution(true);
@@ -541,23 +552,25 @@ impl SingleThreadedEngine<Running> {
         self.graph.save_program().await
     }
 
-    /// Atomically load a full [`Program`]: schedule every block, wire
-    /// every link, push initial input/output values, and store UI
-    /// metadata. The engine must not already hold any of the program's
-    /// block ids (reset it first via [`Reset`](EngineMessage::Reset)): a
-    /// program naming a scheduled id is rejected before anything is
-    /// scheduled.
+    /// Load a full [`Program`], all or nothing: schedule every block,
+    /// wire every link, push the saved input/output values, and store
+    /// the UI metadata and the program's name and description.
+    ///
+    /// The whole program is checked before anything is scheduled — see
+    /// `stage_program` for the checks; among them, the engine must not
+    /// already hold any of the program's block or link ids (reset it
+    /// first via [`Reset`](EngineMessage::Reset)). A failure after
+    /// that, while wiring, removes the program's blocks again, so a
+    /// failed load leaves the engine as it was.
     ///
     /// Running-phase only: the actor tasks need to be live to handle the
     /// WriteInput/Output mailbox cmds. Reached through the engine message
     /// channel ([`LoadProgramReq`](EngineMessage::LoadProgramReq)).
     pub(crate) async fn load_program(&mut self, program: Program) -> Result<()> {
-        // Sync: schedule blocks + validate links. After this the
-        // per-block actor tasks have been spawned.
-        let links = stage_program(self, &program)?;
-        self.graph.apply_program(&program, links).await?;
-        self.graph.set_identity(&program);
-        Ok(())
+        // Sync: check the program and schedule its blocks. After this
+        // the per-block actor tasks have been spawned.
+        let staged = stage_program(self, &program)?;
+        self.graph.load_staged(staged).await
     }
 
     pub(crate) async fn disconnect_link_by_id(&mut self, link_id: &Uuid) -> Result<bool> {
