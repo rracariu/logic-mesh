@@ -245,25 +245,19 @@ fn pin_args(attr: &Attribute, allowed: &[&str]) -> syn::Result<PinArgs> {
 
 /// The `HaystackKind` variant `kind = "..."` names, `Null` if none.
 ///
-/// The identifier is spanned on the literal, so a compiler error about
-/// the variant points there. A raw identifier (`r#Number`) is rejected:
-/// the value is a variant's name, and no variant needs the raw form.
+/// A raw identifier, `r#Number`, names the same variant as `Number`, as
+/// it always has. `LitStr::parse` spans the identifier on the literal,
+/// so a compiler error about the variant points there.
 fn kind_ident(kind: Option<&LitStr>) -> syn::Result<Ident> {
     let Some(kind) = kind else {
         return Ok(Ident::new("Null", Span::call_site()));
     };
-    let expected = || {
+    kind.parse().map_err(|_| {
         syn::Error::new(
             kind.span(),
             "expected the name of a `HaystackKind` variant, such as \"Number\"",
         )
-    };
-    // `LitStr::parse` spans what it parses on the literal.
-    let ident: Ident = kind.parse().map_err(|_| expected())?;
-    if ident.unraw() != ident {
-        return Err(expected());
-    }
-    Ok(ident)
+    })
 }
 
 /// Reads the block-level `#[input(...)]` attribute, if there is one.
