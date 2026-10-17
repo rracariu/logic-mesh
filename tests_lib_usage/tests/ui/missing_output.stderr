@@ -1,0 +1,5 @@
+error: block `Sink` needs an output: an `OutputImpl` field marked `#[output]`
+ --> tests/ui/missing_output.rs:7:8
+  |
+7 | struct Sink {
+  |        ^^^^

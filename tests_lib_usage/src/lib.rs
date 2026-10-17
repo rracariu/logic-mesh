@@ -124,6 +124,27 @@ impl Block for Prefixed {
     }
 }
 
+/// Declares every attribute the derive reads.
+///
+/// Next to them sits an attribute of the same `#[name = "..."]` shape
+/// that the derive must leave alone.
+#[block]
+#[derive(BlockProps, Debug)]
+#[must_use = "a block does nothing until it is scheduled"]
+#[dis = "Every attribute"]
+#[library = "downstream"]
+#[category = "test"]
+#[ver = "2.1.0"]
+#[input(name = "x", kind = "Number", count = 2)]
+pub struct Attributed {
+    #[output(name = "y", kind = "Number")]
+    pub out: OutputImpl,
+}
+
+impl Block for Attributed {
+    async fn execute(&mut self) {}
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -220,15 +241,67 @@ mod tests {
         );
     }
 
+    /// Regression: the lines of a doc comment were joined with no
+    /// separator, gluing the last word of one line to the first of the
+    /// next.
     #[test]
-    fn doc_comment_multiline_concatenated() {
+    fn doc_comment_lines_joined_by_newlines() {
         use logic_mesh::base::block::BlockStaticDesc;
 
-        let desc = <Triple as BlockStaticDesc>::static_desc();
-        assert!(
-            desc.doc.starts_with("Same as"),
-            "multi-line /// doc should be concatenated into desc().doc"
+        let desc = <Prefixed as BlockStaticDesc>::static_desc();
+        assert_eq!(
+            desc.doc,
+            "Has one real pin of each kind plus custom fields with pin-like\ntype-name prefixes."
         );
+
+        let desc = <Attributed as BlockStaticDesc>::static_desc();
+        assert_eq!(
+            desc.doc,
+            "Declares every attribute the derive reads.\n\n\
+             Next to them sits an attribute of the same `#[name = \"...\"]` shape\n\
+             that the derive must leave alone."
+        );
+    }
+
+    /// Regression: `#[ver]` was read but not registered, so it could not
+    /// be set; and any other `#[name = "..."]` attribute, such as
+    /// `#[must_use = "..."]`, was taken for a description field and
+    /// failed to compile.
+    #[test]
+    fn desc_reflects_every_attribute() {
+        use logic_mesh::base::block::BlockStaticDesc;
+
+        let desc = <Attributed as BlockStaticDesc>::static_desc();
+        assert_eq!(desc.name, "Attributed");
+        assert_eq!(desc.dis, "Every attribute");
+        assert_eq!(desc.library, "downstream");
+        assert_eq!(desc.category, "test");
+        assert_eq!(desc.ver, "2.1.0");
+        let inputs: Vec<_> = desc.inputs.iter().map(|pin| pin.name.as_str()).collect();
+        assert_eq!(inputs, ["x0", "x1"]);
+        assert_eq!(desc.outputs[0].name, "y");
+
+        let block = Attributed::new();
+        assert_eq!(block.inputs().len(), 2);
+        assert_eq!(block.outputs()[0].name(), "y");
+    }
+
+    /// A block written by hand describes itself with the builder:
+    /// `BlockDesc` is `#[non_exhaustive]`, so a downstream crate cannot
+    /// name its fields in a struct literal.
+    #[test]
+    fn hand_written_desc_uses_the_builder() {
+        use logic_mesh::HaystackKind;
+        use logic_mesh::base::block::{BlockDesc, BlockPin, BlockStaticDesc};
+
+        let desc = BlockDesc::new("Double", "downstream")
+            .with_category("math")
+            .with_doc("Doubles the value of its numeric input.")
+            .with_input("in", HaystackKind::Number)
+            .with_output("out", HaystackKind::Number);
+
+        assert_eq!(&desc, <Double as BlockStaticDesc>::static_desc());
+        assert_eq!(desc.inputs, [BlockPin::new("in", HaystackKind::Number)]);
     }
 
     #[test]
