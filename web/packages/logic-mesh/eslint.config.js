@@ -40,6 +40,11 @@ export default ts.config(
     },
   },
   {
+    // Build and packaging scripts run under Node, not in the browser.
+    files: ['scripts/**/*.mjs'],
+    languageOptions: { globals: globals.node },
+  },
+  {
     // `dist/` and `pkg/` are wasm-pack output; never our source.
     ignores: ['dist/', 'pkg/', 'node_modules/'],
   },

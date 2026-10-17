@@ -25,6 +25,7 @@
     "lint": "eslint .",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
+    "prepublishOnly": "node scripts/check-dist.mjs",
     "test": "vitest run",
     "test:watch": "vitest"
   },
