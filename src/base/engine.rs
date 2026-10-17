@@ -214,7 +214,7 @@ pub trait Engine: Sized {
     /// ([`EngineError::InputNotFound`](crate::base::error::EngineError::InputNotFound),
     /// [`EngineError::OutputNotFound`](crate::base::error::EngineError::OutputNotFound));
     /// every link id parses and is free
-    /// ([`EngineError::InvalidLinkId`](crate::base::error::EngineError::InvalidLinkId),
+    /// ([`EngineError::InvalidLinkUuid`](crate::base::error::EngineError::InvalidLinkUuid),
     /// [`EngineError::DuplicateLinkId`](crate::base::error::EngineError::DuplicateLinkId));
     /// every link joins existing pins
     /// ([`EngineError::PinNotFound`](crate::base::error::EngineError::PinNotFound))

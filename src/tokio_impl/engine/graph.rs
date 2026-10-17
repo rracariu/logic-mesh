@@ -344,7 +344,7 @@ impl BlockGraph {
     /// # Errors
     ///
     /// Besides the wiring failures, an id that does not parse
-    /// ([`EngineError::InvalidLinkId`]) or that another link already
+    /// ([`EngineError::InvalidLinkUuid`]) or that another link already
     /// has ([`EngineError::DuplicateLinkId`]) is rejected, as is a
     /// block or pin that does not exist.
     pub(super) async fn connect_blocks(&mut self, link_data: &LinkData) -> Result<LinkData> {
