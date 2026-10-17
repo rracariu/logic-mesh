@@ -1,0 +1,5 @@
+error: duplicate `#[category]` attribute
+ --> tests/ui/duplicate_attribute.rs:7:1
+  |
+7 | #[category = "math"]
+  | ^^^^^^^^^^^^^^^^^^^^

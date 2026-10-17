@@ -1,0 +1,5 @@
+error: a block-level `#[input(...)]` needs `count = N`, the number of inputs
+ --> tests/ui/block_inputs_without_count.rs:7:1
+  |
+7 | #[input(kind = "Number")]
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^

@@ -1,98 +1,128 @@
-// Copyright (c) 2022-2023, Radu Racariu.
+// Copyright (c) 2022-2026, Radu Racariu.
 
-use std::collections::BTreeMap;
+use std::collections::BTreeSet;
 
-use proc_macro::TokenStream;
-use proc_macro2::{Group, TokenTree};
+use proc_macro2::{Span, TokenStream};
+use quote::quote;
+use syn::{DeriveInput, Ident, LitStr};
 
 use crate::utils::{
-    get_block_attributes, get_block_fields, get_block_input_attribute, get_block_inputs_props,
-    get_block_outputs_props, get_crate_path,
+    BlockInputs, FieldPin, PinType, block_attributes, block_inputs, crate_path, field_pins,
+    named_fields,
 };
+
+/// Fields the `block` attribute adds, which the constructor sets itself.
+const BLOCK_FIELDS: [&str; 3] = ["id", "state", "_inputs"];
 
 /// Generates the implementation for the `BlockProps` trait and creates the constructor function.
 ///
 /// It also initializes any block fields that are not inputs or output
 /// to their default type value.
-pub(super) fn block_props_impl(ast: &syn::DeriveInput) -> TokenStream {
+///
+/// The generated code reaches the crate only through public traits and
+/// the `__private` module, never through a struct literal or a public
+/// constructor, and names everything else by its full `::core` /
+/// `::std` path, so it compiles whatever the user's module imports.
+pub(super) fn block_props_impl(ast: &DeriveInput) -> syn::Result<TokenStream> {
     let block_ident = &ast.ident;
-    let krate = get_crate_path(ast);
+    // Report a struct without named fields before anything it lacks.
+    let _ = named_fields(ast, "BlockProps")?;
+    let krate = crate_path(ast)?;
     let krate = &krate;
 
-    // Block input attributes (defined by the inputs attribute of the block)
-    let block_defined_inputs = get_block_input_attribute(ast);
-    let block_defined_init = create_block_defined_input_init(&block_defined_inputs, krate);
+    let attrs = block_attributes(ast)?;
+    let Some(category) = attrs.category else {
+        return Err(syn::Error::new_spanned(
+            block_ident,
+            format!(
+                "block `{block_ident}` needs a category: add `#[category = \"...\"]`, \
+                 the category the block is listed under"
+            ),
+        ));
+    };
+    let name = block_ident.to_string();
+    let dis = attrs
+        .dis
+        .unwrap_or_else(|| LitStr::new(&name, block_ident.span()));
+    let library = attrs
+        .library
+        .unwrap_or_else(|| LitStr::new("core", Span::call_site()));
+    let ver = attrs
+        .ver
+        .unwrap_or_else(|| LitStr::new("1.0.0", Span::call_site()));
+    let doc = attrs.doc;
 
-    // Block inputs
-    let block_input_props = get_block_inputs_props(ast);
-
-    let input_fields_init = create_block_input_fields_init(&block_input_props, krate);
-    let inputs_mut_refs = create_input_members_ref(
-        !block_defined_inputs.is_empty(),
-        &block_input_props,
-        true,
-        krate,
-    );
-
-    let inputs_refs = create_input_members_ref(
-        !block_defined_inputs.is_empty(),
-        &block_input_props,
-        false,
-        krate,
-    );
-
-    // Block outputs
-    let block_outputs_props = get_block_outputs_props(ast);
-    let outputs_field_init = create_block_outputs_field_init(&block_outputs_props, krate);
-    let outputs_mut_ref = create_outputs_member_ref(&block_outputs_props, true, krate);
-    let outputs_ref = create_outputs_member_ref(&block_outputs_props, false, krate);
-
-    // Block description attributes
-    let mut block_props_attrs = get_block_attributes(ast);
-
-    block_props_attrs.insert("name".to_string(), format!("{}", block_ident));
-
-    if !block_props_attrs.contains_key("dis") {
-        block_props_attrs.insert("dis".to_string(), format!("{}", block_ident));
+    let block_inputs = block_inputs(ast)?;
+    let inputs = field_pins(ast, PinType::Input)?;
+    let outputs = field_pins(ast, PinType::Output)?;
+    if outputs.is_empty() {
+        return Err(syn::Error::new_spanned(
+            block_ident,
+            format!(
+                "block `{block_ident}` needs an output: an `OutputImpl` field marked `#[output]`"
+            ),
+        ));
     }
+    ensure_unique_pin_names(block_inputs.as_ref(), &inputs, &outputs)?;
 
-    if !block_props_attrs.contains_key("doc") {
-        block_props_attrs.insert("doc".to_string(), "".to_string());
-    }
+    // Pins as the description lists them: the input fields first, then
+    // the block-level inputs.
+    let block_input_names = block_inputs
+        .as_ref()
+        .map(BlockInputs::names)
+        .unwrap_or_default();
+    let block_input_kind = block_inputs
+        .as_ref()
+        .map(|inputs| inputs.kind.clone())
+        .unwrap_or_else(|| Ident::new("Null", Span::call_site()));
+    let input_names = inputs.iter().map(|pin| &pin.name);
+    let input_kinds = inputs.iter().map(|pin| &pin.kind);
+    let output_names = outputs.iter().map(|pin| &pin.name);
+    let output_kinds = outputs.iter().map(|pin| &pin.kind);
 
-    if !block_props_attrs.contains_key("ver") {
-        block_props_attrs.insert("ver".to_string(), "1.0.0".to_string());
-    }
+    // Constructor field initializers.
+    let input_init = pin_inits(&inputs, krate, "input");
+    let output_init = pin_inits(&outputs, krate, "output");
+    let block_inputs_init = block_inputs.as_ref().map(|_| {
+        let names = &block_input_names;
+        quote! {
+            _inputs: ::std::vec![
+                #(#krate::__private::input(#names, #krate::HaystackKind::#block_input_kind, uuid),)*
+            ],
+        }
+    });
+    let other_fields = other_fields(ast, &inputs, &outputs)?;
+    let other_init = other_fields.iter().map(|(field, ty)| {
+        quote! { #field: <#ty as ::core::default::Default>::default(), }
+    });
 
-    if !block_props_attrs.contains_key("library") {
-        block_props_attrs.insert("library".to_string(), "core".to_string());
-    }
+    // Pin accessors.
+    let input_dyn = quote!(dyn #krate::base::block::BlockInput<Self::Reader, Self::Writer> + ::core::marker::Send);
+    let output_dyn =
+        quote!(dyn #krate::base::block::BlockOutput<Self::Writer> + ::core::marker::Send);
+    let input_fields: Vec<_> = inputs.iter().map(|pin| &pin.field).collect();
+    let output_fields: Vec<_> = outputs.iter().map(|pin| &pin.field).collect();
+    let (block_inputs_ref, block_inputs_mut) = match block_inputs {
+        Some(_) => (
+            quote! { inputs.extend(self._inputs.iter().map(|input| input as &(#input_dyn))); },
+            quote! { inputs.extend(self._inputs.iter_mut().map(|input| input as &mut (#input_dyn))); },
+        ),
+        None => (TokenStream::new(), TokenStream::new()),
+    };
 
-    let block_prop_names = block_props_attrs.keys().map(|name| format_ident!("{name}"));
-    let block_prop_values = block_props_attrs.values();
-
-    // Init other block fields that are not the reserved fields (id, name, state) or inputs/output to their default value
-    let block_fields = get_block_fields(ast);
-    let block_field_init =
-        create_block_fields_init(&block_fields, &block_input_props, &block_outputs_props);
-
-    // Create the code for getting input and output description
-    let input_desc = create_input_desc(&block_defined_inputs, &block_input_props, krate);
-    let out_desc = create_output_desc(&block_outputs_props, krate);
-    ensure_unique_outputs(&block_defined_inputs, &block_outputs_props);
+    let props = quote!(#krate::base::block::BlockProps);
+    let input_props = quote!(#krate::base::input::InputProps);
+    let output_props = quote!(#krate::base::output::OutputProps);
 
     let new_doc = format!("Creates a new [`{block_ident}`].");
     let new_uuid_doc = format!("Creates a new [`{block_ident}`] with the given UUID.");
 
-    // The code that gets generated for the blocks
-    let tokens = quote! {
-
+    Ok(quote! {
         // Generated constructors
         impl #block_ident {
             #[doc = #new_doc]
             pub fn new() -> Self {
-                let uuid = #krate::Uuid::new_v4();
-                Self::new_uuid(uuid)
+                Self::new_uuid(#krate::Uuid::new_v4())
             }
 
             #[doc = #new_uuid_doc]
@@ -100,26 +130,26 @@ pub(super) fn block_props_impl(ast: &syn::DeriveInput) -> TokenStream {
                 Self {
                     id: uuid,
                     state: #krate::base::block::BlockState::Running,
-                    #block_field_init
-                    #outputs_field_init,
-                    #block_defined_init
-                    #input_fields_init
+                    #(#other_init)*
+                    #output_init
+                    #input_init
+                    #block_inputs_init
                 }
             }
         }
 
         // Implementation of the BlockProps trait
         // using the attributes
-        impl #krate::base::block::BlockProps for #block_ident {
-            type Reader = <#krate::blocks::InputImpl as #krate::base::input::InputProps>::Reader;
-            type Writer = <#krate::blocks::InputImpl as #krate::base::input::InputProps>::Writer;
+        impl #props for #block_ident {
+            type Reader = <#krate::blocks::InputImpl as #input_props>::Reader;
+            type Writer = <#krate::blocks::InputImpl as #input_props>::Writer;
 
             fn id(&self) -> &#krate::Uuid {
                 &self.id
             }
 
             fn name(&self) -> &str {
-                &self.desc().name
+                &<Self as #props>::desc(self).name
             }
 
             fn desc(&self) -> &#krate::base::block::BlockDesc {
@@ -127,66 +157,94 @@ pub(super) fn block_props_impl(ast: &syn::DeriveInput) -> TokenStream {
             }
 
             fn state(&self) -> #krate::base::block::BlockState {
-                self.state.clone()
+                ::core::clone::Clone::clone(&self.state)
             }
 
             fn set_state(&mut self, state: #krate::base::block::BlockState) -> #krate::base::block::BlockState {
                 self.state = state;
-                self.state.clone()
+                ::core::clone::Clone::clone(&self.state)
             }
 
-            fn inputs(&self) -> Vec<&(dyn #krate::base::block::BlockInput<Self::Reader, Self::Writer> + Send)> {
-                #inputs_refs
+            fn inputs(&self) -> ::std::vec::Vec<&(#input_dyn)> {
+                #[allow(unused_mut)]
+                let mut inputs: ::std::vec::Vec<&(#input_dyn)> =
+                    ::std::vec![#(&self.#input_fields as &(#input_dyn),)*];
+                #block_inputs_ref
+                inputs
             }
 
-            fn inputs_mut(&mut self) -> Vec<&mut (dyn #krate::base::block::BlockInput<Self::Reader, Self::Writer> + Send)> {
-                #inputs_mut_refs
+            fn inputs_mut(&mut self) -> ::std::vec::Vec<&mut (#input_dyn)> {
+                #[allow(unused_mut)]
+                let mut inputs: ::std::vec::Vec<&mut (#input_dyn)> =
+                    ::std::vec![#(&mut self.#input_fields as &mut (#input_dyn),)*];
+                #block_inputs_mut
+                inputs
             }
 
-            fn outputs_mut(&mut self) -> Vec<&mut (dyn #krate::base::block::BlockOutput<Self::Writer> + Send)> {
-                #outputs_mut_ref
+            fn outputs(&self) -> ::std::vec::Vec<&(#output_dyn)> {
+                ::std::vec![#(&self.#output_fields as &(#output_dyn),)*]
             }
 
-            fn outputs(&self) -> Vec<&(dyn #krate::base::block::BlockOutput<Self::Writer> + Send)> {
-                #outputs_ref
+            fn outputs_mut(&mut self) -> ::std::vec::Vec<&mut (#output_dyn)> {
+                ::std::vec![#(&mut self.#output_fields as &mut (#output_dyn),)*]
             }
 
-            fn links(&self) -> Vec<(&str, Vec<&(dyn #krate::base::link::Link + Send)>)> {
-                let mut res = Vec::new();
-
-                self.inputs().iter().for_each(|input| res.push((input.name(), input.links())));
-                self.outputs().iter().for_each(|out| res.push((out.name(), out.links())));
-                res
+            fn links(&self) -> ::std::vec::Vec<(&str, ::std::vec::Vec<&(dyn #krate::base::link::Link + ::core::marker::Send)>)> {
+                let mut links = ::std::vec::Vec::new();
+                for input in <Self as #props>::inputs(self) {
+                    links.push((#input_props::name(input), #input_props::links(input)));
+                }
+                for output in <Self as #props>::outputs(self) {
+                    links.push((#output_props::name(output), #output_props::links(output)));
+                }
+                links
             }
 
             fn remove_link_by_id(&mut self, link_uuid: &#krate::Uuid) {
-                self.inputs_mut().iter_mut().for_each(|input| input.remove_link_by_id(link_uuid));
-                self.outputs_mut().iter_mut().for_each(|out| out.remove_link_by_id(link_uuid))
+                for input in <Self as #props>::inputs_mut(self) {
+                    #input_props::remove_link_by_id(input, link_uuid);
+                }
+                for output in <Self as #props>::outputs_mut(self) {
+                    #output_props::remove_link_by_id(output, link_uuid);
+                }
             }
 
             fn remove_all_links(&mut self) {
-                self.inputs_mut().iter_mut().for_each(|input| input.remove_all_links());
-                self.outputs_mut().iter_mut().for_each(|out| out.remove_all_links())
+                for input in <Self as #props>::inputs_mut(self) {
+                    #input_props::remove_all_links(input);
+                }
+                for output in <Self as #props>::outputs_mut(self) {
+                    #output_props::remove_all_links(output);
+                }
             }
         }
 
-        // Implementation of the BlockDesc trait
+        // Implementation of the BlockStaticDesc trait
         // using the attributes
         impl #krate::base::block::BlockStaticDesc for #block_ident {
             fn static_desc() -> &'static #krate::base::block::BlockDesc {
-                static DESC: std::sync::LazyLock<#krate::base::block::BlockDesc> = std::sync::LazyLock::new(|| {
-                    #krate::__private::native_desc(#krate::__private::NativeDesc {
-                        #(#block_prop_names : #block_prop_values,)*
-                        #out_desc,
-                        #input_desc
-                    })
-                });
+                static DESC: ::std::sync::LazyLock<#krate::base::block::BlockDesc> =
+                    ::std::sync::LazyLock::new(|| {
+                        #krate::__private::native_desc(#krate::__private::NativeDesc {
+                            name: #name,
+                            library: #library,
+                            dis: #dis,
+                            category: #category,
+                            ver: #ver,
+                            doc: #doc,
+                            inputs: &[
+                                #((#input_names, #krate::HaystackKind::#input_kinds),)*
+                                #((#block_input_names, #krate::HaystackKind::#block_input_kind),)*
+                            ],
+                            outputs: &[#((#output_names, #krate::HaystackKind::#output_kinds),)*],
+                        })
+                    });
 
-                &*DESC
+                &DESC
             }
         }
 
-        impl Default for #block_ident {
+        impl ::core::default::Default for #block_ident {
             fn default() -> Self {
                 Self::new()
             }
@@ -197,299 +255,67 @@ pub(super) fn block_props_impl(ast: &syn::DeriveInput) -> TokenStream {
                 Self::new_uuid(uuid)
             }
         }
-    };
-
-    tokens.into()
+    })
 }
 
-/// Initializes the input fields of a block.
-fn create_block_input_fields_init(
-    block_input_props: &[(String, BTreeMap<String, String>)],
-    krate: &syn::Path,
-) -> proc_macro2::TokenStream {
-    if block_input_props.is_empty() {
-        proc_macro2::TokenStream::default()
-    } else {
-        let input_field = block_input_props.iter().map(|(k, _)| format_ident!("{k}"));
-        let input_name = block_input_props
-            .iter()
-            .map(|(name, props)| props.get("name").cloned().unwrap_or(name.clone()));
-
-        let kind = block_input_props.iter().map(|(_, props)| {
-            format_ident!("{}", props.get("kind").cloned().unwrap_or("Null".into()))
-        });
-
-        quote! {
-            #(#input_field: #krate::__private::input(#input_name, #krate::HaystackKind::#kind, uuid)),*
-        }
+/// Initializers of the pin fields `pins`, each built by the
+/// `__private` function `constructor`.
+fn pin_inits(pins: &[FieldPin], krate: &syn::Path, constructor: &str) -> TokenStream {
+    let constructor = Ident::new(constructor, Span::call_site());
+    let fields = pins.iter().map(|pin| &pin.field);
+    let names = pins.iter().map(|pin| &pin.name);
+    let kinds = pins.iter().map(|pin| &pin.kind);
+    quote! {
+        #(#fields: #krate::__private::#constructor(#names, #krate::HaystackKind::#kinds, uuid),)*
     }
 }
 
-/// Initializes custom fields that a user may have on a block.
-fn create_block_fields_init(
-    block_fields: &BTreeMap<String, syn::Type>,
-    block_input_props: &[(String, BTreeMap<String, String>)],
-    block_output_props: &[(String, BTreeMap<String, String>)],
-) -> proc_macro2::TokenStream {
-    if block_fields.is_empty() {
-        proc_macro2::TokenStream::default()
-    } else {
-        let filter = |field_name: &&String| {
-            field_name.as_str() != "id"
-                && field_name.as_str() != "name"
-                && field_name.as_str() != "state"
-                && field_name.as_str() != "_inputs"
-                && !block_input_props.iter().any(|(id, _)| id == *field_name)
-                && !block_output_props.iter().any(|(id, _)| id == *field_name)
-        };
-
-        let field = block_fields
-            .keys()
-            .filter(filter)
-            .map(|field_name| format_ident!("{field_name}"));
-
-        let ty = block_fields
-            .iter()
-            .filter(|(k, _)| filter(k))
-            .map(|(_, ty)| ty);
-
-        quote! {
-            #(#field: <#ty>::default(),)*
-        }
-    }
+/// The fields that are neither pins nor added by the `block`
+/// attribute, which the constructor sets to their default value.
+fn other_fields<'a>(
+    ast: &'a DeriveInput,
+    inputs: &[FieldPin],
+    outputs: &[FieldPin],
+) -> syn::Result<Vec<(&'a Ident, &'a syn::Type)>> {
+    let is_pin = |ident: &Ident| inputs.iter().chain(outputs).any(|pin| &pin.field == ident);
+    Ok(named_fields(ast, "BlockProps")?
+        .filter_map(|field| field.ident.as_ref().map(|ident| (ident, &field.ty)))
+        .filter(|(ident, _)| !BLOCK_FIELDS.iter().any(|name| ident == name) && !is_pin(ident))
+        .collect())
 }
 
-/// Initializes automatic inputs defined on the block attribute.
-fn create_block_defined_input_init(
-    block_defined_input_props: &BTreeMap<String, String>,
-    krate: &syn::Path,
-) -> proc_macro2::TokenStream {
-    if block_defined_input_props.is_empty() {
-        proc_macro2::TokenStream::default()
-    } else {
-        let kind = format_ident!(
-            "{}",
-            block_defined_input_props
-                .get("kind")
-                .cloned()
-                .unwrap_or("Null".into())
-        );
+/// Ensures no two pins of the block share a name. An engine looks a
+/// link's source pin up by name among the outputs and then the inputs,
+/// so a name can only be used once on a block.
+fn ensure_unique_pin_names(
+    block_inputs: Option<&BlockInputs>,
+    inputs: &[FieldPin],
+    outputs: &[FieldPin],
+) -> syn::Result<()> {
+    let mut seen = BTreeSet::new();
+    // The block-level inputs go first, so a clash is reported on the
+    // field pin's own name.
+    let block_pins = block_inputs
+        .map(|inputs| {
+            inputs
+                .names()
+                .into_iter()
+                .map(|name| (name, inputs.span))
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    let pins = inputs
+        .iter()
+        .chain(outputs)
+        .map(|pin| (pin.name.value(), pin.name.span()));
 
-        let name = block_defined_input_props
-            .get("name")
-            .cloned()
-            .unwrap_or("in".into());
-
-        let count = get_block_defined_inputs_count(block_defined_input_props).unwrap_or(0);
-
-        let names = (0..count).map(|i| format!("{name}{i}"));
-
-        quote! {
-            _inputs: vec![ #(#krate::__private::input(#names, #krate::HaystackKind::#kind, uuid)),* ],
-        }
-    }
-}
-
-/// Creates the output field initializer.
-fn create_block_outputs_field_init(
-    block_output_props: &[(String, BTreeMap<String, String>)],
-    krate: &syn::Path,
-) -> proc_macro2::TokenStream {
-    if block_output_props.is_empty() {
-        panic!("Block must have at least one output field.")
-    } else {
-        let out_field = block_output_props
-            .iter()
-            .map(|(id, _)| format_ident!("{id}"));
-
-        let output_name = block_output_props
-            .iter()
-            .map(|(name, props)| props.get("name").cloned().unwrap_or(name.clone()));
-
-        let kind = block_output_props.iter().map(|(_, props)| {
-            format_ident!("{}", props.get("kind").cloned().unwrap_or("Null".into()))
-        });
-
-        quote! {
-            #(#out_field: #krate::__private::output(#output_name, #krate::HaystackKind::#kind, uuid)),*
-        }
-    }
-}
-
-/// Creates the reference for input fields, including both block-defined
-/// automatic inputs and user-defined block input fields.
-fn create_input_members_ref(
-    has_block_defined_inputs: bool,
-    block_input_props: &[(String, BTreeMap<String, String>)],
-    mutable: bool,
-    krate: &syn::Path,
-) -> proc_macro2::TokenStream {
-    if !has_block_defined_inputs && block_input_props.is_empty() {
-        quote! {
-            Vec::default()
-        }
-    } else {
-        let input_field = block_input_props
-            .iter()
-            .map(|(id, _)| format_ident!("{id}"));
-
-        let (borrow, iter) = if mutable {
-            (
-                TokenTree::from(format_ident!("mut")),
-                TokenTree::from(format_ident!("iter_mut")),
-            )
-        } else {
-            let empty = TokenTree::Group(Group::new(
-                proc_macro2::Delimiter::None,
-                TokenStream::default().into(),
+    for (name, span) in block_pins.into_iter().chain(pins) {
+        if !seen.insert(name.clone()) {
+            return Err(syn::Error::new(
+                span,
+                format!("pin name `{name}` is used by another pin of this block"),
             ));
-
-            (empty, TokenTree::from(format_ident!("iter")))
-        };
-
-        if has_block_defined_inputs {
-            quote! {
-                let mut inputs = vec![ #(&#borrow self.#input_field as &#borrow (dyn #krate::base::block::BlockInput<Self::Reader, Self::Writer> + Send)),* ];
-                inputs.extend(self._inputs.#iter().map(|input| input as &#borrow (dyn #krate::base::block::BlockInput<Self::Reader, Self::Writer> + Send)));
-
-                inputs
-            }
-        } else {
-            quote! {
-                vec![ #(&#borrow self.#input_field as &#borrow (dyn #krate::base::block::BlockInput<Self::Reader, Self::Writer> + Send)),* ]
-            }
         }
     }
-}
-
-/// Creates the reference for the output fields of the block.
-fn create_outputs_member_ref(
-    block_output_props: &[(String, BTreeMap<String, String>)],
-    mutable: bool,
-    krate: &syn::Path,
-) -> proc_macro2::TokenStream {
-    if block_output_props.is_empty() {
-        quote! {
-            Vec::default()
-        }
-    } else {
-        let output_fields = block_output_props
-            .iter()
-            .map(|(id, _)| format_ident!("{id}"));
-
-        let borrow = if mutable {
-            TokenTree::from(format_ident!("mut"))
-        } else {
-            TokenTree::Group(Group::new(
-                proc_macro2::Delimiter::None,
-                TokenStream::default().into(),
-            ))
-        };
-
-        quote! {
-            vec![ #(&#borrow self.#output_fields as &#borrow (dyn #krate::base::block::BlockOutput<Self::Writer> + Send)),* ]
-        }
-    }
-}
-
-/// Creates the description of the input fields.
-fn create_input_desc(
-    block_defined_input_props: &BTreeMap<String, String>,
-    block_input_props: &[(String, BTreeMap<String, String>)],
-    krate: &syn::Path,
-) -> proc_macro2::TokenStream {
-    ensure_unique_inputs(block_defined_input_props, block_input_props);
-
-    let input_field_names = block_input_props
-        .iter()
-        .map(|(name, props)| props.get("name").unwrap_or(name));
-
-    let input_field_kinds = block_input_props
-        .iter()
-        .map(|(_, props)| format_ident!("{}", props.get("kind").cloned().unwrap_or("Null".into())));
-
-    let kind = format_ident!(
-        "{}",
-        block_defined_input_props
-            .get("kind")
-            .cloned()
-            .unwrap_or("Null".into())
-    );
-
-    let name = block_defined_input_props
-        .get("name")
-        .cloned()
-        .unwrap_or("in".into());
-
-    let count = get_block_defined_inputs_count(block_defined_input_props).unwrap_or(0);
-
-    let block_defined_inputs = (0..count).map(|i| format!("{name}{i}"));
-
-    quote! {
-        inputs: &[#((#input_field_names, #krate::HaystackKind::#input_field_kinds),)*
-        #((#block_defined_inputs, #krate::HaystackKind::#kind),)*],
-    }
-}
-
-/// Creates the description of the output fields.
-fn create_output_desc(
-    block_output_props: &[(String, BTreeMap<String, String>)],
-    krate: &syn::Path,
-) -> proc_macro2::TokenStream {
-    let output_names = block_output_props
-        .iter()
-        .map(|(name, props)| props.get("name").unwrap_or(name));
-
-    let output_kinds = block_output_props
-        .iter()
-        .map(|(_, props)| format_ident!("{}", props.get("kind").cloned().unwrap_or("Null".into())));
-
-    quote! {
-        outputs: &[#((#output_names, #krate::HaystackKind::#output_kinds),)*]
-    }
-}
-
-/// Ensures that the block-defined inputs and user-defined inputs have different names.
-fn ensure_unique_inputs(
-    block_defined_inputs: &BTreeMap<String, String>,
-    block_input_props: &[(String, BTreeMap<String, String>)],
-) {
-    if let Some(count) = get_block_defined_inputs_count(block_defined_inputs) {
-        (0..count).for_each(|i| {
-		if block_input_props
-			.iter()
-			.any(|(input, _)| input == &format!("in{}", i))
-		{
-			eprintln!("Block defined input: 'in{}' shadows the user defined input with the same name.", i);
-			panic!("Block defined inputs and user defined inputs must have different names.")
-		}
-	});
-    }
-}
-
-/// Ensures that the block-defined outputs do not shadow the user-defined inputs.
-fn ensure_unique_outputs(
-    block_defined_inputs: &BTreeMap<String, String>,
-    block_output_props: &[(String, BTreeMap<String, String>)],
-) {
-    if let Some(count) = get_block_defined_inputs_count(block_defined_inputs) {
-        (0..count).for_each(|i| {
-		if block_output_props
-			.iter()
-			.any(|(output, _)| output == &format!("in{}", i))
-		{
-			eprintln!("Block defined output: 'in{}' shadows the user defined input with the same name.", i);
-			panic!("Block defined inputs and user defined outputs must have different names.")
-		}
-	});
-    }
-}
-
-/// Returns the count of block-defined inputs.
-fn get_block_defined_inputs_count(
-    block_defined_inputs: &BTreeMap<String, String>,
-) -> Option<usize> {
-    block_defined_inputs
-        .get("count")
-        .and_then(|e| e.parse::<usize>().ok())
+    Ok(())
 }

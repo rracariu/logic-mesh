@@ -1,0 +1,5 @@
+error: unknown `#[input(...)]` argument `nme`; expected one of `name`, `kind`
+ --> tests/ui/unknown_pin_argument.rs:8:13
+  |
+8 |     #[input(nme = "in", kind = "Number")]
+  |             ^^^
