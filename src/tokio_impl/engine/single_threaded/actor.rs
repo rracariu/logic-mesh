@@ -118,7 +118,9 @@ async fn run_one_step<B>(block: &mut B, mailbox: &mut mpsc::Receiver<BlockMailbo
 where
     B: EngineBlock + 'static,
 {
-    let mut cmd_to_handle: Option<BlockMailboxCmd> = None;
+    // `None` — execute completed; `Some(None)` — the mailbox closed;
+    // `Some(Some(cmd))` — a command arrived.
+    let mut cmd_to_handle: Option<Option<BlockMailboxCmd>> = None;
     {
         let execute_fut = block.execute();
         tokio::pin!(execute_fut);
@@ -127,18 +129,26 @@ where
             // Prefer mailbox so external commands aren't delayed by
             // a block that's perpetually ready to execute.
             cmd = mailbox.recv() => {
-                cmd_to_handle = cmd;
+                cmd_to_handle = Some(cmd);
             }
             () = &mut execute_fut => {}
         }
         // execute_fut goes out of scope here — its borrow on block ends.
     }
 
-    let Some(cmd) = cmd_to_handle else {
-        return false;
-    };
-
-    handle_cmd(cmd, block).await
+    match cmd_to_handle {
+        None => false,
+        Some(Some(cmd)) => handle_cmd(cmd, block).await,
+        // Every sender is gone — the engine dropped this block's handle
+        // (or the engine itself was dropped), so nothing can reach the
+        // block again. A closed mailbox is always ready, so staying in
+        // the loop would let it win every biased select and spin
+        // forever without ever executing the block.
+        Some(None) => {
+            block.set_state(BlockState::Terminated);
+            true
+        }
+    }
 }
 
 /// Detect changes on the block's pins and/or state relative to the
@@ -195,5 +205,35 @@ fn change_of_value_check<B: Block + 'static>(
                 state: state.clone(),
             });
         }
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+#[cfg(test)]
+mod test {
+    use std::time::Duration;
+
+    use tokio::{sync::mpsc, task::LocalSet, time::timeout};
+
+    use super::block_actor_task;
+    use crate::blocks::math::Add;
+    use crate::tokio_impl::engine::block_mailbox::BLOCK_MAILBOX_CAP;
+
+    /// Regression: a closed mailbox used to read as "keep running", and
+    /// since it is always ready it won every biased select — the actor
+    /// spun forever without executing the block.
+    #[tokio::test(flavor = "current_thread")]
+    async fn actor_exits_when_its_mailbox_closes() {
+        let local = LocalSet::new();
+        let (mailbox_tx, mailbox_rx) = mpsc::channel(BLOCK_MAILBOX_CAP);
+        let task = local.spawn_local(block_actor_task(Add::new(), mailbox_rx, Default::default()));
+
+        drop(mailbox_tx);
+
+        local
+            .run_until(timeout(Duration::from_secs(2), task))
+            .await
+            .expect("actor task exits once its mailbox closes")
+            .expect("actor task completes without panicking");
     }
 }

@@ -97,24 +97,29 @@ async fn run_one_step<B>(block: &mut B, mailbox: &mut mpsc::Receiver<BlockMailbo
 where
     B: MtBlock + 'static,
 {
-    let mut cmd_to_handle: Option<BlockMailboxCmd> = None;
+    // See single_threaded::actor::run_one_step for the encoding.
+    let mut cmd_to_handle: Option<Option<BlockMailboxCmd>> = None;
     {
         let execute_fut = block.execute();
         tokio::pin!(execute_fut);
         tokio::select! {
             biased;
             cmd = mailbox.recv() => {
-                cmd_to_handle = cmd;
+                cmd_to_handle = Some(cmd);
             }
             () = &mut execute_fut => {}
         }
     }
 
-    let Some(cmd) = cmd_to_handle else {
-        return false;
-    };
-
-    handle_cmd(cmd, block).await
+    match cmd_to_handle {
+        None => false,
+        Some(Some(cmd)) => handle_cmd(cmd, block).await,
+        // Closed mailbox: exit — see single_threaded::actor::run_one_step.
+        Some(None) => {
+            block.set_state(BlockState::Terminated);
+            true
+        }
+    }
 }
 
 async fn change_of_value_check<B: Block + 'static>(
@@ -161,5 +166,31 @@ async fn change_of_value_check<B: Block + 'static>(
                 state: state.clone(),
             });
         }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use std::time::Duration;
+
+    use tokio::{sync::mpsc, time::timeout};
+
+    use super::block_actor_task;
+    use crate::blocks::math::Add;
+    use crate::tokio_impl::engine::block_mailbox::BLOCK_MAILBOX_CAP;
+
+    /// Regression: see the single-threaded
+    /// `actor_exits_when_its_mailbox_closes`.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn actor_exits_when_its_mailbox_closes() {
+        let (mailbox_tx, mailbox_rx) = mpsc::channel(BLOCK_MAILBOX_CAP);
+        let task = tokio::spawn(block_actor_task(Add::new(), mailbox_rx, Default::default()));
+
+        drop(mailbox_tx);
+
+        timeout(Duration::from_secs(2), task)
+            .await
+            .expect("actor task exits once its mailbox closes")
+            .expect("actor task completes without panicking");
     }
 }
