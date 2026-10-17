@@ -145,6 +145,22 @@ impl Block for Attributed {
     async fn execute(&mut self) {}
 }
 
+/// Pads its attribute values with whitespace.
+#[block]
+#[derive(BlockProps, Debug)]
+#[dis = " Padded "]
+#[library = "downstream "]
+#[category = " test"]
+#[ver = " 1.2.3 "]
+pub struct Padded {
+    #[output(kind = "Number")]
+    pub out: OutputImpl,
+}
+
+impl Block for Padded {
+    async fn execute(&mut self) {}
+}
+
 /// Names its pins after fields whose names are keywords.
 #[block]
 #[derive(BlockProps, Debug)]
@@ -300,6 +316,21 @@ mod tests {
         let block = Attributed::new();
         assert_eq!(block.inputs().len(), 2);
         assert_eq!(block.outputs()[0].name(), "y");
+    }
+
+    /// Regression: the derive's rewrite took attribute values verbatim,
+    /// so the whitespace around `#[library = "downstream "]` became part
+    /// of the block's registry key, where it had always been trimmed.
+    #[test]
+    fn attribute_values_are_trimmed() {
+        use logic_mesh::base::block::BlockStaticDesc;
+
+        let desc = <Padded as BlockStaticDesc>::static_desc();
+        assert_eq!(desc.dis, "Padded");
+        assert_eq!(desc.library, "downstream");
+        assert_eq!(desc.category, "test");
+        assert_eq!(desc.ver, "1.2.3");
+        assert_eq!(desc.qname(), "downstream::Padded");
     }
 
     /// Regression: a pin named after a raw field identifier kept its

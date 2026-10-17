@@ -11,7 +11,8 @@ use syn::{
     ext::IdentExt,
 };
 
-/// The block-level attributes of a block, as written.
+/// The block-level attributes of a block, as written, with the
+/// whitespace around each value trimmed.
 #[derive(Default)]
 pub(crate) struct BlockAttributes {
     /// `#[dis = "..."]`.
@@ -62,7 +63,9 @@ pub(crate) fn block_attributes(ast: &DeriveInput) -> syn::Result<BlockAttributes
                 format!("duplicate `#[{}]` attribute", attr_name(attr)),
             ));
         }
-        *slot = Some(value);
+        // Surrounding whitespace is not part of a name: the library, for
+        // one, is half of the block's registry key.
+        *slot = Some(LitStr::new(value.value().trim(), value.span()));
     }
 
     attrs.doc = join_doc_lines(&doc);
