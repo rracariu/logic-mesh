@@ -123,7 +123,7 @@ pub(super) fn block_props_impl(ast: &syn::DeriveInput) -> TokenStream {
             }
 
             fn desc(&self) -> &#krate::base::block::BlockDesc {
-                <Self as #krate::base::block::BlockStaticDesc>::desc()
+                <Self as #krate::base::block::BlockStaticDesc>::static_desc()
             }
 
             fn state(&self) -> #krate::base::block::BlockState {
@@ -173,7 +173,7 @@ pub(super) fn block_props_impl(ast: &syn::DeriveInput) -> TokenStream {
         // Implementation of the BlockDesc trait
         // using the attributes
         impl #krate::base::block::BlockStaticDesc for #block_ident {
-            fn desc() -> &'static #krate::base::block::BlockDesc {
+            fn static_desc() -> &'static #krate::base::block::BlockDesc {
                 static DESC: std::sync::LazyLock<#krate::base::block::BlockDesc> = std::sync::LazyLock::new(|| {
                     let desc = #krate::base::block::BlockDesc {
                         implementation: #krate::base::block::desc::BlockImplementation::Native,

@@ -15,7 +15,7 @@ use wasm_bindgen::JsValue;
 use wasm_bindgen_futures::JsFuture;
 
 use crate::base::block::desc::BlockRunCondition;
-use crate::base::block::{Block, BlockState, BlockStaticDesc};
+use crate::base::block::{Block, BlockState};
 
 use crate::blocks::registry::{BlockSink, eval_block_impl};
 use crate::blocks::utils::get_sleep_dur;
@@ -291,12 +291,6 @@ impl BlockProps for JsBlock {
         self.outputs
             .iter_mut()
             .for_each(|output| output.remove_link_by_id(link_id));
-    }
-}
-
-impl BlockStaticDesc for JsBlock {
-    fn desc() -> &'static BlockDesc {
-        unimplemented!()
     }
 }
 

@@ -133,7 +133,7 @@ mod tests {
     fn desc_reflects_attributes() {
         use logic_mesh::base::block::BlockStaticDesc;
 
-        let desc = <Double as BlockStaticDesc>::desc();
+        let desc = <Double as BlockStaticDesc>::static_desc();
         assert_eq!(desc.name, "Double");
         assert_eq!(desc.dis, "Double");
         assert_eq!(desc.library, "downstream");
@@ -167,7 +167,7 @@ mod tests {
     async fn fully_qualified_pin_types_work() {
         use logic_mesh::base::block::BlockStaticDesc;
 
-        let desc = <Triple as BlockStaticDesc>::desc();
+        let desc = <Triple as BlockStaticDesc>::static_desc();
         assert_eq!(desc.inputs.len(), 1);
         assert_eq!(desc.outputs.len(), 1);
 
@@ -187,7 +187,7 @@ mod tests {
     async fn prefixed_field_types_are_not_pins() {
         use logic_mesh::base::block::BlockStaticDesc;
 
-        let desc = <Prefixed as BlockStaticDesc>::desc();
+        let desc = <Prefixed as BlockStaticDesc>::static_desc();
         assert_eq!(desc.inputs.len(), 1);
         assert_eq!(desc.outputs.len(), 1);
 
@@ -213,7 +213,7 @@ mod tests {
     fn doc_comment_captured_in_desc() {
         use logic_mesh::base::block::BlockStaticDesc;
 
-        let desc = <Double as BlockStaticDesc>::desc();
+        let desc = <Double as BlockStaticDesc>::static_desc();
         assert_eq!(
             desc.doc, "Doubles the value of its numeric input.",
             "/// doc comment should be captured in desc().doc"
@@ -224,7 +224,7 @@ mod tests {
     fn doc_comment_multiline_concatenated() {
         use logic_mesh::base::block::BlockStaticDesc;
 
-        let desc = <Triple as BlockStaticDesc>::desc();
+        let desc = <Triple as BlockStaticDesc>::static_desc();
         assert!(
             desc.doc.starts_with("Same as"),
             "multi-line /// doc should be concatenated into desc().doc"
@@ -235,7 +235,7 @@ mod tests {
     fn missing_doc_defaults_to_empty() {
         use logic_mesh::base::block::BlockStaticDesc;
 
-        let desc = <Bare as BlockStaticDesc>::desc();
+        let desc = <Bare as BlockStaticDesc>::static_desc();
         assert_eq!(
             desc.doc, "",
             "block without /// doc should have an empty desc().doc"
