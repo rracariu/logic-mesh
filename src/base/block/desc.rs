@@ -54,13 +54,28 @@ impl BlockDesc {
     }
 }
 
-/// Provides static access to a block description.
+/// Provides static access to a block description, without an instance.
 ///
-/// Complements the instance method access, as the instance
-/// one allows the block to be a trait object.
+/// Complements [`BlockProps::desc`], which takes `&self` so a block can
+/// be used as a trait object. The `BlockProps` derive implements both
+/// from the same description.
+///
+/// Only registering a block type needs it (see
+/// [`RegisterableBlock`](crate::blocks::registry::RegisterableBlock)):
+/// scheduling, connecting, saving and loading a block all go through
+/// its instance, so a block whose description is only known at runtime,
+/// such as a JS block, does not implement it.
+///
+/// # Examples
+///
+/// ```
+/// use logic_mesh::{base::block::BlockStaticDesc, blocks::math::Add};
+///
+/// assert_eq!(Add::static_desc().name, "Add");
+/// ```
 pub trait BlockStaticDesc: BlockProps {
     /// Returns a static reference to the block description.
-    fn desc() -> &'static BlockDesc
+    fn static_desc() -> &'static BlockDesc
     where
         Self: Sized;
 }

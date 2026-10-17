@@ -718,7 +718,7 @@ pub(crate) mod round_trip {
 
     /// Polls the running program until it saves as `expected`, failing
     /// the test after a few seconds.
-    async fn wait_for_save(client: &mut Client, expected: &Program) {
+    pub(crate) async fn wait_for_save(client: &mut Client, expected: &Program) {
         let expected = json(expected);
         let mut saved = serde_json::Value::Null;
         for _ in 0..POLLS {
@@ -1777,5 +1777,228 @@ pub(crate) mod drops {
         let unfinished = timeout(Duration::from_millis(100), engine.run()).await;
         assert!(unfinished.is_err(), "run() only ends on Shutdown");
         wait_for_actors_to_end(&alive).await;
+    }
+}
+
+/// Blocks without a static description, written once against the
+/// [`Engine`] trait and run by each engine's tests: a block whose
+/// description only exists at runtime, like a JS block's, and a
+/// runtime-registered block, which the registry type-erases, both
+/// schedule, connect, save and load without implementing
+/// [`BlockStaticDesc`](crate::base::block::BlockStaticDesc).
+pub(crate) mod runtime_descs {
+    use super::lifecycle::TestEngine;
+    use super::*;
+    use crate::base::block::{
+        Block, BlockConnect, BlockDesc, BlockInput, BlockOutput, BlockPin, BlockState,
+    };
+    use crate::base::engine::messages::EngineMessage::Reset;
+    use crate::base::input::{InputProps, input_reader::InputReader};
+    use crate::base::link::Link;
+    use crate::base::output::{Output, OutputProps};
+    use crate::blocks::{InputImpl, OutputImpl, registry};
+    use libhaystack::val::kind::HaystackKind;
+
+    /// The library the blocks of these tests are described in.
+    const LIBRARY: &str = "runtime_desc_test";
+
+    /// Copies `in` to `out`. Implements [`BlockProps`] and [`Block`] by
+    /// hand around a description built at runtime, and nothing else.
+    #[derive(Debug)]
+    pub(crate) struct Echo {
+        id: Uuid,
+        desc: BlockDesc,
+        input: InputImpl,
+        out: OutputImpl,
+        state: BlockState,
+    }
+
+    impl Echo {
+        /// A new `Echo`, described as `runtime_desc_test::Echo`.
+        pub(crate) fn new() -> Self {
+            let id = Uuid::new_v4();
+            let desc = BlockDesc {
+                name: "Echo".to_string(),
+                library: LIBRARY.to_string(),
+                inputs: vec![BlockPin {
+                    name: "in".to_string(),
+                    kind: HaystackKind::Number,
+                }],
+                outputs: vec![BlockPin {
+                    name: "out".to_string(),
+                    kind: HaystackKind::Number,
+                }],
+                ..Default::default()
+            };
+            Self {
+                id,
+                desc,
+                input: InputImpl::new("in", HaystackKind::Number, id),
+                out: OutputImpl::new_named("out", HaystackKind::Number, id),
+                state: BlockState::Running,
+            }
+        }
+    }
+
+    impl BlockProps for Echo {
+        type Reader = ReaderImpl;
+        type Writer = WriterImpl;
+
+        fn id(&self) -> &Uuid {
+            &self.id
+        }
+
+        fn name(&self) -> &str {
+            &self.desc.name
+        }
+
+        fn desc(&self) -> &BlockDesc {
+            &self.desc
+        }
+
+        fn state(&self) -> BlockState {
+            self.state.clone()
+        }
+
+        fn set_state(&mut self, state: BlockState) -> BlockState {
+            self.state = state;
+            self.state.clone()
+        }
+
+        fn inputs(&self) -> Vec<&(dyn BlockInput<ReaderImpl, WriterImpl> + Send)> {
+            vec![&self.input]
+        }
+
+        fn inputs_mut(&mut self) -> Vec<&mut (dyn BlockInput<ReaderImpl, WriterImpl> + Send)> {
+            vec![&mut self.input]
+        }
+
+        fn outputs(&self) -> Vec<&(dyn BlockOutput<WriterImpl> + Send)> {
+            vec![&self.out]
+        }
+
+        fn outputs_mut(&mut self) -> Vec<&mut (dyn BlockOutput<WriterImpl> + Send)> {
+            vec![&mut self.out]
+        }
+
+        fn links(&self) -> Vec<(&str, Vec<&(dyn Link + Send)>)> {
+            vec![
+                (self.input.name(), self.input.links()),
+                (self.out.name(), self.out.links()),
+            ]
+        }
+
+        fn remove_link_by_id(&mut self, link_id: &Uuid) {
+            self.input.remove_link_by_id(link_id);
+            self.out.remove_link_by_id(link_id);
+        }
+
+        fn remove_all_links(&mut self) {
+            self.input.remove_all_links();
+            self.out.remove_all_links();
+        }
+    }
+
+    impl Block for Echo {
+        async fn execute(&mut self) {
+            self.read_inputs_until_ready().await;
+            if let Some(value) = self.input.get_value().cloned() {
+                self.out.set(value);
+            }
+        }
+    }
+
+    /// Runtime-registered as `runtime_desc_test::Registered`: copies
+    /// `in` to `out`.
+    #[block]
+    #[derive(BlockProps, Debug)]
+    #[library = "runtime_desc_test"]
+    #[category = "test"]
+    pub(crate) struct Registered {
+        #[input(name = "in", kind = "Number")]
+        input: InputImpl,
+        #[output(kind = "Number")]
+        out: OutputImpl,
+    }
+
+    impl Block for Registered {
+        async fn execute(&mut self) {
+            self.read_inputs_until_ready().await;
+            if let Some(value) = self.input.get_value().cloned() {
+                self.out.set(value);
+            }
+        }
+    }
+
+    /// A block with a runtime description connects through
+    /// [`BlockConnect`] and through the engine, runs, and saves under
+    /// the name and library its description gives.
+    pub(crate) async fn a_block_with_a_runtime_desc_runs_and_saves<E: TestEngine>(mut engine: E) {
+        let mut first = Echo::new();
+        let mut second = Echo::new();
+        let third = Echo::new();
+        let wired = first
+            .connect_output("out", second.inputs_mut()[0])
+            .expect("linked by name");
+        let ids = (*first.id(), *second.id(), *third.id());
+        engine.schedule(first).expect("scheduled");
+        engine.schedule(second).expect("scheduled");
+        engine.schedule(third).expect("scheduled");
+
+        drive(engine, move |mut client| async move {
+            let (first, second, third) = ids;
+            let link = client
+                .connect(None, (second, "out"), (third, "in"))
+                .await
+                .expect("linked by the engine");
+
+            client.write_input(first, "in", 7.into()).await;
+            client.wait_for_output(third, "out", 7.into()).await;
+
+            let saved = client.save().await;
+            for id in [first, second, third] {
+                let block = &saved.blocks[&id.to_string()];
+                assert_eq!((block.name.as_str(), block.lib.as_str()), ("Echo", LIBRARY));
+            }
+            let mut links: Vec<_> = saved.links.into_keys().collect();
+            links.sort();
+            let mut expected = vec![wired.to_string(), link.id.expect("an id")];
+            expected.sort();
+            assert_eq!(links, expected);
+        })
+        .await;
+    }
+
+    /// A program of runtime-registered blocks, which the engine
+    /// schedules as the registry's type-erased block, loads, runs, and
+    /// saves back as it was loaded.
+    pub(crate) async fn a_registered_block_loads_and_saves<E: TestEngine>(engine: E) {
+        let _ = registry::register::<Registered>();
+        let (first, second) = (Uuid::new_v4(), Uuid::new_v4());
+        let mut program = add_program([first.to_string().as_str(), &second.to_string()]);
+        for block in program.blocks.values_mut() {
+            block.name = "Registered".to_string();
+            block.lib = LIBRARY.to_string();
+        }
+        let link = Uuid::new_v4();
+        program.links.insert(
+            link.to_string(),
+            program_link(first, second, "in", Some(link)),
+        );
+
+        drive(engine, move |mut client| async move {
+            client.load(program).await.expect("loaded");
+            client.write_input(first, "in", 3.into()).await;
+            client.wait_for_output(second, "out", 3.into()).await;
+
+            let saved = client.save().await;
+            assert_eq!(saved.blocks[&second.to_string()].name, "Registered");
+            assert!(saved.links.contains_key(&link.to_string()));
+
+            client.send(Reset).await;
+            client.load(saved.clone()).await.expect("reloaded");
+            super::round_trip::wait_for_save(&mut client, &saved).await;
+        })
+        .await;
     }
 }

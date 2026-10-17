@@ -286,6 +286,26 @@ mod tests {
         }
     }
 
+    /// Regression: a block had to implement `BlockStaticDesc` to be a
+    /// `Block` at all, so a block described at runtime — and the
+    /// registry's type-erased block — stubbed it with `unimplemented!()`
+    /// — see `test_support::runtime_descs`.
+    mod runtime_descs {
+        use super::*;
+        use crate::tokio_impl::engine::test_support::runtime_descs;
+
+        #[tokio::test(flavor = "current_thread")]
+        async fn a_block_with_a_runtime_desc_runs_and_saves() {
+            runtime_descs::a_block_with_a_runtime_desc_runs_and_saves(SingleThreadedEngine::new())
+                .await;
+        }
+
+        #[tokio::test(flavor = "current_thread")]
+        async fn a_registered_block_loads_and_saves() {
+            runtime_descs::a_registered_block_loads_and_saves(SingleThreadedEngine::new()).await;
+        }
+    }
+
     /// Regression: a panic in `execute` killed the block's actor task —
     /// the block never showed Fault, downstream never faulted, and the
     /// block could no longer be saved or removed.

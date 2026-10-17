@@ -4,13 +4,16 @@
 
 use uuid::Uuid;
 
-use super::desc::BlockStaticDesc;
-use super::{Block, BlockProps};
+use super::BlockProps;
 use crate::base::input::InputProps;
 use crate::base::link::{BaseLink, Link, LinkState};
 use crate::base::output::Output;
 
 /// Block connection functions.
+///
+/// Implemented for every [`BlockProps`] type, trait objects included, so
+/// it is never implemented by hand: bring it into scope to connect pins
+/// by name.
 ///
 /// # Examples
 ///
@@ -29,7 +32,7 @@ use crate::base::output::Output;
 /// # Ok(())
 /// # }
 /// ```
-pub trait BlockConnect: BlockStaticDesc {
+pub trait BlockConnect: BlockProps {
     /// Connects the output named `output_name` to `target_input`.
     fn connect_output(
         &mut self,
@@ -59,8 +62,10 @@ pub trait BlockConnect: BlockStaticDesc {
     ) -> Result<(), &'static str>;
 }
 
-/// Implements the [`BlockConnect`] trait for all types that are [`Block`]s.
-impl<T: Block + ?Sized> BlockConnect for T {
+/// Implements the [`BlockConnect`] trait for every type with
+/// [`BlockProps`]. Being the only impl there can be, it makes the trait
+/// sealed in effect: any other impl would overlap with it.
+impl<T: BlockProps + ?Sized> BlockConnect for T {
     fn connect_output(
         &mut self,
         source_output_name: &str,
