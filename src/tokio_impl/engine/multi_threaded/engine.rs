@@ -846,7 +846,10 @@ impl MultiThreadedEngine<Running> {
 
     /// Atomically loads a full [`Program`]: schedules every block, wires
     /// every link, pushes initial input/output values, and stores UI
-    /// metadata.
+    /// metadata. The engine must not already hold any of the program's
+    /// block ids (reset it first via [`Reset`](EngineMessage::Reset)): a
+    /// program naming a scheduled id is rejected before anything is
+    /// scheduled.
     async fn load_program(&mut self, program: Program) -> Result<()> {
         let links = self.stage_program(&program)?;
 

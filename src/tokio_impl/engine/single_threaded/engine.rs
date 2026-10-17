@@ -983,8 +983,10 @@ impl SingleThreadedEngine<Running> {
 
     /// Atomically load a full [`Program`]: schedule every block, wire
     /// every link, push initial input/output values, and store UI
-    /// metadata. Idempotent re-entry (engine should be empty or the
-    /// caller should reset it first via [`Reset`](EngineMessage::Reset)).
+    /// metadata. The engine must not already hold any of the program's
+    /// block ids (reset it first via [`Reset`](EngineMessage::Reset)): a
+    /// program naming a scheduled id is rejected before anything is
+    /// scheduled.
     ///
     /// Running-phase only: the actor tasks need to be live to handle the
     /// WriteInput/Output mailbox cmds. Reached through the engine message
