@@ -54,8 +54,10 @@ use crate::{blocks::InputImpl, blocks::OutputImpl};
 /// only gets what is left of it, and steady request traffic cannot
 /// keep a slow request from timing out. A request whose deadline ran
 /// out while its cycle was cancelled times out without being issued
-/// again. The deadline is read from `timeout` when the request is
-/// first issued; rewriting the pin affects the next value's request.
+/// again. Each re-issue reads `timeout` afresh, still counting from
+/// the first issue, so rewriting the pin while a request is owed
+/// applies to that request without restarting its clock — a program
+/// load, for one, writes `timeout` after `in`.
 #[block]
 #[derive(BlockProps, Debug)]
 #[category = "external"]
@@ -71,9 +73,10 @@ pub struct Request {
     #[output(kind = "Null")]
     pub out: OutputImpl,
     /// The request owed: set when a fresh `in` value arrives, kept —
-    /// deadline included — across a cancelled `execute` so the request
-    /// is re-issued, and cleared on any completion — response, request
-    /// error, connector miss, or timeout.
+    /// with the time it was first issued — across a cancelled
+    /// `execute` so the request is re-issued, and cleared on any
+    /// completion — response, request error, connector miss, or
+    /// timeout.
     pending: Option<PendingOp>,
     /// The last `in` cache value `execute` has taken note of — the
     /// freshness baseline. Persisted on the block rather than

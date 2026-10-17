@@ -440,6 +440,35 @@ mod tests {
             connector_deadlines::external_in_times_out_under_requests(SingleThreadedEngine::new())
                 .await;
         }
+
+        /// Regression: an operation's deadline was fixed from the
+        /// `timeout` pin when the operation was first issued, so a
+        /// timeout written while it was in flight — as a program load
+        /// writes it, after `in` — was ignored until the next value.
+        #[tokio::test(flavor = "current_thread")]
+        async fn external_out_applies_a_late_timeout() {
+            connector_deadlines::external_out_applies_a_late_timeout(SingleThreadedEngine::new())
+                .await;
+        }
+
+        #[tokio::test(flavor = "current_thread")]
+        async fn request_applies_a_late_timeout() {
+            connector_deadlines::request_applies_a_late_timeout(SingleThreadedEngine::new()).await;
+        }
+
+        #[tokio::test(flavor = "current_thread")]
+        async fn external_in_applies_a_late_timeout() {
+            connector_deadlines::external_in_applies_a_late_timeout(SingleThreadedEngine::new())
+                .await;
+        }
+
+        #[tokio::test(flavor = "current_thread")]
+        async fn a_loaded_timeout_applies_to_the_first_operation() {
+            connector_deadlines::a_loaded_timeout_applies_to_the_first_operation(
+                SingleThreadedEngine::new(),
+            )
+            .await;
+        }
     }
 
     /// Regression: a reply variant sent to the engine hit an

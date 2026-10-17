@@ -1066,6 +1066,35 @@ mod test {
             connector_deadlines::external_in_times_out_under_requests(MultiThreadedEngine::new())
                 .await;
         }
+
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn external_out_applies_a_late_timeout() {
+            connector_deadlines::external_out_applies_a_late_timeout(MultiThreadedEngine::new())
+                .await;
+        }
+
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn request_applies_a_late_timeout() {
+            connector_deadlines::request_applies_a_late_timeout(MultiThreadedEngine::new()).await;
+        }
+
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn external_in_applies_a_late_timeout() {
+            connector_deadlines::external_in_applies_a_late_timeout(MultiThreadedEngine::new())
+                .await;
+        }
+
+        /// Regression: on this engine a loaded block runs on another
+        /// worker while the load writes its saved values, so it issued
+        /// its operation between the `in` and `timeout` writes, under
+        /// the default deadline, and kept that deadline.
+        #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+        async fn a_loaded_timeout_applies_to_the_first_operation() {
+            connector_deadlines::a_loaded_timeout_applies_to_the_first_operation(
+                MultiThreadedEngine::new(),
+            )
+            .await;
+        }
     }
 
     /// Regression: a reply variant sent to the engine hit an

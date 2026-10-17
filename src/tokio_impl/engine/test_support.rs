@@ -1204,6 +1204,7 @@ pub(crate) mod connector_deadlines {
     use super::lifecycle::TestEngine;
     use super::*;
     use crate::base::connector::{register_connector, unregister_connector};
+    use crate::base::program::PinValue;
     use crate::blocks::external::support::mock::MockConnector;
     use crate::blocks::external::{ExternalIn, ExternalOut, Request};
 
@@ -1218,31 +1219,68 @@ pub(crate) mod connector_deadlines {
     /// far short of the operation completing — or of never timing out.
     const SLACK: Duration = Duration::from_secs(2);
 
-    /// Writes `pins` to `block`, then inspects it every few
-    /// milliseconds — each inspection cancelling its cycle — until it
-    /// faults, and checks it faulted by timing out, on time.
-    async fn times_out_under_requests(client: &mut Client, block: Uuid, pins: Vec<(&str, Value)>) {
+    /// How long the late-timeout tests let an operation run under the
+    /// default deadline before they write `timeout`: long enough for
+    /// the block to have issued it, far short of that deadline.
+    const HEAD_START: Duration = Duration::from_millis(50);
+
+    /// Inspects `blocks` every few milliseconds — each inspection
+    /// cancelling a block's cycle — until all of them faulted, and
+    /// checks each faulted by timing out after [`TIMEOUT_MILLIS`], on
+    /// time: within [`SLACK`] of that deadline, counted from `started`.
+    async fn wait_for_timeouts(client: &mut Client, blocks: &[Uuid], started: Instant) {
         let deadline = Duration::from_millis(TIMEOUT_MILLIS as u64) + SLACK;
+        let mut running = blocks.to_vec();
+        while !running.is_empty() {
+            assert!(
+                started.elapsed() < deadline,
+                "the operations of {running:?} never timed out under steady requests"
+            );
+            let mut still_running = Vec::new();
+            for block in running {
+                let definition = client.inspect(block).await;
+                if definition.state != "fault" {
+                    still_running.push(block);
+                    continue;
+                }
+                let reason = definition.fault_reason.unwrap_or_default();
+                assert!(
+                    reason.contains("timed out after 150ms"),
+                    "{block} faulted by its timeout, got: {reason}"
+                );
+            }
+            running = still_running;
+            sleep(Duration::from_millis(5)).await;
+        }
+    }
+
+    /// Writes `pins` to `block`, then checks its operation times out on
+    /// time under steady requests.
+    async fn times_out_under_requests(client: &mut Client, block: Uuid, pins: Vec<(&str, Value)>) {
         for (pin, value) in pins {
             client.write_input(block, pin, value).await;
         }
+        wait_for_timeouts(client, &[block], Instant::now()).await;
+    }
+
+    /// Writes `pins` to `block`, which issues its operation under the
+    /// default deadline, then — with the operation in flight — writes
+    /// `timeout`, the way a program load does, and checks the operation
+    /// times out by the timeout written last.
+    async fn times_out_by_a_late_timeout(
+        client: &mut Client,
+        block: Uuid,
+        pins: Vec<(&str, Value)>,
+    ) {
         let started = Instant::now();
-        let faulted = loop {
-            let definition = client.inspect(block).await;
-            if definition.state == "fault" {
-                break definition;
-            }
-            assert!(
-                started.elapsed() < deadline,
-                "the operation never timed out under steady requests"
-            );
-            sleep(Duration::from_millis(5)).await;
-        };
-        let reason = faulted.fault_reason.unwrap_or_default();
-        assert!(
-            reason.contains("timed out after 150ms"),
-            "faulted by its timeout, got: {reason}"
-        );
+        for (pin, value) in pins {
+            client.write_input(block, pin, value).await;
+        }
+        sleep(HEAD_START).await;
+        client
+            .write_input(block, "timeout", Value::make_number(TIMEOUT_MILLIS))
+            .await;
+        wait_for_timeouts(client, &[block], started).await;
     }
 
     /// Registers a [`MockConnector`] under a fresh name, with `slow`
@@ -1316,6 +1354,123 @@ pub(crate) mod connector_deadlines {
         })
         .await;
         unregister_connector(&name);
+    }
+
+    /// The pins binding an external block to `connector`, without a
+    /// timeout: the default applies.
+    fn unbounded_binding(connector: &str, address: &str) -> Vec<(&'static str, Value)> {
+        let mut pins = binding(connector, address);
+        pins.retain(|(pin, _)| *pin != "timeout");
+        pins
+    }
+
+    /// A timeout written while a publish is in flight applies to it.
+    pub(crate) async fn external_out_applies_a_late_timeout<E: TestEngine>(mut engine: E) {
+        let name = register_slow("late-timeout-out", |mock| {
+            mock.publish_delay_millis = Some(DELAY_MILLIS);
+        });
+        let block = ExternalOut::new();
+        let id = *block.id();
+        engine.schedule(block).expect("scheduled");
+
+        let mut pins = unbounded_binding(&name, "topic");
+        pins.push(("in", 42.into()));
+        drive(engine, move |mut client| async move {
+            times_out_by_a_late_timeout(&mut client, id, pins).await;
+        })
+        .await;
+        unregister_connector(&name);
+    }
+
+    /// A timeout written while a request is in flight applies to it.
+    pub(crate) async fn request_applies_a_late_timeout<E: TestEngine>(mut engine: E) {
+        let name = register_slow("late-timeout-req", |mock| {
+            mock.request_delay_millis = Some(DELAY_MILLIS);
+        });
+        let block = Request::new();
+        let id = *block.id();
+        engine.schedule(block).expect("scheduled");
+
+        let mut pins = unbounded_binding(&name, "route");
+        pins.push(("in", 42.into()));
+        drive(engine, move |mut client| async move {
+            times_out_by_a_late_timeout(&mut client, id, pins).await;
+        })
+        .await;
+        unregister_connector(&name);
+    }
+
+    /// A timeout written while a subscribe is in flight applies to it.
+    pub(crate) async fn external_in_applies_a_late_timeout<E: TestEngine>(mut engine: E) {
+        let name = register_slow("late-timeout-in", |mock| {
+            mock.subscribe_delay_millis = Some(DELAY_MILLIS);
+        });
+        let block = ExternalIn::new();
+        let id = *block.id();
+        engine.schedule(block).expect("scheduled");
+
+        let pins = unbounded_binding(&name, "sensor");
+        drive(engine, move |mut client| async move {
+            times_out_by_a_late_timeout(&mut client, id, pins).await;
+        })
+        .await;
+        unregister_connector(&name);
+    }
+
+    /// A loaded program's saved timeouts apply to its blocks' first
+    /// operations. A load writes a block's saved values in pin-name
+    /// order — `timeout` after the pins that start the operation — and
+    /// on the multi-threaded engine the block can run in between.
+    pub(crate) async fn a_loaded_timeout_applies_to_the_first_operation<E: TestEngine>(engine: E) {
+        let out = register_slow("loaded-timeout-out", |mock| {
+            mock.publish_delay_millis = Some(DELAY_MILLIS);
+        });
+        let req = register_slow("loaded-timeout-req", |mock| {
+            mock.request_delay_millis = Some(DELAY_MILLIS);
+        });
+        let sub = register_slow("loaded-timeout-in", |mock| {
+            mock.subscribe_delay_millis = Some(DELAY_MILLIS);
+        });
+
+        let mut program = Program::default();
+        let mut ids = Vec::new();
+        for (name, connector, value) in [
+            ("ExternalOut", &out, Some(42)),
+            ("Request", &req, Some(42)),
+            ("ExternalIn", &sub, None),
+        ] {
+            let mut pins = binding(connector, "address");
+            pins.extend(value.map(|value| ("in", value.into())));
+            let inputs = pins
+                .into_iter()
+                .map(|(pin, value)| {
+                    let value = PinValue {
+                        value,
+                        is_connected: false,
+                    };
+                    (pin.to_string(), value)
+                })
+                .collect();
+            let block = ProgramBlock {
+                name: name.to_string(),
+                lib: "core".to_string(),
+                inputs,
+                ..Default::default()
+            };
+            let id = Uuid::new_v4();
+            program.blocks.insert(id.to_string(), block);
+            ids.push(id);
+        }
+
+        drive(engine, move |mut client| async move {
+            let started = Instant::now();
+            client.load(program).await.expect("loaded");
+            wait_for_timeouts(&mut client, &ids, started).await;
+        })
+        .await;
+        for name in [out, req, sub] {
+            unregister_connector(&name);
+        }
     }
 }
 

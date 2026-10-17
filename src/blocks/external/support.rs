@@ -58,12 +58,17 @@ pub(crate) fn input_as_timeout_millis(input: &InputImpl) -> u64 {
     }
 }
 
-/// The point in time a connector operation must settle by.
+/// The point in time a connector operation must settle by: the time it
+/// was first issued plus the block's timeout.
 ///
 /// The block actor drops a block's in-flight `execute` whenever a
 /// mailbox command arrives, and the next cycle re-issues the operation.
-/// A deadline kept on the block across those cycles is what lets steady
-/// command traffic re-issue an operation without restarting its clock.
+/// Keeping the time of the first issue on the block across those cycles
+/// is what lets steady command traffic re-issue an operation without
+/// restarting its clock. Each re-issue builds its deadline anew from
+/// that time and the `timeout` pin's current value, so a timeout
+/// written while the operation is owed applies to it — a program load,
+/// for one, writes `timeout` after the pins that start the operation.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct Deadline {
     /// The timeout the deadline was set with, in milliseconds.
@@ -73,11 +78,12 @@ pub(crate) struct Deadline {
 }
 
 impl Deadline {
-    /// A deadline `millis` milliseconds from now.
-    pub(crate) fn after(millis: u64) -> Self {
+    /// A deadline `millis` milliseconds after `issued_at`, a reading of
+    /// the [`monotonic_millis`] clock.
+    pub(crate) fn since(issued_at: u64, millis: u64) -> Self {
         Self {
             millis,
-            at: monotonic_millis().saturating_add(millis),
+            at: issued_at.saturating_add(millis),
         }
     }
 
@@ -107,15 +113,16 @@ impl Deadline {
 }
 
 /// A connector operation an external block owes: the value to send and,
-/// from the first time the operation is issued, its [`Deadline`]. Kept
-/// on the block until the operation completes, so a cancelled `execute`
+/// from the first time the operation is issued, when that was. Kept on
+/// the block until the operation completes, so a cancelled `execute`
 /// re-issues it with the time it has left.
 #[derive(Debug)]
 pub(crate) struct PendingOp {
     /// The value the operation sends.
     pub(crate) value: Value,
-    /// Set when the operation is first issued.
-    deadline: Option<Deadline>,
+    /// When the operation was first issued, on the [`monotonic_millis`]
+    /// clock.
+    issued_at: Option<u64>,
 }
 
 impl PendingOp {
@@ -123,14 +130,15 @@ impl PendingOp {
     pub(crate) fn new(value: Value) -> Self {
         Self {
             value,
-            deadline: None,
+            issued_at: None,
         }
     }
 
-    /// The operation's deadline, started `millis` milliseconds from now
-    /// if this is the first time it is issued.
+    /// The operation's [`Deadline`]: `millis` milliseconds after it was
+    /// first issued — now, if this is the first time.
     pub(crate) fn deadline(&mut self, millis: u64) -> Deadline {
-        *self.deadline.get_or_insert_with(|| Deadline::after(millis))
+        let issued_at = *self.issued_at.get_or_insert_with(monotonic_millis);
+        Deadline::since(issued_at, millis)
     }
 }
 

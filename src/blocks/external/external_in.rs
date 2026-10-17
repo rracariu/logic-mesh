@@ -17,7 +17,7 @@ use crate::blocks::external::support::{
 };
 use crate::blocks::utils::get_sleep_dur;
 use crate::tokio_impl::block::drain_ready_inputs;
-use crate::tokio_impl::sleep::sleep_millis;
+use crate::tokio_impl::sleep::{monotonic_millis, sleep_millis};
 
 use crate::{blocks::InputImpl, blocks::OutputImpl};
 
@@ -37,11 +37,15 @@ use crate::{blocks::InputImpl, blocks::OutputImpl};
 ///
 /// The deadline is read like ExternalOut's: as raw milliseconds — the
 /// Number's unit is ignored — finite and greater than zero, fractions
-/// rounding up, and anything else falling back to 5000. It starts when
-/// a binding's subscribe is first issued and keeps running when an
-/// engine request addressed to the block cancels the cycle — the
-/// subscribe is then re-issued with what is left of it — so steady
+/// rounding up, and anything else falling back to 5000. It is counted
+/// from when a binding's subscribe was first issued and keeps running
+/// when an engine request addressed to the block cancels the cycle —
+/// the subscribe is then re-issued with what is left of it — so steady
 /// request traffic cannot keep a slow subscribe from timing out.
+/// Rewriting `timeout` while a subscribe is owed applies to that
+/// subscribe without restarting its clock — a program load, for one,
+/// writes `timeout` after `connector` and `address` — and rewriting it
+/// alone never re-subscribes.
 #[block]
 #[derive(BlockProps, Debug)]
 #[category = "external"]
@@ -56,8 +60,9 @@ pub struct ExternalIn {
     pub out: OutputImpl,
     subscription: Option<ActiveSubscription>,
     /// The subscribe owed while it has not settled: kept across a
-    /// cancelled `execute`, deadline included, until the subscribe
-    /// completes, fails or times out, or the binding changes.
+    /// cancelled `execute`, with the time it was first issued, until
+    /// the subscribe completes, fails or times out, or the binding
+    /// changes.
     binding: Option<PendingBinding>,
 }
 
@@ -68,8 +73,9 @@ struct PendingBinding {
     connector: String,
     /// Address the subscribe targets.
     address: String,
-    /// When the subscribe times out.
-    deadline: Deadline,
+    /// When the subscribe was first issued, on the
+    /// [`monotonic_millis`] clock.
+    issued_at: u64,
 }
 
 impl Block for ExternalIn {
@@ -111,14 +117,16 @@ impl Block for ExternalIn {
                 return;
             };
 
-            // The same binding keeps the deadline its first subscribe
-            // started; a new one starts its own.
-            let deadline = match &self.binding {
+            // The same binding keeps counting from its first
+            // subscribe; a new one starts its own clock. The timeout is
+            // read afresh either way, so one written since applies.
+            let issued_at = match &self.binding {
                 Some(binding) if binding.connector == connector && binding.address == address => {
-                    binding.deadline
+                    binding.issued_at
                 }
-                _ => Deadline::after(input_as_timeout_millis(&self.timeout)),
+                _ => monotonic_millis(),
             };
+            let deadline = Deadline::since(issued_at, input_as_timeout_millis(&self.timeout));
             if deadline.has_passed() {
                 self.binding = None;
                 let err = deadline.timeout_error(address);
@@ -128,7 +136,7 @@ impl Block for ExternalIn {
             self.binding = Some(PendingBinding {
                 connector: connector.clone(),
                 address: address.clone(),
-                deadline,
+                issued_at,
             });
 
             // `biased`: a subscribe settling exactly on the deadline
