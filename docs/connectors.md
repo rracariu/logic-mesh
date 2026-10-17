@@ -128,7 +128,7 @@ Five contract rules shape everything downstream:
 | `Subscribe { address, detail }` | `subscribe` failed, or a stream item was an error |
 | `Publish { address, detail }` | `publish` failed |
 | `Request { address, detail }` | `request` failed |
-| `Timeout { address, millis }` | an `ExternalOut` or `Request` block's deadline elapsed |
+| `Timeout { address, millis }` | an `ExternalIn`, `ExternalOut` or `Request` block's deadline elapsed |
 | `Transport(String)` | connection-level failure outside a specific operation |
 
 Each variant carries the address, so callers can identify the failing route without parsing display
@@ -138,15 +138,22 @@ strings. Inside blocks these surface as `BlockState::fault(...)`.
 
 | Block | Pins | Fires when | Faults when |
 |---|---|---|---|
-| **`ExternalIn`** | `connector: Str`, `address: Str` → `out: Null` (any kind) | every value the subscription yields is set on `out` | no such connector · subscribe error · stream error · stream ended |
+| **`ExternalIn`** | `connector: Str`, `address: Str`, `timeout: Number` (ms, default 5000) → `out: Null` (any kind) | every value the subscription yields is set on `out` | no such connector · subscribe error · subscribe timeout · stream error · stream ended |
 | **`ExternalOut`** | `in: Null`, `connector`, `address`, `timeout: Number` (ms, default 5000) → `out` (echo of the published value) | a **fresh** non-`Null` `in` value | no such connector · publish error · timeout |
 | **`Request`** | `in: Null`, `connector`, `address`, `timeout: Number` (ms, default 5000) → `out` (the response) | a **fresh** non-`Null` `in` value | no such connector · request error · timeout |
 
 Shared behaviour:
 
 - Rewriting `connector`, `address` or `timeout` alone **re-binds without re-firing**. `ExternalIn`
-  drops its stream and re-subscribes; `ExternalOut` and `Request` do not resend their cached value.
+  drops its stream and re-subscribes when `connector` or `address` changes, never for `timeout`
+  alone; `ExternalOut` and `Request` do not resend their cached value.
 - A value arriving before the binding pins resolve is **held** and sent once they do.
+- `timeout` is read as raw milliseconds — the Number's unit is ignored — and must be finite and
+  greater than zero; fractions round up, and anything else falls back to 5000. A deadline counts
+  from when the subscribe, publish or request was **first issued** and keeps running across
+  cancelled cycles (§5.4), so steady engine requests cannot keep a slow operation from timing out.
+  Each re-issue reads `timeout` again, so a timeout written while an operation is owed applies to it
+  — a program load, for one, writes `timeout` after the pins that start the operation.
 - `ExternalIn` re-subscribes automatically after a stream ends, throttled by the engine's polling
   interval, so it recovers on its own once a connector restarts.
 - "Fresh" means the `in` cache actually changed. Re-emitting an identical value does not fire, which
@@ -273,7 +280,8 @@ stateDiagram-v2
   [*] --> Unbound
   Unbound --> Unbound: connector or address pin empty — wait_on_inputs(poll)
   Unbound --> Binding: both pins set
-  Binding --> Faulted: no connector with that name, or subscribe() error
+  Binding --> Binding: execute() cancelled — subscribe re-issued with what is left of its deadline
+  Binding --> Faulted: no connector with that name, subscribe() error, or the timeout elapsed
   Faulted --> Binding: next cycle, throttled by the poll interval
   Binding --> Streaming: subscribe() Ok — stream stored on self
   Streaming --> Streaming: Some(Ok(v)) — out.set(v)
@@ -283,12 +291,15 @@ stateDiagram-v2
   Streaming --> Unbound: a binding pin cleared — subscription dropped
 ```
 
-Two properties make this safe under cancellation:
+Three properties make this safe under cancellation:
 
 - While streaming, `execute()` races `stream.next()` against `sleep(poll)`, so pin rewrites are
   noticed even when the external source is quiet.
 - The stream is owned by `self`, so a block actor cancelling `execute()` leaves the subscription
   intact, and channel-backed streams lose no values.
+- A subscribe that has not settled is kept on `self` with the time it was first issued, so a
+  cancelled cycle re-issues it without restarting its deadline, and one whose deadline passed while
+  cancelled faults without being issued again.
 
 ### 5.4 `ExternalOut` and `Request` — the pending-value machine
 
@@ -302,9 +313,16 @@ stateDiagram-v2
   Pending --> InFlight: publish() or request() awaited
   InFlight --> Idle: Ok — out.set(value or response)
   InFlight --> Idle: Err — fault
-  InFlight --> Idle: ExternalOut and Request — timeout elapsed, fault, value not re-sent
-  InFlight --> Pending: execute() cancelled by the actor mailbox — future dropped, value kept, retried next cycle
+  InFlight --> Idle: timeout elapsed — fault, value not re-sent
+  InFlight --> Pending: execute() cancelled by the actor mailbox — future dropped, value and first-issue time kept
+  Pending --> Idle: deadline passed while cancelled — fault, value not re-sent
 ```
+
+The pending value carries the time its operation was first issued. A cycle cancelled by the actor
+mailbox — every engine request addressed to the block cancels one — re-issues the operation with what
+is left of its deadline rather than a fresh one, and an operation whose deadline passed in the
+meantime times out without being issued again. The deadline is rebuilt from that time and the current
+`timeout` value on every re-issue, so a `timeout` written while the value is pending applies to it.
 
 ## 6. Data flows
 
@@ -377,6 +395,9 @@ sequenceDiagram
 
 A **timeout** clears the pending value and does not retry; a **cancellation** from the actor mailbox
 keeps it for the next cycle. Request handlers should therefore be idempotent, or deduplicate by key.
+The deadline counts from the first attempt, not from each re-sent one: cancellations do not extend
+it, and a request whose deadline passed while its cycle was cancelled times out without being sent
+again.
 
 ### 6.4 The wasm bridge: a JS `subscribe` as a Rust stream
 
@@ -411,9 +432,9 @@ a cancelled subscribe cannot leak a live JS subscription.
 
 | Path | Guarantee | Mechanism |
 |---|---|---|
-| `ExternalIn` | subscription survives a cancelled `execute()`; channel-backed streams lose nothing; auto-resubscribe after the stream ends | stream owned by `self`; `select!` against the poll interval |
-| `ExternalOut` | **at-least-once** on cancel; a **timeout drops** the value with no retry; `Null` never publishes; a rebind never re-publishes | `select! { biased; ... }` with `pending` — kept on cancel, cleared on any completion |
-| `Request` | **at-least-once** on cancel; a **timeout drops** the value with no retry; a response beats a simultaneous deadline | `select! { biased; ... }` with `pending` |
+| `ExternalIn` | subscription survives a cancelled `execute()`; channel-backed streams lose nothing; auto-resubscribe after the stream ends; a subscribe times out on its first-issue deadline | stream owned by `self`; `select!` against the poll interval; pending binding with its first-issue time |
+| `ExternalOut` | **at-least-once** on cancel; a **timeout drops** the value with no retry; cancellations never extend the deadline; `Null` never publishes; a rebind never re-publishes | `select! { biased; ... }` with `pending` — kept on cancel with its first-issue time, cleared on any completion |
+| `Request` | **at-least-once** on cancel; a **timeout drops** the value with no retry; cancellations never extend the deadline; a response beats a simultaneous deadline | `select! { biased; ... }` with `pending` |
 | Connector `start`/`stop` | bounded to 5 s each; failures logged, never fatal; `start` completes before any block runs | `tokio::select!` against `sleep_millis` |
 | `Reset` / detach | no block can resolve a connector mid-stop | unregister **before** stop |
 | JS callback contract | `callback()` with no arguments ends the stream — an accidental `undefined` does the same | `make_value_callback` |

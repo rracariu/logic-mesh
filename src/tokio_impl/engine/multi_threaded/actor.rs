@@ -131,13 +131,29 @@ async fn change_of_value_check<B: Block + 'static>(
     }
 
     if !changes.is_empty() || state != prev_state {
-        // Unbounded channel — see single_threaded/actor.rs rationale.
-        for sender in notification_channels.read().await.values() {
-            let _ = sender.send(WatchMessage {
+        // Unbounded channel — see single_threaded/actor.rs rationale. A
+        // failed send means the watcher went away without
+        // unsubscribing; drop it under the write lock, sparing the
+        // common path the exclusive lock.
+        let mut gone = Vec::new();
+        for (watcher, sender) in notification_channels.read().await.iter() {
+            let message = WatchMessage {
                 block_id: *block.id(),
                 changes: changes.clone(),
                 state: state.clone(),
-            });
+            };
+            if sender.send(message).is_err() {
+                gone.push(*watcher);
+            }
+        }
+        if !gone.is_empty() {
+            // The id may have subscribed again in between, with a live
+            // channel: only drop a channel that is still closed.
+            notification_channels
+                .write()
+                .await
+                .retain(|watcher, sender| !(gone.contains(watcher) && sender.is_closed()));
+            log::debug!("Dropped watchers {gone:?}: their receivers are gone");
         }
     }
 }
@@ -182,6 +198,60 @@ mod test {
             .await
             .expect("actor task exits once its mailbox closes")
             .expect("actor task completes without panicking");
+    }
+
+    /// Regression: see the single-threaded
+    /// `a_watcher_whose_receiver_is_gone_is_dropped`.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn a_watcher_whose_receiver_is_gone_is_dropped() {
+        let (mailbox_tx, mailbox_rx) = mpsc::channel(BLOCK_MAILBOX_CAP);
+        let (_gate, gate_rx) = watch::channel(true);
+        let watchers = super::WatchersHandle::default();
+        let (live, gone) = (Uuid::new_v4(), Uuid::new_v4());
+        let (live_tx, mut live_rx) = mpsc::unbounded_channel();
+        let (gone_tx, gone_rx) = mpsc::unbounded_channel();
+        drop(gone_rx);
+        watchers.write().await.insert(live, live_tx);
+        watchers.write().await.insert(gone, gone_tx);
+        let _actor = tokio::spawn(block_actor_task(
+            Add::new(),
+            mailbox_rx,
+            watchers.clone(),
+            gate_rx,
+        ));
+
+        // A pin write is a change every watcher is told about.
+        let (reply, written) = oneshot::channel();
+        mailbox_tx
+            .send(BlockMailboxCmd::WriteInput {
+                name: "in0".to_string(),
+                value: 1.into(),
+                reply,
+            })
+            .await
+            .unwrap_or_else(|_| panic!("the actor is receiving"));
+        timeout(Duration::from_secs(2), written)
+            .await
+            .expect("answered")
+            .expect("replied")
+            .expect("written");
+        timeout(Duration::from_secs(2), live_rx.recv())
+            .await
+            .expect("the live watcher is notified");
+
+        // The actor drops the watcher just after notifying the live one,
+        // on another worker.
+        for _ in 0..100 {
+            if watchers.read().await.len() == 1 {
+                break;
+            }
+            sleep(Duration::from_millis(10)).await;
+        }
+        assert_eq!(
+            watchers.read().await.keys().copied().collect::<Vec<_>>(),
+            vec![live],
+            "only the live watcher is kept"
+        );
     }
 
     /// Regression: see the single-threaded

@@ -4,16 +4,14 @@
 
 use libhaystack::val::Value;
 
-use crate::base::error::ConnectorError;
 use crate::base::{
     block::{Block, BlockProps, BlockState},
     connector::get_connector,
     input::{InputProps, input_reader::InputReader},
     output::Output,
 };
-use crate::blocks::external::support::{input_as_str, input_as_timeout_millis};
+use crate::blocks::external::support::{PendingOp, input_as_str, input_as_timeout_millis};
 use crate::tokio_impl::block::drain_ready_inputs;
-use crate::tokio_impl::sleep::sleep_millis;
 
 use crate::{blocks::InputImpl, blocks::OutputImpl};
 
@@ -50,6 +48,17 @@ use crate::{blocks::InputImpl, blocks::OutputImpl};
 /// publish cancelled mid-flight may already have reached the external
 /// system and will be sent again, so subscribers should tolerate
 /// duplicates (at-least-once semantics).
+///
+/// The deadline starts when a value's publish is first issued and
+/// keeps running across those cancellations — any engine request
+/// addressed to the block cancels its cycle — so a re-issued publish
+/// only gets what is left of it, and steady request traffic cannot
+/// keep a slow publish from timing out. A publish whose deadline ran
+/// out while its cycle was cancelled times out without being issued
+/// again. Each re-issue reads `timeout` afresh, still counting from
+/// the first issue, so rewriting the pin while a publish is owed
+/// applies to that publish without restarting its clock — a program
+/// load, for one, writes `timeout` after `in`.
 #[block]
 #[derive(BlockProps, Debug)]
 #[category = "external"]
@@ -64,19 +73,20 @@ pub struct ExternalOut {
     pub timeout: InputImpl,
     #[output(kind = "Null")]
     pub out: OutputImpl,
-    /// The value awaiting a completed publish: set when a fresh `in`
-    /// value arrives, kept across a cancelled `execute` so the publish
-    /// is re-issued, and cleared on any completion — publish success,
-    /// publish error, connector miss, or timeout.
-    pending: Option<Value>,
+    /// The publish owed: set when a fresh `in` value arrives, kept —
+    /// with the time it was first issued — across a cancelled
+    /// `execute` so the publish is re-issued, and cleared on any
+    /// completion — publish success, publish error, connector miss, or
+    /// timeout.
+    pending: Option<PendingOp>,
     /// The last `in` cache value `execute` has taken note of — the
     /// freshness baseline. Persisted on the block rather than
     /// snapshotted per `execute` call because the cache can move while
-    /// no `execute` is running: the engine's `WriteInput` mailbox
-    /// command writes the cache directly (no watch traffic), and its
-    /// own arrival is what cancels the in-flight `execute` — so a
-    /// snapshot taken at the next entry would already contain the new
-    /// value and the freshness compare could never fire.
+    /// no `execute` is running: an engine pin write lands in the cache
+    /// as it arrives, and its arrival is what cancels the in-flight
+    /// `execute` — so a snapshot taken at the next entry would already
+    /// contain the new value and the freshness compare could never
+    /// fire.
     last_input: Option<Value>,
 }
 
@@ -96,24 +106,19 @@ impl ExternalOut {
         if let Some(value) = &self.last_input
             && !matches!(value, Value::Null)
         {
-            self.pending = Some(value.clone());
+            self.pending = Some(PendingOp::new(value.clone()));
         }
     }
 }
 
 impl Block for ExternalOut {
     async fn execute(&mut self) {
-        // Promote before deciding whether to block on inputs: a value
-        // the engine wrote into the `in` cache between `execute` calls
-        // (a UI pin write, `load_program` seeding — both take the
-        // `WriteInput` mailbox path) produces no watch traffic, so
-        // waiting on inputs would park right past it.
-        self.promote_fresh_input();
-
         // Drain without blocking only when the held value can be
         // published right away; otherwise block on inputs so the
         // actor does not spin. Config pins are still drained either
-        // way, so rebinds are honored before every attempt.
+        // way, so rebinds are honored before every attempt — and an
+        // engine pin write wakes the input read like linked value
+        // flow does.
         let can_publish_now = self.pending.is_some()
             && input_as_str(&self.connector).is_some()
             && input_as_str(&self.address).is_some();
@@ -125,17 +130,17 @@ impl Block for ExternalOut {
         }
         self.promote_fresh_input();
 
-        let Some(value) = self.pending.clone() else {
-            return;
-        };
-
         let (Some(connector), Some(address)) =
             (input_as_str(&self.connector), input_as_str(&self.address))
         else {
             return;
         };
 
-        let timeout_millis = input_as_timeout_millis(&self.timeout);
+        let Some(pending) = self.pending.as_mut() else {
+            return;
+        };
+        let value = pending.value.clone();
+        let deadline = pending.deadline(input_as_timeout_millis(&self.timeout));
 
         let Some(handle) = get_connector(&connector) else {
             self.pending = None;
@@ -144,6 +149,16 @@ impl Block for ExternalOut {
             )));
             return;
         };
+
+        // A publish cut short by a cancelled cycle is re-issued with
+        // what is left of its deadline; once none is left it times out
+        // without being issued again.
+        if deadline.has_passed() {
+            self.pending = None;
+            let err = deadline.timeout_error(address);
+            self.set_state(BlockState::fault(format!("ExternalOut: {err}")));
+            return;
+        }
 
         // `biased` polls the publish arm first, so a publish settling
         // exactly on the deadline deterministically beats the timeout.
@@ -162,12 +177,9 @@ impl Block for ExternalOut {
                     }
                 }
             }
-            _ = sleep_millis(timeout_millis) => {
+            () = deadline.passed() => {
                 self.pending = None;
-                let err = ConnectorError::Timeout {
-                    address,
-                    millis: timeout_millis,
-                };
+                let err = deadline.timeout_error(address);
                 self.set_state(BlockState::fault(format!("ExternalOut: {err}")));
             }
         }
@@ -430,17 +442,16 @@ mod test {
         unregister_connector(&name);
     }
 
-    /// The engine's `WriteInput` mailbox command writes the `in` cache
-    /// directly — no watch traffic — and the command's own arrival is
-    /// what cancels the in-flight `execute`, so the write always lands
-    /// between two `execute` calls. The next `execute` must still
-    /// treat the value as fresh and publish it.
+    /// An engine pin write lands in the `in` cache as its mailbox
+    /// command arrives, and that arrival is what cancels the in-flight
+    /// `execute`, so the write always lands between two `execute`
+    /// calls — on an unlinked `in`, too. The next `execute` must treat
+    /// the value as fresh and publish it.
     #[tokio::test]
-    async fn cache_write_between_executes_publishes() {
-        use crate::base::Status;
-        use crate::base::input::Input;
+    async fn pin_write_between_executes_publishes() {
+        use crate::tokio_impl::block::write_input_value;
 
-        let name = unique_name("out-cache-write");
+        let name = unique_name("out-pin-write");
         let mock = Arc::new(MockConnector::default());
         register_connector(&name, mock.clone()).expect("registered");
 
@@ -451,18 +462,17 @@ mod test {
         ])
         .await;
 
-        // Mimic `BlockMailboxCmd::WriteInput`: a direct cache write on
-        // the `in` pin, invisible to the watch machinery.
-        block.input.set_value(42.into(), Status::Ok);
+        // What `BlockMailboxCmd::WriteInput` does to the unlinked `in`.
+        write_input_value(&mut block.input, 42.into());
 
         tokio::time::timeout(Duration::from_secs(1), block.execute())
             .await
-            .expect("execute publishes the cache-written value instead of parking");
+            .expect("execute publishes the written value instead of parking");
 
         assert_eq!(
             mock.published.lock().unwrap().clone(),
             vec![("topic".to_string(), 42.into())],
-            "a cache-written `in` value is published"
+            "an `in` value from a pin write is published"
         );
         assert_eq!(block.out.value, 42.into());
         assert!(!block.state().is_fault());

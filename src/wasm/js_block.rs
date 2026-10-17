@@ -81,10 +81,9 @@ pub struct JsBlock {
     /// values into the input caches, which persist on the block, and
     /// the retry re-reads them — so a value written between the
     /// cancellation and the retry (typically by the very `WriteInput`
-    /// whose arrival cancelled us, a direct cache write with no watch
-    /// traffic) supersedes the stale reaction, the same freshest-wins
-    /// choice as ExternalOut's "a fresh value replaces any held
-    /// retry".
+    /// whose arrival cancelled us, which lands in the cache at once)
+    /// supersedes the stale reaction, the same freshest-wins choice as
+    /// ExternalOut's "a fresh value replaces any held retry".
     pending: bool,
 }
 

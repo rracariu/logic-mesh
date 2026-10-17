@@ -97,7 +97,8 @@ pub enum EngineMessage<WatchEventSender: Clone> {
     /// Response to [`AddBlockReq`](Self::AddBlockReq).
     AddBlockRes(Result<Uuid, String>),
 
-    /// Request to remove a block by UUID.
+    /// Request to remove a block by UUID, with all its links — also
+    /// when its actor task is gone already.
     RemoveBlockReq(Uuid, Uuid),
     /// Response to [`RemoveBlockReq`](Self::RemoveBlockReq).
     RemoveBlockRes(Result<Uuid, String>),
@@ -122,17 +123,34 @@ pub enum EngineMessage<WatchEventSender: Clone> {
     /// Response to [`WatchBlockUnsubReq`](Self::WatchBlockUnsubReq).
     WatchBlockUnsubRes(Result<Uuid, &'static str>),
 
-    /// Request the current program in save format.
+    /// Request the current program in save format: the name and
+    /// description of the program loaded last (none after a
+    /// [`Reset`](Self::Reset)), and every block and link the engine
+    /// holds.
+    ///
+    /// A block whose actor task is gone — its pin values with it — is
+    /// saved with its type, UI metadata and links but no pin values,
+    /// rather than failing the whole save.
     GetCurrentProgramReq(Uuid),
     /// Response to [`GetCurrentProgramReq`](Self::GetCurrentProgramReq).
     GetCurrentProgramRes(Result<Program, String>),
 
     /// Atomically load a full [`Program`] (blocks, links, pin values, UI
-    /// metadata) into the engine. Replaces the multi-call JS chain of
-    /// `addBlock` + `createLink` + `writeBlockInput` per block.
+    /// metadata, name and description) into the engine. Replaces the
+    /// multi-call JS chain of `addBlock` + `createLink` +
+    /// `writeBlockInput` per block.
     ///
-    /// A program naming a block id that is already scheduled, or naming
-    /// one twice, is rejected before any of its blocks is scheduled.
+    /// All or nothing: the program is checked whole before any of its
+    /// blocks is scheduled — the checks of
+    /// [`Engine::schedule_program_blocks`](crate::base::engine::Engine::schedule_program_blocks),
+    /// so a block or link id the engine holds already is rejected — and
+    /// a failure while wiring it removes its blocks again. A failed load
+    /// leaves the engine as it was, though blocks that ran meanwhile may
+    /// have had effects outside it, such as a connector publish.
+    ///
+    /// Every link keeps the id it was saved under — its
+    /// [`LinkData::id`], or else its key in [`Program::links`] — so a
+    /// [`RemoveLinkReq`](Self::RemoveLinkReq) can name a saved id.
     LoadProgramReq(Uuid, Program),
     /// Response to [`LoadProgramReq`](Self::LoadProgramReq).
     LoadProgramRes(Result<(), String>),
@@ -148,8 +166,13 @@ pub enum EngineMessage<WatchEventSender: Clone> {
     EvaluateBlockRes(Result<Vec<Value>, String>),
 
     /// Connects two blocks via a link.
+    ///
+    /// The link gets the id [`LinkData::id`] names, if set, and a fresh
+    /// one otherwise. Link ids are unique per engine: an id another link
+    /// already has is rejected, as is one that is not a UUID.
     ConnectBlocksReq(Uuid, LinkData),
-    /// Response to [`ConnectBlocksReq`](Self::ConnectBlocksReq).
+    /// Response to [`ConnectBlocksReq`](Self::ConnectBlocksReq): the link,
+    /// with its id.
     ConnectBlocksRes(Result<LinkData, String>),
 
     /// Removes a link by UUID.
@@ -204,7 +227,8 @@ pub enum EngineMessage<WatchEventSender: Clone> {
     /// Resume block execution. See the
     /// [lifecycle contract](crate::base::engine#lifecycle-messages).
     Resume,
-    /// Reset the engine, removing all blocks and links, paused or not.
-    /// See the [lifecycle contract](crate::base::engine#lifecycle-messages).
+    /// Reset the engine, removing all blocks and links and forgetting
+    /// the loaded program's name and description, paused or not. See the
+    /// [lifecycle contract](crate::base::engine#lifecycle-messages).
     Reset,
 }

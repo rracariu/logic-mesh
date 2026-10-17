@@ -9,11 +9,13 @@
 //! [`Send`] by construction (trait-method returns carry `+ Send`; see
 //! [`crate::base::block::BlockProps`]).
 //!
-//! Shares the per-block mailbox protocol (`block_mailbox`)
-//! with the [`SingleThreadedEngine`](crate::single_threaded::SingleThreadedEngine), so the actor task implementation is
-//! near-identical — the only MT-specific bits are watchers
-//! (`Arc<RwLock<...>>`) and the cross-thread mailbox semantics, both of
-//! which already work over [`tokio::spawn`].
+//! Shares the per-block mailbox protocol (`block_mailbox`) and the
+//! block graph (`graph`) with the
+//! [`SingleThreadedEngine`](crate::single_threaded::SingleThreadedEngine),
+//! so the actor task and every running-phase operation are the same —
+//! the only MT-specific bits are watchers (`Arc<RwLock<...>>`) and the
+//! cross-thread mailbox semantics, both of which already work over
+//! [`tokio::spawn`].
 //!
 //! ## Runtime requirement
 //!
@@ -26,19 +28,18 @@ use std::collections::BTreeMap;
 use std::marker::PhantomData;
 use std::sync::Arc;
 
-use crate::base::error::{EngineError, LinkEnd, RegistryError, Result, parse_block_uuid};
+use crate::base::error::{EngineError, RegistryError, Result, parse_block_uuid};
 use libhaystack::val::Value;
 use tokio::sync::{
     RwLock,
     mpsc::{self, Receiver, Sender, UnboundedSender},
-    oneshot, watch,
+    watch,
 };
 use uuid::Uuid;
 
-use super::super::block_mailbox::{
-    BLOCK_MAILBOX_CAP, BlockMailboxCmd, mailbox_request, mailbox_send, terminate_actor,
-};
+use super::super::block_mailbox::{BLOCK_MAILBOX_CAP, BlockMailboxCmd};
 use super::super::connectors::{self, ManagedConnectors};
+use super::super::graph::{BlockGraph, BlockHandle, ProgramHost, StagedProgram, stage_program};
 use super::actor::{WatchersHandle, block_actor_task};
 use crate::base::connector::{ConnectorHandle, register_connector};
 use crate::base::{
@@ -47,13 +48,10 @@ use crate::base::{
         Engine, EngineState, Idle, MaybeSendSync, Running,
         messages::{BlockDefinition, EngineMessage, WatchMessage},
     },
-    program::{
-        Program,
-        data::{LinkData, PinValue, Position, ProgramBlock},
-    },
+    program::{Program, data::LinkData},
 };
 use crate::blocks::registry::{BlockSink, CORE_LIB, get_block};
-use crate::tokio_impl::engine::{program_block_ids, schedule_block_on_engine_mt};
+use crate::tokio_impl::engine::{ensure_schedulable_mt, schedule_block_on_engine_mt};
 use crate::tokio_impl::{MtBlock, ReaderImpl, WriterImpl};
 
 /// Concrete engine-message type.
@@ -61,54 +59,6 @@ use crate::tokio_impl::{MtBlock, ReaderImpl, WriterImpl};
 /// The watch-event sender is unbounded — see `wasm/engine_command.rs`
 /// `create_watch` for the rationale.
 pub type Messages = EngineMessage<UnboundedSender<WatchMessage>>;
-
-/// Engine-side handle for a scheduled block in the MT engine.
-///
-/// Same shape as the [ST handle](crate::single_threaded::BlockHandle).
-/// Notably it no longer carries a `worker_idx` — the tokio MT runtime
-/// is free to migrate the actor task between worker threads via
-/// work-stealing, so a fixed pinning would be misleading.
-pub struct BlockHandle {
-    id: Uuid,
-    name: String,
-    library: String,
-    /// Owned clone of the block's descriptor — see
-    /// [`BlockHandle::desc`](crate::single_threaded::BlockHandle::desc)
-    /// for the rationale (JS blocks).
-    desc: BlockDesc,
-    mailbox: mpsc::Sender<BlockMailboxCmd>,
-    /// See [`BlockHandle::label`](crate::single_threaded::BlockHandle::label).
-    label: Option<String>,
-    /// See [`BlockHandle::position`](crate::single_threaded::BlockHandle::position).
-    position: Option<Position>,
-}
-
-impl BlockHandle {
-    /// Returns the block's unique id.
-    pub fn id(&self) -> &Uuid {
-        &self.id
-    }
-    /// Returns the block's type name.
-    pub fn name(&self) -> &str {
-        &self.name
-    }
-    /// Returns the block's library name.
-    pub fn library(&self) -> &str {
-        &self.library
-    }
-    /// Returns the block's descriptor.
-    pub fn desc(&self) -> &BlockDesc {
-        &self.desc
-    }
-    /// Returns the user-supplied display label, if any.
-    pub fn label(&self) -> Option<&str> {
-        self.label.as_deref()
-    }
-    /// Returns the UI position, if any.
-    pub fn position(&self) -> Option<Position> {
-        self.position
-    }
-}
 
 /// Multi-threaded execution environment for blocks.
 ///
@@ -140,9 +90,11 @@ impl BlockHandle {
 /// }
 /// ```
 pub struct MultiThreadedEngine<S: EngineState = Idle> {
-    handles: BTreeMap<Uuid, BlockHandle>,
-    /// Links queued while idle; wired at `run()` start.
-    pending_links: Vec<LinkData>,
+    /// Every scheduled block's handle.
+    graph: BlockGraph,
+    /// Programs scheduled while idle, whose links and pin values are
+    /// applied at `run()` start.
+    pending: Vec<StagedProgram>,
     sender: Sender<Messages>,
     receiver: Receiver<Messages>,
     pub(in super::super) reply_senders: BTreeMap<Uuid, Sender<Messages>>,
@@ -188,8 +140,10 @@ impl Engine for MultiThreadedEngine<Idle> {
     }
 
     fn schedule_program_blocks(&mut self, program: &Program) -> Result<()> {
-        let links = self.stage_program(program)?;
-        self.pending_links.extend(links);
+        let staged = stage_program(self, program)?;
+        let (name, description) = staged.identity();
+        self.graph.set_identity(name, description);
+        self.pending.push(staged);
         Ok(())
     }
 
@@ -217,8 +171,8 @@ impl MultiThreadedEngine<Idle> {
         let (sender, receiver) = mpsc::channel(32);
 
         Self {
-            handles: BTreeMap::new(),
-            pending_links: Vec::new(),
+            graph: BlockGraph::default(),
+            pending: Vec::new(),
             sender,
             receiver,
             reply_senders: BTreeMap::new(),
@@ -261,8 +215,8 @@ impl<S: EngineState> MultiThreadedEngine<S> {
     /// Moves the engine to phase `T`, keeping all of its state.
     fn into_state<T: EngineState>(self) -> MultiThreadedEngine<T> {
         let Self {
-            handles,
-            pending_links,
+            graph,
+            pending,
             sender,
             receiver,
             reply_senders,
@@ -272,8 +226,8 @@ impl<S: EngineState> MultiThreadedEngine<S> {
             state: _,
         } = self;
         MultiThreadedEngine {
-            handles,
-            pending_links,
+            graph,
+            pending,
             sender,
             receiver,
             reply_senders,
@@ -298,29 +252,12 @@ impl<S: EngineState> MultiThreadedEngine<S> {
     /// Returns sync metadata handles for every scheduled block. Use the
     /// async snapshot APIs (`inspect_block`, etc.) to read dynamic state.
     pub fn block_handles(&self) -> Vec<&BlockHandle> {
-        self.handles.values().collect()
+        self.graph.handles()
     }
 
     /// Returns the handle for a specific block, if scheduled.
     pub fn block_handle(&self, id: &Uuid) -> Option<&BlockHandle> {
-        self.handles.get(id)
-    }
-
-    fn mailbox(&self, id: &Uuid) -> Option<&mpsc::Sender<BlockMailboxCmd>> {
-        self.handles.get(id).map(|h| &h.mailbox)
-    }
-
-    /// [`block_handle`](Self::block_handle) for callers that treat an
-    /// unscheduled id as an error rather than an absence.
-    fn block_handle_or_err(&self, id: &Uuid) -> Result<&BlockHandle, EngineError> {
-        self.block_handle(id)
-            .ok_or(EngineError::BlockInstanceNotFound { id: *id })
-    }
-
-    /// [`mailbox`](Self::mailbox), same treatment.
-    fn mailbox_or_err(&self, id: &Uuid) -> Result<&mpsc::Sender<BlockMailboxCmd>, EngineError> {
-        self.mailbox(id)
-            .ok_or(EngineError::BlockInstanceNotFound { id: *id })
+        self.graph.handle(id)
     }
 
     /// Spawns `block`'s actor task onto the ambient runtime and records
@@ -333,26 +270,8 @@ impl<S: EngineState> MultiThreadedEngine<S> {
     where
         B: MtBlock + 'static,
     {
-        let id = *block.id();
-        if self.handles.contains_key(&id) {
-            return Err(EngineError::DuplicateBlockId { id });
-        }
-        let name = block.name().to_string();
-        let library = block.desc().library.clone();
-        // See `spawn_block` on SingleThreadedEngine for why we clone.
-        let desc: BlockDesc = block.desc().clone();
         let (mailbox_tx, mailbox_rx) = mpsc::channel::<BlockMailboxCmd>(BLOCK_MAILBOX_CAP);
-
-        let handle = BlockHandle {
-            id,
-            name,
-            library,
-            desc,
-            mailbox: mailbox_tx,
-            label: None,
-            position: None,
-        };
-        self.handles.insert(id, handle);
+        self.graph.insert(&block, mailbox_tx)?;
 
         let watchers = self.watchers.clone();
         tokio::spawn(block_actor_task(
@@ -362,88 +281,6 @@ impl<S: EngineState> MultiThreadedEngine<S> {
             self.execution.subscribe(),
         ));
         Ok(())
-    }
-
-    /// Schedules every block of `program`, recording its UI metadata,
-    /// and returns the program's links once validated, ready to wire.
-    ///
-    /// Every block id is checked before anything is scheduled, so a
-    /// program naming an invalid or already-scheduled id schedules no
-    /// block at all.
-    fn stage_program(&mut self, program: &Program) -> Result<Vec<LinkData>> {
-        let blocks = program_block_ids(program, |id| self.handles.contains_key(id))?;
-        for (id, pb) in blocks {
-            let block_def = get_block(&pb.name, Some(pb.lib.as_str())).ok_or_else(|| {
-                RegistryError::BlockNotFound {
-                    library: pb.lib.clone(),
-                    name: pb.name.clone(),
-                }
-            })?;
-            schedule_block_on_engine_mt(&block_def.desc, Some(id), self)?;
-            if let Some(handle) = self.handles.get_mut(&id) {
-                handle.label = pb.label.clone();
-                handle.position = pb.positions;
-            }
-        }
-        program
-            .links
-            .values()
-            .map(|link| self.validate_link(link))
-            .collect()
-    }
-
-    /// Validates `link_data` against the scheduled blocks and returns it
-    /// with an id assigned. Real wiring needs mailbox round-trips, done by
-    /// the running engine.
-    fn validate_link(&self, link_data: &LinkData) -> Result<LinkData> {
-        let source_id = parse_block_uuid(&link_data.source_block_uuid)?;
-        let target_id = parse_block_uuid(&link_data.target_block_uuid)?;
-        let source_handle = self.block_handle_or_err(&source_id)?;
-        let target_handle = self.block_handle_or_err(&target_id)?;
-
-        let source_pin = link_data.source_block_pin_name.as_str();
-        let source_pin_exists = source_handle
-            .desc()
-            .outputs
-            .iter()
-            .any(|o| o.name == source_pin)
-            || source_handle
-                .desc()
-                .inputs
-                .iter()
-                .any(|i| i.name == source_pin);
-        if !source_pin_exists {
-            return Err(EngineError::PinNotFound {
-                end: LinkEnd::Source,
-                block: source_id,
-                pin: source_pin.to_string(),
-            }
-            .into());
-        }
-
-        let target_pin = link_data.target_block_pin_name.as_str();
-        let target_pin_exists = target_handle
-            .desc()
-            .inputs
-            .iter()
-            .any(|i| i.name == target_pin);
-        if !target_pin_exists {
-            return Err(EngineError::PinNotFound {
-                end: LinkEnd::Target,
-                block: target_id,
-                pin: target_pin.to_string(),
-            }
-            .into());
-        }
-
-        let id = link_data
-            .id
-            .clone()
-            .unwrap_or_else(|| Uuid::new_v4().to_string());
-        Ok(LinkData {
-            id: Some(id),
-            ..link_data.clone()
-        })
     }
 }
 
@@ -456,10 +293,29 @@ impl<S: EngineState> BlockSink for MultiThreadedEngine<S> {
     }
 }
 
+impl<S: EngineState> ProgramHost for MultiThreadedEngine<S> {
+    fn graph(&self) -> &BlockGraph {
+        &self.graph
+    }
+
+    fn graph_mut(&mut self) -> &mut BlockGraph {
+        &mut self.graph
+    }
+
+    fn ensure_schedulable(&self, desc: &BlockDesc) -> Result<()> {
+        ensure_schedulable_mt(desc)
+    }
+
+    fn schedule_desc(&mut self, desc: &BlockDesc, id: Uuid) -> Result<Uuid> {
+        schedule_block_on_engine_mt(desc, Some(id), self)
+    }
+}
+
 impl MultiThreadedEngine<Running> {
     /// The event loop: starts the managed connectors, wires the links
-    /// queued while idle, opens the execution gate, then services engine
-    /// messages until [`Shutdown`](EngineMessage::Shutdown) — see the
+    /// and pushes the pin values of the programs scheduled while idle,
+    /// opens the execution gate, then services engine messages until
+    /// [`Shutdown`](EngineMessage::Shutdown) — see the
     /// [lifecycle contract](crate::base::engine#lifecycle-messages).
     async fn event_loop(&mut self) {
         // Start connectors first. MT actor tasks were spawned onto the
@@ -468,14 +324,13 @@ impl MultiThreadedEngine<Running> {
         // has not started yet.
         connectors::start_connectors(&self.connectors).await;
 
-        // Process any links queued during configuration. Actor tasks are
-        // already live on the tokio MT runtime (they were spawned at
-        // `schedule` time), so the mailbox round-trips resolve
-        // immediately; with the gate closed, blocks first run with their
-        // links in place.
-        let pending_links = std::mem::take(&mut self.pending_links);
-        for link in pending_links {
-            let _ = self.connect_blocks(&link).await;
+        // Complete the programs scheduled during configuration. Actor
+        // tasks are already live on the tokio MT runtime (they were
+        // spawned at `schedule` time), so the mailbox round-trips
+        // resolve immediately; with the gate closed, blocks first run
+        // with their links and saved pin values in place.
+        for staged in std::mem::take(&mut self.pending) {
+            self.graph.complete_staged(staged).await;
         }
 
         // A run always starts unpaused.
@@ -519,9 +374,7 @@ impl MultiThreadedEngine<Running> {
     /// their mailboxes on the runtime, so an awaited send could not
     /// deadlock here, but it gains nothing either.
     async fn reset(&mut self) {
-        for (_, handle) in std::mem::take(&mut self.handles) {
-            terminate_actor(handle.mailbox);
-        }
+        self.graph.clear();
         // Unregister first — no block can `get_connector` a connector
         // that is being stopped — then stop the handles the
         // unregistration handed back. Terminated actor tasks are not
@@ -549,9 +402,7 @@ impl MultiThreadedEngine<Running> {
 
     /// Inspects the current state of a block.
     async fn inspect_block(&self, id: &Uuid) -> Result<BlockDefinition, EngineError> {
-        let mailbox = self.mailbox_or_err(id)?;
-
-        mailbox_request(mailbox, *id, |reply| BlockMailboxCmd::Inspect { reply }).await
+        self.graph.inspect_block(id).await
     }
 
     /// Writes a value to a block's input pin.
@@ -561,15 +412,7 @@ impl MultiThreadedEngine<Running> {
         name: String,
         value: Value,
     ) -> Result<Option<Value>, EngineError> {
-        let mailbox = self.mailbox_or_err(id)?;
-
-        mailbox_request(mailbox, *id, |reply| BlockMailboxCmd::WriteInput {
-            name,
-            value,
-            reply,
-        })
-        .await?
-        .map_err(EngineError::BlockRequestRejected)
+        self.graph.write_input(id, name, value).await
     }
 
     /// Writes a value to a block's output pin.
@@ -579,340 +422,39 @@ impl MultiThreadedEngine<Running> {
         name: String,
         value: Value,
     ) -> Result<Value, EngineError> {
-        let mailbox = self.mailbox_or_err(id)?;
-
-        mailbox_request(mailbox, *id, |reply| BlockMailboxCmd::WriteOutput {
-            name,
-            value,
-            reply,
-        })
-        .await?
-        .map_err(EngineError::BlockRequestRejected)
+        self.graph.write_output(id, name, value).await
     }
 
     /// Connects two blocks (source pin → target input). The source pin can
     /// be either an output or an input (the latter is input-fanout).
-    async fn connect_blocks(&self, link_data: &LinkData) -> Result<LinkData> {
-        let source_id = parse_block_uuid(&link_data.source_block_uuid)?;
-        let target_id = parse_block_uuid(&link_data.target_block_uuid)?;
-
-        let source_mb = self.mailbox_or_err(&source_id)?;
-        let target_mb = self.mailbox_or_err(&target_id)?;
-
-        // Get the writer of the target input.
-        let target_writer = mailbox_request(target_mb, target_id, |reply| {
-            BlockMailboxCmd::GetInputWriter {
-                name: link_data.target_block_pin_name.clone(),
-                reply,
-            }
-        })
-        .await?
-        .map_err(EngineError::BlockRequestRejected)?;
-
-        // Source pin: output or input?
-        let is_output = mailbox_request(source_mb, source_id, |reply| BlockMailboxCmd::HasOutput {
-            name: link_data.source_block_pin_name.clone(),
-            reply,
-        })
-        .await?;
-
-        let link_id = mailbox_request(source_mb, source_id, |reply| {
-            if is_output {
-                BlockMailboxCmd::AddOutputLink {
-                    output_name: link_data.source_block_pin_name.clone(),
-                    target_block_id: target_id,
-                    target_input_name: link_data.target_block_pin_name.clone(),
-                    target_writer: target_writer.clone(),
-                    reply,
-                }
-            } else {
-                BlockMailboxCmd::AddInputLink {
-                    input_name: link_data.source_block_pin_name.clone(),
-                    target_block_id: target_id,
-                    target_input_name: link_data.target_block_pin_name.clone(),
-                    target_writer: target_writer.clone(),
-                    reply,
-                }
-            }
-        })
-        .await?
-        .map_err(EngineError::BlockRequestRejected)?;
-
-        // Increment connection count on target — without this,
-        // `drain_ready_inputs` skips the input. The new count itself is of
-        // no interest, so only the delivery half is checked.
-        let (inc_reply, inc_response) = oneshot::channel();
-        mailbox_send(
-            target_mb,
-            target_id,
-            BlockMailboxCmd::IncrementInput {
-                name: link_data.target_block_pin_name.clone(),
-                reply: inc_reply,
-            },
-        )
-        .await?;
-        let _ = inc_response.await;
-
-        // Seed the target input with the source's current value.
-        let seed_value = self
-            .read_source_value(&source_id, &link_data.source_block_pin_name, is_output)
-            .await
-            .unwrap_or_default();
-        mailbox_send(
-            target_mb,
-            target_id,
-            BlockMailboxCmd::SeedInputValue {
-                name: link_data.target_block_pin_name.clone(),
-                value: seed_value,
-            },
-        )
-        .await?;
-        // Refresh another connected input on the target so it re-cycles.
-        self.reset_connected_inputs(&target_id, &link_data.target_block_pin_name)
-            .await?;
-
-        Ok(LinkData {
-            id: Some(link_id.to_string()),
-            ..link_data.clone()
-        })
-    }
-
-    async fn read_source_value(
-        &self,
-        source_id: &Uuid,
-        source_pin: &str,
-        is_output: bool,
-    ) -> Option<Value> {
-        let mb = self.mailbox(source_id)?;
-        let (tx, rx) = oneshot::channel();
-        let cmd = if is_output {
-            BlockMailboxCmd::GetOutputValue {
-                name: source_pin.to_string(),
-                reply: tx,
-            }
-        } else {
-            BlockMailboxCmd::GetInputValue {
-                name: source_pin.to_string(),
-                reply: tx,
-            }
-        };
-        mb.send(cmd).await.ok()?;
-        rx.await.ok().flatten()
-    }
-
-    /// Re-arms any other connected inputs on the target block by
-    /// re-sending their cached values, so the block re-cycles after a
-    /// new link is added. Skips unconnected inputs — refreshing them
-    /// is a no-op and the mailbox round-trip would be wasted.
-    async fn reset_connected_inputs(&self, target_id: &Uuid, ignore_input: &str) -> Result<()> {
-        let inputs = match self.inspect_block(target_id).await {
-            Ok(def) => def.inputs,
-            Err(_) => return Ok(()),
-        };
-        if let Some((name, _data)) = inputs
-            .iter()
-            .find(|(name, data)| name.as_str() != ignore_input && data.is_connected)
-            && let Some(mb) = self.mailbox(target_id)
-        {
-            let _ = mb
-                .send(BlockMailboxCmd::RefreshInput { name: name.clone() })
-                .await;
-        }
-        Ok(())
+    async fn connect_blocks(&mut self, link_data: &LinkData) -> Result<LinkData> {
+        self.graph.connect_blocks(link_data).await
     }
 
     /// Removes a block and all its links from the engine.
     async fn remove_block(&mut self, block_id: &Uuid) -> Result<Uuid> {
-        let target_mb = self.mailbox_or_err(block_id)?.clone();
-
-        // 1. DisconnectAll on the target to learn what to decrement.
-        let targets = mailbox_request(&target_mb, *block_id, |reply| {
-            BlockMailboxCmd::DisconnectAll { reply }
-        })
-        .await?;
-        for (other_id, input_name) in targets {
-            if let Some(mb) = self.mailbox(&other_id) {
-                let (dec_tx, dec_rx) = oneshot::channel();
-                let _ = mb
-                    .send(BlockMailboxCmd::DecrementInput {
-                        name: input_name,
-                        reply: dec_tx,
-                    })
-                    .await;
-                let _ = dec_rx.await;
-            }
-        }
-
-        // 2. Broadcast RemoveTargetBlockLinks to every other block.
-        let other_ids: Vec<Uuid> = self
-            .handles
-            .keys()
-            .copied()
-            .filter(|id| id != block_id)
-            .collect();
-        for other_id in other_ids {
-            if let Some(mb) = self.mailbox(&other_id) {
-                let (tx, rx) = oneshot::channel();
-                let _ = mb
-                    .send(BlockMailboxCmd::RemoveTargetBlockLinks {
-                        target_block_id: *block_id,
-                        reply: tx,
-                    })
-                    .await;
-                let _ = rx.await;
-            }
-        }
-
-        // 3. Terminate the block.
-        let _ = target_mb.send(BlockMailboxCmd::Terminate).await;
-        self.handles.remove(block_id);
-
-        Ok(*block_id)
+        self.graph.remove_block(block_id).await
     }
 
     /// Snapshots the full program: every scheduled block with its UI
     /// metadata and current pin values, plus every link. This is the
     /// canonical save format — round-trips through [`load_program`](Self::load_program).
     async fn save_program(&self) -> Result<Program> {
-        let mut blocks = std::collections::BTreeMap::new();
-        let mut links = std::collections::BTreeMap::new();
-
-        for (id, handle) in &self.handles {
-            let definition = mailbox_request(&handle.mailbox, *id, |reply| {
-                BlockMailboxCmd::Inspect { reply }
-            })
-            .await?;
-
-            let (_block_data, block_links) = mailbox_request(&handle.mailbox, *id, |reply| {
-                BlockMailboxCmd::GetBlockData { reply }
-            })
-            .await?;
-
-            let inputs = definition
-                .inputs
-                .into_iter()
-                .map(|(name, data)| {
-                    (
-                        name,
-                        PinValue {
-                            value: data.val,
-                            is_connected: data.is_connected,
-                        },
-                    )
-                })
-                .collect();
-            let outputs = definition
-                .outputs
-                .into_iter()
-                .map(|(name, data)| {
-                    (
-                        name,
-                        PinValue {
-                            value: data.val,
-                            is_connected: false,
-                        },
-                    )
-                })
-                .collect();
-
-            blocks.insert(
-                id.to_string(),
-                ProgramBlock {
-                    name: handle.name.clone(),
-                    lib: handle.library.clone(),
-                    label: handle.label.clone(),
-                    positions: handle.position,
-                    inputs,
-                    outputs,
-                },
-            );
-
-            for link in block_links {
-                let link_id = link
-                    .id
-                    .clone()
-                    .unwrap_or_else(|| Uuid::new_v4().to_string());
-                links.insert(link_id, link);
-            }
-        }
-
-        Ok(Program {
-            name: None,
-            description: None,
-            blocks,
-            links,
-        })
+        self.graph.save_program().await
     }
 
-    /// Atomically loads a full [`Program`]: schedules every block, wires
-    /// every link, pushes initial input/output values, and stores UI
-    /// metadata. The engine must not already hold any of the program's
-    /// block ids (reset it first via [`Reset`](EngineMessage::Reset)): a
-    /// program naming a scheduled id is rejected before anything is
-    /// scheduled.
+    /// Loads a full [`Program`], all or nothing — see `load_program` on
+    /// the [`SingleThreadedEngine`](crate::single_threaded::SingleThreadedEngine):
+    /// the whole program is checked before anything is scheduled, and a
+    /// failure while wiring removes the program's blocks again.
     async fn load_program(&mut self, program: Program) -> Result<()> {
-        let links = self.stage_program(&program)?;
-
-        for link in links {
-            self.connect_blocks(&link).await?;
-        }
-
-        for (uuid_str, pb) in &program.blocks {
-            let id = parse_block_uuid(uuid_str)?;
-            for (name, pin) in &pb.inputs {
-                if hasinitialvalue_mt(&pin.value) {
-                    let _ = self.write_input(&id, name.clone(), pin.value.clone()).await;
-                }
-            }
-            for (name, pin) in &pb.outputs {
-                if hasinitialvalue_mt(&pin.value) {
-                    let _ = self
-                        .write_output(&id, name.clone(), pin.value.clone())
-                        .await;
-                }
-            }
-        }
-
-        Ok(())
+        let staged = stage_program(self, &program)?;
+        self.graph.load_staged(staged).await
     }
 
     /// Disconnects a link by its UUID.
-    async fn disconnect_link_by_id(&self, link_id: &Uuid) -> Result<bool> {
-        for handle in self.handles.values() {
-            let (reply, response) = oneshot::channel();
-            // A block whose task is gone simply cannot own the link; skip
-            // it rather than failing the whole search.
-            if handle
-                .mailbox
-                .send(BlockMailboxCmd::DisconnectLink {
-                    link_id: *link_id,
-                    reply,
-                })
-                .await
-                .is_err()
-            {
-                continue;
-            }
-            let targets = response
-                .await
-                .map_err(|_| EngineError::BlockDroppedReply { id: *handle.id() })?;
-            if !targets.is_empty() {
-                for (other_id, input_name) in targets {
-                    if let Some(mb) = self.mailbox(&other_id) {
-                        let (dec_tx, dec_rx) = oneshot::channel();
-                        let _ = mb
-                            .send(BlockMailboxCmd::DecrementInput {
-                                name: input_name,
-                                reply: dec_tx,
-                            })
-                            .await;
-                        let _ = dec_rx.await;
-                    }
-                }
-                return Ok(true);
-            }
-        }
-        Ok(false)
+    async fn disconnect_link_by_id(&mut self, link_id: &Uuid) -> Result<bool> {
+        self.graph.disconnect_link_by_id(link_id).await
     }
 
     /// Sends `engine_message` to the reply channel registered under
@@ -1078,20 +620,6 @@ impl MultiThreadedEngine<Running> {
     }
 }
 
-/// Filters for "this is a real saved value, not a placeholder."
-///
-/// Programs sometimes annotate a computed output pin with `{}` purely
-/// as a UI hint that the pin exists. Loading that verbatim would push
-/// an empty Dict into the value, which then propagates through
-/// connected links to Number-typed downstream pins and faults their
-/// drain.
-fn hasinitialvalue_mt(value: &Value) -> bool {
-    use libhaystack::val::Value::*;
-    !matches!(value, Null)
-        && !matches!(value, Dict(d) if d.is_empty())
-        && !matches!(value, List(l) if l.is_empty())
-}
-
 #[cfg(test)]
 mod test {
     use std::time::Duration;
@@ -1189,7 +717,7 @@ mod test {
 
         eng.schedule(block_a).unwrap();
         eng.schedule(block_b).unwrap();
-        let eng = eng.into_state::<Running>();
+        let mut eng = eng.into_state::<Running>();
         eng.set_execution(true);
 
         // Wire A.out -> B.in0 via the engine's async API (same path the
@@ -1370,6 +898,202 @@ mod test {
                 .val
                 .clone();
             assert_ne!(target_out, 1.into(), "no block executes while idle");
+        }
+    }
+
+    /// Regression: see the single-threaded `pin_writes`.
+    mod pin_writes {
+        use super::*;
+        use crate::tokio_impl::engine::test_support::pin_writes;
+
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn writing_an_unlinked_block_recomputes_it() {
+            pin_writes::writing_an_unlinked_block_recomputes_it(MultiThreadedEngine::new()).await;
+        }
+
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn writing_a_constant_input_recomputes_a_linked_block() {
+            pin_writes::writing_a_constant_input_recomputes_a_linked_block(
+                MultiThreadedEngine::new(),
+            )
+            .await;
+        }
+
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn a_fix_written_to_an_unlinked_input_clears_a_fault() {
+            pin_writes::a_fix_written_to_an_unlinked_input_clears_a_fault(
+                MultiThreadedEngine::new(),
+            )
+            .await;
+        }
+    }
+
+    /// Regression: see the single-threaded `dead_actors`.
+    mod dead_actors {
+        use super::*;
+        use crate::tokio_impl::engine::test_support::dead_actors;
+
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn a_block_whose_actor_is_gone_is_saved_without_pins() {
+            dead_actors::a_block_whose_actor_is_gone_is_saved_without_pins(
+                MultiThreadedEngine::new(),
+            )
+            .await;
+        }
+
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn a_link_out_of_a_gone_actor_is_removed() {
+            dead_actors::a_link_out_of_a_gone_actor_is_removed(MultiThreadedEngine::new()).await;
+        }
+
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn a_block_whose_actor_is_gone_is_removed() {
+            dead_actors::a_block_whose_actor_is_gone_is_removed(MultiThreadedEngine::new()).await;
+        }
+    }
+
+    /// Regression: see the single-threaded `atomic_loads`.
+    mod atomic_loads {
+        use super::*;
+        use crate::tokio_impl::engine::test_support::atomic_loads;
+
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn a_program_failing_its_checks_loads_nothing() {
+            atomic_loads::a_program_failing_its_checks_loads_nothing(MultiThreadedEngine::new())
+                .await;
+        }
+
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn a_program_failing_its_checks_schedules_nothing() {
+            atomic_loads::a_program_failing_its_checks_schedules_nothing(
+                MultiThreadedEngine::new(),
+            )
+            .await;
+        }
+
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn a_program_failing_to_wire_is_removed_again() {
+            atomic_loads::a_program_failing_to_wire_is_removed_again(MultiThreadedEngine::new())
+                .await;
+        }
+
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn a_program_scheduled_while_idle_drops_a_link_it_fails_to_wire() {
+            atomic_loads::a_program_scheduled_while_idle_drops_a_link_it_fails_to_wire(
+                MultiThreadedEngine::new(),
+            )
+            .await;
+        }
+
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn a_program_scheduled_while_idle_gets_its_pin_values() {
+            atomic_loads::a_program_scheduled_while_idle_gets_its_pin_values(
+                MultiThreadedEngine::new(),
+            )
+            .await;
+        }
+    }
+
+    /// Regression: see the single-threaded `round_trip`.
+    mod round_trip {
+        use super::*;
+        use crate::tokio_impl::engine::test_support::round_trip;
+
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn a_saved_program_reloads_unchanged() {
+            round_trip::a_saved_program_reloads_unchanged(MultiThreadedEngine::new()).await;
+        }
+
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn reset_forgets_the_program_identity() {
+            round_trip::reset_forgets_the_program_identity(MultiThreadedEngine::new()).await;
+        }
+
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn a_program_scheduled_while_idle_saves_its_identity() {
+            round_trip::a_program_scheduled_while_idle_saves_its_identity(
+                MultiThreadedEngine::new(),
+            )
+            .await;
+        }
+    }
+
+    /// Regression: see the single-threaded `link_ids`.
+    mod link_ids {
+        use super::*;
+        use crate::tokio_impl::engine::test_support::link_ids;
+
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn connecting_keeps_a_named_link_id() {
+            link_ids::connecting_keeps_a_named_link_id(MultiThreadedEngine::new()).await;
+        }
+
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn connecting_rejects_a_taken_or_invalid_link_id() {
+            link_ids::connecting_rejects_a_taken_or_invalid_link_id(MultiThreadedEngine::new())
+                .await;
+        }
+
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn a_loaded_link_keeps_its_saved_id() {
+            link_ids::a_loaded_link_keeps_its_saved_id(MultiThreadedEngine::new()).await;
+        }
+
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn a_program_reusing_a_link_id_is_rejected() {
+            link_ids::a_program_reusing_a_link_id_is_rejected(MultiThreadedEngine::new()).await;
+        }
+    }
+
+    /// Regression: see the single-threaded `connector_deadlines`.
+    mod connector_deadlines {
+        use super::*;
+        use crate::tokio_impl::engine::test_support::connector_deadlines;
+
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn external_out_times_out_under_requests() {
+            connector_deadlines::external_out_times_out_under_requests(MultiThreadedEngine::new())
+                .await;
+        }
+
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn request_times_out_under_requests() {
+            connector_deadlines::request_times_out_under_requests(MultiThreadedEngine::new()).await;
+        }
+
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn external_in_times_out_under_requests() {
+            connector_deadlines::external_in_times_out_under_requests(MultiThreadedEngine::new())
+                .await;
+        }
+
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn external_out_applies_a_late_timeout() {
+            connector_deadlines::external_out_applies_a_late_timeout(MultiThreadedEngine::new())
+                .await;
+        }
+
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn request_applies_a_late_timeout() {
+            connector_deadlines::request_applies_a_late_timeout(MultiThreadedEngine::new()).await;
+        }
+
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn external_in_applies_a_late_timeout() {
+            connector_deadlines::external_in_applies_a_late_timeout(MultiThreadedEngine::new())
+                .await;
+        }
+
+        /// Regression: on this engine a loaded block runs on another
+        /// worker while the load writes its saved values, so it issued
+        /// its operation between the `in` and `timeout` writes, under
+        /// the default deadline, and kept that deadline.
+        #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+        async fn a_loaded_timeout_applies_to_the_first_operation() {
+            connector_deadlines::a_loaded_timeout_applies_to_the_first_operation(
+                MultiThreadedEngine::new(),
+            )
+            .await;
         }
     }
 

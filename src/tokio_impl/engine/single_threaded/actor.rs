@@ -146,16 +146,25 @@ fn change_of_value_check<B: Block + 'static>(
     // Without the state-change check, a block entering Fault with no
     // value change (e.g., upstream stopped emitting) would be invisible.
     if !changes.is_empty() || state != prev_state {
-        // Unbounded channel: `send` is synchronous and only fails on
-        // receiver-dropped (channel closed). We ignore the error path
-        // because a dropped watcher means the UI tab closed.
-        for sender in notification_channels.borrow().values() {
-            let _ = sender.send(WatchMessage {
-                block_id: *block.id(),
-                changes: changes.clone(),
-                state: state.clone(),
+        // Unbounded channel: `send` is synchronous and only fails once
+        // the receiver is gone — the watcher went away without
+        // unsubscribing (a closed UI tab). Drop it, or every actor would
+        // keep computing changes for nobody.
+        notification_channels
+            .borrow_mut()
+            .retain(|watcher, sender| {
+                let sent = sender
+                    .send(WatchMessage {
+                        block_id: *block.id(),
+                        changes: changes.clone(),
+                        state: state.clone(),
+                    })
+                    .is_ok();
+                if !sent {
+                    log::debug!("Dropping watcher {watcher}: its receiver is gone");
+                }
+                sent
             });
-        }
     }
 }
 
@@ -204,6 +213,53 @@ mod test {
             .await
             .expect("actor task exits once its mailbox closes")
             .expect("actor task completes without panicking");
+    }
+
+    /// Regression: a watcher whose receiver was dropped without
+    /// unsubscribing stayed in the map, so every actor kept computing
+    /// changes for it.
+    #[tokio::test(flavor = "current_thread")]
+    async fn a_watcher_whose_receiver_is_gone_is_dropped() {
+        let local = LocalSet::new();
+        let (mailbox_tx, mailbox_rx) = mpsc::channel(BLOCK_MAILBOX_CAP);
+        let (_gate, gate_rx) = watch::channel(true);
+        let watchers = super::WatchersHandle::default();
+        let (live, gone) = (Uuid::new_v4(), Uuid::new_v4());
+        let (live_tx, mut live_rx) = mpsc::unbounded_channel();
+        let (gone_tx, gone_rx) = mpsc::unbounded_channel();
+        drop(gone_rx);
+        watchers.borrow_mut().insert(live, live_tx);
+        watchers.borrow_mut().insert(gone, gone_tx);
+        let _actor = local.spawn_local(block_actor_task(
+            Add::new(),
+            mailbox_rx,
+            watchers.clone(),
+            gate_rx,
+        ));
+
+        // A pin write is a change every watcher is told about.
+        let (reply, written) = oneshot::channel();
+        mailbox_tx
+            .try_send(BlockMailboxCmd::WriteInput {
+                name: "in0".to_string(),
+                value: 1.into(),
+                reply,
+            })
+            .unwrap_or_else(|_| panic!("the mailbox has room"));
+        let written = local.run_until(timeout(Duration::from_secs(2), written));
+        written
+            .await
+            .expect("answered")
+            .expect("replied")
+            .expect("written");
+        let notified = local.run_until(timeout(Duration::from_secs(2), live_rx.recv()));
+        notified.await.expect("the live watcher is notified");
+
+        assert_eq!(
+            watchers.borrow().keys().copied().collect::<Vec<_>>(),
+            vec![live],
+            "only the live watcher is kept"
+        );
     }
 
     /// Regression: the optimistic fault recovery was only undone when
