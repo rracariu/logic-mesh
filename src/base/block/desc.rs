@@ -191,7 +191,11 @@ impl BlockPin {
 }
 
 /// The block implementation type.
+///
+/// `#[non_exhaustive]`, like [`BlockDesc`] that holds it: another kind
+/// of implementation can be added without breaking a `match` on it.
 #[derive(Default, Debug, Clone, PartialEq)]
+#[non_exhaustive]
 pub enum BlockImplementation {
     /// A block that is implemented in Rust.
     #[default]
@@ -223,7 +227,11 @@ impl Display for BlockImplementation {
 }
 
 /// The condition under which a block should run.
+///
+/// `#[non_exhaustive]`, like [`BlockDesc`] that holds it: another run
+/// condition can be added without breaking a `match` on it.
 #[derive(Default, Debug, Clone, PartialEq)]
+#[non_exhaustive]
 pub enum BlockRunCondition {
     /// Runs on change of inputs.
     #[default]
