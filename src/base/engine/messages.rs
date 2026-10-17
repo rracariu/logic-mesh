@@ -133,6 +133,10 @@ pub enum EngineMessage<WatchEventSender: Clone> {
     ///
     /// A program naming a block id that is already scheduled, or naming
     /// one twice, is rejected before any of its blocks is scheduled.
+    ///
+    /// Every link keeps the id it was saved under — its
+    /// [`LinkData::id`], or else its key in [`Program::links`] — so a
+    /// [`RemoveLinkReq`](Self::RemoveLinkReq) can name a saved id.
     LoadProgramReq(Uuid, Program),
     /// Response to [`LoadProgramReq`](Self::LoadProgramReq).
     LoadProgramRes(Result<(), String>),
@@ -148,8 +152,13 @@ pub enum EngineMessage<WatchEventSender: Clone> {
     EvaluateBlockRes(Result<Vec<Value>, String>),
 
     /// Connects two blocks via a link.
+    ///
+    /// The link gets the id [`LinkData::id`] names, if set, and a fresh
+    /// one otherwise. Link ids are unique per engine: an id another link
+    /// already has is rejected, as is one that is not a UUID.
     ConnectBlocksReq(Uuid, LinkData),
-    /// Response to [`ConnectBlocksReq`](Self::ConnectBlocksReq).
+    /// Response to [`ConnectBlocksReq`](Self::ConnectBlocksReq): the link,
+    /// with its id.
     ConnectBlocksRes(Result<LinkData, String>),
 
     /// Removes a link by UUID.

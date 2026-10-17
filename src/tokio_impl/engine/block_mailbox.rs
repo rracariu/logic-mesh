@@ -63,22 +63,25 @@ pub(super) enum BlockMailboxCmd {
         name: String,
         reply: oneshot::Sender<bool>,
     },
-    /// Adds a link from one of this block's outputs to a target input.
+    /// Adds link `link_id` from one of this block's outputs to a target
+    /// input.
     AddOutputLink {
+        link_id: Uuid,
         output_name: String,
         target_block_id: Uuid,
         target_input_name: String,
         target_writer: WriterImpl,
-        reply: oneshot::Sender<Result<Uuid, String>>,
+        reply: oneshot::Sender<Result<(), String>>,
     },
-    /// Adds a link from one of this block's inputs (chained as a source) to
-    /// a target input.
+    /// Adds link `link_id` from one of this block's inputs (chained as a
+    /// source) to a target input.
     AddInputLink {
+        link_id: Uuid,
         input_name: String,
         target_block_id: Uuid,
         target_input_name: String,
         target_writer: WriterImpl,
-        reply: oneshot::Sender<Result<Uuid, String>>,
+        reply: oneshot::Sender<Result<(), String>>,
     },
     /// Push a value directly into the named input's writer. Used to seed a
     /// freshly linked input with the source's current value.
@@ -235,6 +238,7 @@ where
         }
 
         BlockMailboxCmd::AddOutputLink {
+            link_id,
             output_name,
             target_block_id,
             target_input_name,
@@ -243,6 +247,7 @@ where
         } => {
             let result = add_output_link_inner(
                 block,
+                link_id,
                 &output_name,
                 target_block_id,
                 target_input_name,
@@ -252,6 +257,7 @@ where
         }
 
         BlockMailboxCmd::AddInputLink {
+            link_id,
             input_name,
             target_block_id,
             target_input_name,
@@ -260,6 +266,7 @@ where
         } => {
             let result = add_input_link_inner(
                 block,
+                link_id,
                 &input_name,
                 target_block_id,
                 target_input_name,
@@ -434,13 +441,30 @@ fn collect_all_targets<B: BlockProps + ?Sized>(block: &mut B) -> Vec<(Uuid, Stri
     targets
 }
 
+/// A connected link `id` to the target input `target_writer` feeds.
+fn connected_link(
+    id: Uuid,
+    target_block_id: Uuid,
+    target_input_name: String,
+    target_writer: WriterImpl,
+) -> BaseLink<WriterImpl> {
+    BaseLink {
+        id,
+        target_block_id,
+        target_input: target_input_name,
+        tx: Some(target_writer),
+        state: LinkState::Connected,
+    }
+}
+
 fn add_output_link_inner<B: Block<Writer = WriterImpl, Reader = ReaderImpl> + ?Sized>(
     block: &mut B,
+    link_id: Uuid,
     output_name: &str,
     target_block_id: Uuid,
     target_input_name: String,
     target_writer: WriterImpl,
-) -> Result<Uuid, String> {
+) -> Result<(), String> {
     let mut outputs = block.outputs_mut();
     let output = outputs
         .iter_mut()
@@ -453,22 +477,23 @@ fn add_output_link_inner<B: Block<Writer = WriterImpl, Reader = ReaderImpl> + ?S
         return Err("Already connected".to_string());
     }
 
-    let mut link = BaseLink::new(target_block_id, target_input_name);
-    let id = link.id;
-    link.tx = Some(target_writer);
-    link.state = LinkState::Connected;
-
-    output.add_link(link);
-    Ok(id)
+    output.add_link(connected_link(
+        link_id,
+        target_block_id,
+        target_input_name,
+        target_writer,
+    ));
+    Ok(())
 }
 
 fn add_input_link_inner<B: Block<Writer = WriterImpl, Reader = ReaderImpl> + ?Sized>(
     block: &mut B,
+    link_id: Uuid,
     input_name: &str,
     target_block_id: Uuid,
     target_input_name: String,
     target_writer: WriterImpl,
-) -> Result<Uuid, String> {
+) -> Result<(), String> {
     let block_id = *block.id();
     if block_id == target_block_id {
         return Err("Cannot connect to the same block".to_string());
@@ -486,11 +511,11 @@ fn add_input_link_inner<B: Block<Writer = WriterImpl, Reader = ReaderImpl> + ?Si
         return Err("Already connected".to_string());
     }
 
-    let mut link = BaseLink::new(target_block_id, target_input_name);
-    let id = link.id;
-    link.tx = Some(target_writer);
-    link.state = LinkState::Connected;
-
-    input.add_link(link);
-    Ok(id)
+    input.add_link(connected_link(
+        link_id,
+        target_block_id,
+        target_input_name,
+        target_writer,
+    ));
+    Ok(())
 }

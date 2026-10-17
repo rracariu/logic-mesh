@@ -39,7 +39,7 @@ use uuid::Uuid;
 
 use super::super::block_mailbox::{BLOCK_MAILBOX_CAP, BlockMailboxCmd};
 use super::super::connectors::{self, ManagedConnectors};
-use super::super::graph::{BlockGraph, BlockHandle, ProgramHost, stage_program};
+use super::super::graph::{BlockGraph, BlockHandle, LinkRecord, ProgramHost, stage_program};
 use super::actor::{WatchersHandle, block_actor_task};
 use crate::base::connector::{ConnectorHandle, register_connector};
 use crate::base::{
@@ -92,8 +92,8 @@ pub type Messages = EngineMessage<UnboundedSender<WatchMessage>>;
 pub struct MultiThreadedEngine<S: EngineState = Idle> {
     /// Every scheduled block's handle.
     graph: BlockGraph,
-    /// Links queued while idle; wired at `run()` start.
-    pending_links: Vec<LinkData>,
+    /// Links queued while idle, by id; wired at `run()` start.
+    pending_links: Vec<(Uuid, LinkRecord)>,
     sender: Sender<Messages>,
     receiver: Receiver<Messages>,
     pub(in super::super) reply_senders: BTreeMap<Uuid, Sender<Messages>>,
@@ -322,9 +322,7 @@ impl MultiThreadedEngine<Running> {
         // immediately; with the gate closed, blocks first run with their
         // links in place.
         let pending_links = std::mem::take(&mut self.pending_links);
-        for link in pending_links {
-            let _ = self.graph.connect_blocks(&link).await;
-        }
+        self.graph.wire_staged(pending_links).await;
 
         // A run always starts unpaused.
         self.set_execution(true);
@@ -920,6 +918,33 @@ mod test {
                 MultiThreadedEngine::new(),
             )
             .await;
+        }
+    }
+
+    /// Regression: see the single-threaded `link_ids`.
+    mod link_ids {
+        use super::*;
+        use crate::tokio_impl::engine::test_support::link_ids;
+
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn connecting_keeps_a_named_link_id() {
+            link_ids::connecting_keeps_a_named_link_id(MultiThreadedEngine::new()).await;
+        }
+
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn connecting_rejects_a_taken_or_invalid_link_id() {
+            link_ids::connecting_rejects_a_taken_or_invalid_link_id(MultiThreadedEngine::new())
+                .await;
+        }
+
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn a_loaded_link_keeps_its_saved_id() {
+            link_ids::a_loaded_link_keeps_its_saved_id(MultiThreadedEngine::new()).await;
+        }
+
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn a_program_reusing_a_link_id_is_rejected() {
+            link_ids::a_program_reusing_a_link_id_is_rejected(MultiThreadedEngine::new()).await;
         }
     }
 

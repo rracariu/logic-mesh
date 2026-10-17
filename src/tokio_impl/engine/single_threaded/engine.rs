@@ -18,7 +18,7 @@ use uuid::Uuid;
 
 use super::super::block_mailbox::{BLOCK_MAILBOX_CAP, BlockMailboxCmd};
 use super::super::connectors::{self, ManagedConnectors};
-use super::super::graph::{BlockGraph, BlockHandle, ProgramHost, stage_program};
+use super::super::graph::{BlockGraph, BlockHandle, LinkRecord, ProgramHost, stage_program};
 use super::actor::block_actor_task;
 use crate::base::connector::{ConnectorHandle, register_connector};
 use crate::base::{
@@ -82,9 +82,9 @@ pub struct SingleThreadedEngine<S: EngineState = Idle> {
     /// Every scheduled block's handle. Populated by `schedule()` (each
     /// block spawns its actor task immediately).
     graph: BlockGraph,
-    /// Links queued while idle; wired at `run()` start (which pumps the
-    /// LocalSet so the actor tasks can answer the round-trips).
-    pending_links: Vec<LinkData>,
+    /// Links queued while idle, by id; wired at `run()` start (which
+    /// pumps the LocalSet so the actor tasks can answer the round-trips).
+    pending_links: Vec<(Uuid, LinkRecord)>,
     /// External-command channel (receiving end).
     sender: Sender<Messages>,
     receiver: Receiver<Messages>,
@@ -326,7 +326,7 @@ impl<S: EngineState> SingleThreadedEngine<S> {
     /// Validates `link_data` against the scheduled blocks — see
     /// `BlockGraph::validate_link`.
     #[cfg(test)]
-    pub(super) fn validate_link(&self, link_data: &LinkData) -> Result<LinkData> {
+    pub(super) fn validate_link(&self, link_data: &LinkData) -> Result<(Uuid, LinkRecord)> {
         self.graph.validate_link(link_data)
     }
 
@@ -387,9 +387,7 @@ impl SingleThreadedEngine<Running> {
         // still closed, so actors answer the wiring round-trips without
         // executing: blocks first run with their links in place.
         let pending_links = std::mem::take(&mut self.pending_links);
-        for link in pending_links {
-            let _ = local.run_until(self.graph.connect_blocks(&link)).await;
-        }
+        local.run_until(self.graph.wire_staged(pending_links)).await;
 
         // A run always starts unpaused.
         self.set_execution(true);

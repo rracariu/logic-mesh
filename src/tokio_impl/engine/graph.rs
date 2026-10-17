@@ -11,8 +11,19 @@
 //! sequence of mailbox round-trips, the same for either engine: the
 //! engines differ only in how they host the actor tasks, which a
 //! [`ProgramHost`] abstracts for the one step that creates blocks.
+//!
+//! ## Links
+//!
+//! A link lives on its source block, inside the source's actor. The
+//! graph also keeps an index of every link by id, with both of its
+//! ends: it is how a link id stays unique per engine — a caller may
+//! name the id of a link it creates, and a program load keeps the ids
+//! the program was saved with — and how a link is found by id without
+//! asking every block. The index mirrors the actors: it records the
+//! links a block was scheduled with, and every link the graph wires
+//! or removes.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use libhaystack::val::Value;
 use tokio::sync::{mpsc, oneshot};
@@ -22,7 +33,9 @@ use super::block_mailbox::{BlockMailboxCmd, mailbox_request, mailbox_send, termi
 use super::program_block_ids;
 use crate::base::block::{BlockDesc, BlockProps};
 use crate::base::engine::messages::BlockDefinition;
-use crate::base::error::{EngineError, LinkEnd, RegistryError, Result, parse_block_uuid};
+use crate::base::error::{
+    EngineError, LinkEnd, RegistryError, Result, parse_block_uuid, parse_link_uuid,
+};
 use crate::base::program::{
     Program,
     data::{LinkData, PinValue, Position, ProgramBlock},
@@ -87,10 +100,27 @@ impl BlockHandle {
     }
 }
 
-/// An engine's scheduled blocks, keyed by block id.
+/// One link, by its two ends.
+#[derive(Debug, Clone)]
+pub(super) struct LinkRecord {
+    /// The block the link reads from, which holds the link.
+    source: Uuid,
+    /// The source block's output — or input, for input fan-out.
+    source_pin: String,
+    /// The block the link writes to.
+    target: Uuid,
+    /// The target block's input.
+    target_pin: String,
+}
+
+/// An engine's scheduled blocks, keyed by block id, and the links
+/// between them, keyed by link id.
 #[derive(Default)]
 pub(super) struct BlockGraph {
     handles: BTreeMap<Uuid, BlockHandle>,
+    /// Every link, mirroring the links the actors hold — see the
+    /// [module docs](self#links).
+    links: BTreeMap<Uuid, LinkRecord>,
 }
 
 impl BlockGraph {
@@ -128,7 +158,8 @@ impl BlockGraph {
     }
 
     /// Records `block`, about to move into the actor task that reads
-    /// `mailbox`.
+    /// `mailbox`, along with the links it was wired with before it was
+    /// scheduled.
     ///
     /// Rejects an id that is already scheduled: replacing the handle
     /// would orphan the running block, whose links other blocks still
@@ -141,6 +172,17 @@ impl BlockGraph {
         let id = *block.id();
         if self.handles.contains_key(&id) {
             return Err(EngineError::DuplicateBlockId { id });
+        }
+        for (pin, links) in block.links() {
+            for link in links {
+                let record = LinkRecord {
+                    source: id,
+                    source_pin: pin.to_string(),
+                    target: *link.target_block_id(),
+                    target_pin: link.target_input().to_string(),
+                };
+                self.links.insert(*link.id(), record);
+            }
         }
         // Clone the desc into the handle BEFORE `block` moves into its
         // actor task. JS blocks' "static" desc actually lives inside the
@@ -176,7 +218,7 @@ impl BlockGraph {
         }
     }
 
-    /// Removes every block, telling each actor to terminate.
+    /// Removes every block and link, telling each actor to terminate.
     ///
     /// The actors are told without waiting on their mailboxes: on a
     /// single-threaded engine no actor makes progress while the engine
@@ -185,64 +227,29 @@ impl BlockGraph {
         for (_, handle) in std::mem::take(&mut self.handles) {
             terminate_actor(handle.mailbox);
         }
+        self.links.clear();
     }
 
-    /// Validates `link_data` against the scheduled blocks and returns it
-    /// with an id assigned.
+    /// Validates `link_data` against the scheduled blocks and the links
+    /// already in place, returning the link's id — the one it names, or
+    /// a fresh one if it names none — and its record.
     ///
     /// Wiring requires mailbox round-trips between the source and target
     /// actor tasks, which only answer while the engine runs. This checks
-    /// synchronously that both blocks and the named pins exist by
-    /// consulting each block's static `BlockDesc`.
-    pub(super) fn validate_link(&self, link_data: &LinkData) -> Result<LinkData> {
-        let source_id = parse_block_uuid(&link_data.source_block_uuid)?;
-        let target_id = parse_block_uuid(&link_data.target_block_uuid)?;
-        let source_handle = self.handle_or_err(&source_id)?;
-        let target_handle = self.handle_or_err(&target_id)?;
-
-        let source_pin = link_data.source_block_pin_name.as_str();
-        let source_pin_exists = source_handle
-            .desc()
-            .outputs
-            .iter()
-            .any(|o| o.name == source_pin)
-            || source_handle
-                .desc()
-                .inputs
-                .iter()
-                .any(|i| i.name == source_pin);
-        if !source_pin_exists {
-            return Err(EngineError::PinNotFound {
-                end: LinkEnd::Source,
-                block: source_id,
-                pin: source_pin.to_string(),
-            }
-            .into());
+    /// synchronously that the id is free and that both blocks and the
+    /// named pins exist, by consulting each block's static `BlockDesc`.
+    pub(super) fn validate_link(&self, link_data: &LinkData) -> Result<(Uuid, LinkRecord)> {
+        let id = match link_data.id.as_deref() {
+            Some(id) => parse_link_uuid(id)?,
+            None => Uuid::new_v4(),
+        };
+        if self.links.contains_key(&id) {
+            return Err(EngineError::DuplicateLinkId { id }.into());
         }
-
-        let target_pin = link_data.target_block_pin_name.as_str();
-        let target_pin_exists = target_handle
-            .desc()
-            .inputs
-            .iter()
-            .any(|i| i.name == target_pin);
-        if !target_pin_exists {
-            return Err(EngineError::PinNotFound {
-                end: LinkEnd::Target,
-                block: target_id,
-                pin: target_pin.to_string(),
-            }
-            .into());
-        }
-
-        let id = link_data
-            .id
-            .clone()
-            .unwrap_or_else(|| Uuid::new_v4().to_string());
-        Ok(LinkData {
-            id: Some(id),
-            ..link_data.clone()
-        })
+        let record = link_record(link_data, |_, block| {
+            self.handle_or_err(block).map(BlockHandle::desc)
+        })?;
+        Ok((id, record))
     }
 
     /// Reads block `id`'s full inspection snapshot.
@@ -290,19 +297,43 @@ impl BlockGraph {
         .map_err(EngineError::BlockRequestRejected)
     }
 
-    /// Connects two blocks (source pin → target input). The source pin can
-    /// be either an output or an input (the latter is input-fanout).
-    pub(super) async fn connect_blocks(&self, link_data: &LinkData) -> Result<LinkData> {
-        let source_id = parse_block_uuid(&link_data.source_block_uuid)?;
-        let target_id = parse_block_uuid(&link_data.target_block_uuid)?;
+    /// Connects two blocks (source pin → target input), returning the
+    /// link with its id. The source pin can be either an output or an
+    /// input (the latter is input-fanout).
+    ///
+    /// The link keeps the id `link_data` names, if any; otherwise it
+    /// gets a fresh one.
+    ///
+    /// # Errors
+    ///
+    /// Besides the wiring failures, an id that does not parse
+    /// ([`EngineError::InvalidLinkId`]) or that another link already
+    /// has ([`EngineError::DuplicateLinkId`]) is rejected, as is a
+    /// block or pin that does not exist.
+    pub(super) async fn connect_blocks(&mut self, link_data: &LinkData) -> Result<LinkData> {
+        let (id, record) = self.validate_link(link_data)?;
+        self.wire(id, &record).await?;
+        self.links.insert(id, record);
+        Ok(LinkData {
+            id: Some(id.to_string()),
+            ..link_data.clone()
+        })
+    }
 
-        let source_mb = self.mailbox_or_err(&source_id)?;
-        let target_mb = self.mailbox_or_err(&target_id)?;
+    /// Wires link `id` between the actors at its ends: the source block
+    /// gets the link, the target input counts it and is seeded with the
+    /// source's current value. Leaves the index to the caller.
+    ///
+    /// A link the source took is taken back if the target cannot be
+    /// wired, so a failure leaves no half-wired link behind.
+    async fn wire(&self, id: Uuid, link: &LinkRecord) -> Result<()> {
+        let source_mb = self.mailbox_or_err(&link.source)?;
+        let target_mb = self.mailbox_or_err(&link.target)?;
 
         // Get the writer of the target input.
-        let target_writer = mailbox_request(target_mb, target_id, |reply| {
+        let target_writer = mailbox_request(target_mb, link.target, |reply| {
             BlockMailboxCmd::GetInputWriter {
-                name: link_data.target_block_pin_name.clone(),
+                name: link.target_pin.clone(),
                 reply,
             }
         })
@@ -311,33 +342,51 @@ impl BlockGraph {
 
         // Try AddOutputLink first; if the source pin is not an output, fall
         // back to AddInputLink.
-        let is_output = mailbox_request(source_mb, source_id, |reply| BlockMailboxCmd::HasOutput {
-            name: link_data.source_block_pin_name.clone(),
-            reply,
-        })
-        .await?;
+        let is_output =
+            mailbox_request(source_mb, link.source, |reply| BlockMailboxCmd::HasOutput {
+                name: link.source_pin.clone(),
+                reply,
+            })
+            .await?;
 
-        let link_id = mailbox_request(source_mb, source_id, |reply| {
+        mailbox_request(source_mb, link.source, |reply| {
             if is_output {
                 BlockMailboxCmd::AddOutputLink {
-                    output_name: link_data.source_block_pin_name.clone(),
-                    target_block_id: target_id,
-                    target_input_name: link_data.target_block_pin_name.clone(),
-                    target_writer: target_writer.clone(),
+                    link_id: id,
+                    output_name: link.source_pin.clone(),
+                    target_block_id: link.target,
+                    target_input_name: link.target_pin.clone(),
+                    target_writer,
                     reply,
                 }
             } else {
                 BlockMailboxCmd::AddInputLink {
-                    input_name: link_data.source_block_pin_name.clone(),
-                    target_block_id: target_id,
-                    target_input_name: link_data.target_block_pin_name.clone(),
-                    target_writer: target_writer.clone(),
+                    link_id: id,
+                    input_name: link.source_pin.clone(),
+                    target_block_id: link.target,
+                    target_input_name: link.target_pin.clone(),
+                    target_writer,
                     reply,
                 }
             }
         })
         .await?
         .map_err(EngineError::BlockRequestRejected)?;
+
+        if let Err(err) = self.attach_target(link, is_output).await {
+            let _ = mailbox_request(source_mb, link.source, |reply| {
+                BlockMailboxCmd::DisconnectLink { link_id: id, reply }
+            })
+            .await;
+            return Err(err);
+        }
+        Ok(())
+    }
+
+    /// The target half of [`wire`](Self::wire), once the source holds
+    /// the link.
+    async fn attach_target(&self, link: &LinkRecord, is_output: bool) -> Result<()> {
+        let target_mb = self.mailbox_or_err(&link.target)?;
 
         // Increment the target's connection count for this input. Without
         // this, the input would read as unconnected — no input wait wakes
@@ -347,9 +396,9 @@ impl BlockGraph {
         let (inc_reply, inc_response) = oneshot::channel();
         mailbox_send(
             target_mb,
-            target_id,
+            link.target,
             BlockMailboxCmd::IncrementInput {
-                name: link_data.target_block_pin_name.clone(),
+                name: link.target_pin.clone(),
                 reply: inc_reply,
             },
         )
@@ -359,27 +408,23 @@ impl BlockGraph {
         // Seed the target input with the source's current value so the
         // newly-connected block sees a value immediately.
         let seed_value = self
-            .read_source_value(&source_id, &link_data.source_block_pin_name, is_output)
+            .read_source_value(&link.source, &link.source_pin, is_output)
             .await
             .unwrap_or_default();
         mailbox_send(
             target_mb,
-            target_id,
+            link.target,
             BlockMailboxCmd::SeedInputValue {
-                name: link_data.target_block_pin_name.clone(),
+                name: link.target_pin.clone(),
                 value: seed_value,
             },
         )
         .await?;
         // Refresh another connected input on the target so the block
         // re-cycles with the freshly-seeded value.
-        self.reset_connected_inputs(&target_id, &link_data.target_block_pin_name)
+        self.reset_connected_inputs(&link.target, &link.target_pin)
             .await;
-
-        Ok(LinkData {
-            id: Some(link_id.to_string()),
-            ..link_data.clone()
-        })
+        Ok(())
     }
 
     /// The current value of the source pin of a link: an output's value
@@ -466,6 +511,8 @@ impl BlockGraph {
         // 3. Terminate the block.
         let _ = target_mb.send(BlockMailboxCmd::Terminate).await;
         self.handles.remove(block_id);
+        self.links
+            .retain(|_, link| link.source != *block_id && link.target != *block_id);
 
         Ok(*block_id)
     }
@@ -560,17 +607,25 @@ impl BlockGraph {
         })
     }
 
-    /// Wires `links` — `program`'s, validated by [`stage_program`] —
-    /// then pushes `program`'s saved input/output values to its blocks.
+    /// Wires `links` — `program`'s, staged by [`stage_program`] — then
+    /// pushes `program`'s saved input/output values to its blocks.
     pub(super) async fn apply_program(
-        &self,
+        &mut self,
         program: &Program,
-        links: Vec<LinkData>,
+        links: Vec<(Uuid, LinkRecord)>,
     ) -> Result<()> {
         // Wire each link asynchronously (mailbox round-trips between
-        // source and target blocks).
-        for link in links {
-            self.connect_blocks(&link).await?;
+        // source and target blocks). The staged links already hold their
+        // ids in the index: a link that is not wired gives its id back.
+        let mut links = links.into_iter();
+        while let Some((id, link)) = links.next() {
+            if let Err(err) = self.wire(id, &link).await {
+                self.links.remove(&id);
+                for (id, _) in links {
+                    self.links.remove(&id);
+                }
+                return Err(err);
+            }
         }
 
         // Push each block's saved input/output values.
@@ -593,36 +648,77 @@ impl BlockGraph {
         Ok(())
     }
 
-    /// Disconnects the link `link_id`, reporting whether it was found.
-    pub(super) async fn disconnect_link_by_id(&self, link_id: &Uuid) -> Result<bool> {
-        // Try every block. The link belongs to exactly one (its source).
-        for handle in self.handles.values() {
-            let (reply, response) = oneshot::channel();
-            // A block whose task is gone simply cannot own the link; skip
-            // it rather than failing the whole search.
-            if handle
-                .mailbox
-                .send(BlockMailboxCmd::DisconnectLink {
-                    link_id: *link_id,
-                    reply,
-                })
-                .await
-                .is_err()
-            {
-                continue;
-            }
-            let targets = response
-                .await
-                .map_err(|_| EngineError::BlockDroppedReply { id: *handle.id() })?;
-            if !targets.is_empty() {
-                for (other_id, input_name) in targets {
-                    self.decrement_input(&other_id, input_name).await;
-                }
-                return Ok(true);
+    /// Wires the links staged while the engine was idle, once its actors
+    /// answer. A link that cannot be wired is dropped.
+    pub(super) async fn wire_staged(&mut self, links: Vec<(Uuid, LinkRecord)>) {
+        for (id, link) in links {
+            if self.wire(id, &link).await.is_err() {
+                self.links.remove(&id);
             }
         }
-        Ok(false)
     }
+
+    /// Disconnects the link `link_id`, reporting whether it was found.
+    pub(super) async fn disconnect_link_by_id(&mut self, link_id: &Uuid) -> Result<bool> {
+        let Some(link) = self.links.get(link_id) else {
+            return Ok(false);
+        };
+        // The link lives on its source block.
+        let source_mb = self.mailbox_or_err(&link.source)?;
+        let targets = mailbox_request(source_mb, link.source, |reply| {
+            BlockMailboxCmd::DisconnectLink {
+                link_id: *link_id,
+                reply,
+            }
+        })
+        .await?;
+        self.links.remove(link_id);
+        let found = !targets.is_empty();
+        for (other_id, input_name) in targets {
+            self.decrement_input(&other_id, input_name).await;
+        }
+        Ok(found)
+    }
+}
+
+/// The record of `link`, once both of its ends check out: a block
+/// `desc_of` resolves, and a pin of that block — an output or, for
+/// input fan-out, an input at the source; an input at the target.
+fn link_record<'a>(
+    link: &LinkData,
+    desc_of: impl Fn(LinkEnd, &Uuid) -> Result<&'a BlockDesc, EngineError>,
+) -> Result<LinkRecord, EngineError> {
+    let source = parse_block_uuid(&link.source_block_uuid)?;
+    let target = parse_block_uuid(&link.target_block_uuid)?;
+    let source_desc = desc_of(LinkEnd::Source, &source)?;
+    let target_desc = desc_of(LinkEnd::Target, &target)?;
+
+    let source_pin = link.source_block_pin_name.as_str();
+    let source_pin_exists = source_desc.outputs.iter().any(|o| o.name == source_pin)
+        || source_desc.inputs.iter().any(|i| i.name == source_pin);
+    if !source_pin_exists {
+        return Err(EngineError::PinNotFound {
+            end: LinkEnd::Source,
+            block: source,
+            pin: source_pin.to_string(),
+        });
+    }
+
+    let target_pin = link.target_block_pin_name.as_str();
+    if !target_desc.inputs.iter().any(|i| i.name == target_pin) {
+        return Err(EngineError::PinNotFound {
+            end: LinkEnd::Target,
+            block: target,
+            pin: target_pin.to_string(),
+        });
+    }
+
+    Ok(LinkRecord {
+        source,
+        source_pin: source_pin.to_string(),
+        target,
+        target_pin: target_pin.to_string(),
+    })
 }
 
 /// An engine, in either phase, as the graph's operations that create
@@ -642,15 +738,18 @@ pub(super) trait ProgramHost {
 
 /// Schedules every block of `program` on `host`, recording its UI
 /// metadata, and returns the program's links once validated, ready to
-/// wire.
+/// wire. Their ids are taken in the index from here on.
 ///
 /// Every block id is checked before anything is scheduled, so a
 /// program naming an invalid or already-scheduled id schedules no
 /// block at all.
+///
+/// A link keeps the id the program saved it under: its `id`, or else
+/// the key the program's links are keyed by.
 pub(super) fn stage_program<H: ProgramHost>(
     host: &mut H,
     program: &Program,
-) -> Result<Vec<LinkData>> {
+) -> Result<Vec<(Uuid, LinkRecord)>> {
     let blocks = program_block_ids(program, |id| host.graph().contains(id))?;
     for (id, pb) in blocks {
         let block_def =
@@ -665,12 +764,23 @@ pub(super) fn stage_program<H: ProgramHost>(
             handle.position = pb.positions;
         }
     }
-    let graph = host.graph();
-    program
-        .links
-        .values()
-        .map(|link| graph.validate_link(link))
-        .collect()
+    let graph = host.graph_mut();
+    let mut ids = BTreeSet::new();
+    let mut links = Vec::new();
+    for (key, link) in &program.links {
+        let id = parse_link_uuid(link.id.as_deref().unwrap_or(key))?;
+        if graph.links.contains_key(&id) || !ids.insert(id) {
+            return Err(EngineError::DuplicateLinkId { id }.into());
+        }
+        let record = link_record(link, |_, block| {
+            graph.handle_or_err(block).map(BlockHandle::desc)
+        })?;
+        links.push((id, record));
+    }
+    for (id, link) in &links {
+        graph.links.insert(*id, link.clone());
+    }
+    Ok(links)
 }
 
 /// Filter for "this is a real saved value, not a placeholder."

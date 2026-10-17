@@ -415,6 +415,36 @@ mod tests {
         }
     }
 
+    /// Regression: wiring a link always made up a fresh id, so a link
+    /// lost the id a connect request named or a loaded program saved it
+    /// under — and removing it by that id failed. See
+    /// `test_support::link_ids`.
+    mod link_ids {
+        use super::*;
+        use crate::tokio_impl::engine::test_support::link_ids;
+
+        #[tokio::test(flavor = "current_thread")]
+        async fn connecting_keeps_a_named_link_id() {
+            link_ids::connecting_keeps_a_named_link_id(SingleThreadedEngine::new()).await;
+        }
+
+        #[tokio::test(flavor = "current_thread")]
+        async fn connecting_rejects_a_taken_or_invalid_link_id() {
+            link_ids::connecting_rejects_a_taken_or_invalid_link_id(SingleThreadedEngine::new())
+                .await;
+        }
+
+        #[tokio::test(flavor = "current_thread")]
+        async fn a_loaded_link_keeps_its_saved_id() {
+            link_ids::a_loaded_link_keeps_its_saved_id(SingleThreadedEngine::new()).await;
+        }
+
+        #[tokio::test(flavor = "current_thread")]
+        async fn a_program_reusing_a_link_id_is_rejected() {
+            link_ids::a_program_reusing_a_link_id_is_rejected(SingleThreadedEngine::new()).await;
+        }
+    }
+
     /// Regression: every request addressed to a block cancels its
     /// cycle, and the re-issued operation restarted its timeout, so
     /// steady requests kept a slow publish or request from ever timing

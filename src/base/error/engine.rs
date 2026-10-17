@@ -88,6 +88,25 @@ pub enum EngineError {
         pin: String,
     },
 
+    /// A link with this id already exists on the engine. Link ids are
+    /// unique per engine, like block ids, and an existing link is never
+    /// silently replaced.
+    #[error("Link '{id}' already exists")]
+    DuplicateLinkId {
+        /// The id that is already taken.
+        id: Uuid,
+    },
+
+    /// A link id could not be parsed as a UUID.
+    #[error("Invalid link uuid '{id}'")]
+    InvalidLinkId {
+        /// The string that could not be parsed.
+        id: String,
+        /// The underlying parse error.
+        #[source]
+        source: uuid::Error,
+    },
+
     /// The block's actor task is no longer running, so the request could
     /// not be delivered.
     #[error("Block '{id}' actor task is gone")]
@@ -116,9 +135,17 @@ pub(crate) fn parse_block_uuid(uuid: &str) -> Result<Uuid, EngineError> {
     })
 }
 
+/// Parses a link id, tagging a failure with the string that was rejected.
+pub(crate) fn parse_link_uuid(id: &str) -> Result<Uuid, EngineError> {
+    Uuid::try_from(id).map_err(|source| EngineError::InvalidLinkId {
+        id: id.to_string(),
+        source,
+    })
+}
+
 #[cfg(test)]
 mod test {
-    use super::{EngineError, LinkEnd, parse_block_uuid};
+    use super::{EngineError, LinkEnd, parse_block_uuid, parse_link_uuid};
     use assert_matches::assert_matches;
     use uuid::Uuid;
 
@@ -127,6 +154,13 @@ mod test {
         let err = parse_block_uuid("not-a-uuid").expect_err("should be rejected");
 
         assert_matches!(err, EngineError::InvalidBlockUuid { uuid, .. } if uuid == "not-a-uuid");
+    }
+
+    #[test]
+    fn invalid_link_uuid_keeps_the_rejected_string() {
+        let err = parse_link_uuid("link-1").expect_err("should be rejected");
+
+        assert_matches!(err, EngineError::InvalidLinkId { id, .. } if id == "link-1");
     }
 
     /// Both ends of a self-link name the same block, so the end is the

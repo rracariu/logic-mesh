@@ -21,7 +21,7 @@ use crate::base::engine::{
     Engine,
     messages::{BlockDefinition, EngineMessage},
 };
-use crate::base::program::{Program, ProgramBlock};
+use crate::base::program::{LinkData, Program, ProgramBlock};
 use crate::blocks::math::Add;
 use crate::single_threaded::Messages;
 use crate::tokio_impl::{ReaderImpl, WriterImpl};
@@ -83,6 +83,64 @@ impl Client {
         match self.request(request).await {
             EngineMessage::WriteBlockOutputRes(Ok(_)) => {}
             other => panic!("Expected WriteBlockOutputRes(Ok), got {:?}", other),
+        }
+    }
+
+    /// Links `source`'s `source_pin` to `target`'s `target_pin`, under
+    /// `id` if given, returning the engine's answer.
+    pub(crate) async fn connect(
+        &mut self,
+        id: Option<&str>,
+        (source, source_pin): (Uuid, &str),
+        (target, target_pin): (Uuid, &str),
+    ) -> Result<LinkData, String> {
+        let link = LinkData {
+            id: id.map(str::to_string),
+            source_block_uuid: source.to_string(),
+            target_block_uuid: target.to_string(),
+            source_block_pin_name: source_pin.to_string(),
+            target_block_pin_name: target_pin.to_string(),
+        };
+        match self
+            .request(EngineMessage::ConnectBlocksReq(self.id, link))
+            .await
+        {
+            EngineMessage::ConnectBlocksRes(res) => res,
+            other => panic!("Expected ConnectBlocksRes, got {:?}", other),
+        }
+    }
+
+    /// Removes link `id`, returning the engine's answer.
+    pub(crate) async fn remove_link(&mut self, id: Uuid) -> Result<bool, String> {
+        match self
+            .request(EngineMessage::RemoveLinkReq(self.id, id))
+            .await
+        {
+            EngineMessage::RemoveLinkRes(res) => res,
+            other => panic!("Expected RemoveLinkRes, got {:?}", other),
+        }
+    }
+
+    /// Loads `program`, returning the engine's answer.
+    pub(crate) async fn load(&mut self, program: Program) -> Result<(), String> {
+        match self
+            .request(EngineMessage::LoadProgramReq(self.id, program))
+            .await
+        {
+            EngineMessage::LoadProgramRes(res) => res,
+            other => panic!("Expected LoadProgramRes, got {:?}", other),
+        }
+    }
+
+    /// Saves the running program, failing the test if the engine
+    /// reports an error.
+    pub(crate) async fn save(&mut self) -> Program {
+        match self
+            .request(EngineMessage::GetCurrentProgramReq(self.id))
+            .await
+        {
+            EngineMessage::GetCurrentProgramRes(Ok(program)) => program,
+            other => panic!("Expected GetCurrentProgramRes(Ok), got {:?}", other),
         }
     }
 
@@ -402,6 +460,177 @@ pub(crate) mod pin_writes {
             client.write_input(id, "in1", with_unit(2.0, "m")).await;
             client.wait_for_state(id, "running").await;
             client.wait_for_output(id, "out", with_unit(3.0, "m")).await;
+        })
+        .await;
+    }
+}
+
+/// A link from `source`'s `out` to `target`'s `pin`, naming `id` if
+/// given, for a [`Program`].
+pub(crate) fn program_link(source: Uuid, target: Uuid, pin: &str, id: Option<Uuid>) -> LinkData {
+    LinkData {
+        id: id.map(|id| id.to_string()),
+        source_block_uuid: source.to_string(),
+        target_block_uuid: target.to_string(),
+        source_block_pin_name: "out".to_string(),
+        target_block_pin_name: pin.to_string(),
+    }
+}
+
+/// Link ids, written once against the [`Engine`] trait and run by each
+/// engine's tests: a link keeps the id its creator names — over a
+/// connect request or in a loaded program — and ids stay unique.
+pub(crate) mod link_ids {
+    use assert_matches::assert_matches;
+
+    use super::lifecycle::TestEngine;
+    use super::*;
+    use crate::base::error::EngineError;
+
+    /// Two unlinked `Add` blocks, scheduled.
+    fn schedule_adds<E: TestEngine>(engine: &mut E) -> (Uuid, Uuid) {
+        let (source, target) = (Add::new(), Add::new());
+        let ids = (*source.id(), *target.id());
+        engine.schedule(source).expect("source scheduled");
+        engine.schedule(target).expect("target scheduled");
+        ids
+    }
+
+    /// A connect request naming an id creates the link under that id,
+    /// and the link can be removed by it.
+    pub(crate) async fn connecting_keeps_a_named_link_id<E: TestEngine>(mut engine: E) {
+        let (source, target) = schedule_adds(&mut engine);
+        let id = Uuid::new_v4();
+
+        drive(engine, move |mut client| async move {
+            let named = id.to_string();
+            let link = client
+                .connect(Some(&named), (source, "out"), (target, "in0"))
+                .await
+                .expect("linked");
+            assert_eq!(link.id.as_deref(), Some(named.as_str()));
+            let saved = client.save().await;
+            assert_eq!(saved.links.keys().collect::<Vec<_>>(), vec![&named]);
+
+            assert_eq!(client.remove_link(id).await, Ok(true));
+            assert!(!client.inspect(target).await.inputs["in0"].is_connected);
+            assert!(client.save().await.links.is_empty());
+        })
+        .await;
+    }
+
+    /// An id another link has — wired over a request, or before the
+    /// blocks were scheduled — is rejected, and so is one that does not
+    /// parse.
+    pub(crate) async fn connecting_rejects_a_taken_or_invalid_link_id<E: TestEngine>(
+        mut engine: E,
+    ) {
+        let (linked_source, linked_target) = schedule_linked_adds(&mut engine);
+        let (source, target) = schedule_adds(&mut engine);
+
+        drive(engine, move |mut client| async move {
+            let prewired = client.save().await.links.into_keys().next();
+            let prewired = prewired.expect("the pre-wired link is saved");
+            let reply = client
+                .connect(Some(&prewired), (source, "out"), (target, "in0"))
+                .await;
+            let taken = Uuid::parse_str(&prewired).expect("a uuid");
+            assert_matches!(
+                reply,
+                Err(msg) if msg == EngineError::DuplicateLinkId { id: taken }.to_string()
+            );
+
+            let id = Uuid::new_v4().to_string();
+            client
+                .connect(Some(&id), (source, "out"), (target, "in0"))
+                .await
+                .expect("linked");
+            let reply = client
+                .connect(Some(&id), (linked_source, "out"), (linked_target, "in1"))
+                .await;
+            assert_matches!(reply, Err(msg) if msg.contains("already exists"));
+
+            let reply = client
+                .connect(Some("link-1"), (source, "out"), (target, "in1"))
+                .await;
+            assert_matches!(reply, Err(msg) if msg.starts_with("Invalid link uuid 'link-1'"));
+
+            // None of the rejected links was wired.
+            assert_eq!(client.save().await.links.len(), 2);
+        })
+        .await;
+    }
+
+    /// A loaded link keeps the id it was saved under — the key the
+    /// program's links are keyed by, when the link names no id itself —
+    /// and can be removed by it.
+    pub(crate) async fn a_loaded_link_keeps_its_saved_id<E: TestEngine>(engine: E) {
+        let (source, target) = (Uuid::new_v4(), Uuid::new_v4());
+        let (keyed, named) = (Uuid::new_v4(), Uuid::new_v4());
+        let mut program = add_program([source.to_string().as_str(), &target.to_string()]);
+        program
+            .links
+            .insert(keyed.to_string(), program_link(source, target, "in0", None));
+        program.links.insert(
+            named.to_string(),
+            program_link(source, target, "in1", Some(named)),
+        );
+
+        drive(engine, move |mut client| async move {
+            client.load(program).await.expect("loaded");
+            let saved = client.save().await;
+            let mut ids: Vec<_> = saved.links.keys().cloned().collect();
+            ids.sort();
+            let mut expected = vec![keyed.to_string(), named.to_string()];
+            expected.sort();
+            assert_eq!(ids, expected);
+
+            assert_eq!(client.remove_link(keyed).await, Ok(true));
+            assert!(!client.inspect(target).await.inputs["in0"].is_connected);
+            assert_eq!(client.remove_link(named).await, Ok(true));
+            assert!(!client.inspect(target).await.inputs["in1"].is_connected);
+        })
+        .await;
+    }
+
+    /// A program naming one link id twice, or an id a link on the
+    /// engine already has, is rejected.
+    pub(crate) async fn a_program_reusing_a_link_id_is_rejected<E: TestEngine>(mut engine: E) {
+        let (scheduled_source, scheduled_target) = schedule_adds(&mut engine);
+        let taken = Uuid::new_v4();
+        // Two linked blocks, the links named `taken`.
+        let program_with = |pins: &[&str]| {
+            let (source, target) = (Uuid::new_v4(), Uuid::new_v4());
+            let mut program = add_program([source.to_string().as_str(), &target.to_string()]);
+            for pin in pins {
+                let link = program_link(source, target, pin, Some(taken));
+                program.links.insert(Uuid::new_v4().to_string(), link);
+            }
+            program
+        };
+        let twice = program_with(&["in0", "in1"]);
+        let reused = program_with(&["in0"]);
+
+        drive(engine, move |mut client| async move {
+            let reply = client.load(twice).await;
+            assert_eq!(
+                reply,
+                Err(EngineError::DuplicateLinkId { id: taken }.to_string())
+            );
+
+            client
+                .connect(
+                    Some(&taken.to_string()),
+                    (scheduled_source, "out"),
+                    (scheduled_target, "in0"),
+                )
+                .await
+                .expect("linked");
+            let reply = client.load(reused).await;
+            assert_eq!(
+                reply,
+                Err(EngineError::DuplicateLinkId { id: taken }.to_string())
+            );
         })
         .await;
     }

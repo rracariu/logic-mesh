@@ -36,7 +36,7 @@ pub use external::ExternalError;
 pub use registry::RegistryError;
 pub use value::ValueError;
 
-pub(crate) use engine::parse_block_uuid;
+pub(crate) use engine::{parse_block_uuid, parse_link_uuid};
 
 use thiserror::Error;
 
