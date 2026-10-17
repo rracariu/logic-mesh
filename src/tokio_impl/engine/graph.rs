@@ -113,6 +113,27 @@ pub(super) struct LinkRecord {
     target_pin: String,
 }
 
+impl LinkRecord {
+    /// The link, as a program saves it under `id`.
+    fn to_link_data(&self, id: &Uuid) -> LinkData {
+        LinkData {
+            id: Some(id.to_string()),
+            source_block_uuid: self.source.to_string(),
+            target_block_uuid: self.target.to_string(),
+            source_block_pin_name: self.source_pin.clone(),
+            target_block_pin_name: self.target_pin.clone(),
+        }
+    }
+}
+
+/// A block's saved inputs and outputs, by pin name, and its outgoing
+/// links.
+type SavedPins = (
+    BTreeMap<String, PinValue>,
+    BTreeMap<String, PinValue>,
+    Vec<LinkData>,
+);
+
 /// An engine's scheduled blocks, keyed by block id, and the links
 /// between them, keyed by link id.
 #[derive(Default)]
@@ -490,15 +511,30 @@ impl BlockGraph {
         }
     }
 
-    /// Removes block `block_id` and all its links.
+    /// Removes block `block_id` and all its links — even when the
+    /// block's actor is gone already, for whatever reason: its handle and
+    /// its links are dropped all the same, and the inputs it fed are
+    /// updated.
     pub(super) async fn remove_block(&mut self, block_id: &Uuid) -> Result<Uuid> {
         // 1. Tell the target to disconnect itself; collect targets that need
-        //    decrementing.
-        let target_mb = self.mailbox_or_err(block_id)?.clone();
-        let targets = mailbox_request(&target_mb, *block_id, |reply| {
+        //    decrementing. A block whose actor is gone took its links with
+        //    it, but the index still knows where they went.
+        let target_mb = self.mailbox_or_err(block_id)?;
+        let targets = match mailbox_request(target_mb, *block_id, |reply| {
             BlockMailboxCmd::DisconnectAll { reply }
         })
-        .await?;
+        .await
+        {
+            Ok(targets) => targets,
+            Err(err) => {
+                log::warn!("Removing block {block_id}, whose actor is gone: {err}");
+                self.links
+                    .values()
+                    .filter(|link| link.source == *block_id)
+                    .map(|link| (link.target, link.target_pin.clone()))
+                    .collect()
+            }
+        };
 
         for (other_id, input_name) in targets {
             self.decrement_input(&other_id, input_name).await;
@@ -524,9 +560,10 @@ impl BlockGraph {
             }
         }
 
-        // 3. Terminate the block.
-        let _ = target_mb.send(BlockMailboxCmd::Terminate).await;
-        self.handles.remove(block_id);
+        // 3. Terminate the block, unless its actor is gone already.
+        if let Some(handle) = self.handles.remove(block_id) {
+            terminate_actor(handle.mailbox);
+        }
         self.links
             .retain(|_, link| link.source != *block_id && link.target != *block_id);
 
@@ -550,50 +587,34 @@ impl BlockGraph {
     /// description, every scheduled block with its UI metadata + current
     /// pin values, plus every link under its id. This is the canonical
     /// save format — round-trips through a program load.
+    ///
+    /// A block whose actor is gone is saved from what its handle and
+    /// the link index still know — its type, label, position and
+    /// outgoing links — with no pin values: those were lost with the
+    /// actor. Failing the whole save instead would lose the rest of the
+    /// program as well, and removing the block, the only way out,
+    /// would lose its links too. The loss is logged.
     pub(super) async fn save_program(&self) -> Result<Program> {
         let mut blocks = BTreeMap::new();
         let mut links = BTreeMap::new();
 
         for (id, handle) in &self.handles {
-            // Pull dynamic state (pin values + per-input connectedness)
-            // via `Inspect`.
-            let definition = mailbox_request(&handle.mailbox, *id, |reply| {
-                BlockMailboxCmd::Inspect { reply }
-            })
-            .await?;
-
-            // Pull outgoing links via `GetBlockData`.
-            let (_block_data, block_links) = mailbox_request(&handle.mailbox, *id, |reply| {
-                BlockMailboxCmd::GetBlockData { reply }
-            })
-            .await?;
-
-            let inputs = definition
-                .inputs
-                .into_iter()
-                .map(|(name, data)| {
-                    (
-                        name,
-                        PinValue {
-                            value: data.val,
-                            is_connected: data.is_connected,
-                        },
-                    )
-                })
-                .collect();
-            let outputs = definition
-                .outputs
-                .into_iter()
-                .map(|(name, data)| {
-                    (
-                        name,
-                        PinValue {
-                            value: data.val,
-                            is_connected: false,
-                        },
-                    )
-                })
-                .collect();
+            let (inputs, outputs, block_links) = match self.snapshot(handle).await {
+                Ok(snapshot) => snapshot,
+                Err(err) => {
+                    log::warn!(
+                        "Saving block {id} ({}) without its pin values: {err}",
+                        handle.name
+                    );
+                    let block_links = self
+                        .links
+                        .iter()
+                        .filter(|(_, link)| link.source == *id)
+                        .map(|(link_id, link)| link.to_link_data(link_id))
+                        .collect();
+                    (BTreeMap::new(), BTreeMap::new(), block_links)
+                }
+            };
 
             blocks.insert(
                 id.to_string(),
@@ -622,6 +643,52 @@ impl BlockGraph {
             blocks,
             links,
         })
+    }
+
+    /// The pin values and outgoing links of the block behind `handle`,
+    /// read from its actor.
+    async fn snapshot(&self, handle: &BlockHandle) -> Result<SavedPins, EngineError> {
+        let id = handle.id;
+        // Pull dynamic state (pin values + per-input connectedness)
+        // via `Inspect`.
+        let definition = mailbox_request(&handle.mailbox, id, |reply| BlockMailboxCmd::Inspect {
+            reply,
+        })
+        .await?;
+
+        // Pull outgoing links via `GetBlockData`.
+        let (_block_data, block_links) = mailbox_request(&handle.mailbox, id, |reply| {
+            BlockMailboxCmd::GetBlockData { reply }
+        })
+        .await?;
+
+        let inputs = definition
+            .inputs
+            .into_iter()
+            .map(|(name, data)| {
+                (
+                    name,
+                    PinValue {
+                        value: data.val,
+                        is_connected: data.is_connected,
+                    },
+                )
+            })
+            .collect();
+        let outputs = definition
+            .outputs
+            .into_iter()
+            .map(|(name, data)| {
+                (
+                    name,
+                    PinValue {
+                        value: data.val,
+                        is_connected: false,
+                    },
+                )
+            })
+            .collect();
+        Ok((inputs, outputs, block_links))
     }
 
     /// Completes the load of a program [`stage_program`] staged: wires
@@ -704,20 +771,31 @@ impl BlockGraph {
     }
 
     /// Disconnects the link `link_id`, reporting whether it was found.
+    ///
+    /// The link lives on its source block. A source whose actor is gone
+    /// took the link with it, so only its target is left to update.
     pub(super) async fn disconnect_link_by_id(&mut self, link_id: &Uuid) -> Result<bool> {
-        let Some(link) = self.links.get(link_id) else {
+        let Some(link) = self.links.remove(link_id) else {
             return Ok(false);
         };
-        // The link lives on its source block.
-        let source_mb = self.mailbox_or_err(&link.source)?;
-        let targets = mailbox_request(source_mb, link.source, |reply| {
-            BlockMailboxCmd::DisconnectLink {
-                link_id: *link_id,
-                reply,
-            }
-        })
-        .await?;
-        self.links.remove(link_id);
+        let gone = || vec![(link.target, link.target_pin.clone())];
+        let targets = match self.mailbox(&link.source) {
+            Some(source_mb) => match mailbox_request(source_mb, link.source, |reply| {
+                BlockMailboxCmd::DisconnectLink {
+                    link_id: *link_id,
+                    reply,
+                }
+            })
+            .await
+            {
+                Ok(targets) => targets,
+                Err(err) => {
+                    log::warn!("Removing link {link_id}, whose source actor is gone: {err}");
+                    gone()
+                }
+            },
+            None => gone(),
+        };
         let found = !targets.is_empty();
         for (other_id, input_name) in targets {
             self.decrement_input(&other_id, input_name).await;

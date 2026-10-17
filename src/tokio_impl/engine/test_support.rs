@@ -121,6 +121,17 @@ impl Client {
         }
     }
 
+    /// Removes block `id`, returning the engine's answer.
+    pub(crate) async fn remove_block(&mut self, id: Uuid) -> Result<Uuid, String> {
+        match self
+            .request(EngineMessage::RemoveBlockReq(self.id, id))
+            .await
+        {
+            EngineMessage::RemoveBlockRes(res) => res,
+            other => panic!("Expected RemoveBlockRes, got {:?}", other),
+        }
+    }
+
     /// Loads `program`, returning the engine's answer.
     pub(crate) async fn load(&mut self, program: Program) -> Result<(), String> {
         match self
@@ -1031,6 +1042,152 @@ pub(crate) mod atomic_loads {
         drive(engine, move |mut client| async move {
             assert_eq!(client.inspect(first).await.inputs["in0"].val, 4.into());
             client.wait_for_output(second, "out", 4.into()).await;
+        })
+        .await;
+    }
+}
+
+/// Blocks whose actor is gone, written once against the [`Engine`]
+/// trait and run by each engine's tests: such a block can still be
+/// saved, unlinked and removed.
+pub(crate) mod dead_actors {
+    use assert_matches::assert_matches;
+
+    use super::lifecycle::TestEngine;
+    use super::*;
+    use crate::base::block::{Block, BlockState};
+    use crate::base::engine::messages::EngineMessage::{InspectBlockReq, InspectBlockRes};
+    use crate::base::error::EngineError;
+    use crate::base::input::input_reader::InputReader;
+    use crate::blocks::{InputImpl, OutputImpl};
+
+    /// Ends its own actor — by entering [`BlockState::Terminated`] —
+    /// once `quit` reads a positive number.
+    #[block]
+    #[derive(BlockProps, Debug)]
+    #[category = "test"]
+    pub(crate) struct Quits {
+        #[input(kind = "Number")]
+        quit: InputImpl,
+        #[output(kind = "Number")]
+        out: OutputImpl,
+    }
+
+    impl Block for Quits {
+        async fn execute(&mut self) {
+            self.read_inputs_until_ready().await;
+            if matches!(&self.quit.val, Some(Value::Number(n)) if n.value > 0.0) {
+                self.set_state(BlockState::Terminated);
+            }
+        }
+    }
+
+    /// The blocks of an `Add → Quits → Add` chain, and its links.
+    struct Chain {
+        source: Uuid,
+        quits: Uuid,
+        target: Uuid,
+        into_quits: Uuid,
+        out_of_quits: Uuid,
+    }
+
+    /// Schedules a chain whose middle block ends its actor once
+    /// [`kill`] writes to the source.
+    fn schedule_chain<E: TestEngine>(engine: &mut E) -> Chain {
+        let mut source = Add::new();
+        let mut quits = Quits::new();
+        let mut target = Add::new();
+        let into_quits = connect_output(&mut source.out, &mut quits.quit).expect("linked");
+        let out_of_quits = connect_output(&mut quits.out, target.inputs_mut()[0]).expect("linked");
+        let chain = Chain {
+            source: *source.id(),
+            quits: *quits.id(),
+            target: *target.id(),
+            into_quits,
+            out_of_quits,
+        };
+        engine.schedule(source).expect("scheduled");
+        engine.schedule(quits).expect("scheduled");
+        engine.schedule(target).expect("scheduled");
+        chain
+    }
+
+    /// Ends the chain's middle actor, and waits until it is gone.
+    async fn kill(client: &mut Client, chain: &Chain) {
+        client.write_output(chain.source, "out", 1.into()).await;
+        for _ in 0..POLLS {
+            let reply = client
+                .request(InspectBlockReq(client.id, chain.quits))
+                .await;
+            if let InspectBlockRes(Err(msg)) = reply {
+                assert_eq!(
+                    msg,
+                    EngineError::BlockTaskGone { id: chain.quits }.to_string()
+                );
+                return;
+            }
+            sleep(POLL_INTERVAL).await;
+        }
+        panic!("the actor never ended");
+    }
+
+    /// A block whose actor is gone is saved from its handle — with its
+    /// links, but no pin values — instead of failing the save.
+    pub(crate) async fn a_block_whose_actor_is_gone_is_saved_without_pins<E: TestEngine>(
+        mut engine: E,
+    ) {
+        let chain = schedule_chain(&mut engine);
+
+        drive(engine, move |mut client| async move {
+            kill(&mut client, &chain).await;
+
+            let saved = client.save().await;
+            let quits = &saved.blocks[&chain.quits.to_string()];
+            assert_eq!(quits.name, "Quits");
+            assert!(quits.inputs.is_empty() && quits.outputs.is_empty());
+            let mut links: Vec<_> = saved.links.into_keys().collect();
+            links.sort();
+            let mut expected = vec![chain.into_quits.to_string(), chain.out_of_quits.to_string()];
+            expected.sort();
+            assert_eq!(links, expected);
+        })
+        .await;
+    }
+
+    /// A link out of a block whose actor is gone can still be removed,
+    /// and its target input stops counting it.
+    pub(crate) async fn a_link_out_of_a_gone_actor_is_removed<E: TestEngine>(mut engine: E) {
+        let chain = schedule_chain(&mut engine);
+
+        drive(engine, move |mut client| async move {
+            kill(&mut client, &chain).await;
+            assert!(client.inspect(chain.target).await.inputs["in0"].is_connected);
+
+            assert_eq!(client.remove_link(chain.out_of_quits).await, Ok(true));
+            assert!(!client.inspect(chain.target).await.inputs["in0"].is_connected);
+            assert_eq!(client.remove_link(chain.out_of_quits).await, Ok(false));
+        })
+        .await;
+    }
+
+    /// A block whose actor is gone can still be removed: its handle and
+    /// its links go, both ways.
+    pub(crate) async fn a_block_whose_actor_is_gone_is_removed<E: TestEngine>(mut engine: E) {
+        let chain = schedule_chain(&mut engine);
+
+        drive(engine, move |mut client| async move {
+            kill(&mut client, &chain).await;
+
+            assert_eq!(client.remove_block(chain.quits).await, Ok(chain.quits));
+            let reply = client
+                .request(InspectBlockReq(client.id, chain.quits))
+                .await;
+            assert_matches!(reply, InspectBlockRes(Err(msg))
+                if msg == EngineError::BlockInstanceNotFound { id: chain.quits }.to_string());
+            assert!(!client.inspect(chain.target).await.inputs["in0"].is_connected);
+            let saved = client.save().await;
+            assert_eq!(saved.blocks.len(), 2);
+            assert!(saved.links.is_empty(), "both links are gone");
         })
         .await;
     }

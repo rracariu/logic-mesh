@@ -97,7 +97,8 @@ pub enum EngineMessage<WatchEventSender: Clone> {
     /// Response to [`AddBlockReq`](Self::AddBlockReq).
     AddBlockRes(Result<Uuid, String>),
 
-    /// Request to remove a block by UUID.
+    /// Request to remove a block by UUID, with all its links — also
+    /// when its actor task is gone already.
     RemoveBlockReq(Uuid, Uuid),
     /// Response to [`RemoveBlockReq`](Self::RemoveBlockReq).
     RemoveBlockRes(Result<Uuid, String>),
@@ -126,6 +127,10 @@ pub enum EngineMessage<WatchEventSender: Clone> {
     /// description of the program loaded last (none after a
     /// [`Reset`](Self::Reset)), and every block and link the engine
     /// holds.
+    ///
+    /// A block whose actor task is gone — its pin values with it — is
+    /// saved with its type, UI metadata and links but no pin values,
+    /// rather than failing the whole save.
     GetCurrentProgramReq(Uuid),
     /// Response to [`GetCurrentProgramReq`](Self::GetCurrentProgramReq).
     GetCurrentProgramRes(Result<Program, String>),

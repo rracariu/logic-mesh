@@ -260,6 +260,32 @@ mod tests {
         }
     }
 
+    /// Regression: once a block's actor was gone, the block could not
+    /// be removed, saving the program failed, and its links could not be
+    /// removed — see `test_support::dead_actors`.
+    mod dead_actors {
+        use super::*;
+        use crate::tokio_impl::engine::test_support::dead_actors;
+
+        #[tokio::test(flavor = "current_thread")]
+        async fn a_block_whose_actor_is_gone_is_saved_without_pins() {
+            dead_actors::a_block_whose_actor_is_gone_is_saved_without_pins(
+                SingleThreadedEngine::new(),
+            )
+            .await;
+        }
+
+        #[tokio::test(flavor = "current_thread")]
+        async fn a_link_out_of_a_gone_actor_is_removed() {
+            dead_actors::a_link_out_of_a_gone_actor_is_removed(SingleThreadedEngine::new()).await;
+        }
+
+        #[tokio::test(flavor = "current_thread")]
+        async fn a_block_whose_actor_is_gone_is_removed() {
+            dead_actors::a_block_whose_actor_is_gone_is_removed(SingleThreadedEngine::new()).await;
+        }
+    }
+
     /// Regression: a panic in `execute` killed the block's actor task —
     /// the block never showed Fault, downstream never faulted, and the
     /// block could no longer be saved or removed.

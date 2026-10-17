@@ -928,6 +928,30 @@ mod test {
         }
     }
 
+    /// Regression: see the single-threaded `dead_actors`.
+    mod dead_actors {
+        use super::*;
+        use crate::tokio_impl::engine::test_support::dead_actors;
+
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn a_block_whose_actor_is_gone_is_saved_without_pins() {
+            dead_actors::a_block_whose_actor_is_gone_is_saved_without_pins(
+                MultiThreadedEngine::new(),
+            )
+            .await;
+        }
+
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn a_link_out_of_a_gone_actor_is_removed() {
+            dead_actors::a_link_out_of_a_gone_actor_is_removed(MultiThreadedEngine::new()).await;
+        }
+
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn a_block_whose_actor_is_gone_is_removed() {
+            dead_actors::a_block_whose_actor_is_gone_is_removed(MultiThreadedEngine::new()).await;
+        }
+    }
+
     /// Regression: see the single-threaded `atomic_loads`.
     mod atomic_loads {
         use super::*;
