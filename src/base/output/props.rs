@@ -8,12 +8,26 @@ use uuid::Uuid;
 use crate::base::link::Link;
 
 /// The description of an output pin.
+///
+/// `#[non_exhaustive]`: build one with [`OutDesc::new`].
 #[derive(Debug, Default, Clone)]
+#[non_exhaustive]
 pub struct OutDesc {
     /// The output's name.
     pub name: String,
     /// The output's haystack kind.
     pub kind: HaystackKind,
+}
+
+impl OutDesc {
+    /// The description of an output named `name` that produces values
+    /// of `kind`.
+    pub fn new(name: impl Into<String>, kind: HaystackKind) -> Self {
+        Self {
+            name: name.into(),
+            kind,
+        }
+    }
 }
 
 /// Properties of a block output pin.

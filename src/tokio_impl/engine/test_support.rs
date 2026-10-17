@@ -1788,9 +1788,7 @@ pub(crate) mod drops {
 pub(crate) mod runtime_descs {
     use super::lifecycle::TestEngine;
     use super::*;
-    use crate::base::block::{
-        Block, BlockConnect, BlockDesc, BlockInput, BlockOutput, BlockPin, BlockState,
-    };
+    use crate::base::block::{Block, BlockConnect, BlockDesc, BlockInput, BlockOutput, BlockState};
     use crate::base::engine::messages::EngineMessage::Reset;
     use crate::base::input::{InputProps, input_reader::InputReader};
     use crate::base::link::Link;
@@ -1816,19 +1814,9 @@ pub(crate) mod runtime_descs {
         /// A new `Echo`, described as `runtime_desc_test::Echo`.
         pub(crate) fn new() -> Self {
             let id = Uuid::new_v4();
-            let desc = BlockDesc {
-                name: "Echo".to_string(),
-                library: LIBRARY.to_string(),
-                inputs: vec![BlockPin {
-                    name: "in".to_string(),
-                    kind: HaystackKind::Number,
-                }],
-                outputs: vec![BlockPin {
-                    name: "out".to_string(),
-                    kind: HaystackKind::Number,
-                }],
-                ..Default::default()
-            };
+            let desc = BlockDesc::new("Echo", LIBRARY)
+                .with_input("in", HaystackKind::Number)
+                .with_output("out", HaystackKind::Number);
             Self {
                 id,
                 desc,
