@@ -39,8 +39,8 @@
   "sideEffects": [
     "./dist/logic_mesh.js"
   ],
-  "dependencies": {
-    "zod": "^4.4.3"
+  "peerDependencies": {
+    "zod": "^4.0.0"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
@@ -50,7 +50,8 @@
     "prettier": "^3",
     "typescript": "^6.0.3",
     "typescript-eslint": "^8",
-    "vitest": "^4.1.6"
+    "vitest": "^4.1.6",
+    "zod": "^4.4.3"
   },
   "keywords": [
     "dataflow",

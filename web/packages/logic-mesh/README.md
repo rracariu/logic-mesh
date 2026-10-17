@@ -15,6 +15,16 @@ The engine is compiled to WebAssembly and can be used in the browser, or in a No
 - Protocol-agnostic connectors for external data — implement subscribe/publish/request in JavaScript and bind them to blocks with the generic `ExternalIn`, `ExternalOut`, and `Request` blocks
 - Plain JavaScript functions callable as blocks via `defineJsBlocks`
 
+## Installation
+
+```sh
+npm install logic-mesh zod
+```
+
+[Zod](https://zod.dev) 4 is a peer dependency: `defineBlock` describes pins
+with your Zod schemas, so the package must use the same `zod` your code
+imports.
+
 ## UI Editor
 
 There is a sample low code editor that is built on top of Logic Mesh, which can be found [here](https://rracariu.github.io/logic-mesh/). It serves as an example of how Logic Mesh can be used, and as a simple way to experiment with the Logic Mesh engine.
