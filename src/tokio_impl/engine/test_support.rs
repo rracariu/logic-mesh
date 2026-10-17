@@ -829,7 +829,7 @@ pub(crate) mod round_trip {
 pub(crate) mod atomic_loads {
     use super::lifecycle::TestEngine;
     use super::*;
-    use crate::base::error::{EngineError, LinkEnd, RegistryError};
+    use crate::base::error::{ConnectError, EngineError, LinkEnd, RegistryError};
     use crate::base::program::PinValue;
 
     /// Two fresh ids, in the order a program's maps hold them: the
@@ -981,13 +981,12 @@ pub(crate) mod atomic_loads {
     /// all: the engine saves as before, and the program's ids are free
     /// again.
     pub(crate) async fn a_program_failing_to_wire_is_removed_again<E: TestEngine>(engine: E) {
-        let (mut program, _, second, wired, rejected) = failing_to_wire();
+        let (mut program, first, second, wired, rejected) = failing_to_wire();
 
         drive(engine, move |mut client| async move {
             let before = json(&client.save().await);
             let reply = client.load(program.clone()).await;
-            let err =
-                EngineError::BlockRequestRejected("Cannot connect to the same block".to_string());
+            let err = EngineError::from(ConnectError::SelfLink { block: first });
             assert_eq!(reply, Err(err.to_string()));
             assert_eq!(json(&client.save().await), before, "the load was undone");
 
@@ -1998,6 +1997,69 @@ pub(crate) mod runtime_descs {
             client.send(Reset).await;
             client.load(saved.clone()).await.expect("reloaded");
             super::round_trip::wait_for_save(&mut client, &saved).await;
+        })
+        .await;
+    }
+}
+
+/// Rejected pin requests, written once against the [`Engine`] trait and
+/// run by each engine's tests: a block that rejects a request reports
+/// what it rejected as a typed error, not a bare message.
+pub(crate) mod rejections {
+    use assert_matches::assert_matches;
+
+    use super::lifecycle::TestEngine;
+    use super::*;
+    use crate::base::error::{ConnectError, EngineError};
+
+    /// A write to a pin the block does not have names the block and the
+    /// pin.
+    pub(crate) async fn writing_a_missing_pin_names_it<E: TestEngine>(mut engine: E) {
+        let add = Add::new();
+        let id = *add.id();
+        engine.schedule(add).expect("scheduled");
+
+        drive(engine, move |mut client| async move {
+            let request =
+                EngineMessage::WriteBlockInputReq(client.id, id, "nope".to_string(), 1.into());
+            let expected = EngineError::InputNotFound {
+                block: id,
+                pin: "nope".to_string(),
+            };
+            assert_matches!(
+                client.request(request).await,
+                EngineMessage::WriteBlockInputRes(Err(msg)) if msg == expected.to_string()
+            );
+
+            let request =
+                EngineMessage::WriteBlockOutputReq(client.id, id, "nope".to_string(), 1.into());
+            let expected = EngineError::OutputNotFound {
+                block: id,
+                pin: "nope".to_string(),
+            };
+            assert_matches!(
+                client.request(request).await,
+                EngineMessage::WriteBlockOutputRes(Err(msg)) if msg == expected.to_string()
+            );
+        })
+        .await;
+    }
+
+    /// Linking the same two pins twice is rejected as the connect error
+    /// the source block raised, and leaves the first link in place.
+    pub(crate) async fn linking_the_same_pins_twice_is_a_connect_error<E: TestEngine>(
+        mut engine: E,
+    ) {
+        let (source, target) = schedule_linked_adds(&mut engine);
+
+        drive(engine, move |mut client| async move {
+            let reply = client.connect(None, (source, "out"), (target, "in0")).await;
+            let expected = EngineError::Connect(ConnectError::AlreadyConnected {
+                target_block: target,
+                target_input: "in0".to_string(),
+            });
+            assert_matches!(reply, Err(msg) if msg == expected.to_string());
+            assert_eq!(client.save().await.links.len(), 1);
         })
         .await;
     }

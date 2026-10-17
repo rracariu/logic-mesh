@@ -404,6 +404,26 @@ mod tests {
         }
     }
 
+    /// Regression: a block that rejected a request answered with a bare
+    /// message, which the engine wrapped in a `BlockRequestRejected`
+    /// string naming neither the block nor the pin. See
+    /// `test_support::rejections`.
+    mod rejections {
+        use super::*;
+        use crate::tokio_impl::engine::test_support::rejections;
+
+        #[tokio::test(flavor = "current_thread")]
+        async fn writing_a_missing_pin_names_it() {
+            rejections::writing_a_missing_pin_names_it(SingleThreadedEngine::new()).await;
+        }
+
+        #[tokio::test(flavor = "current_thread")]
+        async fn linking_the_same_pins_twice_is_a_connect_error() {
+            rejections::linking_the_same_pins_twice_is_a_connect_error(SingleThreadedEngine::new())
+                .await;
+        }
+    }
+
     /// Regression: wiring a link always made up a fresh id, so a link
     /// lost the id a connect request named or a loaded program saved it
     /// under — and removing it by that id failed. See
