@@ -49,6 +49,15 @@ pub enum EngineError {
         id: Uuid,
     },
 
+    /// A block with this id is already scheduled on the engine. Block
+    /// ids are unique per engine, and a scheduled block is never
+    /// silently replaced.
+    #[error("Block instance '{id}' is already scheduled")]
+    DuplicateBlockId {
+        /// The id that is already taken.
+        id: Uuid,
+    },
+
     /// A block instance id could not be parsed as a UUID.
     #[error("Invalid block uuid '{uuid}'")]
     InvalidBlockUuid {

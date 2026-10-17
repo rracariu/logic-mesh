@@ -118,6 +118,12 @@ pub trait Engine: Sized {
     /// through its inherent
     /// [`schedule_local`](crate::single_threaded::SingleThreadedEngine::schedule_local).
     ///
+    /// # Errors
+    ///
+    /// Returns [`EngineError::DuplicateBlockId`](crate::base::error::EngineError::DuplicateBlockId)
+    /// if a block with the same id is already scheduled — a scheduled
+    /// block is never replaced.
+    ///
     /// # Examples
     ///
     /// A block holding a [`Cell`](std::cell::Cell) is not [`Sync`], so no
@@ -161,6 +167,16 @@ pub trait Engine: Sized {
     /// program including its pin values, send a
     /// [`LoadProgramReq`](messages::EngineMessage::LoadProgramReq) to the
     /// running engine instead.
+    ///
+    /// # Errors
+    ///
+    /// Every block id is checked before any block is scheduled: an id
+    /// that does not parse, or that is already scheduled or named twice
+    /// in `program`
+    /// ([`EngineError::DuplicateBlockId`](crate::base::error::EngineError::DuplicateBlockId)),
+    /// rejects the program without scheduling any of its blocks. An
+    /// unknown block type or an invalid link is reported after the
+    /// blocks before it were scheduled.
     fn schedule_program_blocks(&mut self, program: &Program) -> Result<()>;
 
     /// Runs the event loop of this engine and executes the scheduled blocks.

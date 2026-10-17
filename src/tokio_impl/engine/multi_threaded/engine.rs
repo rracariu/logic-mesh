@@ -53,7 +53,7 @@ use crate::base::{
     },
 };
 use crate::blocks::registry::{BlockSink, CORE_LIB, get_block};
-use crate::tokio_impl::engine::schedule_block_on_engine_mt;
+use crate::tokio_impl::engine::{program_block_ids, schedule_block_on_engine_mt};
 use crate::tokio_impl::{MtBlock, ReaderImpl, WriterImpl};
 
 /// Concrete engine-message type.
@@ -179,8 +179,7 @@ impl Engine for MultiThreadedEngine<Idle> {
     where
         B: Block<Writer = Self::Writer, Reader = Self::Reader> + MaybeSendSync + 'static,
     {
-        self.spawn_block(block);
-        Ok(())
+        Ok(self.spawn_block(block)?)
     }
 
     fn schedule_program_blocks(&mut self, program: &Program) -> Result<()> {
@@ -320,11 +319,17 @@ impl<S: EngineState> MultiThreadedEngine<S> {
     /// Spawns `block`'s actor task onto the ambient runtime and records
     /// its handle. Blocks are added while configuring and, over the
     /// message channel, while running.
-    fn spawn_block<B>(&mut self, block: B)
+    ///
+    /// Rejects an id that is already scheduled — see `spawn_block` on
+    /// the single-threaded engine.
+    fn spawn_block<B>(&mut self, block: B) -> Result<(), EngineError>
     where
         B: MtBlock + 'static,
     {
         let id = *block.id();
+        if self.handles.contains_key(&id) {
+            return Err(EngineError::DuplicateBlockId { id });
+        }
         let name = block.name().to_string();
         let library = block.desc().library.clone();
         // See `spawn_block` on SingleThreadedEngine for why we clone.
@@ -344,13 +349,18 @@ impl<S: EngineState> MultiThreadedEngine<S> {
 
         let watchers = self.watchers.clone();
         tokio::spawn(block_actor_task(block, mailbox_rx, watchers));
+        Ok(())
     }
 
     /// Schedules every block of `program`, recording its UI metadata,
     /// and returns the program's links once validated, ready to wire.
+    ///
+    /// Every block id is checked before anything is scheduled, so a
+    /// program naming an invalid or already-scheduled id schedules no
+    /// block at all.
     fn stage_program(&mut self, program: &Program) -> Result<Vec<LinkData>> {
-        for (uuid_str, pb) in &program.blocks {
-            let id = parse_block_uuid(uuid_str)?;
+        let blocks = program_block_ids(program, |id| self.handles.contains_key(id))?;
+        for (id, pb) in blocks {
             let block_def = get_block(&pb.name, Some(pb.lib.as_str())).ok_or_else(|| {
                 RegistryError::BlockNotFound {
                     library: pb.lib.clone(),
@@ -430,8 +440,7 @@ impl<S: EngineState> BlockSink for MultiThreadedEngine<S> {
     where
         B: Block<Writer = WriterImpl, Reader = ReaderImpl> + MaybeSendSync + 'static,
     {
-        self.spawn_block(block);
-        Ok(())
+        Ok(self.spawn_block(block)?)
     }
 }
 
@@ -1240,6 +1249,136 @@ mod test {
             !in0_after.is_connected,
             "after disconnect, B.in0 should report is_connected=false"
         );
+    }
+
+    /// Regression: scheduling an id that is already taken used to
+    /// replace the scheduled block's handle, orphaning its actor.
+    mod duplicate_ids {
+        use assert_matches::assert_matches;
+
+        use super::*;
+        use crate::base::engine::messages::EngineMessage::{
+            AddBlockReq, AddBlockRes, GetCurrentProgramReq, GetCurrentProgramRes, LoadProgramReq,
+            LoadProgramRes,
+        };
+        use crate::base::error::{EngineError, Error};
+        use crate::tokio_impl::engine::test_support::{Client, add_program, drive};
+
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn schedule_rejects_a_scheduled_id() {
+            let id = Uuid::new_v4();
+            let mut eng = MultiThreadedEngine::new();
+            eng.schedule(Add::new_uuid(id)).expect("first schedule");
+
+            let err = eng
+                .schedule(Add::new_uuid(id))
+                .expect_err("second schedule is rejected");
+            assert_matches!(
+                err,
+                Error::Engine(EngineError::DuplicateBlockId { id: dup }) if dup == id
+            );
+            assert_eq!(eng.block_handles().len(), 1);
+        }
+
+        /// The whole program is checked up front: the program's other,
+        /// fresh block is not scheduled either.
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn schedule_program_blocks_rejects_a_scheduled_id() {
+            let id = Uuid::new_v4();
+            let fresh = Uuid::new_v4();
+            let mut eng = MultiThreadedEngine::new();
+            eng.schedule(Add::new_uuid(id)).expect("scheduled");
+
+            let program = add_program([id.to_string().as_str(), fresh.to_string().as_str()]);
+            let err = eng
+                .schedule_program_blocks(&program)
+                .expect_err("program reusing a scheduled id is rejected");
+            assert_matches!(
+                err,
+                Error::Engine(EngineError::DuplicateBlockId { id: dup }) if dup == id
+            );
+            assert!(eng.block_handle(&fresh).is_none(), "nothing was scheduled");
+            assert_eq!(eng.block_handles().len(), 1);
+        }
+
+        /// Two program keys can spell the same UUID differently.
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn schedule_program_blocks_rejects_an_id_named_twice() {
+            let id = Uuid::new_v4();
+            let mut eng = MultiThreadedEngine::new();
+
+            let lower = id.to_string();
+            let upper = lower.to_uppercase();
+            let err = eng
+                .schedule_program_blocks(&add_program([lower.as_str(), upper.as_str()]))
+                .expect_err("program naming an id twice is rejected");
+            assert_matches!(
+                err,
+                Error::Engine(EngineError::DuplicateBlockId { id: dup }) if dup == id
+            );
+            assert!(eng.block_handles().is_empty(), "nothing was scheduled");
+        }
+
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn add_block_req_rejects_a_scheduled_id() {
+            let id = Uuid::new_v4();
+            let mut eng = MultiThreadedEngine::new();
+            eng.schedule(Add::new_uuid(id)).expect("scheduled");
+
+            drive(eng, move |mut client| async move {
+                let reply = client
+                    .request(AddBlockReq(
+                        client.id,
+                        "Add".to_string(),
+                        Some(id.to_string()),
+                        None,
+                    ))
+                    .await;
+                assert_matches!(
+                    reply,
+                    AddBlockRes(Err(msg))
+                        if msg == EngineError::DuplicateBlockId { id }.to_string()
+                );
+
+                // The scheduled block is untouched and still answers.
+                let reply = client.request(InspectBlockReq(client.id, id)).await;
+                assert_matches!(reply, InspectBlockRes(Ok(def)) if def.id == id.to_string());
+                assert_eq!(scheduled_ids(&mut client).await, vec![id.to_string()]);
+            })
+            .await;
+        }
+
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn load_program_req_rejects_a_scheduled_id() {
+            let id = Uuid::new_v4();
+            let fresh = Uuid::new_v4();
+            let mut eng = MultiThreadedEngine::new();
+            eng.schedule(Add::new_uuid(id)).expect("scheduled");
+
+            let program = add_program([id.to_string().as_str(), fresh.to_string().as_str()]);
+            drive(eng, move |mut client| async move {
+                let reply = client.request(LoadProgramReq(client.id, program)).await;
+                assert_matches!(
+                    reply,
+                    LoadProgramRes(Err(msg))
+                        if msg == EngineError::DuplicateBlockId { id }.to_string()
+                );
+                assert_eq!(
+                    scheduled_ids(&mut client).await,
+                    vec![id.to_string()],
+                    "nothing was scheduled"
+                );
+            })
+            .await;
+        }
+
+        /// The ids of the running engine's blocks, from its saved program.
+        async fn scheduled_ids(client: &mut Client) -> Vec<String> {
+            match client.request(GetCurrentProgramReq(client.id)).await {
+                GetCurrentProgramRes(Ok(program)) => program.blocks.into_keys().collect(),
+                other => panic!("Expected GetCurrentProgramRes(Ok), got {:?}", other),
+            }
+        }
     }
 
     /// Connector lifecycle on the MT engine

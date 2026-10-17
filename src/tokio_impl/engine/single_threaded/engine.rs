@@ -35,7 +35,7 @@ use crate::base::{
 };
 use crate::blocks::registry::{BlockSink, CORE_LIB, get_block};
 use crate::tokio_impl::engine::message_dispatch::dispatch_message;
-use crate::tokio_impl::engine::schedule_block_on_engine;
+use crate::tokio_impl::engine::{program_block_ids, schedule_block_on_engine};
 use crate::tokio_impl::{ReaderImpl, WriterImpl};
 
 /// Concrete engine-message type.
@@ -178,8 +178,7 @@ impl Engine for SingleThreadedEngine<Idle> {
     where
         B: Block<Writer = Self::Writer, Reader = Self::Reader> + MaybeSendSync + 'static,
     {
-        self.spawn_block(block);
-        Ok(())
+        Ok(self.spawn_block(block)?)
     }
 
     fn schedule_program_blocks(&mut self, program: &Program) -> Result<()> {
@@ -258,14 +257,20 @@ impl SingleThreadedEngine<Idle> {
     /// }
     ///
     /// let mut engine = SingleThreadedEngine::new();
-    /// engine.schedule_local(Counter::new());
+    /// engine.schedule_local(Counter::new())?;
     /// assert_eq!(engine.block_handles().len(), 1);
+    /// # Ok::<(), logic_mesh::Error>(())
     /// ```
-    pub fn schedule_local<B>(&mut self, block: B)
+    ///
+    /// # Errors
+    ///
+    /// Returns [`EngineError::DuplicateBlockId`] if a block with the same
+    /// id is already scheduled.
+    pub fn schedule_local<B>(&mut self, block: B) -> Result<()>
     where
         B: Block<Writer = WriterImpl, Reader = ReaderImpl> + 'static,
     {
-        self.spawn_block(block);
+        Ok(self.spawn_block(block)?)
     }
 
     /// Registers `handle` in the process-wide connector registry under
@@ -360,11 +365,18 @@ impl<S: EngineState> SingleThreadedEngine<S> {
     /// Spawns `block`'s actor task and records its handle. Blocks are
     /// added while configuring and, over the message channel, while
     /// running.
-    fn spawn_block<B>(&mut self, block: B)
+    ///
+    /// Rejects an id that is already scheduled: replacing the handle
+    /// would orphan the running block, whose links other blocks still
+    /// point at.
+    fn spawn_block<B>(&mut self, block: B) -> Result<(), EngineError>
     where
         B: Block<Writer = WriterImpl, Reader = ReaderImpl> + 'static,
     {
         let id = *block.id();
+        if self.handles.contains_key(&id) {
+            return Err(EngineError::DuplicateBlockId { id });
+        }
         let name = block.name().to_string();
         let library = block.desc().library.clone();
         // Clone the desc into the handle BEFORE moving `block` into the
@@ -387,13 +399,18 @@ impl<S: EngineState> SingleThreadedEngine<S> {
         let watchers = self.watchers.clone();
         self.local
             .spawn_local(block_actor_task(block, mailbox_rx, watchers));
+        Ok(())
     }
 
     /// Schedules every block of `program`, recording its UI metadata,
     /// and returns the program's links once validated, ready to wire.
+    ///
+    /// Every block id is checked before anything is scheduled, so a
+    /// program naming an invalid or already-scheduled id schedules no
+    /// block at all.
     fn stage_program(&mut self, program: &Program) -> Result<Vec<LinkData>> {
-        for (uuid_str, pb) in &program.blocks {
-            let id = parse_block_uuid(uuid_str)?;
+        let blocks = program_block_ids(program, |id| self.handles.contains_key(id))?;
+        for (id, pb) in blocks {
             let block_def =
                 get_block(&pb.name, Some(&pb.lib)).ok_or_else(|| RegistryError::BlockNotFound {
                     library: pb.lib.clone(),
@@ -496,8 +513,7 @@ impl<S: EngineState> BlockSink for SingleThreadedEngine<S> {
     where
         B: Block<Writer = WriterImpl, Reader = ReaderImpl> + MaybeSendSync + 'static,
     {
-        self.spawn_block(block);
-        Ok(())
+        Ok(self.spawn_block(block)?)
     }
 }
 
