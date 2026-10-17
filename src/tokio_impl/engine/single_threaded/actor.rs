@@ -19,7 +19,7 @@ use libhaystack::val::Value;
 use tokio::sync::mpsc::{self, UnboundedSender};
 use uuid::Uuid;
 
-use super::super::actor_step::{ExecutionGate, Step, run_one_step};
+use super::super::actor_step::{ExecutionGate, PanicHold, Step, run_one_step};
 use super::super::block_mailbox::BlockMailboxCmd;
 use crate::base::Status;
 use crate::base::block::{Block, BlockState};
@@ -42,6 +42,7 @@ pub(super) async fn block_actor_task<B>(
 {
     let mut last_pin_values = BTreeMap::<String, Value>::new();
     let mut last_state = BlockState::Running;
+    let mut hold = PanicHold::default();
 
     loop {
         let open = *gate.borrow_and_update();
@@ -63,8 +64,10 @@ pub(super) async fn block_actor_task<B>(
         // end of the recovery cycle is the single authoritative flip.
         //
         // Only a block about to execute recovers: while the gate is
-        // closed a fault stays put, so pausing never flips a status.
-        let recovering_from = if open && block.state().is_fault() {
+        // closed a fault stays put, so pausing never flips a status. A
+        // block held after a panic stays in Fault until a cycle
+        // completes cleanly (see `actor_step`).
+        let recovering_from = if open && !hold.is_holding() && block.state().is_fault() {
             let fault = block.state();
             block.set_state(BlockState::Running);
             Some(fault)
@@ -72,10 +75,10 @@ pub(super) async fn block_actor_task<B>(
             None
         };
 
-        // Drive one step: execute completes, a mailbox cmd arrives
-        // (cancelling execute mid-await), or the gate flips.
-        let step = run_one_step(&mut block, &mut mailbox, &mut gate, open).await;
-        if let (Step::Gated, Some(fault)) = (&step, recovering_from) {
+        // Drive one step: execute completes or panics, a mailbox cmd
+        // arrives (cancelling execute mid-await), or the gate flips.
+        let step = run_one_step(&mut block, &mut mailbox, &mut gate, open, &mut hold).await;
+        if let (Step::Woken, Some(fault)) = (&step, recovering_from) {
             // The gate closed before the block got to run, so nothing
             // could have cleared the fault.
             block.set_state(fault);

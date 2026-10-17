@@ -23,7 +23,7 @@ use tokio::sync::{
 };
 use uuid::Uuid;
 
-use super::super::actor_step::{ExecutionGate, Step, run_one_step};
+use super::super::actor_step::{ExecutionGate, PanicHold, Step, run_one_step};
 use super::super::block_mailbox::BlockMailboxCmd;
 use crate::base::Status;
 use crate::base::block::{Block, BlockState};
@@ -46,13 +46,14 @@ pub(super) async fn block_actor_task<B>(
 {
     let mut last_pin_values = BTreeMap::<String, Value>::new();
     let mut last_state = BlockState::Running;
+    let mut hold = PanicHold::default();
 
     loop {
         let open = *gate.borrow_and_update();
 
-        // Optimistic recovery, for a block about to execute only — see
-        // single_threaded::actor for rationale.
-        let recovering_from = if open && block.state().is_fault() {
+        // Optimistic recovery, for a block about to execute and not held
+        // after a panic only — see single_threaded::actor for rationale.
+        let recovering_from = if open && !hold.is_holding() && block.state().is_fault() {
             let fault = block.state();
             block.set_state(BlockState::Running);
             Some(fault)
@@ -60,8 +61,8 @@ pub(super) async fn block_actor_task<B>(
             None
         };
 
-        let step = run_one_step(&mut block, &mut mailbox, &mut gate, open).await;
-        if let (Step::Gated, Some(fault)) = (&step, recovering_from) {
+        let step = run_one_step(&mut block, &mut mailbox, &mut gate, open, &mut hold).await;
+        if let (Step::Woken, Some(fault)) = (&step, recovering_from) {
             block.set_state(fault);
         }
 

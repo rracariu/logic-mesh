@@ -22,6 +22,8 @@ use uuid::Uuid;
 /// UI can show *why* the block isn't producing trustworthy output. Recovery
 /// is automatic — the actor task optimistically clears Fault at the start
 /// of each cycle and re-enters it only if drain or execute set it again.
+/// A block whose `execute` panicked is the exception: it stays in Fault
+/// until a cycle completes without panicking (see [`Block`]).
 ///
 /// # Examples
 ///
@@ -99,6 +101,20 @@ impl BlockState {
 /// requirement so `JsBlock` — whose `func: js_sys::Function` is
 /// `!Send` — can still implement the trait.
 ///
+/// # Panics
+///
+/// On native targets the engines catch a panic in `execute` and isolate
+/// it to its block: the block enters [`BlockState::Fault`] with the panic
+/// message as its reason, its outputs — and so the blocks downstream —
+/// fault too, and it can still be inspected, saved, rewired and removed.
+/// The block is not run again until a retry delay has passed, which
+/// doubles with every consecutive panic from 1 s up to 60 s, and it
+/// stays in Fault until a cycle completes without panicking. The block
+/// instance is reused as the panic left it.
+///
+/// On `wasm32` a panic aborts the whole instance, so there is no such
+/// isolation.
+///
 /// # Examples
 ///
 /// Define a block with the `#[block]` attribute macro:
@@ -142,6 +158,11 @@ pub trait Block: BlockConnect {
 }
 
 /// WASM variant of [`Block`] without the `Send` bound.
+///
+/// # Panics
+///
+/// A panic in `execute` aborts the whole wasm instance: unlike on native
+/// targets, the engine cannot isolate it to the block.
 #[cfg(target_arch = "wasm32")]
 pub trait Block: BlockConnect {
     /// Runs one cycle of this block's dataflow logic.

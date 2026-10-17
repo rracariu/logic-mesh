@@ -1259,6 +1259,24 @@ mod test {
         );
     }
 
+    /// Regression: a panic in `execute` killed the block's actor task —
+    /// the block never showed Fault, downstream never faulted, and the
+    /// block could no longer be saved or removed.
+    mod panics {
+        use super::*;
+        use crate::tokio_impl::engine::test_support::panics;
+
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn panic_faults_the_block_and_downstream() {
+            panics::panic_faults_the_block_and_downstream(MultiThreadedEngine::new()).await;
+        }
+
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn panicked_block_recovers_after_a_clean_cycle() {
+            panics::panicked_block_recovers_after_a_clean_cycle(MultiThreadedEngine::new()).await;
+        }
+    }
+
     /// The lifecycle contract — see `test_support::lifecycle`.
     mod lifecycle {
         use super::*;

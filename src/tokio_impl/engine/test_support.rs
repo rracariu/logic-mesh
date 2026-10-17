@@ -29,6 +29,11 @@ use crate::tokio_impl::{ReaderImpl, WriterImpl};
 /// How long a test waits for a reply before declaring the engine stuck.
 const REPLY_TIMEOUT: Duration = Duration::from_secs(5);
 
+/// How often, and how many times, the `wait_for_*` helpers poll: long
+/// enough to outlast a panic retry delay.
+const POLL_INTERVAL: Duration = Duration::from_millis(20);
+const POLLS: usize = 250;
+
 /// A test's end of an engine message channel.
 pub(crate) struct Client {
     /// The channel id the engine addresses replies to.
@@ -84,13 +89,26 @@ impl Client {
     /// Polls `block` until its output `pin` holds `expected`, failing the
     /// test after a few seconds.
     pub(crate) async fn wait_for_output(&mut self, block: Uuid, pin: &str, expected: Value) {
-        for _ in 0..100 {
+        for _ in 0..POLLS {
             if self.output(block, pin).await == expected {
                 return;
             }
-            sleep(Duration::from_millis(20)).await;
+            sleep(POLL_INTERVAL).await;
         }
         panic!("{block}.{pin} never became {expected:?}");
+    }
+
+    /// Polls `block` until its state label reads `state`, failing the
+    /// test after a few seconds, and returns that inspection.
+    pub(crate) async fn wait_for_state(&mut self, block: Uuid, state: &str) -> BlockDefinition {
+        for _ in 0..POLLS {
+            let definition = self.inspect(block).await;
+            if definition.state == state {
+                return definition;
+            }
+            sleep(POLL_INTERVAL).await;
+        }
+        panic!("{block} never reached state {state}");
     }
 }
 
@@ -276,6 +294,164 @@ pub(crate) mod lifecycle {
             client.send(Resume).await;
             client.write_output(added, "out", 3.into()).await;
             assert_eq!(client.output(added, "out").await, 3.into());
+        })
+        .await;
+    }
+}
+
+/// Panic isolation, written once against the [`Engine`] trait and run by
+/// each engine's tests. See `actor_step` for the contract.
+pub(crate) mod panics {
+    use std::sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+    };
+
+    use assert_matches::assert_matches;
+
+    use super::lifecycle::TestEngine;
+    use super::*;
+    use crate::base::Status;
+    use crate::base::block::Block;
+    use crate::base::engine::messages::EngineMessage::{
+        GetCurrentProgramReq, GetCurrentProgramRes, InspectBlockReq, InspectBlockRes,
+        RemoveBlockReq, RemoveBlockRes,
+    };
+    use crate::base::input::input_reader::InputReader;
+    use crate::base::output::Output;
+    use crate::blocks::{InputImpl, OutputImpl};
+
+    /// The fault reason a [`PanicOnTrigger`] panic leaves.
+    const REASON: &str = "block panicked: trigger is set";
+
+    /// Panics whenever an execute cycle reads a positive `trigger`.
+    #[block]
+    #[derive(BlockProps, Debug)]
+    #[category = "test"]
+    pub(crate) struct PanicOnTrigger {
+        #[input(kind = "Number")]
+        trigger: InputImpl,
+        #[output(kind = "Number")]
+        out: OutputImpl,
+        /// Counts the panics.
+        panics: Arc<AtomicUsize>,
+    }
+
+    impl Block for PanicOnTrigger {
+        async fn execute(&mut self) {
+            self.read_inputs_until_ready().await;
+            if matches!(&self.trigger.val, Some(Value::Number(n)) if n.value > 0.0) {
+                self.panics.fetch_add(1, Ordering::SeqCst);
+                panic!("trigger is set");
+            }
+        }
+    }
+
+    /// Reports in `fault` whether the last value on `source` arrived
+    /// with [`Status::Fault`].
+    #[block]
+    #[derive(BlockProps, Debug)]
+    #[category = "test"]
+    pub(crate) struct FaultProbe {
+        #[input(kind = "Number")]
+        source: InputImpl,
+        #[output(kind = "Bool")]
+        fault: OutputImpl,
+    }
+
+    impl Block for FaultProbe {
+        async fn execute(&mut self) {
+            self.read_inputs_until_ready().await;
+            let fault = self.source.status == Status::Fault;
+            self.fault.set(fault.into());
+        }
+    }
+
+    /// The ids of a `source → panicker → probe` chain, and the
+    /// panicker's panic count.
+    struct Chain {
+        source: Uuid,
+        panicker: Uuid,
+        probe: Uuid,
+        panics: Arc<AtomicUsize>,
+    }
+
+    /// Schedules an `Add` whose `out` feeds a [`PanicOnTrigger`]'s
+    /// `trigger`, whose `out` feeds a [`FaultProbe`].
+    fn schedule_chain<E: TestEngine>(engine: &mut E) -> Chain {
+        let mut source = Add::new();
+        let mut panicker = PanicOnTrigger::new();
+        let mut probe = FaultProbe::new();
+        connect_output(&mut source.out, &mut panicker.trigger).expect("linked");
+        connect_output(&mut panicker.out, &mut probe.source).expect("linked");
+
+        let chain = Chain {
+            source: *source.id(),
+            panicker: *panicker.id(),
+            probe: *probe.id(),
+            panics: panicker.panics.clone(),
+        };
+        engine.schedule(source).expect("source scheduled");
+        engine.schedule(panicker).expect("panicker scheduled");
+        engine.schedule(probe).expect("probe scheduled");
+        chain
+    }
+
+    /// A panic faults its block and the blocks downstream of it, while
+    /// the block stays inspectable, savable and removable, and is not
+    /// retried in a hot loop.
+    pub(crate) async fn panic_faults_the_block_and_downstream<E: TestEngine>(mut engine: E) {
+        let chain = schedule_chain(&mut engine);
+
+        drive(engine, move |mut client| async move {
+            client.write_output(chain.source, "out", 1.into()).await;
+
+            let panicked = client.wait_for_state(chain.panicker, "fault").await;
+            assert_eq!(panicked.fault_reason.as_deref(), Some(REASON));
+            client
+                .wait_for_output(chain.probe, "fault", true.into())
+                .await;
+
+            match client.request(GetCurrentProgramReq(client.id)).await {
+                GetCurrentProgramRes(Ok(program)) => assert_eq!(program.blocks.len(), 3),
+                other => panic!("Expected GetCurrentProgramRes(Ok), got {:?}", other),
+            }
+
+            // Held for the retry delay rather than re-run at once.
+            sleep(Duration::from_millis(200)).await;
+            assert_eq!(chain.panics.load(Ordering::SeqCst), 1);
+            assert_eq!(client.inspect(chain.panicker).await.state, "fault");
+
+            let reply = client
+                .request(RemoveBlockReq(client.id, chain.panicker))
+                .await;
+            assert_matches!(reply, RemoveBlockRes(Ok(id)) if id == chain.panicker);
+            let reply = client
+                .request(InspectBlockReq(client.id, chain.panicker))
+                .await;
+            assert_matches!(reply, InspectBlockRes(Err(_)), "the block was removed");
+        })
+        .await;
+    }
+
+    /// After the retry delay a held block runs again, and a clean cycle
+    /// ends the fault — upstream of the block and downstream of it.
+    pub(crate) async fn panicked_block_recovers_after_a_clean_cycle<E: TestEngine>(mut engine: E) {
+        let chain = schedule_chain(&mut engine);
+
+        drive(engine, move |mut client| async move {
+            client.write_output(chain.source, "out", 1.into()).await;
+            client.wait_for_state(chain.panicker, "fault").await;
+            client
+                .wait_for_output(chain.probe, "fault", true.into())
+                .await;
+
+            client.write_output(chain.source, "out", 0.into()).await;
+            client.wait_for_state(chain.panicker, "running").await;
+            client
+                .wait_for_output(chain.probe, "fault", false.into())
+                .await;
+            assert_eq!(chain.panics.load(Ordering::SeqCst), 1);
         })
         .await;
     }
