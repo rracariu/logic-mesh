@@ -61,9 +61,9 @@ function npm(args, cwd) {
       });
 }
 
-const { missing, unexpected } = checkBuildOutput();
-if (missing.length > 0 || unexpected.length > 0) {
-  console.error({ missing, unexpected });
+const { missing, unexpected, stale } = checkBuildOutput();
+if (missing.length > 0 || unexpected.length > 0 || stale.length > 0) {
+  console.error({ missing, unexpected, stale });
   console.error('test:pack: run `npm run build` (or `build:dev`) first.');
   process.exit(1);
 }
