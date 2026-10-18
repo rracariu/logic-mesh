@@ -10,7 +10,8 @@ use crate::base::{
     input::{InputProps, input_reader::InputReader},
     output::Output,
 };
-use crate::blocks::utils::{get_sleep_dur, input_to_millis_or_default};
+use crate::blocks::utils::input_to_millis_or_default;
+use crate::tokio_impl::scan::scan_interval_millis;
 use crate::tokio_impl::sleep::current_time_millis;
 
 use libhaystack::val::{Bool, Value};
@@ -36,7 +37,7 @@ pub struct OneShot {
 
 impl Block for OneShot {
     async fn execute(&mut self) {
-        let poll = get_sleep_dur();
+        let poll = scan_interval_millis();
         self.wait_on_inputs(Duration::from_millis(poll)).await;
 
         if !self.out.is_connected() {

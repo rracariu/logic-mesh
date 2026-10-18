@@ -2029,6 +2029,78 @@ pub(crate) mod runtime_descs {
     }
 }
 
+/// Per-engine scan intervals, written once against the [`Engine`]
+/// trait and run by each engine's tests.
+pub(crate) mod scan_intervals {
+    use std::time::Duration;
+
+    use super::lifecycle::TestEngine;
+    use super::*;
+    use crate::base::block::Block;
+    use crate::base::input::InputReader;
+    use crate::base::output::Output;
+    use crate::blocks::OutputImpl;
+    use crate::tokio_impl::scan::scan_interval_millis;
+
+    /// Publishes the scan interval its actor task runs with on `out`.
+    #[block]
+    #[derive(BlockProps, Debug)]
+    #[library = "scan_interval_test"]
+    #[category = "test"]
+    pub(crate) struct ScanProbe {
+        #[output(kind = "Number")]
+        out: OutputImpl,
+    }
+
+    impl Block for ScanProbe {
+        async fn execute(&mut self) {
+            self.out.set((scan_interval_millis() as f64).into());
+            // No linked inputs: this waits a scan interval or more.
+            self.read_inputs_until_ready().await;
+        }
+    }
+
+    /// Schedules a [`ScanProbe`] on `engine` and returns the interval,
+    /// in milliseconds, it reports once the engine runs.
+    async fn probe<E: TestEngine>(mut engine: E, expected: f64) {
+        let probe = ScanProbe::new();
+        let id = *probe.id();
+        engine.schedule(probe).expect("scheduled");
+        drive(engine, move |mut client| async move {
+            client.wait_for_output(id, "out", expected.into()).await;
+        })
+        .await;
+    }
+
+    /// Regression: the scan interval was one process-wide value, so
+    /// configuring a second engine changed it for the first one's
+    /// blocks too.
+    pub(crate) async fn each_engine_keeps_its_own_scan_interval<E: TestEngine>(
+        first: E,
+        second: E,
+    ) {
+        let first = first.with_scan_interval(Duration::from_millis(40));
+        let second = second.with_scan_interval(Duration::from_millis(60));
+        assert_eq!(first.scan_interval(), Duration::from_millis(40));
+
+        probe(first, 40.0).await;
+        probe(second, 60.0).await;
+    }
+
+    /// A new interval reaches the blocks scheduled before it was set.
+    pub(crate) async fn a_new_scan_interval_reaches_scheduled_blocks<E: TestEngine>(mut engine: E) {
+        let probe = ScanProbe::new();
+        let id = *probe.id();
+        engine.schedule(probe).expect("scheduled");
+        engine.set_scan_interval(Duration::from_millis(30));
+
+        drive(engine, move |mut client| async move {
+            client.wait_for_output(id, "out", 30.0.into()).await;
+        })
+        .await;
+    }
+}
+
 /// Engine configuration written once against the [`Engine`] trait and
 /// run by each engine's tests.
 pub(crate) mod configuration {

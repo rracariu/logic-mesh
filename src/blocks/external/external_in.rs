@@ -15,8 +15,8 @@ use crate::base::{
 use crate::blocks::external::support::{
     ActiveSubscription, Deadline, connector_fault, input_as_str, input_as_timeout_millis,
 };
-use crate::blocks::utils::get_sleep_dur;
 use crate::tokio_impl::block::drain_ready_inputs;
+use crate::tokio_impl::scan::scan_interval_millis;
 use crate::tokio_impl::sleep::{monotonic_millis, sleep_millis};
 
 use crate::{blocks::InputImpl, blocks::OutputImpl};
@@ -80,7 +80,7 @@ struct PendingBinding {
 
 impl Block for ExternalIn {
     async fn execute(&mut self) {
-        let poll = get_sleep_dur();
+        let poll = scan_interval_millis();
 
         if self.subscription.is_some() || self.binding.is_some() {
             // Already streaming, or owing a subscribe a cancelled cycle

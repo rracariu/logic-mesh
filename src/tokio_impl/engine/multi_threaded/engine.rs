@@ -27,6 +27,7 @@
 use std::collections::BTreeMap;
 use std::marker::PhantomData;
 use std::sync::Arc;
+use std::time::Duration;
 
 use futures::future::BoxFuture;
 use tokio::runtime::Handle;
@@ -57,6 +58,7 @@ use crate::blocks::registry::{BlockSink, get_block};
 use crate::tokio_impl::engine::{
     Messages, ensure_schedulable_mt, phase_name, schedule_block_on_engine_mt,
 };
+use crate::tokio_impl::scan::ScanInterval;
 use crate::tokio_impl::{MtBlock, ReaderImpl, WriterImpl};
 
 /// Multi-threaded execution environment for blocks.
@@ -108,6 +110,8 @@ pub struct MultiThreadedEngine<S: EngineState = Idle> {
     /// runtime from `schedule` on and keep serving their mailbox either
     /// way; the gate is what holds their blocks while idle or paused.
     execution: watch::Sender<bool>,
+    /// The scan interval every block actor task runs with.
+    scan: ScanInterval,
     /// The lifecycle phase, tracked in the type only.
     state: PhantomData<S>,
 }
@@ -119,8 +123,9 @@ impl Default for MultiThreadedEngine {
 }
 
 /// Shows the engine's phase, whether its blocks may execute, how many
-/// blocks, links and staged programs it holds and the connectors it
-/// manages — not the blocks or channels themselves.
+/// blocks, links and staged programs it holds, the connectors it
+/// manages and its scan interval — not the blocks or channels
+/// themselves.
 impl<S: EngineState> std::fmt::Debug for MultiThreadedEngine<S> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("MultiThreadedEngine")
@@ -130,6 +135,7 @@ impl<S: EngineState> std::fmt::Debug for MultiThreadedEngine<S> {
             .field("links", &self.graph.link_count())
             .field("pending_programs", &self.pending.len())
             .field("connectors", &self.connectors.as_slice())
+            .field("scan_interval", &self.scan.get())
             .finish_non_exhaustive()
     }
 }
@@ -194,12 +200,23 @@ impl Engine for MultiThreadedEngine<Idle> {
         Ok(self.graph.set_metadata(id, label, position)?)
     }
 
+    fn scan_interval(&self) -> Duration {
+        self.scan.get()
+    }
+
+    fn set_scan_interval(&mut self, interval: Duration) {
+        self.scan.set(interval);
+    }
+
     fn run(self) -> Self::RunFuture {
-        Box::pin(async move {
+        // The event loop evaluates blocks too (`EvaluateBlockReq`), so it
+        // runs with the engine's scan interval like the actor tasks.
+        let scan = self.scan.clone();
+        Box::pin(scan.scope(async move {
             let mut engine = self.into_state::<Running>();
             engine.event_loop().await;
             engine.into_state()
-        })
+        }))
     }
 
     fn create_message_channel(
@@ -228,6 +245,7 @@ impl MultiThreadedEngine<Idle> {
             watchers: Arc::new(RwLock::new(BTreeMap::new())),
             connectors: ManagedConnectors::default(),
             execution: watch::Sender::new(false),
+            scan: ScanInterval::default(),
             state: PhantomData,
         }
     }
@@ -245,6 +263,7 @@ impl<S: EngineState> MultiThreadedEngine<S> {
             watchers,
             connectors,
             execution,
+            scan,
             state: _,
         } = self;
         MultiThreadedEngine {
@@ -256,6 +275,7 @@ impl<S: EngineState> MultiThreadedEngine<S> {
             watchers,
             connectors,
             execution,
+            scan,
             state: PhantomData,
         }
     }
@@ -284,12 +304,12 @@ impl<S: EngineState> MultiThreadedEngine<S> {
         self.graph.insert(&block, mailbox_tx)?;
 
         let watchers = self.watchers.clone();
-        runtime.spawn(block_actor_task(
+        runtime.spawn(self.scan.scope(block_actor_task(
             block,
             mailbox_rx,
             watchers,
             self.execution.subscribe(),
-        ));
+        )));
         Ok(())
     }
 }
@@ -658,7 +678,7 @@ mod test {
         assert_eq!(
             format!("{eng:?}"),
             "MultiThreadedEngine { phase: \"Idle\", executing: false, blocks: 2, links: 1, \
-             pending_programs: 0, connectors: [], .. }"
+             pending_programs: 0, connectors: [], scan_interval: 200ms, .. }"
         );
         assert_eq!(
             format!("{:?}", eng.block_handle(&target_id).expect("scheduled")),
@@ -1070,6 +1090,29 @@ mod test {
         #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
         async fn a_program_scheduled_while_idle_saves_its_identity() {
             round_trip::a_program_scheduled_while_idle_saves_its_identity(
+                MultiThreadedEngine::new(),
+            )
+            .await;
+        }
+    }
+
+    /// Regression: see the single-threaded `scan_intervals`.
+    mod scan_intervals {
+        use super::*;
+        use crate::tokio_impl::engine::test_support::scan_intervals;
+
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn each_engine_keeps_its_own_scan_interval() {
+            scan_intervals::each_engine_keeps_its_own_scan_interval(
+                MultiThreadedEngine::new(),
+                MultiThreadedEngine::new(),
+            )
+            .await;
+        }
+
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn a_new_scan_interval_reaches_scheduled_blocks() {
+            scan_intervals::a_new_scan_interval_reaches_scheduled_blocks(
                 MultiThreadedEngine::new(),
             )
             .await;

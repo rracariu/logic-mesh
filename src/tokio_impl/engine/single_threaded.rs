@@ -207,7 +207,7 @@ mod tests {
         assert_eq!(
             format!("{eng:?}"),
             "SingleThreadedEngine { phase: \"Idle\", executing: false, blocks: 2, links: 1, \
-             pending_programs: 0, connectors: [], .. }"
+             pending_programs: 0, connectors: [], scan_interval: 200ms, .. }"
         );
         assert_eq!(
             format!("{:?}", eng.block_handle(&target_id).expect("scheduled")),
@@ -445,6 +445,28 @@ mod tests {
     /// message, which the engine wrapped in a `BlockRequestRejected`
     /// string naming neither the block nor the pin. See
     /// `test_support::rejections`.
+    mod scan_intervals {
+        use super::*;
+        use crate::tokio_impl::engine::test_support::scan_intervals;
+
+        #[tokio::test(flavor = "current_thread")]
+        async fn each_engine_keeps_its_own_scan_interval() {
+            scan_intervals::each_engine_keeps_its_own_scan_interval(
+                SingleThreadedEngine::new(),
+                SingleThreadedEngine::new(),
+            )
+            .await;
+        }
+
+        #[tokio::test(flavor = "current_thread")]
+        async fn a_new_scan_interval_reaches_scheduled_blocks() {
+            scan_intervals::a_new_scan_interval_reaches_scheduled_blocks(
+                SingleThreadedEngine::new(),
+            )
+            .await;
+        }
+    }
+
     mod configuration {
         use super::*;
         use crate::tokio_impl::engine::test_support::configuration;

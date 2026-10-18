@@ -53,6 +53,7 @@
 //!   not the engine is paused. A paused engine stays paused.
 
 use std::future::Future;
+use std::time::Duration;
 
 use uuid::Uuid;
 
@@ -304,6 +305,33 @@ pub trait Engine: Sized {
         label: Option<String>,
         position: Option<Position>,
     ) -> Result<()>;
+
+    /// The engine's scan interval: the period at which its blocks that
+    /// poll check their state — the timers, `Sequencer`, `Runtime`, an
+    /// `ExternalIn` waiting to resubscribe — and the shortest wait of a
+    /// block with no linked inputs between cycles. 200 ms unless
+    /// [`set_scan_interval`](Self::set_scan_interval) changed it.
+    fn scan_interval(&self) -> Duration;
+
+    /// Sets the [scan interval](Self::scan_interval), in whole
+    /// milliseconds, for this engine's blocks only — those scheduled
+    /// already included. Every engine keeps its own.
+    fn set_scan_interval(&mut self, interval: Duration);
+
+    /// [`set_scan_interval`](Self::set_scan_interval), as a builder.
+    ///
+    /// ```
+    /// use std::time::Duration;
+    /// use logic_mesh::{base::engine::Engine, single_threaded::SingleThreadedEngine};
+    ///
+    /// let engine = SingleThreadedEngine::new().with_scan_interval(Duration::from_millis(50));
+    /// assert_eq!(engine.scan_interval(), Duration::from_millis(50));
+    /// ```
+    #[must_use = "the engine is returned with the new interval"]
+    fn with_scan_interval(mut self, interval: Duration) -> Self {
+        self.set_scan_interval(interval);
+        self
+    }
 
     /// Runs the event loop of this engine and executes the scheduled blocks.
     ///
