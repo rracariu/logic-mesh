@@ -1960,6 +1960,41 @@ pub(crate) mod runtime_descs {
         .await;
     }
 
+    /// Regression: a request that named no library looked the block up
+    /// in the core library only, so a block registered in its own
+    /// library could not be added or evaluated by its name alone, while
+    /// `schedule_block` with no library searched every library.
+    pub(crate) async fn a_registered_block_is_found_by_its_name_alone<E: TestEngine>(engine: E) {
+        use crate::base::engine::messages::EngineMessage::{
+            AddBlockReq, AddBlockRes, EvaluateBlockReq, EvaluateBlockRes,
+        };
+
+        let _ = registry::register::<Registered>();
+        drive(engine, move |mut client| async move {
+            let added = client
+                .request(AddBlockReq(client.id, "Registered".to_string(), None, None))
+                .await;
+            let AddBlockRes(Ok(id)) = added else {
+                panic!("not added: {added:?}");
+            };
+            assert_eq!(client.inspect(id).await.name, "Registered");
+
+            let evaluated = client
+                .request(EvaluateBlockReq(
+                    client.id,
+                    "Registered".to_string(),
+                    vec![5.into()],
+                    None,
+                ))
+                .await;
+            let EvaluateBlockRes(Ok(outputs)) = evaluated else {
+                panic!("not evaluated: {evaluated:?}");
+            };
+            assert_eq!(outputs, vec![Value::from(5)]);
+        })
+        .await;
+    }
+
     /// A program of runtime-registered blocks, which the engine
     /// schedules as the registry's type-erased block, loads, runs, and
     /// saves back as it was loaded.

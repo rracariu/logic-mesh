@@ -28,7 +28,7 @@ use std::collections::BTreeMap;
 use std::marker::PhantomData;
 use std::sync::Arc;
 
-use crate::base::error::{EngineError, RegistryError, Result, parse_block_uuid};
+use crate::base::error::{EngineError, Result, parse_block_uuid};
 use libhaystack::val::Value;
 use tokio::sync::{
     RwLock,
@@ -50,7 +50,7 @@ use crate::base::{
     },
     program::{Program, data::LinkData},
 };
-use crate::blocks::registry::{BlockSink, CORE_LIB, get_block};
+use crate::blocks::registry::{BlockSink, get_block};
 use crate::tokio_impl::engine::{
     Messages, ensure_schedulable_mt, phase_name, schedule_block_on_engine_mt,
 };
@@ -403,12 +403,7 @@ impl MultiThreadedEngine<Running> {
         block_id: Option<Uuid>,
         lib: Option<String>,
     ) -> Result<Uuid> {
-        let block_def = get_block(block_name.as_str(), lib.as_deref()).ok_or_else(|| {
-            RegistryError::BlockNotFound {
-                library: lib.as_deref().unwrap_or(CORE_LIB).to_string(),
-                name: block_name.clone(),
-            }
-        })?;
+        let block_def = get_block(block_name.as_str(), lib.as_deref())?;
         schedule_block_on_engine_mt(&block_def.desc, block_id, self)
     }
 
@@ -523,15 +518,14 @@ impl MultiThreadedEngine<Running> {
             }
 
             EngineMessage::EvaluateBlockReq(sender_uuid, name, inputs, lib) => {
-                let Some(block) = get_block(name.as_str(), lib.as_deref()) else {
-                    let err = RegistryError::BlockNotFound {
-                        library: lib.as_deref().unwrap_or(CORE_LIB).to_string(),
-                        name,
-                    };
-                    return self.reply_to_sender(
-                        sender_uuid,
-                        EngineMessage::EvaluateBlockRes(Err(err.to_string())),
-                    );
+                let block = match get_block(name.as_str(), lib.as_deref()) {
+                    Ok(block) => block,
+                    Err(err) => {
+                        return self.reply_to_sender(
+                            sender_uuid,
+                            EngineMessage::EvaluateBlockRes(Err(err.to_string())),
+                        );
+                    }
                 };
                 let response = crate::tokio_impl::engine::eval_block(&block.desc, inputs).await;
                 self.reply_to_sender(
@@ -1007,6 +1001,14 @@ mod test {
         #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
         async fn a_registered_block_loads_and_saves() {
             runtime_descs::a_registered_block_loads_and_saves(MultiThreadedEngine::new()).await;
+        }
+
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn a_registered_block_is_found_by_its_name_alone() {
+            runtime_descs::a_registered_block_is_found_by_its_name_alone(
+                MultiThreadedEngine::new(),
+            )
+            .await;
         }
     }
 
