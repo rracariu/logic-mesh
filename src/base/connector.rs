@@ -254,6 +254,7 @@ pub struct ConnectorHandle(HandleRepr);
 
 impl ConnectorHandle {
     /// Wraps `connector` in a new shared handle.
+    #[must_use = "the connector is dropped unless the handle is registered or kept"]
     pub fn new(connector: impl Connector + 'static) -> Self {
         #[cfg(not(target_arch = "wasm32"))]
         return Self(std::sync::Arc::new(connector));
