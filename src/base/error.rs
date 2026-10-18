@@ -89,10 +89,54 @@ pub enum Error {
     Connector(#[from] ConnectorError),
 }
 
+/// Displays an error followed by every error in its
+/// [`source`](std::error::Error::source) chain, joined by `": "`.
+///
+/// The crate's errors leave a wrapped error out of their own message,
+/// so wherever the crate turns an error into a string for the user — a
+/// block fault reason, a log line, a message thrown to JavaScript — it
+/// renders it through this, or the wrapped error's detail is lost.
+pub(crate) struct ErrorChain<'a>(pub(crate) &'a dyn std::error::Error);
+
+impl std::fmt::Display for ErrorChain<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)?;
+        let mut source = self.0.source();
+        while let Some(err) = source {
+            write!(f, ": {err}")?;
+            source = err.source();
+        }
+        Ok(())
+    }
+}
+
 #[cfg(test)]
 mod test {
-    use super::{EngineError, Error, RegistryError};
+    use super::{ConnectorError, EngineError, Error, ErrorChain, RegistryError, ValueError};
     use assert_matches::assert_matches;
+
+    #[test]
+    fn error_chain_renders_every_source_once() {
+        let err = ValueError::ZincDecode(std::io::Error::other("bad token"));
+        assert_eq!(
+            ErrorChain(&err).to_string(),
+            "Zinc decoding failed: bad token"
+        );
+
+        let err: Error = ConnectorError::transport("link down")
+            .with_source(ValueError::ZincDecode(std::io::Error::other("bad token")))
+            .into();
+        assert_eq!(
+            ErrorChain(&err).to_string(),
+            "Transport error: link down: Zinc decoding failed: bad token"
+        );
+    }
+
+    #[test]
+    fn error_chain_of_an_error_without_source_is_its_message() {
+        let err = ConnectorError::transport("link down");
+        assert_eq!(ErrorChain(&err).to_string(), "Transport error: link down");
+    }
 
     /// The error type crosses task and thread boundaries (the engines
     /// hand it back out of spawned actor round-trips), so it has to stay

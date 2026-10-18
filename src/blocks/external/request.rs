@@ -10,7 +10,9 @@ use crate::base::{
     input::{InputProps, input_reader::InputReader},
     output::Output,
 };
-use crate::blocks::external::support::{PendingOp, input_as_str, input_as_timeout_millis};
+use crate::blocks::external::support::{
+    PendingOp, connector_fault, input_as_str, input_as_timeout_millis,
+};
 use crate::tokio_impl::block::drain_ready_inputs;
 
 use crate::{blocks::InputImpl, blocks::OutputImpl};
@@ -154,7 +156,7 @@ impl Block for Request {
         if deadline.has_passed() {
             self.pending = None;
             let err = deadline.timeout_error(address);
-            self.set_state(BlockState::fault(format!("Request: {err}")));
+            self.set_state(connector_fault("Request", &err));
             return;
         }
 
@@ -171,14 +173,14 @@ impl Block for Request {
                 match response {
                     Ok(result) => self.out.set(result),
                     Err(err) => {
-                        self.set_state(BlockState::fault(format!("Request: {err}")));
+                        self.set_state(connector_fault("Request", &err));
                     }
                 }
             }
             () = deadline.passed() => {
                 self.pending = None;
                 let err = deadline.timeout_error(address);
-                self.set_state(BlockState::fault(format!("Request: {err}")));
+                self.set_state(connector_fault("Request", &err));
             }
         }
     }
@@ -195,7 +197,7 @@ mod test {
     use crate::base::block::{Block, BlockProps};
     use crate::base::connector::{register_connector, unregister_connector};
     use crate::blocks::external::Request;
-    use crate::blocks::external::support::mock::MockConnector;
+    use crate::blocks::external::support::mock::{MOCK_CAUSE, MockConnector};
 
     fn unique_name(prefix: &str) -> String {
         format!("{prefix}-{}", uuid::Uuid::new_v4())
@@ -248,6 +250,8 @@ mod test {
         unregister_connector(&name);
     }
 
+    /// The fault reason carries the connector's underlying error too
+    /// (regression: it printed only the error's own message).
     #[tokio::test]
     async fn request_error_faults() {
         let name = unique_name("req-err");
@@ -261,7 +265,13 @@ mod test {
         write_all(&mut block, &name, 42.into()).await;
         block.execute().await;
 
-        assert!(block.state().is_fault());
+        assert_eq!(
+            block.state().fault_reason(),
+            Some(
+                format!("Request: Request to 'route' failed: mock request failure: {MOCK_CAUSE}")
+                    .as_str()
+            )
+        );
         assert_eq!(block.out.value, Value::Null, "no response on failure");
 
         unregister_connector(&name);

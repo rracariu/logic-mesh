@@ -10,7 +10,9 @@ use crate::base::{
     input::{InputProps, input_reader::InputReader},
     output::Output,
 };
-use crate::blocks::external::support::{PendingOp, input_as_str, input_as_timeout_millis};
+use crate::blocks::external::support::{
+    PendingOp, connector_fault, input_as_str, input_as_timeout_millis,
+};
 use crate::tokio_impl::block::drain_ready_inputs;
 
 use crate::{blocks::InputImpl, blocks::OutputImpl};
@@ -156,7 +158,7 @@ impl Block for ExternalOut {
         if deadline.has_passed() {
             self.pending = None;
             let err = deadline.timeout_error(address);
-            self.set_state(BlockState::fault(format!("ExternalOut: {err}")));
+            self.set_state(connector_fault("ExternalOut", &err));
             return;
         }
 
@@ -173,14 +175,14 @@ impl Block for ExternalOut {
                 match result {
                     Ok(()) => self.out.set(value),
                     Err(err) => {
-                        self.set_state(BlockState::fault(format!("ExternalOut: {err}")));
+                        self.set_state(connector_fault("ExternalOut", &err));
                     }
                 }
             }
             () = deadline.passed() => {
                 self.pending = None;
                 let err = deadline.timeout_error(address);
-                self.set_state(BlockState::fault(format!("ExternalOut: {err}")));
+                self.set_state(connector_fault("ExternalOut", &err));
             }
         }
     }
@@ -197,7 +199,7 @@ mod test {
     use crate::base::block::{Block, BlockProps};
     use crate::base::connector::{register_connector, unregister_connector};
     use crate::blocks::external::ExternalOut;
-    use crate::blocks::external::support::mock::MockConnector;
+    use crate::blocks::external::support::mock::{MOCK_CAUSE, MockConnector};
 
     fn unique_name(prefix: &str) -> String {
         format!("{prefix}-{}", uuid::Uuid::new_v4())
@@ -238,6 +240,8 @@ mod test {
         assert!(block.state().is_fault());
     }
 
+    /// The fault reason carries the connector's underlying error too
+    /// (regression: it printed only the error's own message).
     #[tokio::test]
     async fn publish_error_faults() {
         let name = unique_name("out-pub-err");
@@ -251,7 +255,15 @@ mod test {
         write_all(&mut block, &name, 42.into()).await;
         block.execute().await;
 
-        assert!(block.state().is_fault());
+        assert_eq!(
+            block.state().fault_reason(),
+            Some(
+                format!(
+                    "ExternalOut: Publish to 'topic' failed: mock publish failure: {MOCK_CAUSE}"
+                )
+                .as_str()
+            )
+        );
         assert!(mock.published.lock().unwrap().is_empty());
         assert_eq!(block.out.value, Value::Null, "no echo on failure");
 

@@ -1049,7 +1049,7 @@ mod tests {
             RemoveConnectorReq, RemoveConnectorRes, Reset,
         };
         use crate::tokio_impl::engine::connectors::test_support::{
-            FailingStartConnector, FlagConnector,
+            FailingStartConnector, FlagConnector, start_failure_reply,
         };
 
         /// The connector registry is process-global and tests run in
@@ -1269,13 +1269,13 @@ mod tests {
                     let _ = engine_sender
                         .send(AddConnectorReq(channel_id, driver_name.clone()))
                         .await;
-                    match receiver.recv().await {
-                        Some(AddConnectorRes(Err(_))) => {}
+                    let reply = match receiver.recv().await {
+                        Some(AddConnectorRes(Err(reply))) => reply,
                         other => panic!(
                             "Expected AddConnectorRes(Err) on start failure, got {:?}",
                             other
                         ),
-                    }
+                    };
                     assert!(
                         driver_stopped.load(Ordering::SeqCst),
                         "failed attach stops the connector before replying"
@@ -1297,14 +1297,18 @@ mod tests {
                     }
 
                     let _ = engine_sender.send(Shutdown).await;
+                    reply
                 });
                 rt.block_on(handle)
             });
 
             eng.run().await;
-            driver.join().unwrap().unwrap();
-
+            let reply = driver.join().unwrap().unwrap();
             unregister_connector(&name);
+
+            // The reply carries the start error's source too
+            // (regression: it printed only the error's own message).
+            assert_eq!(reply, start_failure_reply(&name));
         }
 
         /// Attach/detach error cases: an unregistered name, a name the
