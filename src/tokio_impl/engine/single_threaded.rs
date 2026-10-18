@@ -189,6 +189,35 @@ mod tests {
         eng.run().await;
     }
 
+    /// The engine and its block handles summarise themselves without
+    /// dumping blocks, descriptors or channels.
+    #[tokio::test(flavor = "current_thread")]
+    async fn debug_summarises_the_engine_and_its_blocks() {
+        let mut source = Add::new();
+        let mut target = Add::new();
+        let target_id = *target.id();
+        source
+            .connect_output("out", target.inputs_mut()[0])
+            .expect("not linked yet");
+
+        let mut eng = SingleThreadedEngine::new();
+        eng.schedule(source).expect("scheduled");
+        eng.schedule(target).expect("scheduled");
+
+        assert_eq!(
+            format!("{eng:?}"),
+            "SingleThreadedEngine { phase: \"Idle\", executing: false, blocks: 2, links: 1, \
+             pending_programs: 0, connectors: [], .. }"
+        );
+        assert_eq!(
+            format!("{:?}", eng.block_handle(&target_id).expect("scheduled")),
+            format!(
+                "BlockHandle {{ id: {target_id}, name: \"Add\", library: \"core\", \
+                 label: None, position: None, .. }}"
+            )
+        );
+    }
+
     /// Regression: a save always returned no name and no description,
     /// and lost the ids of the links it had loaded — see
     /// `test_support::round_trip`.

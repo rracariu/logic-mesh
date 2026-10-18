@@ -51,7 +51,7 @@ use crate::base::{
     program::{Program, data::LinkData},
 };
 use crate::blocks::registry::{BlockSink, CORE_LIB, get_block};
-use crate::tokio_impl::engine::{ensure_schedulable_mt, schedule_block_on_engine_mt};
+use crate::tokio_impl::engine::{ensure_schedulable_mt, phase_name, schedule_block_on_engine_mt};
 use crate::tokio_impl::{MtBlock, ReaderImpl, WriterImpl};
 
 /// Concrete engine-message type.
@@ -116,6 +116,22 @@ pub struct MultiThreadedEngine<S: EngineState = Idle> {
 impl Default for MultiThreadedEngine {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+/// Shows the engine's phase, whether its blocks may execute, how many
+/// blocks, links and staged programs it holds and the connectors it
+/// manages — not the blocks or channels themselves.
+impl<S: EngineState> std::fmt::Debug for MultiThreadedEngine<S> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("MultiThreadedEngine")
+            .field("phase", &phase_name::<S>())
+            .field("executing", &*self.execution.borrow())
+            .field("blocks", &self.graph.block_count())
+            .field("links", &self.graph.link_count())
+            .field("pending_programs", &self.pending.len())
+            .field("connectors", &self.connectors.as_slice())
+            .finish_non_exhaustive()
     }
 }
 
@@ -635,6 +651,35 @@ mod test {
     use tokio::sync::mpsc;
     use tokio::time::sleep;
     use uuid::Uuid;
+
+    /// The engine and its block handles summarise themselves without
+    /// dumping blocks, descriptors or channels.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn debug_summarises_the_engine_and_its_blocks() {
+        let mut source = Add::new();
+        let mut target = Add::new();
+        let target_id = *target.id();
+        source
+            .connect_output("out", target.inputs_mut()[0])
+            .expect("not linked yet");
+
+        let mut eng = MultiThreadedEngine::new();
+        eng.schedule(source).expect("scheduled");
+        eng.schedule(target).expect("scheduled");
+
+        assert_eq!(
+            format!("{eng:?}"),
+            "MultiThreadedEngine { phase: \"Idle\", executing: false, blocks: 2, links: 1, \
+             pending_programs: 0, connectors: [], .. }"
+        );
+        assert_eq!(
+            format!("{:?}", eng.block_handle(&target_id).expect("scheduled")),
+            format!(
+                "BlockHandle {{ id: {target_id}, name: \"Add\", library: \"core\", \
+                 label: None, position: None, .. }}"
+            )
+        );
+    }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
     async fn multi_threaded_engine_test() {
