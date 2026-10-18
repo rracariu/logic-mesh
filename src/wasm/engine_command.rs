@@ -47,7 +47,8 @@ impl EngineCommand {
     }
 
     /// Adds a block instance to the engine, immediately scheduling it
-    /// for execution.
+    /// for execution. Without `lib`, the block is looked up in every
+    /// library, and a name more than one library holds is rejected.
     #[wasm_bindgen(js_name = "addBlock")]
     pub async fn add_block(
         &mut self,
@@ -294,7 +295,8 @@ impl EngineCommand {
     /// Evaluates a block by name, returning its output values.
     ///
     /// Creates a temporary block instance, feeds it the given `inputs`,
-    /// executes it, and returns the outputs. `lib` defaults to `"core"`.
+    /// executes it, and returns the outputs. Without `lib`, the block is
+    /// looked up in every library, as for [`add_block`](Self::add_block).
     #[wasm_bindgen(js_name = "evalBlock")]
     pub async fn eval_block(
         &mut self,

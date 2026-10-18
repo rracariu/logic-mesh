@@ -333,6 +333,14 @@ mod tests {
         async fn a_registered_block_loads_and_saves() {
             runtime_descs::a_registered_block_loads_and_saves(SingleThreadedEngine::new()).await;
         }
+
+        #[tokio::test(flavor = "current_thread")]
+        async fn a_registered_block_is_found_by_its_name_alone() {
+            runtime_descs::a_registered_block_is_found_by_its_name_alone(
+                SingleThreadedEngine::new(),
+            )
+            .await;
+        }
     }
 
     /// Regression: a panic in `execute` killed the block's actor task —

@@ -5,7 +5,7 @@
 
 use std::{cell::RefCell, collections::BTreeMap, marker::PhantomData, rc::Rc};
 
-use crate::base::error::{EngineError, RegistryError, Result};
+use crate::base::error::{EngineError, Result};
 use libhaystack::val::Value;
 use tokio::{
     sync::{
@@ -34,7 +34,7 @@ use crate::base::{
         data::{LinkData, Position},
     },
 };
-use crate::blocks::registry::{BlockSink, CORE_LIB, get_block};
+use crate::blocks::registry::{BlockSink, get_block};
 use crate::tokio_impl::engine::Messages;
 use crate::tokio_impl::engine::message_dispatch::dispatch_message;
 use crate::tokio_impl::engine::{ensure_schedulable, phase_name, schedule_block_on_engine};
@@ -513,11 +513,7 @@ impl SingleThreadedEngine<Running> {
         block_id: Option<Uuid>,
         lib: Option<&str>,
     ) -> Result<Uuid> {
-        let block_def =
-            get_block(block_name.as_str(), lib).ok_or_else(|| RegistryError::BlockNotFound {
-                library: lib.unwrap_or(CORE_LIB).to_string(),
-                name: block_name.clone(),
-            })?;
+        let block_def = get_block(block_name.as_str(), lib)?;
         // schedule_block_on_engine spawns the actor task immediately (via
         // `spawn_block()`); it returns the assigned block id.
         schedule_block_on_engine(&block_def.desc, block_id, self)

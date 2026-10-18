@@ -8,7 +8,7 @@ use libhaystack::val::Value;
 use uuid::Uuid;
 
 use crate::base::block::BlockDesc;
-use crate::base::error::{EngineError, LinkEnd, RegistryError, Result};
+use crate::base::error::{EngineError, LinkEnd, Result};
 use crate::blocks::registry::{CORE_LIB, get_block};
 
 use super::data::{LinkData, PinValue, Position, Program, ProgramBlock};
@@ -84,19 +84,17 @@ impl ProgramBuilder {
     ///
     /// Returns an error if no such block is registered.
     pub fn add_block(&mut self, name: &str) -> Result<ProgramBlockBuilder<'_>> {
-        self.add_block_in(CORE_LIB, name)
+        self.add_block_in(name, CORE_LIB)
     }
 
-    /// Adds a block from library `lib`.
+    /// Adds block `name` from library `lib`. The block name comes first,
+    /// as in every other lookup that names a library.
     ///
     /// # Errors
     ///
     /// Returns an error if no such block is registered.
-    pub fn add_block_in(&mut self, lib: &str, name: &str) -> Result<ProgramBlockBuilder<'_>> {
-        let entry = get_block(name, Some(lib)).ok_or_else(|| RegistryError::BlockNotFound {
-            library: lib.to_string(),
-            name: name.to_string(),
-        })?;
+    pub fn add_block_in(&mut self, name: &str, lib: &str) -> Result<ProgramBlockBuilder<'_>> {
+        let entry = get_block(name, Some(lib))?;
 
         let id = Uuid::new_v4();
         self.program.blocks.insert(
@@ -244,8 +242,27 @@ mod test {
 
     use super::*;
     use crate::base::engine::Engine;
-    use crate::base::error::Error;
+    use crate::base::error::{Error, RegistryError};
     use crate::single_threaded::SingleThreadedEngine;
+
+    /// `add_block_in` takes the block name first and the library
+    /// second, like every other registry lookup.
+    #[test]
+    fn add_block_in_takes_the_name_then_the_library() {
+        let mut builder = ProgramBuilder::new("qualified");
+        let add = builder.add_block_in("Add", CORE_LIB).unwrap().finish();
+
+        let program = builder.build();
+        let block = &program.blocks[&add.id().to_string()];
+        assert_eq!((block.name.as_str(), block.lib.as_str()), ("Add", CORE_LIB));
+
+        let mut builder = ProgramBuilder::new("swapped");
+        assert_matches!(
+            builder.add_block_in(CORE_LIB, "Add").map(|b| b.finish()),
+            Err(Error::Registry(RegistryError::BlockNotFound { library, name }))
+                if library == "Add" && name == CORE_LIB
+        );
+    }
 
     #[test]
     fn built_program_schedules_with_its_metadata() {
