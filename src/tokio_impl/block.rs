@@ -10,7 +10,7 @@ use crate::base::Status;
 use crate::base::block::{Block, BlockState, convert_value_kind};
 use crate::base::error::ErrorChain;
 use crate::base::input::{Input, InputReader};
-use crate::blocks::utils::get_sleep_dur;
+use crate::tokio_impl::scan::scan_interval_millis;
 use crate::tokio_impl::{ReaderImpl, WriterImpl};
 
 /// Writes `value` to `input` the way an engine pin write does, with
@@ -49,7 +49,7 @@ impl<B: Block> InputReader for B {
         // configured sleep duration up to a 2 s cap, then reset on the next
         // call once data flows again.
         const MAX_BACKOFF_MS: u64 = 2000;
-        let mut backoff = get_sleep_dur();
+        let mut backoff = scan_interval_millis();
         loop {
             let result = read_block_inputs(self).await;
             if result.is_some() {

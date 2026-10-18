@@ -10,6 +10,7 @@ pub mod block;
 pub mod engine;
 pub mod input;
 pub mod output;
+pub(crate) mod scan;
 pub mod sleep;
 
 /// The unit of data on a pin watch channel: the value plus the producer's

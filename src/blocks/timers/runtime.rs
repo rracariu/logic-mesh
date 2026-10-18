@@ -10,7 +10,7 @@ use crate::base::{
     input::{InputProps, input_reader::InputReader},
     output::Output,
 };
-use crate::blocks::utils::get_sleep_dur;
+use crate::tokio_impl::scan::scan_interval_millis;
 use crate::tokio_impl::sleep::current_time_millis;
 
 use libhaystack::units::units_generated::HOUR;
@@ -39,7 +39,7 @@ pub struct Runtime {
 
 impl Block for Runtime {
     async fn execute(&mut self) {
-        let poll = get_sleep_dur();
+        let poll = scan_interval_millis();
         self.wait_on_inputs(Duration::from_millis(poll)).await;
 
         if !self.out.is_connected() {

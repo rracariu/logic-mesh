@@ -3,7 +3,7 @@
 //! [`SingleThreadedEngine`] — engine struct, lifecycle, and the
 //! synchronous + async API surface that messaging dispatch routes to.
 
-use std::{cell::RefCell, collections::BTreeMap, marker::PhantomData, rc::Rc};
+use std::{cell::RefCell, collections::BTreeMap, marker::PhantomData, rc::Rc, time::Duration};
 
 use crate::base::error::{EngineError, Result};
 use libhaystack::val::Value;
@@ -38,6 +38,7 @@ use crate::blocks::registry::{BlockSink, get_block};
 use crate::tokio_impl::engine::Messages;
 use crate::tokio_impl::engine::message_dispatch::dispatch_message;
 use crate::tokio_impl::engine::{ensure_schedulable, phase_name, schedule_block_on_engine};
+use crate::tokio_impl::scan::ScanInterval;
 use crate::tokio_impl::{ReaderImpl, WriterImpl};
 use futures::future::LocalBoxFuture;
 
@@ -102,6 +103,8 @@ pub struct SingleThreadedEngine<S: EngineState = Idle> {
     /// engine runs and is not paused. Actors keep serving their mailbox
     /// either way, so requests are answered while blocks are held.
     execution: watch::Sender<bool>,
+    /// The scan interval every block actor task runs with.
+    scan: ScanInterval,
     /// The lifecycle phase, tracked in the type only.
     state: PhantomData<S>,
 }
@@ -113,8 +116,9 @@ impl Default for SingleThreadedEngine {
 }
 
 /// Shows the engine's phase, whether its blocks may execute, how many
-/// blocks, links and staged programs it holds and the connectors it
-/// manages — not the blocks or channels themselves.
+/// blocks, links and staged programs it holds, the connectors it
+/// manages and its scan interval — not the blocks or channels
+/// themselves.
 impl<S: EngineState> std::fmt::Debug for SingleThreadedEngine<S> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("SingleThreadedEngine")
@@ -124,6 +128,7 @@ impl<S: EngineState> std::fmt::Debug for SingleThreadedEngine<S> {
             .field("links", &self.graph.link_count())
             .field("pending_programs", &self.pending.len())
             .field("connectors", &self.connectors.as_slice())
+            .field("scan_interval", &self.scan.get())
             .finish_non_exhaustive()
     }
 }
@@ -178,12 +183,23 @@ impl Engine for SingleThreadedEngine<Idle> {
         Ok(self.graph.set_metadata(id, label, position)?)
     }
 
+    fn scan_interval(&self) -> Duration {
+        self.scan.get()
+    }
+
+    fn set_scan_interval(&mut self, interval: Duration) {
+        self.scan.set(interval);
+    }
+
     fn run(self) -> Self::RunFuture {
-        Box::pin(async move {
+        // The event loop evaluates blocks too (`EvaluateBlockReq`), so it
+        // runs with the engine's scan interval like the actor tasks.
+        let scan = self.scan.clone();
+        Box::pin(scan.scope(async move {
             let mut engine = self.into_state::<Running>();
             engine.event_loop().await;
             engine.into_state()
-        })
+        }))
     }
 
     fn create_message_channel(
@@ -210,6 +226,7 @@ impl SingleThreadedEngine<Idle> {
             watchers: Rc::default(),
             connectors: ManagedConnectors::default(),
             execution: watch::Sender::new(false),
+            scan: ScanInterval::default(),
             state: PhantomData,
         }
     }
@@ -274,6 +291,7 @@ impl<S: EngineState> SingleThreadedEngine<S> {
             watchers,
             connectors,
             execution,
+            scan,
             state: _,
         } = self;
         SingleThreadedEngine {
@@ -286,6 +304,7 @@ impl<S: EngineState> SingleThreadedEngine<S> {
             watchers,
             connectors,
             execution,
+            scan,
             state: PhantomData,
         }
     }
@@ -313,12 +332,12 @@ impl<S: EngineState> SingleThreadedEngine<S> {
         self.graph.insert(&block, mailbox_tx)?;
 
         let watchers = self.watchers.clone();
-        self.local.spawn_local(block_actor_task(
+        self.local.spawn_local(self.scan.scope(block_actor_task(
             block,
             mailbox_rx,
             watchers,
             self.execution.subscribe(),
-        ));
+        )));
         Ok(())
     }
 
