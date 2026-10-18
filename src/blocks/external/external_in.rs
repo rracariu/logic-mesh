@@ -329,7 +329,7 @@ mod test {
         let mut block = ExternalIn::new();
         bind(&mut block, &name, "topic").await;
 
-        mock.feed("topic", Err(ConnectorError::Transport("boom".to_string())));
+        mock.feed("topic", Err(ConnectorError::transport("boom")));
         block.execute().await;
         assert!(block.state().is_fault());
 

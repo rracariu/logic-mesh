@@ -212,10 +212,7 @@ pub(crate) mod mock {
                     tokio::time::sleep(std::time::Duration::from_millis(millis)).await;
                 }
                 if self.fail_subscribe {
-                    return Err(ConnectorError::Subscribe {
-                        address,
-                        detail: "mock subscribe failure".to_string(),
-                    });
+                    return Err(ConnectorError::subscribe(address, "mock subscribe failure"));
                 }
                 let (tx, rx) = mpsc::unbounded();
                 self.senders.lock().unwrap().insert(address, tx);
@@ -230,10 +227,7 @@ pub(crate) mod mock {
                     tokio::time::sleep(std::time::Duration::from_millis(millis)).await;
                 }
                 if self.fail_publish {
-                    return Err(ConnectorError::Publish {
-                        address,
-                        detail: "mock publish failure".to_string(),
-                    });
+                    return Err(ConnectorError::publish(address, "mock publish failure"));
                 }
                 self.published.lock().unwrap().push((address, value));
                 Ok(())
@@ -251,10 +245,7 @@ pub(crate) mod mock {
                     tokio::time::sleep(std::time::Duration::from_millis(millis)).await;
                 }
                 if self.fail_request {
-                    return Err(ConnectorError::Request {
-                        address,
-                        detail: "mock request failure".to_string(),
-                    });
+                    return Err(ConnectorError::request(address, "mock request failure"));
                 }
                 Ok(value)
             })

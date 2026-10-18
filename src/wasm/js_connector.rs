@@ -231,10 +231,7 @@ impl Connector for JsConnector {
         let address = address.to_string();
 
         Box::pin(async move {
-            let error = |detail: String| ConnectorError::Publish {
-                address: address.clone(),
-                detail,
-            };
+            let error = |detail: String| ConnectorError::publish(address.clone(), detail);
 
             let value =
                 serde_wasm_bindgen::to_value(&value).map_err(|err| error(err.to_string()))?;
@@ -256,10 +253,7 @@ impl Connector for JsConnector {
         let address = address.to_string();
 
         Box::pin(async move {
-            let error = |detail: String| ConnectorError::Request {
-                address: address.clone(),
-                detail,
-            };
+            let error = |detail: String| ConnectorError::request(address.clone(), detail);
 
             let value =
                 serde_wasm_bindgen::to_value(&value).map_err(|err| error(err.to_string()))?;
@@ -549,7 +543,7 @@ fn call_lifecycle_fn(
         };
 
         let error = |detail: String| {
-            ConnectorError::Transport(format!("connector {name} failed: {detail}"))
+            ConnectorError::transport(format!("connector {name} failed: {detail}"))
         };
 
         let ret = func.call0(&this).map_err(|err| error(js_detail(&err)))?;
@@ -583,10 +577,7 @@ fn as_unsubscribe_fn(address: &str, value: JsValue) -> Option<js_sys::Function> 
 /// Builds the [`ConnectorError::Subscribe`] every subscription failure
 /// path reports.
 fn subscribe_error(address: &str, detail: String) -> ConnectorError {
-    ConnectorError::Subscribe {
-        address: address.to_string(),
-        detail,
-    }
+    ConnectorError::subscribe(address, detail)
 }
 
 /// Renders a JS exception or rejection reason as a detail message: an

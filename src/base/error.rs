@@ -32,7 +32,7 @@ pub mod registry;
 pub mod value;
 
 pub use connect::ConnectError;
-pub use connector::ConnectorError;
+pub use connector::{ConnectorError, ConnectorErrorSource};
 pub use engine::{EngineError, LinkEnd};
 pub use external::ExternalError;
 pub use registry::RegistryError;

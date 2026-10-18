@@ -221,9 +221,8 @@ impl Connector for SimulatedSensorConnector {
             // The simulated service converts Celsius to Fahrenheit.
             // Failures are reported through `ConnectorError`, which the
             // `Request` block surfaces as a block fault.
-            let celsius: f64 = (&value).try_into().map_err(|_| ConnectorError::Request {
-                address: address.clone(),
-                detail: format!("expected a number, got {value:?}"),
+            let celsius: f64 = (&value).try_into().map_err(|_| {
+                ConnectorError::request(&address, format!("expected a number, got {value:?}"))
             })?;
             let fahrenheit = celsius * 9.0 / 5.0 + 32.0;
             println!("[sim ] service '{address}' answered {celsius:.2} C -> {fahrenheit:.2} F");

@@ -125,14 +125,19 @@ Five contract rules shape everything downstream:
 |---|---|
 | `NotFound { name }` | lookup of an unregistered name |
 | `AlreadyRegistered { name }` | registering a duplicate name |
-| `Subscribe { address, detail }` | `subscribe` failed, or a stream item was an error |
-| `Publish { address, detail }` | `publish` failed |
-| `Request { address, detail }` | `request` failed |
+| `Subscribe { address, detail, source }` | `subscribe` failed, or a stream item was an error |
+| `Publish { address, detail, source }` | `publish` failed |
+| `Request { address, detail, source }` | `request` failed |
 | `Timeout { address, millis }` | an `ExternalIn`, `ExternalOut` or `Request` block's deadline elapsed |
-| `Transport(String)` | connection-level failure outside a specific operation |
+| `Transport { detail, source }` | connection-level failure outside a specific operation |
 
-Each variant carries the address, so callers can identify the failing route without parsing display
-strings. Inside blocks these surface as `BlockState::fault(...)`.
+Each operation variant carries the address, so callers can identify the failing route without
+parsing display strings. Inside blocks these surface as `BlockState::fault(...)`.
+
+The variants a connector reports are `#[non_exhaustive]`: connectors build them with
+`ConnectorError::subscribe`, `publish`, `request` and `transport`, and attach the protocol client's
+own error with `with_source`. That error is exposed through `std::error::Error::source` and left
+out of the message.
 
 ### 4.4 The external blocks — `src/blocks/external/`
 
