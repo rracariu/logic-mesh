@@ -7,7 +7,7 @@ use uuid::Uuid;
 use super::BlockProps;
 use crate::base::error::ConnectError;
 use crate::base::input::InputProps;
-use crate::base::link::{BaseLink, Link, LinkState};
+use crate::base::link::{BaseLink, Link};
 use crate::base::output::Output;
 
 /// Block connection functions.
@@ -192,12 +192,13 @@ pub fn connect_output<Reader, Writer: Clone>(
         (target_input.block_id(), target_input.name()),
     )?;
 
-    let mut link = BaseLink::new(*target_input.block_id(), target_input.name().to_string());
-    let id = link.id;
-
-    link.tx = Some(target_input.writer().clone());
-
-    link.state = LinkState::Connected;
+    let id = Uuid::new_v4();
+    let link = BaseLink::connected(
+        id,
+        *target_input.block_id(),
+        target_input.name().to_string(),
+        target_input.writer().clone(),
+    );
 
     source_output.add_link(link);
     target_input.increment_conn();
@@ -279,12 +280,13 @@ pub fn connect_input<Reader, Writer: Clone>(
     ensure_not_self_link(source, target)?;
     ensure_not_linked(&source_input.links(), source, target)?;
 
-    let mut link = BaseLink::new(*target_input.block_id(), target_input.name().to_string());
-    let id = link.id;
-
-    link.tx = Some(target_input.writer().clone());
-
-    link.state = LinkState::Connected;
+    let id = Uuid::new_v4();
+    let link = BaseLink::connected(
+        id,
+        *target_input.block_id(),
+        target_input.name().to_string(),
+        target_input.writer().clone(),
+    );
 
     source_input.add_link(link);
     target_input.increment_conn();

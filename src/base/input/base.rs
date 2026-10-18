@@ -11,27 +11,42 @@ use crate::base::link::{BaseLink, Link};
 use super::InputProps;
 
 /// The base input type.
+///
+/// Its fields are private: read them through [`InputProps`] and
+/// [`Input`](crate::base::input::Input) (name, kind, value, status,
+/// links, connectedness) and [`connection_count`](Self::connection_count),
+/// and give an input a value with
+/// [`InputImpl::set`](crate::blocks::InputImpl::set), which also forwards
+/// it to the inputs this one links to.
 #[derive(Debug, Default)]
 pub struct BaseInput<Reader, Writer> {
     /// The block-unique input name.
-    pub name: String,
+    pub(crate) name: String,
     /// The kind of data this input can receive.
-    pub kind: HaystackKind,
+    pub(crate) kind: HaystackKind,
     /// The block id of the block this input belongs to.
-    pub block_id: Uuid,
+    pub(crate) block_id: Uuid,
     /// The number of connections this input has.
-    pub connection_count: usize,
+    pub(crate) connection_count: usize,
     /// The input reader.
-    pub reader: Reader,
+    pub(crate) reader: Reader,
     /// The input writer.
-    pub writer: Writer,
+    pub(crate) writer: Writer,
     /// The input value.
-    pub val: Option<Value>,
+    pub(crate) val: Option<Value>,
     /// The status of the last value received on this input. Tracks the
     /// producer's quality assertion across the watch channel.
-    pub status: Status,
+    pub(crate) status: Status,
     /// The links to other inputs.
-    pub links: Vec<BaseLink<Writer>>,
+    pub(crate) links: Vec<BaseLink<Writer>>,
+}
+
+impl<Reader, Writer> BaseInput<Reader, Writer> {
+    /// The number of links that feed this input: from outputs, or from
+    /// inputs that fan out to it.
+    pub fn connection_count(&self) -> usize {
+        self.connection_count
+    }
 }
 
 /// Implements the [`InputProps`] trait for [`BaseInput`].

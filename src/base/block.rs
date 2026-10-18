@@ -133,7 +133,7 @@ impl BlockState {
 /// use logic_mesh::{
 ///     BlockProps, block,
 ///     base::block::{Block, BlockProps as _},
-///     base::input::input_reader::InputReader,
+///     base::input::{InputProps, input_reader::InputReader},
 ///     base::output::Output,
 ///     blocks::{InputImpl, OutputImpl},
 /// };
@@ -152,7 +152,7 @@ impl BlockState {
 ///     async fn execute(&mut self) {
 ///         self.read_inputs_until_ready().await;
 ///
-///         if let Some(logic_mesh::Value::Number(n)) = &self.input.val {
+///         if let Some(logic_mesh::Value::Number(n)) = self.input.get_value() {
 ///             self.out.set((n.value * 2.0).into());
 ///         }
 ///     }
