@@ -34,7 +34,9 @@ workspace = true
 
 [features]
 default = []
-multi-threaded = []
+# The multi-threaded engine, for a tokio multi-thread runtime. Native
+# targets only: wasm32 has no threads to run it on.
+multi-threaded = ["tokio/rt-multi-thread"]
 
 [lib]
 crate-type = ["cdylib", "rlib"]
@@ -56,17 +58,11 @@ futures = "^0.3"
 rand = "^0.9"
 thiserror = "^2.0"
 log = "^0.4"
-
-[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-tokio = { version = "^1.50", features = [
-	"rt-multi-thread",
-	"sync",
-	"time",
-	"macros",
-] }
+# The engines need the current-thread scheduler pieces (`rt`) only; the
+# multi-threaded engine's runtime comes with the `multi-threaded` feature.
+tokio = { version = "^1.50", features = ["rt", "sync", "time", "macros"] }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
-tokio = { version = "^1.50", features = ["rt", "sync", "time", "macros"] }
 uuid = { version = "^1.23", features = ["v4", "js"] }
 wasm-bindgen = { version = "^0.2", features = ["serde-serialize"] }
 serde-wasm-bindgen = "^0.6"
@@ -96,6 +92,12 @@ anyhow = "^1.0"
 ratatui = "^0.30"
 crossterm = "^0.29"
 serde_json = "^1.0"
+
+# The tests drive engines from a multi-thread runtime on a thread of
+# their own, and the doctests use `#[tokio::main]`, whose default
+# flavor is the multi-thread runtime.
+[target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
+tokio = { version = "^1.50", features = ["rt-multi-thread", "macros"] }
 
 [[example]]
 name = "minimal"
