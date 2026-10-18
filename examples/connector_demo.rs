@@ -43,12 +43,12 @@ use tokio::task::JoinHandle;
 use uuid::Uuid;
 
 use logic_mesh::base::Status;
-use logic_mesh::base::block::{BlockProps, connect_output};
+use logic_mesh::base::block::connect_output;
 use logic_mesh::base::connector::{Connector, ConnectorFuture, ConnectorHandle, ValueStream};
-use logic_mesh::base::engine::Engine;
 use logic_mesh::base::engine::messages::{ChangeSource, EngineMessage, WatchMessage};
 use logic_mesh::blocks::external::{ExternalIn, ExternalOut, Request};
 use logic_mesh::blocks::math::Add;
+use logic_mesh::prelude::*;
 use logic_mesh::single_threaded::SingleThreadedEngine;
 use logic_mesh::{ConnectorError, Value};
 

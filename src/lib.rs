@@ -15,6 +15,7 @@ pub use uuid::Uuid;
 
 pub mod base;
 pub mod blocks;
+pub mod prelude;
 mod tokio_impl;
 
 pub use tokio_impl::engine::single_threaded;

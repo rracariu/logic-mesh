@@ -42,10 +42,10 @@ use tokio::sync::mpsc;
 use tokio::task::yield_now;
 use uuid::Uuid;
 
-use logic_mesh::base::engine::Engine;
 use logic_mesh::base::engine::messages::{ChangeSource, EngineMessage, WatchMessage};
 use logic_mesh::base::program::{Program, ProgramBuilder};
 use logic_mesh::multi_threaded::MultiThreadedEngine;
+use logic_mesh::prelude::*;
 
 type Backend = CrosstermBackend<Stdout>;
 
