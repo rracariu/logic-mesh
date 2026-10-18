@@ -9,7 +9,15 @@
 use thiserror::Error;
 
 /// Failures of reading a [`BlockDesc`](crate::base::block::BlockDesc)
-/// field from a string.
+/// field from a string, and of converting the description a
+/// JavaScript host registers.
+///
+/// The conversion reports a bad field as [`Field`](Self::Field), which
+/// names the field and carries what is wrong with it as its
+/// [`source`](std::error::Error::source), and a bad pin kind as
+/// [`UnknownPinKind`](Self::UnknownPinKind), which names the pin. Only
+/// `wasm32` builds, where a JavaScript host registers blocks, produce
+/// those two and [`NotExternal`](Self::NotExternal).
 ///
 /// # Examples
 ///
@@ -43,7 +51,6 @@ pub enum BlockDescError {
 
     /// A pin of a JS-registered block names no Haystack kind. Kinds
     /// are the lowercase Haystack names (`"number"`, `"str"`, …).
-    #[cfg(target_arch = "wasm32")]
     #[error("pin '{pin}': Invalid kind: {kind}")]
     UnknownPinKind {
         /// The pin whose kind was rejected.
@@ -52,28 +59,68 @@ pub enum BlockDescError {
         kind: String,
     },
 
-    /// A field of a JS-registered block's description is invalid. The
-    /// message names the field as the JS caller spells it, followed by
-    /// what is wrong with it.
-    #[cfg(target_arch = "wasm32")]
-    #[error("field '{field}': {error}")]
+    /// A field of a JS-registered block's description is invalid.
+    #[error("field '{field}'")]
     Field {
         /// The field, as JavaScript names it, e.g. `runCondition`.
         field: &'static str,
-        /// What is wrong with the field. It is part of this error's
-        /// message, so it is not also its source.
+        /// What is wrong with the field.
+        #[source]
         error: Box<BlockDescError>,
     },
 
     /// A JS-registered block did not declare the `"external"`
     /// implementation. The JS function is the implementation, so a
     /// JS-registered block cannot be native.
-    #[cfg(target_arch = "wasm32")]
-    #[error(
-        "field 'implementation': a JS-registered block must be 'external', got '{implementation}'"
-    )]
+    #[error("a JS-registered block must be 'external', got '{implementation}'")]
     NotExternal {
         /// The implementation the description declared.
         implementation: String,
     },
+}
+
+#[cfg(test)]
+mod test {
+    use std::error::Error as _;
+
+    use super::BlockDescError;
+    use crate::base::error::ErrorChain;
+
+    /// Regression: `Field` printed what is wrong with the field in its
+    /// own message and had no source, unlike every other wrapping error.
+    #[test]
+    fn field_reports_what_is_wrong_as_its_source() {
+        let err = BlockDescError::Field {
+            field: "runCondition",
+            error: Box::new(BlockDescError::UnknownRunCondition {
+                value: "sometimes".to_string(),
+            }),
+        };
+
+        assert_eq!(err.to_string(), "field 'runCondition'");
+        assert_eq!(
+            err.source().map(|s| s.to_string()).as_deref(),
+            Some("Invalid run condition: sometimes")
+        );
+        assert_eq!(
+            ErrorChain(&err).to_string(),
+            "field 'runCondition': Invalid run condition: sometimes"
+        );
+    }
+
+    /// The messages JavaScript sees name the field as before.
+    #[test]
+    fn not_external_reads_as_a_field_error() {
+        let err = BlockDescError::Field {
+            field: "implementation",
+            error: Box::new(BlockDescError::NotExternal {
+                implementation: "native".to_string(),
+            }),
+        };
+
+        assert_eq!(
+            ErrorChain(&err).to_string(),
+            "field 'implementation': a JS-registered block must be 'external', got 'native'"
+        );
+    }
 }

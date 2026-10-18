@@ -78,8 +78,11 @@ impl TryFrom<JsBlockDesc> for BlockDesc {
         let implementation = match desc.implementation.as_str() {
             "external" => BlockImplementation::External,
             other => {
-                return Err(BlockDescError::NotExternal {
-                    implementation: other.to_string(),
+                return Err(BlockDescError::Field {
+                    field: "implementation",
+                    error: Box::new(BlockDescError::NotExternal {
+                        implementation: other.to_string(),
+                    }),
                 });
             }
         };

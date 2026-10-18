@@ -8,12 +8,14 @@
 
 use thiserror::Error;
 
-/// Failures of external block resolution and execution.
+/// Failures of external block resolution and execution, and of reading
+/// a connector the JavaScript host supplies.
 ///
 /// External blocks only exist on `wasm32`, where the host registers the
 /// JavaScript function that executes them; the `Unsupported*` variants
 /// are what every other target and the multi-threaded engine report
-/// instead.
+/// instead. The other variants are declared on every target, so code
+/// that handles them builds anywhere, but only `wasm32` produces them.
 #[derive(Debug, Error)]
 #[non_exhaustive]
 pub enum ExternalError {
@@ -27,7 +29,6 @@ pub enum ExternalError {
 
     /// The JavaScript library that provides an external block's executor
     /// function is not registered with the engine.
-    #[cfg(target_arch = "wasm32")]
     #[error(
         "Missing library: '{library}'. Can't find the executor JavaScript function for: '{name}' block."
     )]
@@ -39,7 +40,6 @@ pub enum ExternalError {
     },
 
     /// The JavaScript factory function of an external block threw.
-    #[cfg(target_arch = "wasm32")]
     #[error("External block '{name}' factory function failed: {detail}")]
     FactoryCallFailed {
         /// The block whose factory threw.
@@ -50,7 +50,6 @@ pub enum ExternalError {
 
     /// The JavaScript factory function returned something that is not a
     /// function, so there is nothing to execute the block with.
-    #[cfg(target_arch = "wasm32")]
     #[error("External block '{name}' factory did not return a function: {detail}")]
     FactoryReturnedNonFunction {
         /// The block whose factory returned a non-function.
@@ -61,7 +60,6 @@ pub enum ExternalError {
 
     /// Reading a method property of a JavaScript connector object
     /// threw, e.g. from a getter.
-    #[cfg(target_arch = "wasm32")]
     #[error("Failed to read connector property '{property}': {detail}")]
     ConnectorPropertyUnreadable {
         /// The property that could not be read.
@@ -73,7 +71,6 @@ pub enum ExternalError {
     /// A JavaScript connector object lacks a method it must have
     /// (`subscribe`, `publish` or `request`), or has a non-function in
     /// its place.
-    #[cfg(target_arch = "wasm32")]
     #[error("Connector property '{property}' is required and must be a function")]
     ConnectorMethodMissing {
         /// The required property.
@@ -82,7 +79,6 @@ pub enum ExternalError {
 
     /// An optional method of a JavaScript connector object (`start` or
     /// `stop`) is present but not a function.
-    #[cfg(target_arch = "wasm32")]
     #[error("Connector property '{property}', when present, must be a function")]
     ConnectorMethodNotFunction {
         /// The optional property.
