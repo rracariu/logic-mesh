@@ -29,7 +29,6 @@ use crossterm::{
     execute,
     terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
-use libhaystack::val::Value;
 use ratatui::{
     Terminal,
     backend::CrosstermBackend,
@@ -38,14 +37,15 @@ use ratatui::{
     text::{Line, Span},
     widgets::{Block as TuiBlock, Borders, Cell, Paragraph, Row, Table},
 };
-use tokio::sync::mpsc;
 use tokio::task::yield_now;
 use uuid::Uuid;
 
+use logic_mesh::Value;
 use logic_mesh::base::engine::messages::{ChangeSource, EngineMessage, WatchMessage};
 use logic_mesh::base::program::{Program, ProgramBuilder};
 use logic_mesh::multi_threaded::MultiThreadedEngine;
 use logic_mesh::prelude::*;
+use logic_mesh::sync::mpsc;
 
 type Backend = CrosstermBackend<Stdout>;
 
