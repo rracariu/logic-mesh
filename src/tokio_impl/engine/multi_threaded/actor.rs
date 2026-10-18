@@ -137,11 +137,7 @@ async fn change_of_value_check<B: Block + 'static>(
         // common path the exclusive lock.
         let mut gone = Vec::new();
         for (watcher, sender) in notification_channels.read().await.iter() {
-            let message = WatchMessage {
-                block_id: *block.id(),
-                changes: changes.clone(),
-                state: state.clone(),
-            };
+            let message = WatchMessage::new(*block.id(), changes.clone(), state.clone());
             if sender.send(message).is_err() {
                 gone.push(*watcher);
             }

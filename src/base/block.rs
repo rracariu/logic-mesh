@@ -39,7 +39,11 @@ use uuid::Uuid;
 ///
 /// assert_eq!(BlockState::Running.label(), "running");
 /// ```
+///
+/// `#[non_exhaustive]`: [`BlockState::Disabled`] is reserved, and
+/// further states may follow, so a `match` on it needs a wildcard arm.
 #[derive(Default, Debug, Clone, PartialEq)]
+#[non_exhaustive]
 pub enum BlockState {
     /// Block is executing normally.
     #[default]

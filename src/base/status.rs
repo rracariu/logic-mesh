@@ -12,7 +12,11 @@
 use serde::{Deserialize, Serialize};
 
 /// Quality of a value at the moment it crosses a watch channel.
+///
+/// `#[non_exhaustive]`: [`Status::Stale`] is reserved, and further
+/// qualities may follow, so a `match` on it needs a wildcard arm.
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[non_exhaustive]
 pub enum Status {
     /// The producer asserts the value is current and trustworthy.
     #[default]

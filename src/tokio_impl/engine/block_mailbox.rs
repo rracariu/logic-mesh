@@ -354,41 +354,29 @@ where
 }
 
 fn snapshot_block_definition<B: BlockProps + ?Sized>(block: &B) -> BlockDefinition {
-    let state = block.state();
-    BlockDefinition {
-        id: block.id().to_string(),
-        name: block.name().to_string(),
-        library: block.desc().library.clone(),
-        inputs: block
-            .inputs()
-            .iter()
-            .map(|input| {
-                (
-                    input.name().to_string(),
-                    BlockInputData {
-                        kind: input.kind().to_string(),
-                        val: input.get_value().cloned().unwrap_or_default(),
-                        is_connected: input.is_connected(),
-                    },
-                )
-            })
-            .collect(),
-        outputs: block
-            .outputs()
-            .iter()
-            .map(|output| {
-                (
-                    output.desc().name.to_string(),
-                    BlockOutputData {
-                        kind: output.desc().kind.to_string(),
-                        val: output.value().clone(),
-                    },
-                )
-            })
-            .collect(),
-        fault_reason: state.fault_reason().map(|s| s.to_string()),
-        state: state.label().to_string(),
+    let mut definition = BlockDefinition::new(
+        block.id().to_string(),
+        block.name(),
+        block.desc().library.clone(),
+    )
+    .with_state(&block.state());
+    for input in block.inputs() {
+        definition = definition.with_input(
+            input.name(),
+            BlockInputData::new(
+                input.kind().to_string(),
+                input.get_value().cloned().unwrap_or_default(),
+                input.is_connected(),
+            ),
+        );
     }
+    for output in block.outputs() {
+        definition = definition.with_output(
+            output.desc().name.clone(),
+            BlockOutputData::new(output.desc().kind.to_string(), output.value().clone()),
+        );
+    }
+    definition
 }
 
 fn snapshot_block_data<B: BlockProps + ?Sized>(block: &B) -> (BlockData, Vec<LinkData>) {

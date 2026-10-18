@@ -154,11 +154,11 @@ fn change_of_value_check<B: Block + 'static>(
             .borrow_mut()
             .retain(|watcher, sender| {
                 let sent = sender
-                    .send(WatchMessage {
-                        block_id: *block.id(),
-                        changes: changes.clone(),
-                        state: state.clone(),
-                    })
+                    .send(WatchMessage::new(
+                        *block.id(),
+                        changes.clone(),
+                        state.clone(),
+                    ))
                     .is_ok();
                 if !sent {
                     log::debug!("Dropping watcher {watcher}: its receiver is gone");
