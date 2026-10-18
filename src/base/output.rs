@@ -2,8 +2,8 @@
 
 //! Base output types and traits.
 
-pub mod base;
-pub mod props;
+pub(crate) mod base;
+pub(crate) mod props;
 
 use libhaystack::val::Value;
 
@@ -11,7 +11,7 @@ use super::Status;
 use super::link::BaseLink;
 
 pub use base::BaseOutput;
-pub use props::OutputProps;
+pub use props::{OutDesc, OutputProps};
 
 /// The output trait.
 pub trait Output: OutputProps {

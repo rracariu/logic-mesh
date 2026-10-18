@@ -57,6 +57,8 @@ use super::{block::Block, program::Program};
 
 pub mod messages;
 
+pub use crate::tokio_impl::engine::{BlockHandle, Messages};
+
 mod sealed {
     pub trait Sealed {}
 }
@@ -149,7 +151,7 @@ pub trait Engine: Sized {
     ///
     /// # Errors
     ///
-    /// Returns [`EngineError::DuplicateBlockId`](crate::base::error::EngineError::DuplicateBlockId)
+    /// Returns [`EngineError::DuplicateBlockId`](crate::EngineError::DuplicateBlockId)
     /// if a block with the same id is already scheduled — a scheduled
     /// block is never replaced.
     ///
@@ -208,20 +210,20 @@ pub trait Engine: Sized {
     /// blocks is scheduled, and a program failing a check schedules
     /// nothing. The checks: every block id parses and is neither
     /// scheduled already nor named twice in `program`
-    /// ([`EngineError::DuplicateBlockId`](crate::base::error::EngineError::DuplicateBlockId));
+    /// ([`EngineError::DuplicateBlockId`](crate::EngineError::DuplicateBlockId));
     /// every block type resolves and the engine can host it; every pin
     /// a saved value names exists
-    /// ([`EngineError::InputNotFound`](crate::base::error::EngineError::InputNotFound),
-    /// [`EngineError::OutputNotFound`](crate::base::error::EngineError::OutputNotFound));
+    /// ([`EngineError::InputNotFound`](crate::EngineError::InputNotFound),
+    /// [`EngineError::OutputNotFound`](crate::EngineError::OutputNotFound));
     /// every link id parses and is free
-    /// ([`EngineError::InvalidLinkUuid`](crate::base::error::EngineError::InvalidLinkUuid),
-    /// [`EngineError::DuplicateLinkId`](crate::base::error::EngineError::DuplicateLinkId));
+    /// ([`EngineError::InvalidLinkUuid`](crate::EngineError::InvalidLinkUuid),
+    /// [`EngineError::DuplicateLinkId`](crate::EngineError::DuplicateLinkId));
     /// every link joins existing pins
-    /// ([`EngineError::PinNotFound`](crate::base::error::EngineError::PinNotFound))
+    /// ([`EngineError::PinNotFound`](crate::EngineError::PinNotFound))
     /// of blocks of `program`
-    /// ([`EngineError::LinkBlockNotInProgram`](crate::base::error::EngineError::LinkBlockNotInProgram)),
+    /// ([`EngineError::LinkBlockNotInProgram`](crate::EngineError::LinkBlockNotInProgram)),
     /// and no two links join the same pins
-    /// ([`EngineError::DuplicateLink`](crate::base::error::EngineError::DuplicateLink)).
+    /// ([`EngineError::DuplicateLink`](crate::EngineError::DuplicateLink)).
     /// A link the blocks still reject when `run` wires it, or a pin value
     /// they reject, is dropped with a warning.
     fn schedule_program_blocks(&mut self, program: &Program) -> Result<()>;

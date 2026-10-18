@@ -3,7 +3,7 @@
 //! built-in blocks.
 
 use logic_mesh::base::block::Block;
-use logic_mesh::base::input::{InputProps, input_reader::InputReader};
+use logic_mesh::base::input::{InputProps, InputReader};
 use logic_mesh::base::output::Output;
 use logic_mesh::blocks::{InputImpl, OutputImpl};
 use logic_mesh::{BlockProps, block};

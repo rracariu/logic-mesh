@@ -2,7 +2,7 @@
 
 //! Enthalpy block.
 
-use crate::base::{block::Block, input::input_reader::InputReader, output::Output};
+use crate::base::{block::Block, input::InputReader, output::Output};
 use crate::blocks::utils::{input_as_number, input_as_number_in};
 
 use libhaystack::units::units_generated::{CELSIUS, KILOJOULES_PER_KILOGRAM_DRY_AIR, PASCAL};

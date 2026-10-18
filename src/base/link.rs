@@ -4,7 +4,7 @@
 
 use uuid::Uuid;
 
-pub mod base;
+pub(crate) mod base;
 pub use base::BaseLink;
 
 /// The current link state. Phase 1 of fault propagation removed the

@@ -2,12 +2,12 @@
 
 //! Timer function blocks.
 
-pub mod cycle_count;
-pub mod off_delay;
-pub mod on_delay;
-pub mod one_shot;
-pub mod rate_limit;
-pub mod runtime;
+mod cycle_count;
+mod off_delay;
+mod on_delay;
+mod one_shot;
+mod rate_limit;
+mod runtime;
 
 pub use cycle_count::CycleCount;
 pub use off_delay::OffDelay;

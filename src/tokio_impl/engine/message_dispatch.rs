@@ -11,8 +11,8 @@ use crate::base::engine::{Running, messages::EngineMessage};
 
 use crate::base::error::{RegistryError, parse_block_uuid};
 use crate::blocks::registry::{CORE_LIB, get_block};
-use crate::single_threaded::Messages;
 use crate::single_threaded::SingleThreadedEngine;
+use crate::tokio_impl::engine::Messages;
 use uuid::Uuid;
 
 use super::eval_block;

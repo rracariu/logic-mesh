@@ -9,7 +9,7 @@ use futures::StreamExt;
 use crate::base::{
     block::{Block, BlockProps, BlockState},
     connector::get_connector,
-    input::input_reader::InputReader,
+    input::InputReader,
     output::Output,
 };
 use crate::blocks::external::support::{

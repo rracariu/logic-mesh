@@ -2,30 +2,30 @@
 
 //! Math blocks.
 
-pub mod abs;
-pub mod add;
-pub mod arccos;
-pub mod arcsin;
-pub mod arctan;
-pub mod average;
-pub mod cos;
-pub mod div;
-pub mod even;
-pub mod exp;
-pub mod log10;
-pub mod logn;
-pub mod max;
-pub mod median;
-pub mod min;
-pub mod modulus;
-pub mod mul;
-pub mod neg;
-pub mod odd;
-pub mod pow;
-pub mod sin;
-pub mod sqrt;
-pub mod sub;
-pub mod tan;
+mod abs;
+mod add;
+mod arccos;
+mod arcsin;
+mod arctan;
+mod average;
+mod cos;
+mod div;
+mod even;
+mod exp;
+mod log10;
+mod logn;
+mod max;
+mod median;
+mod min;
+mod modulus;
+mod mul;
+mod neg;
+mod odd;
+mod pow;
+mod sin;
+mod sqrt;
+mod sub;
+mod tan;
 
 pub use abs::Abs;
 pub use add::Add;

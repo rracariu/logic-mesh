@@ -2,9 +2,9 @@
 
 //! Psychrometric calculations (moist-air properties for HVAC).
 
-pub mod dewpoint;
-pub mod enthalpy;
-pub mod wet_bulb;
+mod dewpoint;
+mod enthalpy;
+mod wet_bulb;
 
 pub use dewpoint::Dewpoint;
 pub use enthalpy::Enthalpy;

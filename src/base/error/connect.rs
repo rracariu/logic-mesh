@@ -3,7 +3,8 @@
 //!
 //! Errors raised when linking block pins together, through
 //! [`BlockConnect`](crate::base::block::BlockConnect), the
-//! [`connect`](crate::base::block::connect) functions, or an engine
+//! [`connect_output`](crate::base::block::connect_output) and
+//! [`connect_input`](crate::base::block::connect_input) functions, or an engine
 //! wiring a link between two scheduled blocks.
 //!
 //! Not to be confused with [`ConnectorError`](super::ConnectorError),

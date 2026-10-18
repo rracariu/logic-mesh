@@ -60,7 +60,7 @@ Wire two sine waves into an adder and run them:
 
 ```rust,no_run
 use logic_mesh::{
-    base::block::{Block, BlockConnect, BlockProps, connect::connect_output},
+    base::block::{Block, BlockConnect, BlockProps, connect_output},
     base::engine::Engine,
     blocks::{math::Add, misc::SineWave},
     single_threaded::SingleThreadedEngine,

@@ -4,7 +4,7 @@
 
 use crate::base::{
     block::{Block, BlockProps, BlockState},
-    input::input_reader::InputReader,
+    input::InputReader,
     output::Output,
 };
 
@@ -72,7 +72,7 @@ impl Block for Add {
 mod test {
     use crate::{
         base::block::{Block, BlockProps},
-        base::input::input_reader::InputReader,
+        base::input::InputReader,
         blocks::math::Add,
     };
 

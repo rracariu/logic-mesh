@@ -14,7 +14,7 @@ use wasm_bindgen::JsCast;
 use wasm_bindgen::JsValue;
 use wasm_bindgen_futures::JsFuture;
 
-use crate::base::block::desc::BlockRunCondition;
+use crate::base::block::BlockRunCondition;
 use crate::base::block::{Block, BlockState};
 
 use crate::blocks::registry::{BlockSink, eval_block_impl};
