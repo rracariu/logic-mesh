@@ -137,13 +137,13 @@ mod tests {
 
         let mut sine1 = SineWave::new();
 
-        sine1.amplitude.val = Some(3.into());
-        sine1.freq.val = Some(200.into());
+        sine1.amplitude.set(3);
+        sine1.freq.set(200);
         connect_output(&mut sine1.out, add1.inputs_mut()[0]).expect("Connected");
 
         let mut sine2 = SineWave::new();
-        sine2.amplitude.val = Some(7.into());
-        sine2.freq.val = Some(400.into());
+        sine2.amplitude.set(7);
+        sine2.freq.set(400);
 
         sine2
             .connect_output("out", add1.inputs_mut()[1])
@@ -701,8 +701,8 @@ mod tests {
             let mock = Arc::new(MockConnector::default());
 
             let mut ext = ExternalIn::new();
-            ext.connector.val = Some(Value::make_str(&name));
-            ext.address.val = Some(Value::make_str("sensor"));
+            ext.connector.set(Value::make_str(&name));
+            ext.address.set(Value::make_str("sensor"));
 
             let mut add = Add::new();
             let add_uuid = *add.id();

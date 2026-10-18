@@ -20,7 +20,7 @@ use crate::base::{
     },
     engine::messages::{BlockDefinition, BlockInputData, BlockOutputData},
     error::{ConnectError, EngineError},
-    link::{BaseLink, LinkState},
+    link::BaseLink,
     program::data::{BlockData, LinkData},
 };
 use crate::tokio_impl::block::write_input_value;
@@ -441,22 +441,6 @@ fn collect_all_targets<B: BlockProps + ?Sized>(block: &mut B) -> Vec<(Uuid, Stri
     targets
 }
 
-/// A connected link `id` to the target input `target_writer` feeds.
-fn connected_link(
-    id: Uuid,
-    target_block_id: Uuid,
-    target_input_name: String,
-    target_writer: WriterImpl,
-) -> BaseLink<WriterImpl> {
-    BaseLink {
-        id,
-        target_block_id,
-        target_input: target_input_name,
-        tx: Some(target_writer),
-        state: LinkState::Connected,
-    }
-}
-
 fn add_output_link_inner<B: Block<Writer = WriterImpl, Reader = ReaderImpl> + ?Sized>(
     block: &mut B,
     link_id: Uuid,
@@ -478,7 +462,7 @@ fn add_output_link_inner<B: Block<Writer = WriterImpl, Reader = ReaderImpl> + ?S
         (&target_block_id, &target_input_name),
     )?;
 
-    output.add_link(connected_link(
+    output.add_link(BaseLink::connected(
         link_id,
         target_block_id,
         target_input_name,
@@ -508,7 +492,7 @@ fn add_input_link_inner<B: Block<Writer = WriterImpl, Reader = ReaderImpl> + ?Si
 
     ensure_not_linked(&input.links(), source, target)?;
 
-    input.add_link(connected_link(
+    input.add_link(BaseLink::connected(
         link_id,
         target_block_id,
         target_input_name,

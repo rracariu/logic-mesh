@@ -198,6 +198,7 @@ impl Block for Keywords {
 mod tests {
     use super::*;
     use logic_mesh::base::block::BlockProps;
+    use logic_mesh::base::output::OutputProps;
 
     #[test]
     fn desc_reflects_attributes() {
@@ -230,7 +231,7 @@ mod tests {
 
         block.execute().await;
         let expected: logic_mesh::Value = 42.into();
-        assert_eq!(block.out.value, expected);
+        assert_eq!(block.out.value(), &expected);
     }
 
     #[tokio::test]
@@ -250,7 +251,7 @@ mod tests {
             .unwrap();
 
         block.execute().await;
-        assert_eq!(block.out.value, 21.into());
+        assert_eq!(block.out.value(), &21.into());
     }
 
     #[tokio::test]
@@ -276,7 +277,7 @@ mod tests {
             .unwrap();
 
         block.execute().await;
-        assert_eq!(block.out.value, 21.into());
+        assert_eq!(block.out.value(), &21.into());
     }
 
     #[test]

@@ -12,22 +12,27 @@ use crate::base::sealed::Sealed;
 use super::{OutputProps, props::OutDesc};
 
 /// The base implementation of an output pin.
+///
+/// Its fields are private: read them through [`OutputProps`] and
+/// [`effective_status`](Self::effective_status), and give the output a
+/// value with [`Output::set`](crate::base::output::Output::set), which
+/// also sends it on the output's links.
 #[derive(Debug)]
 pub struct BaseOutput<L: Link> {
     desc: OutDesc,
     /// Current output value.
-    pub value: Value,
+    pub(crate) value: Value,
     /// Downstream links attached to this output.
-    pub links: Vec<L>,
+    pub(crate) links: Vec<L>,
     /// UUID of the block that owns this output.
-    pub block_id: Uuid,
+    pub(crate) block_id: Uuid,
     /// Status to pair with this output's value when it's emitted on the
     /// watch channel. Managed by the actor task: set to
     /// [`Status::Fault`] while the owning block is in
     /// [`BlockState::Fault`](crate::base::block::BlockState::Fault),
     /// restored to [`Status::Ok`] on
     /// recovery.
-    pub effective_status: Status,
+    pub(crate) effective_status: Status,
 }
 
 impl<L: Link> Sealed for BaseOutput<L> {}
@@ -89,5 +94,13 @@ impl<L: Link> BaseOutput<L> {
     /// Creates a new output pin with the default name `"out"`.
     pub fn new(kind: HaystackKind, block_id: Uuid) -> Self {
         Self::new_named("out", kind, block_id)
+    }
+
+    /// The status this output sends its value with: [`Status::Fault`]
+    /// while its block is faulted, [`Status::Ok`] otherwise. The engine
+    /// manages it through
+    /// [`Output::emit_status`](crate::base::output::Output::emit_status).
+    pub fn effective_status(&self) -> Status {
+        self.effective_status
     }
 }

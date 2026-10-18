@@ -250,8 +250,8 @@ async fn main() {
     // `connector` and `address` pins are ordinary string inputs, so a
     // program could rewire them at runtime like any other value.
     let mut sensor = ExternalIn::new();
-    sensor.connector.val = Some(Value::make_str(CONNECTOR_NAME));
-    sensor.address.val = Some(Value::make_str(SENSOR_ADDRESS));
+    sensor.connector.set(Value::make_str(CONNECTOR_NAME));
+    sensor.address.set(Value::make_str(SENSOR_ADDRESS));
 
     // A tiny bit of local processing between input and output: add a
     // fixed calibration offset to each reading.
@@ -259,13 +259,13 @@ async fn main() {
     calibrate.inputs_mut()[1].set_value(Value::make_number(0.5), Status::Ok);
 
     let mut publish = ExternalOut::new();
-    publish.connector.val = Some(Value::make_str(CONNECTOR_NAME));
-    publish.address.val = Some(Value::make_str(ACTUATOR_ADDRESS));
+    publish.connector.set(Value::make_str(CONNECTOR_NAME));
+    publish.address.set(Value::make_str(ACTUATOR_ADDRESS));
 
     let mut convert = Request::new();
-    convert.connector.val = Some(Value::make_str(CONNECTOR_NAME));
-    convert.address.val = Some(Value::make_str(SERVICE_ADDRESS));
-    convert.timeout.val = Some(Value::make_number(1000.0)); // milliseconds
+    convert.connector.set(Value::make_str(CONNECTOR_NAME));
+    convert.address.set(Value::make_str(SERVICE_ADDRESS));
+    convert.timeout.set(Value::make_number(1000.0)); // milliseconds
 
     // sensor -> calibrate -> publish -> convert. `ExternalOut` echoes
     // the published value on `out`, so chaining the `Request` block off
