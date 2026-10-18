@@ -38,7 +38,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use futures::channel::mpsc as stream_mpsc;
-use tokio::sync::{mpsc, watch};
+use tokio::sync::watch;
 use tokio::task::JoinHandle;
 use uuid::Uuid;
 
@@ -50,6 +50,7 @@ use logic_mesh::blocks::external::{ExternalIn, ExternalOut, Request};
 use logic_mesh::blocks::math::Add;
 use logic_mesh::prelude::*;
 use logic_mesh::single_threaded::SingleThreadedEngine;
+use logic_mesh::sync::mpsc;
 use logic_mesh::{ConnectorError, Value};
 
 /// Name the connector is registered under. The external blocks resolve

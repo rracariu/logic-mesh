@@ -61,6 +61,6 @@ async fn main() {
 }
 
 /// Extract a numeric pin value or 0 if the block has not emitted yet.
-fn pin_to_f64(v: &libhaystack::val::Value) -> f64 {
+fn pin_to_f64(v: &logic_mesh::Value) -> f64 {
     v.try_into().unwrap_or(0.0)
 }

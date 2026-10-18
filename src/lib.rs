@@ -13,6 +13,30 @@ pub use libhaystack::val::Value;
 pub use libhaystack::val::kind::HaystackKind;
 pub use uuid::Uuid;
 
+/// The [`libhaystack`] this crate is built against.
+///
+/// Its types appear in this crate's API beyond [`Value`] and
+/// [`HaystackKind`] — units, numbers and the Zinc encoder's error that
+/// [`ValueError::ZincEncode`] carries — so naming them through this
+/// re-export keeps them the same version as the crate's own.
+pub use libhaystack;
+
+/// The tokio channel modules the engines' API is built on.
+///
+/// An engine's [`Channel`](base::engine::Engine::Channel) is an
+/// [`mpsc::Sender`](sync::mpsc::Sender), the watch subscription in
+/// [`Messages`](base::engine::Messages) an
+/// [`mpsc::UnboundedSender`](sync::mpsc::UnboundedSender),
+/// and pins read and write [`watch`](sync::watch) channels
+/// ([`blocks::ReaderImpl`], [`blocks::WriterImpl`]). Creating these
+/// channels through this module keeps them the same tokio version as
+/// the crate's own, without a direct tokio dependency for the
+/// channels alone. The runtime that drives an engine remains the
+/// application's choice.
+pub mod sync {
+    pub use tokio::sync::{mpsc, watch};
+}
+
 pub mod base;
 pub mod blocks;
 pub mod prelude;
