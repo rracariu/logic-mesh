@@ -274,7 +274,7 @@ pub(super) mod test_support {
 
     impl Connector for FailingStartConnector {
         fn start(&self) -> ConnectorFuture<'_, ()> {
-            Box::pin(async { Err(ConnectorError::Transport("start refused".into())) })
+            Box::pin(async { Err(ConnectorError::transport("start refused")) })
         }
 
         fn stop(&self) -> ConnectorFuture<'_, ()> {
