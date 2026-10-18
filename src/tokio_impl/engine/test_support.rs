@@ -2029,6 +2029,62 @@ pub(crate) mod runtime_descs {
     }
 }
 
+/// Engine configuration written once against the [`Engine`] trait and
+/// run by each engine's tests.
+pub(crate) mod configuration {
+    use std::sync::Arc;
+
+    use assert_matches::assert_matches;
+
+    use super::lifecycle::TestEngine;
+    use super::*;
+    use crate::base::program::Position;
+    use crate::blocks::external::support::mock::MockConnector;
+    use crate::{EngineError, Error};
+
+    /// Regression: `add_connector`, `connector_names`, `block_handles`
+    /// and `block_handle` were inherent methods of each engine, and
+    /// `set_block_metadata` existed on the single-threaded engine only,
+    /// so code generic over [`Engine`] could not configure an engine.
+    pub(crate) async fn an_engine_is_configured_through_the_trait<E: TestEngine>(mut engine: E) {
+        let name = format!("trait-config-{}", Uuid::new_v4());
+        engine
+            .add_connector(&name, Arc::new(MockConnector::default()))
+            .expect("added");
+        assert_eq!(engine.connector_names(), [name]);
+
+        let (source, target) = schedule_linked_adds(&mut engine);
+        let mut scheduled: Vec<_> = engine.block_handles().iter().map(|h| *h.id()).collect();
+        scheduled.sort();
+        let mut expected = vec![source, target];
+        expected.sort();
+        assert_eq!(scheduled, expected);
+
+        let position = Position { x: 1.0, y: 2.0 };
+        engine
+            .set_block_metadata(&source, Some("source".to_string()), Some(position))
+            .expect("scheduled");
+        let handle = engine.block_handle(&source).expect("scheduled");
+        assert_eq!(handle.label(), Some("source"));
+        assert_eq!(handle.position(), Some(position));
+
+        let unknown = Uuid::new_v4();
+        assert!(engine.block_handle(&unknown).is_none());
+        assert_matches!(
+            engine.set_block_metadata(&unknown, None, None),
+            Err(Error::Engine(EngineError::BlockInstanceNotFound { id })) if id == unknown
+        );
+
+        drive(engine, move |mut client| async move {
+            let saved = client.save().await;
+            let block = &saved.blocks[&source.to_string()];
+            assert_eq!(block.label.as_deref(), Some("source"));
+            assert_eq!(block.positions, Some(position));
+        })
+        .await;
+    }
+}
+
 /// Rejected pin requests, written once against the [`Engine`] trait and
 /// run by each engine's tests: a block that rejects a request reports
 /// what it rejected as a typed error, not a bare message.

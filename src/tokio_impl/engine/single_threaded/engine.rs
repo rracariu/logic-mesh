@@ -39,6 +39,7 @@ use crate::tokio_impl::engine::Messages;
 use crate::tokio_impl::engine::message_dispatch::dispatch_message;
 use crate::tokio_impl::engine::{ensure_schedulable, phase_name, schedule_block_on_engine};
 use crate::tokio_impl::{ReaderImpl, WriterImpl};
+use futures::future::LocalBoxFuture;
 
 /// Single-threaded execution environment for blocks.
 ///
@@ -131,6 +132,7 @@ impl Engine for SingleThreadedEngine<Idle> {
     type Writer = WriterImpl;
     type Reader = ReaderImpl;
     type Channel = Sender<Messages>;
+    type RunFuture = LocalBoxFuture<'static, Self>;
 
     fn schedule<B>(&mut self, block: B) -> Result<()>
     where
@@ -149,10 +151,39 @@ impl Engine for SingleThreadedEngine<Idle> {
         Ok(())
     }
 
-    async fn run(self) -> Self {
-        let mut engine = self.into_state::<Running>();
-        engine.event_loop().await;
-        engine.into_state()
+    fn add_connector(&mut self, name: &str, handle: impl Into<ConnectorHandle>) -> Result<()> {
+        register_connector(name, handle)?;
+        self.connectors.push(name.to_string());
+        Ok(())
+    }
+
+    fn connector_names(&self) -> Vec<String> {
+        self.connectors.to_vec()
+    }
+
+    fn block_handles(&self) -> Vec<&BlockHandle> {
+        self.graph.handles()
+    }
+
+    fn block_handle(&self, id: &Uuid) -> Option<&BlockHandle> {
+        self.graph.handle(id)
+    }
+
+    fn set_block_metadata(
+        &mut self,
+        id: &Uuid,
+        label: Option<String>,
+        position: Option<Position>,
+    ) -> Result<()> {
+        Ok(self.graph.set_metadata(id, label, position)?)
+    }
+
+    fn run(self) -> Self::RunFuture {
+        Box::pin(async move {
+            let mut engine = self.into_state::<Running>();
+            engine.event_loop().await;
+            engine.into_state()
+        })
     }
 
     fn create_message_channel(
@@ -193,12 +224,7 @@ impl SingleThreadedEngine<Idle> {
     ///
     /// ```
     /// use std::cell::Cell;
-    /// use logic_mesh::{
-    ///     BlockProps, block,
-    ///     base::block::Block,
-    ///     blocks::{InputImpl, OutputImpl},
-    ///     single_threaded::SingleThreadedEngine,
-    /// };
+    /// use logic_mesh::{prelude::*, single_threaded::SingleThreadedEngine};
     ///
     /// #[block]
     /// #[derive(BlockProps, Debug)]
@@ -232,32 +258,6 @@ impl SingleThreadedEngine<Idle> {
         B: Block<Writer = WriterImpl, Reader = ReaderImpl> + 'static,
     {
         Ok(self.spawn_block(block)?)
-    }
-
-    /// Registers `handle` in the process-wide connector registry under
-    /// `name` and puts it under this engine's lifecycle management.
-    ///
-    /// The engine awaits the connector's `start` when [`run`](Engine::run)
-    /// begins — before any block actor makes progress, so blocks never
-    /// resolve an unstarted connector — and its `stop` on shutdown; the
-    /// connector stays registered so a re-run picks it up again. A reset
-    /// unregisters the connector first and then stops it. Dropping the
-    /// engine unregisters any still-tracked connectors without awaiting
-    /// `stop`. Start/stop failures and timeouts are logged, not fatal.
-    ///
-    /// Connectors own their IO loops: spawn them from `start` (via the
-    /// ambient `tokio::spawn` natively, `wasm_bindgen_futures::spawn_local`
-    /// on wasm) and wind them down in `stop`. Pausing the engine does not
-    /// pause these tasks — pause only stops block execution.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if a connector with this name is already
-    /// registered.
-    pub fn add_connector(&mut self, name: &str, handle: impl Into<ConnectorHandle>) -> Result<()> {
-        register_connector(name, handle)?;
-        self.connectors.push(name.to_string());
-        Ok(())
     }
 }
 
@@ -296,22 +296,6 @@ impl<S: EngineState> SingleThreadedEngine<S> {
             .send_if_modified(|current| std::mem::replace(current, open) != open);
     }
 
-    /// The names of the connectors this engine manages.
-    pub fn connector_names(&self) -> Vec<String> {
-        self.connectors.to_vec()
-    }
-
-    /// Returns sync metadata handles for every scheduled block. Use the
-    /// async snapshot APIs (`inspect_block`, etc.) to read dynamic state.
-    pub fn block_handles(&self) -> Vec<&BlockHandle> {
-        self.graph.handles()
-    }
-
-    /// Returns the handle for a specific block, if scheduled.
-    pub fn block_handle(&self, id: &Uuid) -> Option<&BlockHandle> {
-        self.graph.handle(id)
-    }
-
     // --- Sync engine ops (any phase) ---------------------------------------
 
     /// Spawns `block`'s actor task and records its handle. Blocks are
@@ -343,18 +327,6 @@ impl<S: EngineState> SingleThreadedEngine<S> {
     #[cfg(test)]
     pub(super) fn validate_link(&self, link_data: &LinkData) -> Result<(Uuid, LinkRecord)> {
         self.graph.validate_link(link_data)
-    }
-
-    /// Mutator for UI-metadata sidecar fields. Used by the message
-    /// dispatch path when an external caller wants to update a label /
-    /// position without going through a full program reload.
-    pub fn set_block_metadata(
-        &mut self,
-        id: &Uuid,
-        label: Option<String>,
-        position: Option<Position>,
-    ) {
-        self.graph.set_metadata(id, label, position);
     }
 }
 
@@ -503,6 +475,12 @@ impl SingleThreadedEngine<Running> {
     /// # Errors
     ///
     /// Returns an error message if `name` is not engine-managed.
+    /// The names of the connectors this engine manages, for
+    /// [`ListConnectorsReq`](EngineMessage::ListConnectorsReq).
+    pub(crate) fn managed_connectors(&self) -> Vec<String> {
+        self.connectors.to_vec()
+    }
+
     pub(crate) async fn detach_connector(&mut self, name: &str) -> Result<String, String> {
         connectors::detach_connector(&mut self.connectors, name).await
     }
@@ -618,6 +596,6 @@ mod test {
         timeout(Duration::from_secs(2), eng.reset())
             .await
             .expect("reset completes despite the full mailbox");
-        assert!(eng.block_handles().is_empty());
+        assert!(eng.graph.handles().is_empty());
     }
 }

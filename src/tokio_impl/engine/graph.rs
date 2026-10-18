@@ -257,15 +257,18 @@ impl BlockGraph {
         id: &Uuid,
         label: Option<String>,
         position: Option<Position>,
-    ) {
-        if let Some(handle) = self.handles.get_mut(id) {
-            if let Some(label) = label {
-                handle.label = Some(label);
-            }
-            if let Some(position) = position {
-                handle.position = Some(position);
-            }
+    ) -> Result<(), EngineError> {
+        let handle = self
+            .handles
+            .get_mut(id)
+            .ok_or(EngineError::BlockInstanceNotFound { id: *id })?;
+        if let Some(label) = label {
+            handle.label = Some(label);
         }
+        if let Some(position) = position {
+            handle.position = Some(position);
+        }
+        Ok(())
     }
 
     /// Records `name` and `description` as those of the program the

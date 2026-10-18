@@ -336,7 +336,9 @@ pub fn make(name: &str, lib: Option<&str>) -> Result<Box<DynBlockProps>, Registr
 /// # Examples
 ///
 /// ```
-/// use logic_mesh::{blocks::registry::schedule_block, single_threaded::SingleThreadedEngine};
+/// use logic_mesh::{
+///     base::engine::Engine, blocks::registry::schedule_block, single_threaded::SingleThreadedEngine,
+/// };
 ///
 /// let mut engine = SingleThreadedEngine::new();
 /// let id = schedule_block("Add", Some("core"), &mut engine)?;
