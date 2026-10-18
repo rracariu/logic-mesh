@@ -196,7 +196,7 @@ pub(super) async fn dispatch_message(engine: &mut SingleThreadedEngine<Running>,
         EngineMessage::ListConnectorsReq(sender_uuid) => {
             log::debug!("ListConnectorsReq");
 
-            let res = Ok(engine.connector_names());
+            let res = Ok(engine.managed_connectors());
             reply_to_sender(engine, sender_uuid, EngineMessage::ListConnectorsRes(res));
         }
 

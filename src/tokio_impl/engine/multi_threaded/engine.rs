@@ -28,6 +28,9 @@ use std::collections::BTreeMap;
 use std::marker::PhantomData;
 use std::sync::Arc;
 
+use futures::future::BoxFuture;
+use tokio::runtime::Handle;
+
 use crate::base::error::{EngineError, Result, parse_block_uuid};
 use libhaystack::val::Value;
 use tokio::sync::{
@@ -48,7 +51,7 @@ use crate::base::{
         Engine, EngineState, Idle, MaybeSendSync, Running,
         messages::{BlockDefinition, EngineMessage},
     },
-    program::{Program, data::LinkData},
+    program::{LinkData, Position, Program},
 };
 use crate::blocks::registry::{BlockSink, get_block};
 use crate::tokio_impl::engine::{
@@ -135,15 +138,20 @@ impl Engine for MultiThreadedEngine<Idle> {
     type Writer = WriterImpl;
     type Reader = ReaderImpl;
     type Channel = Sender<Messages>;
+    type RunFuture = BoxFuture<'static, Self>;
 
     /// Schedules a block on the engine. The [`Send`] + [`Sync`] bound
     /// lets the actor task go to [`tokio::spawn`], where the runtime is
     /// free to migrate it between worker threads.
     ///
-    /// Must be called from within a tokio multi-thread runtime context
-    /// (`#[tokio::main(flavor = "multi_thread")]`, `Runtime::block_on`,
-    /// or an already-spawned task on such a runtime). Calling this
-    /// outside a runtime panics — that's a [`tokio::spawn`] invariant.
+    /// # Errors
+    ///
+    /// Besides the errors every engine reports, returns
+    /// [`EngineError::NoRuntime`] when called outside a tokio runtime
+    /// (`#[tokio::main]`, `Runtime::block_on`, or a task spawned on
+    /// one): the block's actor task is spawned onto the ambient
+    /// runtime as it is scheduled. The same holds for every other way
+    /// of scheduling a block on this engine.
     fn schedule<B>(&mut self, block: B) -> Result<()>
     where
         B: Block<Writer = Self::Writer, Reader = Self::Reader> + MaybeSendSync + 'static,
@@ -159,10 +167,39 @@ impl Engine for MultiThreadedEngine<Idle> {
         Ok(())
     }
 
-    async fn run(self) -> Self {
-        let mut engine = self.into_state::<Running>();
-        engine.event_loop().await;
-        engine.into_state()
+    fn add_connector(&mut self, name: &str, handle: impl Into<ConnectorHandle>) -> Result<()> {
+        register_connector(name, handle)?;
+        self.connectors.push(name.to_string());
+        Ok(())
+    }
+
+    fn connector_names(&self) -> Vec<String> {
+        self.connectors.to_vec()
+    }
+
+    fn block_handles(&self) -> Vec<&BlockHandle> {
+        self.graph.handles()
+    }
+
+    fn block_handle(&self, id: &Uuid) -> Option<&BlockHandle> {
+        self.graph.handle(id)
+    }
+
+    fn set_block_metadata(
+        &mut self,
+        id: &Uuid,
+        label: Option<String>,
+        position: Option<Position>,
+    ) -> Result<()> {
+        Ok(self.graph.set_metadata(id, label, position)?)
+    }
+
+    fn run(self) -> Self::RunFuture {
+        Box::pin(async move {
+            let mut engine = self.into_state::<Running>();
+            engine.event_loop().await;
+            engine.into_state()
+        })
     }
 
     fn create_message_channel(
@@ -193,33 +230,6 @@ impl MultiThreadedEngine<Idle> {
             execution: watch::Sender::new(false),
             state: PhantomData,
         }
-    }
-
-    /// Registers `handle` in the process-wide connector registry under
-    /// `name` and puts it under this engine's lifecycle management.
-    ///
-    /// The engine awaits the connector's `start` when [`run`](Engine::run)
-    /// begins — before pending links are wired, before any block
-    /// executes and before any engine message is serviced — and its
-    /// `stop` on shutdown; the connector stays registered so a re-run
-    /// picks it up again. A reset unregisters the connector first and
-    /// then stops it. Dropping the engine unregisters any still-tracked
-    /// connectors without awaiting `stop`. Start/stop failures and
-    /// timeouts are logged, not fatal.
-    ///
-    /// Connectors own their IO loops: spawn them from `start` via the
-    /// ambient `tokio::spawn` and wind them down in `stop`. Pausing the
-    /// engine does not pause these tasks — pause only stops block
-    /// execution.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if a connector with this name is already
-    /// registered.
-    pub fn add_connector(&mut self, name: &str, handle: impl Into<ConnectorHandle>) -> Result<()> {
-        register_connector(name, handle)?;
-        self.connectors.push(name.to_string());
-        Ok(())
     }
 }
 
@@ -256,22 +266,6 @@ impl<S: EngineState> MultiThreadedEngine<S> {
             .send_if_modified(|current| std::mem::replace(current, open) != open);
     }
 
-    /// The names of the connectors this engine manages.
-    pub fn connector_names(&self) -> Vec<String> {
-        self.connectors.to_vec()
-    }
-
-    /// Returns sync metadata handles for every scheduled block. Use the
-    /// async snapshot APIs (`inspect_block`, etc.) to read dynamic state.
-    pub fn block_handles(&self) -> Vec<&BlockHandle> {
-        self.graph.handles()
-    }
-
-    /// Returns the handle for a specific block, if scheduled.
-    pub fn block_handle(&self, id: &Uuid) -> Option<&BlockHandle> {
-        self.graph.handle(id)
-    }
-
     /// Spawns `block`'s actor task onto the ambient runtime and records
     /// its handle. Blocks are added while configuring and, over the
     /// message channel, while running.
@@ -282,11 +276,15 @@ impl<S: EngineState> MultiThreadedEngine<S> {
     where
         B: MtBlock + 'static,
     {
+        // Checked before the block is recorded, so a failed schedule
+        // leaves no handle without an actor behind.
+        let runtime =
+            Handle::try_current().map_err(|_| EngineError::NoRuntime { id: *block.id() })?;
         let (mailbox_tx, mailbox_rx) = mpsc::channel::<BlockMailboxCmd>(BLOCK_MAILBOX_CAP);
         self.graph.insert(&block, mailbox_tx)?;
 
         let watchers = self.watchers.clone();
-        tokio::spawn(block_actor_task(
+        runtime.spawn(block_actor_task(
             block,
             mailbox_rx,
             watchers,
@@ -615,7 +613,7 @@ impl MultiThreadedEngine<Running> {
             EngineMessage::ListConnectorsReq(sender_uuid) => {
                 log::debug!("ListConnectorsReq");
 
-                let res = Ok(self.connector_names());
+                let res = Ok(self.connectors.to_vec());
                 self.reply_to_sender(sender_uuid, EngineMessage::ListConnectorsRes(res));
             }
 
@@ -1076,6 +1074,69 @@ mod test {
             )
             .await;
         }
+    }
+
+    /// Regression: see the single-threaded `configuration`.
+    mod configuration {
+        use super::*;
+        use crate::tokio_impl::engine::test_support::configuration;
+
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn an_engine_is_configured_through_the_trait() {
+            configuration::an_engine_is_configured_through_the_trait(MultiThreadedEngine::new())
+                .await;
+        }
+    }
+
+    /// Regression: scheduling outside a tokio runtime panicked inside
+    /// `tokio::spawn`, although `schedule` returns a `Result`.
+    #[test]
+    fn scheduling_outside_a_runtime_is_an_error() {
+        use crate::blocks::registry::{CORE_LIB, schedule_block};
+        use crate::tokio_impl::engine::test_support::add_program;
+        use crate::{EngineError, Error};
+        use assert_matches::assert_matches;
+
+        let mut eng = MultiThreadedEngine::new();
+        let add = Add::new();
+        let id = *add.id();
+        assert_matches!(
+            eng.schedule(add),
+            Err(Error::Engine(EngineError::NoRuntime { id: refused })) if refused == id
+        );
+        assert_matches!(
+            schedule_block("Add", Some(CORE_LIB), &mut eng),
+            Err(Error::Engine(EngineError::NoRuntime { .. }))
+        );
+        let program = add_program([Uuid::new_v4().to_string().as_str()]);
+        assert_matches!(
+            eng.schedule_program_blocks(&program),
+            Err(Error::Engine(EngineError::NoRuntime { .. }))
+        );
+        assert!(eng.block_handles().is_empty());
+    }
+
+    /// The multi-threaded engine's run future is `Send`, and code
+    /// generic over [`Engine`] can require that and spawn it.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn generic_code_can_spawn_the_run_future() {
+        fn spawn_run<E>(engine: E) -> tokio::task::JoinHandle<E>
+        where
+            E: Engine + Send + 'static,
+            E::RunFuture: Send + 'static,
+        {
+            tokio::spawn(engine.run())
+        }
+
+        let mut eng = MultiThreadedEngine::new();
+        let (reply, _replies) = mpsc::channel(1);
+        let sender = eng.create_message_channel(Uuid::new_v4(), reply);
+        let running = spawn_run(eng);
+        sender.send(Shutdown).await.expect("engine listening");
+        tokio::time::timeout(Duration::from_secs(5), running)
+            .await
+            .expect("engine shut down")
+            .expect("run task completed");
     }
 
     /// Regression: see the single-threaded `rejections`.

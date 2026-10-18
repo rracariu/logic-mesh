@@ -52,8 +52,16 @@
 //!   description, and unregisters the managed connectors, whether or
 //!   not the engine is paused. A paused engine stays paused.
 
+use std::future::Future;
+
+use uuid::Uuid;
+
+use super::connector::ConnectorHandle;
 use super::error::Result;
-use super::{block::Block, program::Program};
+use super::{
+    block::Block,
+    program::{Position, Program},
+};
 
 pub mod messages;
 
@@ -139,6 +147,28 @@ pub trait Engine: Sized {
 
     /// The type used to send messages to/from this engine.
     type Channel: Send + Sync + Clone;
+
+    /// The future [`run`](Self::run) returns.
+    ///
+    /// A named type rather than an `async fn`, so generic code can
+    /// require what it needs of it — `E::RunFuture: Send` to hand an
+    /// engine's run to [`tokio::spawn`]. The multi-threaded engine's is
+    /// [`Send`]; the single-threaded engine's is not, since its blocks
+    /// live on a [`LocalSet`](tokio::task::LocalSet).
+    ///
+    /// ```
+    /// use logic_mesh::base::engine::Engine;
+    ///
+    /// /// Runs `engine` on its own task until it shuts down.
+    /// fn spawn_engine<E>(engine: E) -> tokio::task::JoinHandle<E>
+    /// where
+    ///     E: Engine + Send + 'static,
+    ///     E::RunFuture: Send + 'static,
+    /// {
+    ///     tokio::spawn(engine.run())
+    /// }
+    /// ```
+    type RunFuture: Future<Output = Self>;
 
     /// Schedules a block to be executed by this engine.
     ///
@@ -228,6 +258,53 @@ pub trait Engine: Sized {
     /// they reject, is dropped with a warning.
     fn schedule_program_blocks(&mut self, program: &Program) -> Result<()>;
 
+    /// Registers `handle` in the process-wide connector registry under
+    /// `name` and puts it under this engine's lifecycle management.
+    ///
+    /// The engine awaits the connector's `start` when [`run`](Self::run)
+    /// begins — before any block executes, so blocks never resolve an
+    /// unstarted connector — and its `stop` on shutdown; the connector
+    /// stays registered so a re-run picks it up again. A reset
+    /// unregisters the connector first and then stops it. Dropping the
+    /// engine unregisters any still-tracked connectors without awaiting
+    /// `stop`. Start/stop failures and timeouts are logged, not fatal.
+    ///
+    /// Connectors own their IO loops: spawn them from `start` (via the
+    /// ambient `tokio::spawn` natively, `wasm_bindgen_futures::spawn_local`
+    /// on wasm) and wind them down in `stop`. Pausing the engine does not
+    /// pause these tasks — pause only stops block execution.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ConnectorError::AlreadyRegistered`](crate::ConnectorError::AlreadyRegistered)
+    /// if a connector with this name is already registered.
+    fn add_connector(&mut self, name: &str, handle: impl Into<ConnectorHandle>) -> Result<()>;
+
+    /// The names of the connectors this engine manages.
+    fn connector_names(&self) -> Vec<String>;
+
+    /// Returns the handle of every scheduled block. A handle carries a
+    /// block's static identity and UI metadata; the engine's messages
+    /// read its dynamic state.
+    fn block_handles(&self) -> Vec<&BlockHandle>;
+
+    /// Returns the handle of block `id`, if it is scheduled.
+    fn block_handle(&self, id: &Uuid) -> Option<&BlockHandle>;
+
+    /// Updates the UI metadata block `id` is saved with: each of `label`
+    /// and `position` that is given replaces the stored one.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`EngineError::BlockInstanceNotFound`](crate::EngineError::BlockInstanceNotFound)
+    /// if no block `id` is scheduled.
+    fn set_block_metadata(
+        &mut self,
+        id: &Uuid,
+        label: Option<String>,
+        position: Option<Position>,
+    ) -> Result<()>;
+
     /// Runs the event loop of this engine and executes the scheduled blocks.
     ///
     /// Consumes the idle engine and drives it in the [`Running`] phase
@@ -243,8 +320,7 @@ pub trait Engine: Sized {
     /// cancellation point. Dropping it mid-flight can leave a
     /// multi-step dispatch (link wiring, connector attach) half-applied,
     /// and drops the engine with it.
-    #[allow(async_fn_in_trait)]
-    async fn run(self) -> Self;
+    fn run(self) -> Self::RunFuture;
 
     /// Returns a handle to this engine's messaging system so external
     /// systems can communicate with this engine once it is running.
@@ -260,7 +336,7 @@ pub trait Engine: Sized {
     /// the engine — so keep the channel drained.
     fn create_message_channel(
         &mut self,
-        sender_id: uuid::Uuid,
+        sender_id: Uuid,
         sender_channel: Self::Channel,
     ) -> Self::Channel;
 }

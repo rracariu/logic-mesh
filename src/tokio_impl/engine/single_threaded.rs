@@ -445,6 +445,17 @@ mod tests {
     /// message, which the engine wrapped in a `BlockRequestRejected`
     /// string naming neither the block nor the pin. See
     /// `test_support::rejections`.
+    mod configuration {
+        use super::*;
+        use crate::tokio_impl::engine::test_support::configuration;
+
+        #[tokio::test(flavor = "current_thread")]
+        async fn an_engine_is_configured_through_the_trait() {
+            configuration::an_engine_is_configured_through_the_trait(SingleThreadedEngine::new())
+                .await;
+        }
+    }
+
     mod rejections {
         use super::*;
         use crate::tokio_impl::engine::test_support::rejections;
