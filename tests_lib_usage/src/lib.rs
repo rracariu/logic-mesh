@@ -2,11 +2,7 @@
 //! using the same `#[block]` / `#[derive(BlockProps)]` machinery as the
 //! built-in blocks.
 
-use logic_mesh::base::block::Block;
-use logic_mesh::base::input::{InputProps, InputReader};
-use logic_mesh::base::output::Output;
-use logic_mesh::blocks::{InputImpl, OutputImpl};
-use logic_mesh::{BlockProps, block};
+use logic_mesh::prelude::*;
 
 /// Doubles the value of its numeric input.
 #[block]
@@ -197,13 +193,9 @@ impl Block for Keywords {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use logic_mesh::base::block::BlockProps;
-    use logic_mesh::base::output::OutputProps;
 
     #[test]
     fn desc_reflects_attributes() {
-        use logic_mesh::base::block::BlockStaticDesc;
-
         let desc = <Double as BlockStaticDesc>::static_desc();
         assert_eq!(desc.name, "Double");
         assert_eq!(desc.dis, "Double");
@@ -236,8 +228,6 @@ mod tests {
 
     #[tokio::test]
     async fn fully_qualified_pin_types_work() {
-        use logic_mesh::base::block::BlockStaticDesc;
-
         let desc = <Triple as BlockStaticDesc>::static_desc();
         assert_eq!(desc.inputs.len(), 1);
         assert_eq!(desc.outputs.len(), 1);
@@ -256,8 +246,6 @@ mod tests {
 
     #[tokio::test]
     async fn prefixed_field_types_are_not_pins() {
-        use logic_mesh::base::block::BlockStaticDesc;
-
         let desc = <Prefixed as BlockStaticDesc>::static_desc();
         assert_eq!(desc.inputs.len(), 1);
         assert_eq!(desc.outputs.len(), 1);
@@ -282,8 +270,6 @@ mod tests {
 
     #[test]
     fn doc_comment_captured_in_desc() {
-        use logic_mesh::base::block::BlockStaticDesc;
-
         let desc = <Double as BlockStaticDesc>::static_desc();
         assert_eq!(
             desc.doc, "Doubles the value of its numeric input.",
@@ -296,8 +282,6 @@ mod tests {
     /// next.
     #[test]
     fn doc_comment_lines_joined_by_newlines() {
-        use logic_mesh::base::block::BlockStaticDesc;
-
         let desc = <Prefixed as BlockStaticDesc>::static_desc();
         assert_eq!(
             desc.doc,
@@ -319,8 +303,6 @@ mod tests {
     /// failed to compile.
     #[test]
     fn desc_reflects_every_attribute() {
-        use logic_mesh::base::block::BlockStaticDesc;
-
         let desc = <Attributed as BlockStaticDesc>::static_desc();
         assert_eq!(desc.name, "Attributed");
         assert_eq!(desc.dis, "Every attribute");
@@ -342,7 +324,7 @@ mod tests {
     #[test]
     fn bare_pin_attributes_declare_pins() {
         use logic_mesh::HaystackKind;
-        use logic_mesh::base::block::{BlockPin, BlockStaticDesc};
+        use logic_mesh::base::block::BlockPin;
 
         let desc = <BarePins as BlockStaticDesc>::static_desc();
         assert_eq!(desc.inputs, [BlockPin::new("a", HaystackKind::Null)]);
@@ -360,8 +342,6 @@ mod tests {
     /// of the block's registry key, where it had always been trimmed.
     #[test]
     fn attribute_values_are_trimmed() {
-        use logic_mesh::base::block::BlockStaticDesc;
-
         let desc = <Padded as BlockStaticDesc>::static_desc();
         assert_eq!(desc.dis, "Padded");
         assert_eq!(desc.library, "downstream");
@@ -374,8 +354,6 @@ mod tests {
     /// `r#` prefix, so the field `r#in` declared a pin named `r#in`.
     #[test]
     fn raw_field_names_name_pins_without_the_prefix() {
-        use logic_mesh::base::block::BlockStaticDesc;
-
         let desc = <Keywords as BlockStaticDesc>::static_desc();
         assert_eq!(desc.inputs[0].name, "in");
         assert_eq!(desc.outputs[0].name, "type");
@@ -390,8 +368,6 @@ mod tests {
     #[test]
     fn raw_kind_names_the_variant() {
         use logic_mesh::HaystackKind;
-        use logic_mesh::base::block::BlockStaticDesc;
-
         let desc = <Keywords as BlockStaticDesc>::static_desc();
         assert_eq!(desc.outputs[0].kind, HaystackKind::Number);
     }
@@ -402,7 +378,7 @@ mod tests {
     #[test]
     fn hand_written_desc_uses_the_builder() {
         use logic_mesh::HaystackKind;
-        use logic_mesh::base::block::{BlockDesc, BlockPin, BlockStaticDesc};
+        use logic_mesh::base::block::{BlockDesc, BlockPin};
 
         let desc = BlockDesc::new("Double", "downstream")
             .with_category("math")
@@ -416,8 +392,6 @@ mod tests {
 
     #[test]
     fn missing_doc_defaults_to_empty() {
-        use logic_mesh::base::block::BlockStaticDesc;
-
         let desc = <Bare as BlockStaticDesc>::static_desc();
         assert_eq!(
             desc.doc, "",

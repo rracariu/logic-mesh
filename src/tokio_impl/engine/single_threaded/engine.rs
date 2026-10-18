@@ -50,9 +50,9 @@ use crate::tokio_impl::{ReaderImpl, WriterImpl};
 ///
 /// ```no_run
 /// use logic_mesh::{
-///     base::block::{Block, BlockProps, connect_output},
-///     base::engine::Engine,
+///     base::block::connect_output,
 ///     blocks::{math::Add, misc::SineWave},
+///     prelude::*,
 ///     single_threaded::SingleThreadedEngine,
 /// };
 ///
