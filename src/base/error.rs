@@ -4,8 +4,8 @@
 //! Defines the errors reported by this crate.
 //!
 //! Each subsystem owns its own error enum — [`RegistryError`],
-//! [`EngineError`], [`ConnectError`], [`ValueError`], [`ExternalError`]
-//! and [`ConnectorError`] — so a failure
+//! [`EngineError`], [`ConnectError`], [`ValueError`], [`ExternalError`],
+//! [`ConnectorError`] and [`BlockDescError`] — so a failure
 //! carries the data of the thing that failed and can be matched on
 //! without inspecting a formatted message. [`enum@Error`] is the aggregate
 //! that the crate's entry points return; it forwards `Display` to the
@@ -26,6 +26,7 @@
 
 pub mod connect;
 pub mod connector;
+pub mod desc;
 pub mod engine;
 pub mod external;
 pub mod registry;
@@ -33,6 +34,7 @@ pub mod value;
 
 pub use connect::ConnectError;
 pub use connector::{ConnectorError, ConnectorErrorSource};
+pub use desc::BlockDescError;
 pub use engine::{EngineError, LinkEnd};
 pub use external::ExternalError;
 pub use registry::RegistryError;

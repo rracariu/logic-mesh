@@ -16,6 +16,7 @@ use wasm_bindgen::JsValue;
 use wasm_bindgen::prelude::wasm_bindgen;
 
 use crate::base::engine::Engine;
+use crate::base::error::BlockDescError;
 
 /// Controls the execution of blocks.
 ///
@@ -104,7 +105,9 @@ impl BlocksEngine {
         let name = desc.name.clone();
         let lib = desc.lib.clone();
 
-        let desc: crate::base::block::BlockDesc = desc.try_into()?;
+        let desc: crate::base::block::BlockDesc = desc
+            .try_into()
+            .map_err(|err: BlockDescError| err.to_string())?;
         register_block_desc(&desc).map_err(|err| err.to_string())?;
 
         if let Some(func) = func {
