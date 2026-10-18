@@ -4,7 +4,7 @@
 
 use std::time::Duration;
 
-use crate::base::output::props::OutputProps;
+use crate::base::output::OutputProps;
 use crate::blocks::utils::input_as_number;
 use crate::blocks::utils::input_to_millis_or_default;
 use crate::{

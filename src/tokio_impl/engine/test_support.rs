@@ -16,14 +16,14 @@ use tokio::{
 };
 use uuid::Uuid;
 
-use crate::base::block::{BlockProps, connect::connect_output};
+use crate::base::block::{BlockProps, connect_output};
 use crate::base::engine::{
     Engine,
     messages::{BlockDefinition, EngineMessage},
 };
 use crate::base::program::{LinkData, Program, ProgramBlock};
 use crate::blocks::math::Add;
-use crate::single_threaded::Messages;
+use crate::tokio_impl::engine::Messages;
 use crate::tokio_impl::{ReaderImpl, WriterImpl};
 
 /// How long a test waits for a reply before declaring the engine stuck.
@@ -1061,7 +1061,7 @@ pub(crate) mod dead_actors {
     use crate::base::block::{Block, BlockState};
     use crate::base::engine::messages::EngineMessage::{InspectBlockReq, InspectBlockRes};
     use crate::base::error::EngineError;
-    use crate::base::input::input_reader::InputReader;
+    use crate::base::input::InputReader;
     use crate::blocks::{InputImpl, OutputImpl};
 
     /// Ends its own actor — by entering [`BlockState::Terminated`] —
@@ -1495,7 +1495,7 @@ pub(crate) mod panics {
         GetCurrentProgramReq, GetCurrentProgramRes, InspectBlockReq, InspectBlockRes,
         RemoveBlockReq, RemoveBlockRes,
     };
-    use crate::base::input::input_reader::InputReader;
+    use crate::base::input::InputReader;
     use crate::base::output::Output;
     use crate::blocks::{InputImpl, OutputImpl};
     use crate::tokio_impl::engine::actor_step::PANIC_RETRY_INITIAL;
@@ -1708,7 +1708,7 @@ pub(crate) mod drops {
     use super::lifecycle::TestEngine;
     use super::*;
     use crate::base::block::Block;
-    use crate::base::input::input_reader::InputReader;
+    use crate::base::input::InputReader;
     use crate::blocks::OutputImpl;
 
     /// How many blocks each test schedules.

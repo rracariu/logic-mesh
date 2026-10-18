@@ -47,7 +47,7 @@
 //!   `handle_cmd` that turns a command into mutations on the owned block.
 //! - `actor` — the per-block task loop (`block_actor_task`) and the
 //!   change-of-value detector that runs after each step.
-//! - [`engine`] — [`SingleThreadedEngine`] itself: lifecycle, the [`Engine`]
+//! - `engine` — [`SingleThreadedEngine`] itself: lifecycle, the [`Engine`]
 //!   trait impl, sync configuration helpers, and the async APIs that
 //!   `message_dispatch` routes external requests to.
 //! - `graph` (shared with the multi-threaded engine) — the
@@ -55,12 +55,12 @@
 //!   writes, link wiring, block removal, program save and load.
 //!
 //! [`Engine`]: crate::base::engine::Engine
+//! [`BlockHandle`]: crate::base::engine::BlockHandle
 
 mod actor;
 mod engine;
 
-pub use super::graph::BlockHandle;
-pub use engine::{Messages, SingleThreadedEngine};
+pub use engine::SingleThreadedEngine;
 
 #[cfg(not(target_arch = "wasm32"))]
 #[cfg(test)]
@@ -130,7 +130,7 @@ mod tests {
 
     #[tokio::test(flavor = "current_thread")]
     async fn engine_test() {
-        use crate::base::block::connect::connect_output;
+        use crate::base::block::connect_output;
 
         let mut add1 = Add::new();
         let add_uuid = *add1.id();
@@ -724,7 +724,7 @@ mod tests {
         /// through the connector subscription into the pin graph.
         #[tokio::test(flavor = "current_thread")]
         async fn external_in_feeds_add() {
-            use crate::base::block::connect::connect_output;
+            use crate::base::block::connect_output;
 
             let name = format!("e2e-{}", Uuid::new_v4());
             let mock = Arc::new(MockConnector::default());

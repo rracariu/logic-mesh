@@ -11,9 +11,9 @@
 //! process-wide registry, so the same program works with any protocol
 //! adapter that is registered under that name.
 
-pub mod external_in;
-pub mod external_out;
-pub mod request;
+mod external_in;
+mod external_out;
+mod request;
 pub(crate) mod support;
 
 pub use external_in::ExternalIn;

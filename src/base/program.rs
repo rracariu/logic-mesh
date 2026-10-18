@@ -11,11 +11,11 @@
 //! managed separately and load it via [`crate::base::engine::Engine`].
 //! To assemble one in code, use [`ProgramBuilder`].
 
-pub mod builder;
-pub mod data;
+pub(crate) mod builder;
+pub(crate) mod data;
 
 pub use builder::{BlockRef, ProgramBlockBuilder, ProgramBuilder};
-pub use data::{BlockData, LinkData, PinValue, Position, Program, ProgramBlock, ProgramMeta};
+pub use data::{LinkData, PinValue, Position, Program, ProgramBlock};
 
 #[cfg(test)]
 mod test {

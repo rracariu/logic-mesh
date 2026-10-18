@@ -4,8 +4,8 @@
 
 use std::str::FromStr;
 
+use crate::base::program::LinkData;
 use crate::base::program::Program;
-use crate::base::program::data::LinkData;
 use crate::wasm::types::JsWatchNotification;
 
 use tokio::sync::mpsc::{Receiver, Sender, unbounded_channel};
@@ -14,7 +14,7 @@ use wasm_bindgen::JsValue;
 use wasm_bindgen::prelude::wasm_bindgen;
 
 use crate::base::engine::messages::EngineMessage;
-use crate::single_threaded::Messages;
+use crate::tokio_impl::engine::Messages;
 
 /// Commands a running instance of a Block Engine.
 ///

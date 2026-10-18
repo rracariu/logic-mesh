@@ -2,20 +2,20 @@
 
 //! Boolean logic blocks.
 
-pub mod and;
-pub mod eq;
-pub mod flip_flop;
-pub mod gt;
-pub mod gte;
-pub mod latch;
-pub mod lt;
-pub mod lte;
-pub mod neq;
-pub mod not;
-pub mod or;
-pub mod trigger;
+mod and;
+mod eq;
+mod flip_flop;
+mod gt;
+mod gte;
+mod latch;
+mod lt;
+mod lte;
+mod neq;
+mod not;
+mod or;
+mod trigger;
 mod util;
-pub mod xor;
+mod xor;
 
 pub use and::And;
 pub use eq::Equal;

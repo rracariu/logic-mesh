@@ -15,26 +15,6 @@ use std::collections::BTreeMap;
 use libhaystack::val::Value;
 use serde::{Deserialize, Serialize};
 
-/// Backwards-compatible metadata wrapper. Predates [`Program`] and only
-/// carries top-level descriptors; modern code uses [`Program::name`] /
-/// [`Program::description`] directly. Kept because the
-/// [`ProgramMeta`] type was part of the public surface.
-#[derive(Debug, Default, Clone, Serialize, Deserialize)]
-pub struct ProgramMeta {
-    /// Program name.
-    pub name: String,
-    /// Libraries referenced by the program.
-    pub libs: Vec<String>,
-    /// Semantic version string.
-    pub ver: Option<String>,
-    /// Human-readable description.
-    pub description: Option<String>,
-    /// Program author.
-    pub author: Option<String>,
-    /// SPDX license identifier.
-    pub license: Option<String>,
-}
-
 /// Link between two pins.
 ///
 /// Fields use camelCase serialization to match the JS [`LinkData`]
@@ -60,7 +40,7 @@ pub struct LinkData {
 /// the descriptor fields the engine knows about. For full
 /// load/save round-trip use [`Program`] / [`ProgramBlock`] instead.
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
-pub struct BlockData {
+pub(crate) struct BlockData {
     /// Block UUID.
     pub id: String,
     /// Block type name.

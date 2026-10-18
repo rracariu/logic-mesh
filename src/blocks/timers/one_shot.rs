@@ -4,7 +4,7 @@
 
 use std::time::Duration;
 
-use crate::base::output::props::OutputProps;
+use crate::base::output::OutputProps;
 use crate::base::{
     block::Block,
     input::{InputProps, input_reader::InputReader},

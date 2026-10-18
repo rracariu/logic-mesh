@@ -6,7 +6,7 @@ use crate::base::block::{
     Block, BlockConstruct, BlockDesc, BlockInput, BlockOutput, BlockProps, BlockState,
     BlockStaticDesc,
 };
-use crate::base::input::input_reader::InputReader;
+use crate::base::input::InputReader;
 use libhaystack::val::Value;
 
 use crate::base::engine::{Engine, MaybeSendSync};
@@ -200,23 +200,22 @@ impl Block for RegisteredBlock {
 /// available through [`get_block`], [`schedule_block`], and
 /// [`eval_static_block`].
 ///
-/// Within the `logic-mesh` crate this macro is invoked by auto-generated
-/// code from `build.rs`, which scans `src/blocks/` for
-/// `#[block]`-annotated structs. Downstream crates should use
-/// [`register`] to add blocks at runtime instead.
+/// Crate-local: it is invoked once, by the code `build.rs` generates
+/// from the `#[block]`-annotated structs under `src/blocks/`, and
+/// expands to items that use this module's private names. Downstream
+/// crates add blocks at runtime with [`register`] instead.
 ///
 /// # Examples
 ///
 /// ```ignore
-/// use crate::blocks::math::add::Add;
-/// use crate::blocks::misc::sine_wave::SineWave;
+/// use crate::blocks::math::Add;
+/// use crate::blocks::misc::SineWave;
 ///
 /// register_blocks!(
 ///     Add,
 ///     SineWave
 /// );
 /// ```
-#[macro_export]
 macro_rules! register_blocks {
     ( $( $block_name:ty ),* ) => {
 
@@ -495,7 +494,7 @@ impl<
 /// use logic_mesh::{
 ///     BlockProps, block,
 ///     base::block::{Block, BlockProps as _},
-///     base::input::input_reader::InputReader,
+///     base::input::InputReader,
 ///     base::output::Output,
 ///     blocks::{InputImpl, OutputImpl, registry},
 /// };
@@ -585,18 +584,13 @@ fn make_registered(
 /// Evaluates a runtime-registered block. Fallback used by
 /// [`eval_static_block`] when the name doesn't match a statically
 /// compiled block.
-#[doc(hidden)]
-pub async fn eval_registered(
-    name: &str,
-    lib: Option<&str>,
-    inputs: Vec<Value>,
-) -> Result<Vec<Value>> {
+async fn eval_registered(name: &str, lib: Option<&str>, inputs: Vec<Value>) -> Result<Vec<Value>> {
     let mut block = make_registered(name, lib, None)?;
     eval_block_impl(&mut block, inputs).await
 }
 
 /// Evaluates `block` directly with the given `inputs`.
-pub async fn eval_block_impl<B: Block<Reader = ReaderImpl, Writer = WriterImpl>>(
+pub(crate) async fn eval_block_impl<B: Block<Reader = ReaderImpl, Writer = WriterImpl>>(
     block: &mut B,
     inputs: Vec<Value>,
 ) -> Result<Vec<Value>> {
@@ -664,7 +658,7 @@ fn register_impl<B: RegisterableBlock>(reg: &mut MapType) -> Result<(), Registry
 #[cfg(test)]
 mod test {
 
-    use crate::base::block::connect::connect_output;
+    use crate::base::block::connect_output;
     use crate::base::error::Error;
     use assert_matches::assert_matches;
 
@@ -770,7 +764,7 @@ mod test {
         impl Block for Increment {
             async fn execute(&mut self) {
                 use crate::base::input::InputProps;
-                use crate::base::input::input_reader::InputReader;
+                use crate::base::input::InputReader;
                 use crate::base::output::Output;
 
                 self.read_inputs_until_ready().await;
@@ -825,7 +819,7 @@ mod test {
                 .expect_err("nothing to construct");
             assert_matches::assert_matches!(
                 err,
-                crate::base::error::Error::Registry(RegistryError::BlockNotFound { library, .. })
+                crate::Error::Registry(RegistryError::BlockNotFound { library, .. })
                     if library == "desc_only_test"
             );
         }

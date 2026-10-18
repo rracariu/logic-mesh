@@ -16,13 +16,17 @@ pub use uuid::Uuid;
 pub mod base;
 pub mod blocks;
 mod tokio_impl;
-pub use tokio_impl::engine::*;
+
+pub use tokio_impl::engine::single_threaded;
+
+#[cfg(all(feature = "multi-threaded", not(target_arch = "wasm32")))]
+pub use tokio_impl::engine::multi_threaded;
 
 /// The per-subsystem errors this crate reports, the [`Error`] aggregate
 /// that wraps them, and the matching `Result` alias.
 pub use base::error::{
-    BlockDescError, ConnectError, ConnectorError, EngineError, Error, ExternalError, LinkEnd,
-    RegistryError, Result, ValueError,
+    BlockDescError, ConnectError, ConnectorError, ConnectorErrorSource, EngineError, Error,
+    ExternalError, LinkEnd, RegistryError, Result, ValueError,
 };
 
 #[cfg(target_arch = "wasm32")]

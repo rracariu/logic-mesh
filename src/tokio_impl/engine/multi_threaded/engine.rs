@@ -32,7 +32,7 @@ use crate::base::error::{EngineError, RegistryError, Result, parse_block_uuid};
 use libhaystack::val::Value;
 use tokio::sync::{
     RwLock,
-    mpsc::{self, Receiver, Sender, UnboundedSender},
+    mpsc::{self, Receiver, Sender},
     watch,
 };
 use uuid::Uuid;
@@ -46,19 +46,15 @@ use crate::base::{
     block::{Block, BlockDesc},
     engine::{
         Engine, EngineState, Idle, MaybeSendSync, Running,
-        messages::{BlockDefinition, EngineMessage, WatchMessage},
+        messages::{BlockDefinition, EngineMessage},
     },
     program::{Program, data::LinkData},
 };
 use crate::blocks::registry::{BlockSink, CORE_LIB, get_block};
-use crate::tokio_impl::engine::{ensure_schedulable_mt, phase_name, schedule_block_on_engine_mt};
+use crate::tokio_impl::engine::{
+    Messages, ensure_schedulable_mt, phase_name, schedule_block_on_engine_mt,
+};
 use crate::tokio_impl::{MtBlock, ReaderImpl, WriterImpl};
-
-/// Concrete engine-message type.
-///
-/// The watch-event sender is unbounded — see `wasm/engine_command.rs`
-/// `create_watch` for the rationale.
-pub type Messages = EngineMessage<UnboundedSender<WatchMessage>>;
 
 /// Multi-threaded execution environment for blocks.
 ///
@@ -70,7 +66,7 @@ pub type Messages = EngineMessage<UnboundedSender<WatchMessage>>;
 ///
 /// ```no_run
 /// use logic_mesh::{
-///     base::block::{Block, BlockProps, connect::connect_output},
+///     base::block::{Block, BlockProps, connect_output},
 ///     base::engine::Engine,
 ///     blocks::{math::Add, misc::SineWave},
 ///     multi_threaded::MultiThreadedEngine,
@@ -641,7 +637,7 @@ mod test {
     use std::time::Duration;
 
     use crate::base;
-    use crate::base::program::data::LinkData;
+    use crate::base::program::LinkData;
     use crate::blocks::{math::Add, misc::SineWave};
     use base::block::{BlockConnect, BlockProps};
     use base::engine::messages::EngineMessage::{InspectBlockReq, InspectBlockRes, Shutdown};
@@ -683,7 +679,7 @@ mod test {
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
     async fn multi_threaded_engine_test() {
-        use crate::base::block::connect::connect_output;
+        use crate::base::block::connect_output;
 
         let mut add1 = Add::new();
         let add_uuid = *add1.id();

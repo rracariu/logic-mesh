@@ -3,7 +3,7 @@
 //! `#[logic_mesh(crate = "path")]` escape hatch.
 
 use mesh_renamed::base::block::Block;
-use mesh_renamed::base::input::{InputProps, input_reader::InputReader};
+use mesh_renamed::base::input::{InputProps, InputReader};
 use mesh_renamed::base::output::Output;
 use mesh_renamed::blocks::{InputImpl, OutputImpl};
 use mesh_renamed::{BlockProps, block};

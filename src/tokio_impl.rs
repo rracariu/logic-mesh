@@ -16,8 +16,8 @@ pub mod sleep;
 /// quality assertion. See [`crate::base::Status`] for the rationale.
 pub type PinPayload = (Value, Status);
 
-/// Tokio-based Reader: a watch-channel [`Receiver`] for [`PinPayload`]. The
-/// channel coalesces — only the latest value is observed, which is what a
+/// Tokio-based Reader: a watch-channel [`Receiver`] of a pin's value paired
+/// with the producer's [`Status`]. The channel coalesces — only the latest value is observed, which is what a
 /// reactive dataflow engine wants. Edge-detection blocks track their own
 /// previous state in the block struct rather than relying on every transition
 /// being delivered.

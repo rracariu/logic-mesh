@@ -2,13 +2,15 @@
 
 //! Block trait and associated types.
 
-pub mod connect;
-pub mod desc;
-pub mod props;
+pub(crate) mod connect;
+pub(crate) mod desc;
+pub(crate) mod props;
 
 use super::error::{Result, ValueError};
-pub use connect::BlockConnect;
-pub use desc::{BlockDesc, BlockPin, BlockStaticDesc};
+pub use connect::{
+    BlockConnect, connect_input, connect_output, disconnect_input, disconnect_output,
+};
+pub use desc::{BlockDesc, BlockImplementation, BlockPin, BlockRunCondition, BlockStaticDesc};
 use libhaystack::{
     encoding::zinc,
     val::{Bool, Number, Str, Value, kind::HaystackKind},
@@ -133,7 +135,7 @@ impl BlockState {
 /// use logic_mesh::{
 ///     BlockProps, block,
 ///     base::block::{Block, BlockProps as _},
-///     base::input::{InputProps, input_reader::InputReader},
+///     base::input::{InputProps, InputReader},
 ///     base::output::Output,
 ///     blocks::{InputImpl, OutputImpl},
 /// };

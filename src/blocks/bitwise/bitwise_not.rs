@@ -39,7 +39,7 @@ mod test {
     use crate::{
         base::{
             Status,
-            block::{Block, connect::connect_output, test_utils::write_block_inputs},
+            block::{Block, connect_output, test_utils::write_block_inputs},
             input::Input,
         },
         blocks::{InputImpl, bitwise::BitwiseNot},

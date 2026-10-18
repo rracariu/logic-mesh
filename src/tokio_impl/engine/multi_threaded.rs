@@ -37,7 +37,7 @@
 //!
 //! - `actor` — the per-block actor task (`block_actor_task`) and
 //!   MT-specific watcher types.
-//! - [`engine`] — [`MultiThreadedEngine`] itself: lifecycle, the
+//! - `engine` — [`MultiThreadedEngine`] itself: lifecycle, the
 //!   [`Engine`] trait impl, sync configuration helpers, async APIs, and
 //!   message dispatch.
 //!
@@ -45,7 +45,6 @@
 //! [`SingleThreadedEngine`]: crate::single_threaded::SingleThreadedEngine
 
 mod actor;
-pub mod engine;
+mod engine;
 
-pub use super::graph::BlockHandle;
-pub use engine::{Messages, MultiThreadedEngine};
+pub use engine::MultiThreadedEngine;

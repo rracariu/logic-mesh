@@ -5,8 +5,8 @@
 use std::collections::VecDeque;
 use std::time::Duration;
 
-use crate::base::output::props::OutputProps;
-use crate::base::{block::Block, input::input_reader::InputReader, output::Output};
+use crate::base::output::OutputProps;
+use crate::base::{block::Block, input::InputReader, output::Output};
 use crate::blocks::utils::{input_as_number, input_to_millis_or_default};
 
 use libhaystack::val::Number;

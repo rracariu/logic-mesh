@@ -2,9 +2,9 @@
 
 //! String blocks.
 
-pub mod concat;
-pub mod len;
-pub mod replace;
+mod concat;
+mod len;
+mod replace;
 
 pub use concat::Concat;
 pub use len::StrLen;

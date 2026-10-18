@@ -35,16 +35,10 @@ use crate::base::{
     },
 };
 use crate::blocks::registry::{BlockSink, CORE_LIB, get_block};
+use crate::tokio_impl::engine::Messages;
 use crate::tokio_impl::engine::message_dispatch::dispatch_message;
 use crate::tokio_impl::engine::{ensure_schedulable, phase_name, schedule_block_on_engine};
 use crate::tokio_impl::{ReaderImpl, WriterImpl};
-
-/// Concrete engine-message type.
-///
-/// The watch-event sender is unbounded — see `wasm/engine_command.rs`
-/// `create_watch` for the rationale (fault notifications must not drop
-/// under burst load).
-pub type Messages = EngineMessage<UnboundedSender<WatchMessage>>;
 
 /// Single-threaded execution environment for blocks.
 ///
@@ -56,7 +50,7 @@ pub type Messages = EngineMessage<UnboundedSender<WatchMessage>>;
 ///
 /// ```no_run
 /// use logic_mesh::{
-///     base::block::{Block, BlockProps, connect::connect_output},
+///     base::block::{Block, BlockProps, connect_output},
 ///     base::engine::Engine,
 ///     blocks::{math::Add, misc::SineWave},
 ///     single_threaded::SingleThreadedEngine,

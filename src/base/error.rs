@@ -24,13 +24,13 @@
 //! ```
 //!
 
-pub mod connect;
-pub mod connector;
-pub mod desc;
-pub mod engine;
-pub mod external;
-pub mod registry;
-pub mod value;
+mod connect;
+mod connector;
+mod desc;
+mod engine;
+mod external;
+mod registry;
+mod value;
 
 pub use connect::ConnectError;
 pub use connector::{ConnectorError, ConnectorErrorSource};

@@ -4,7 +4,7 @@ use libhaystack::val::Bool;
 use libhaystack::val::Value;
 
 use crate::base::block::{Block, convert_value};
-use crate::base::input::input_reader::InputReader;
+use crate::base::input::InputReader;
 
 /// Converts the inputs to the same type.
 pub(super) fn convert_inputs<B: Block>(block: &B) -> (Option<Value>, Option<Value>) {

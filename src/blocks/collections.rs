@@ -2,12 +2,12 @@
 
 //! Collection blocks.
 
-pub mod dict;
-pub mod get;
-pub mod keys;
-pub mod len;
-pub mod list;
-pub mod values;
+mod dict;
+mod get;
+mod keys;
+mod len;
+mod list;
+mod values;
 
 pub use dict::Dict;
 pub use get::GetElement;
