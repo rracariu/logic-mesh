@@ -255,7 +255,7 @@ pub fn convert_value_kind(
                 return Ok(val.parse::<bool>()?.into());
             }
 
-            let num = zinc::decode::from_str(&val)?;
+            let num = zinc::decode::from_str(&val).map_err(ValueError::ZincDecode)?;
             match num {
                 Value::Number(Number { value, unit: _ }) => Ok((value != 0.0).into()),
                 Value::Bool(Bool { value }) => Ok(value.into()),
@@ -275,7 +275,7 @@ pub fn convert_value_kind(
         (HaystackKind::Number, HaystackKind::Str) => {
             let val = Str::try_from(&val).map_err(ValueError::Conversion)?;
 
-            let num = zinc::decode::from_str(&val)?;
+            let num = zinc::decode::from_str(&val).map_err(ValueError::ZincDecode)?;
             if num.is_number() {
                 Ok(num)
             } else {

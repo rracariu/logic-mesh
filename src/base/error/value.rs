@@ -9,6 +9,18 @@ use libhaystack::val::{Value, kind::HaystackKind};
 use thiserror::Error;
 
 /// Failures of the value and unit conversions performed on block pins.
+///
+/// A variant that wraps another error exposes it through
+/// [`source`](std::error::Error::source) and leaves it out of its own
+/// message, so a reporter that walks the error chain prints it once.
+///
+/// [`ZincDecode`](Self::ZincDecode) has no `From<std::io::Error>`: an
+/// I/O error is a Zinc decoding failure only where Zinc is decoded, so
+/// `?` does not turn one into it.
+///
+/// ```compile_fail
+/// let _: logic_mesh::ValueError = std::io::Error::other("disk").into();
+/// ```
 #[derive(Debug, Error)]
 #[non_exhaustive]
 pub enum ValueError {
@@ -38,24 +50,74 @@ pub enum ValueError {
     /// A value could not be converted to the requested Haystack type.
     ///
     /// Carries `libhaystack`'s `ConversionError`, which is a
-    /// `&'static str`, so this costs no allocation.
+    /// `&'static str`, so this costs no allocation. It is a message,
+    /// not an error, so it is part of this error's message.
     #[error("Value conversion failed: {0}")]
     Conversion(&'static str),
 
-    /// Two numbers could not be brought to a common unit.
+    /// Two numbers could not be brought to a common unit. The detail is
+    /// a message, not an error, so it is part of this error's message.
     #[error("Unit conversion failed: {0}")]
     UnitConversion(String),
 
     /// Decoding a Zinc-encoded string failed. `libhaystack` surfaces
-    /// Zinc decoding failures as [`std::io::Error`].
-    #[error("Zinc decoding failed: {0}")]
-    ZincDecode(#[from] std::io::Error),
+    /// Zinc decoding failures as [`std::io::Error`], the source.
+    #[error("Zinc decoding failed")]
+    ZincDecode(#[source] std::io::Error),
 
     /// Encoding a value as a Zinc string failed.
-    #[error("Zinc encoding failed: {0}")]
+    #[error("Zinc encoding failed")]
     ZincEncode(#[from] libhaystack::encoding::zinc::encode::Error),
 
     /// A string was not a valid boolean literal.
-    #[error("Invalid boolean literal: {0}")]
+    #[error("Invalid boolean literal")]
     ParseBool(#[from] std::str::ParseBoolError),
+}
+
+#[cfg(test)]
+mod test {
+    use std::error::Error as _;
+
+    use super::ValueError;
+
+    /// The messages of an error and of every source after it, as a
+    /// chain-walking reporter prints them.
+    fn chain(err: &dyn std::error::Error) -> Vec<String> {
+        let mut messages = vec![err.to_string()];
+        let mut source = err.source();
+        while let Some(err) = source {
+            messages.push(err.to_string());
+            source = err.source();
+        }
+        messages
+    }
+
+    /// Regression: the wrapping variants printed their source in their
+    /// own message too, so a reporter walking the chain printed it twice.
+    #[test]
+    fn wrapped_errors_are_reported_once() {
+        let decode = ValueError::ZincDecode(std::io::Error::other("bad token"));
+        assert_eq!(chain(&decode), ["Zinc decoding failed", "bad token"]);
+
+        let parse = ValueError::from("maybe".parse::<bool>().expect_err("not a bool"));
+        let messages = chain(&parse);
+        assert_eq!(messages[0], "Invalid boolean literal");
+        assert!(parse.source().is_some());
+        assert!(!messages[0].contains(&messages[1]));
+    }
+
+    /// Converting a string that is not Zinc reports the decoder's error
+    /// as the source.
+    #[test]
+    fn zinc_decode_failure_keeps_the_decoder_error() {
+        let err = crate::base::block::convert_value_kind(
+            libhaystack::val::Value::make_str("not zinc ("),
+            libhaystack::val::kind::HaystackKind::Number,
+            libhaystack::val::kind::HaystackKind::Str,
+        )
+        .expect_err("not a number");
+
+        assert!(matches!(err, ValueError::ZincDecode(_)));
+        assert!(err.source().is_some());
+    }
 }
