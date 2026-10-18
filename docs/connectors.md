@@ -137,7 +137,8 @@ parsing display strings. Inside blocks these surface as `BlockState::fault(...)`
 The variants a connector reports are `#[non_exhaustive]`: connectors build them with
 `ConnectorError::subscribe`, `publish`, `request` and `transport`, and attach the protocol client's
 own error with `with_source`. That error is exposed through `std::error::Error::source` and left
-out of the message.
+out of the message. The block fault reasons and the engine's connector start error render the whole
+chain, so they include it.
 
 ### 4.4 The external blocks — `src/blocks/external/`
 

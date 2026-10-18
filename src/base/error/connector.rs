@@ -26,7 +26,10 @@ pub type ConnectorErrorSource = Box<dyn std::error::Error + Send + Sync + 'stati
 /// attach the protocol client's error with
 /// [`with_source`](Self::with_source). It is exposed through
 /// [`source`](std::error::Error::source) and left out of the message,
-/// so a reporter that walks the error chain prints it once.
+/// so a reporter that walks the error chain prints it once. The
+/// crate's own reports — the fault reasons of the external blocks and
+/// the error of a connector that fails to start — walk the chain, so
+/// they include it.
 ///
 /// # Examples
 ///

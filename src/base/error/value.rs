@@ -13,6 +13,8 @@ use thiserror::Error;
 /// A variant that wraps another error exposes it through
 /// [`source`](std::error::Error::source) and leaves it out of its own
 /// message, so a reporter that walks the error chain prints it once.
+/// The fault reason of a block whose input fails to convert walks the
+/// chain, so it includes the wrapped error.
 ///
 /// [`ZincDecode`](Self::ZincDecode) has no `From<std::io::Error>`: an
 /// I/O error is a Zinc decoding failure only where Zinc is decoded, so
