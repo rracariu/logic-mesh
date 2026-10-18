@@ -36,7 +36,7 @@ use crate::base::{
 };
 use crate::blocks::registry::{BlockSink, CORE_LIB, get_block};
 use crate::tokio_impl::engine::message_dispatch::dispatch_message;
-use crate::tokio_impl::engine::{ensure_schedulable, schedule_block_on_engine};
+use crate::tokio_impl::engine::{ensure_schedulable, phase_name, schedule_block_on_engine};
 use crate::tokio_impl::{ReaderImpl, WriterImpl};
 
 /// Concrete engine-message type.
@@ -114,6 +114,22 @@ pub struct SingleThreadedEngine<S: EngineState = Idle> {
 impl Default for SingleThreadedEngine {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+/// Shows the engine's phase, whether its blocks may execute, how many
+/// blocks, links and staged programs it holds and the connectors it
+/// manages — not the blocks or channels themselves.
+impl<S: EngineState> std::fmt::Debug for SingleThreadedEngine<S> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SingleThreadedEngine")
+            .field("phase", &phase_name::<S>())
+            .field("executing", &*self.execution.borrow())
+            .field("blocks", &self.graph.block_count())
+            .field("links", &self.graph.link_count())
+            .field("pending_programs", &self.pending.len())
+            .field("connectors", &self.connectors.as_slice())
+            .finish_non_exhaustive()
     }
 }
 
