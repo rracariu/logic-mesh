@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 use crate::base::{
     block::{BlockDesc, BlockPin, desc::BlockImplementation},
     engine::messages::{ChangeSource, WatchMessage},
+    error::BlockDescError,
 };
 
 /// Block field properties, inputs or output
@@ -46,7 +47,7 @@ pub struct JsBlockDesc {
 }
 
 impl TryFrom<JsBlockDesc> for BlockDesc {
-    type Error = String;
+    type Error = BlockDescError;
 
     /// Strict conversion: an unrecognized pin kind, run condition, or
     /// implementation is an error, not a silent default. Kinds are the
@@ -56,16 +57,17 @@ impl TryFrom<JsBlockDesc> for BlockDesc {
     /// be `"external"`: this conversion serves JS block registration,
     /// which cannot produce a native block.
     fn try_from(desc: JsBlockDesc) -> Result<Self, Self::Error> {
-        let pin = |pin: JsBlockPin| -> Result<BlockPin, String> {
-            let kind = pin
-                .kind
-                .as_str()
-                .try_into()
-                .map_err(|err| format!("pin '{}': {err}", pin.name))?;
-            Ok(BlockPin {
-                name: pin.name,
-                kind,
-            })
+        let pin = |pin: JsBlockPin| -> Result<BlockPin, BlockDescError> {
+            match pin.kind.as_str().try_into() {
+                Ok(kind) => Ok(BlockPin {
+                    name: pin.name,
+                    kind,
+                }),
+                Err(_) => Err(BlockDescError::UnknownPinKind {
+                    pin: pin.name,
+                    kind: pin.kind,
+                }),
+            }
         };
 
         // JS registration only ever produces external blocks (the JS
@@ -76,10 +78,9 @@ impl TryFrom<JsBlockDesc> for BlockDesc {
         let implementation = match desc.implementation.as_str() {
             "external" => BlockImplementation::External,
             other => {
-                return Err(format!(
-                    "field 'implementation': a JS-registered block must be \
-                     'external', got '{other}'"
-                ));
+                return Err(BlockDescError::NotExternal {
+                    implementation: other.to_string(),
+                });
             }
         };
 
@@ -107,9 +108,10 @@ impl TryFrom<JsBlockDesc> for BlockDesc {
             run_condition: desc
                 .run_condition
                 .map(|cond| {
-                    cond.as_str()
-                        .try_into()
-                        .map_err(|err| format!("field 'runCondition': {err}"))
+                    cond.parse().map_err(|err| BlockDescError::Field {
+                        field: "runCondition",
+                        error: Box::new(err),
+                    })
                 })
                 .transpose()?,
         })

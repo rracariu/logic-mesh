@@ -2,7 +2,8 @@
 
 //!
 //! Errors raised for external (host-provided) blocks — blocks whose
-//! executor is supplied by the JavaScript host rather than compiled in.
+//! executor is supplied by the JavaScript host rather than compiled in —
+//! and for the connectors that host supplies.
 //!
 
 use thiserror::Error;
@@ -56,5 +57,35 @@ pub enum ExternalError {
         name: String,
         /// Description of the unexpected return value.
         detail: String,
+    },
+
+    /// Reading a method property of a JavaScript connector object
+    /// threw, e.g. from a getter.
+    #[cfg(target_arch = "wasm32")]
+    #[error("Failed to read connector property '{property}': {detail}")]
+    ConnectorPropertyUnreadable {
+        /// The property that could not be read.
+        property: String,
+        /// The error message from JavaScript.
+        detail: String,
+    },
+
+    /// A JavaScript connector object lacks a method it must have
+    /// (`subscribe`, `publish` or `request`), or has a non-function in
+    /// its place.
+    #[cfg(target_arch = "wasm32")]
+    #[error("Connector property '{property}' is required and must be a function")]
+    ConnectorMethodMissing {
+        /// The required property.
+        property: String,
+    },
+
+    /// An optional method of a JavaScript connector object (`start` or
+    /// `stop`) is present but not a function.
+    #[cfg(target_arch = "wasm32")]
+    #[error("Connector property '{property}', when present, must be a function")]
+    ConnectorMethodNotFunction {
+        /// The optional property.
+        property: String,
     },
 }

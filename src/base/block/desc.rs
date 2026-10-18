@@ -3,10 +3,12 @@
 //! Block description types.
 
 use std::fmt::Display;
+use std::str::FromStr;
 
 use libhaystack::val::kind::HaystackKind;
 
 use super::BlockProps;
+use crate::base::error::BlockDescError;
 
 /// Static description of a block, used to find the block in the library
 /// and inspect its inputs and outputs.
@@ -194,6 +196,19 @@ impl BlockPin {
 ///
 /// `#[non_exhaustive]`, like [`BlockDesc`] that holds it: another kind
 /// of implementation can be added without breaking a `match` on it.
+///
+/// It parses from, and displays as, `"native"` or `"external"`.
+///
+/// # Examples
+///
+/// ```
+/// use logic_mesh::base::block::desc::BlockImplementation;
+///
+/// let imp: BlockImplementation = "external".parse()?;
+/// assert_eq!(imp, BlockImplementation::External);
+/// assert_eq!(imp.to_string(), "external");
+/// # Ok::<(), logic_mesh::BlockDescError>(())
+/// ```
 #[derive(Default, Debug, Clone, PartialEq)]
 #[non_exhaustive]
 pub enum BlockImplementation {
@@ -204,14 +219,16 @@ pub enum BlockImplementation {
     External,
 }
 
-impl TryFrom<&str> for BlockImplementation {
-    type Error = String;
+impl FromStr for BlockImplementation {
+    type Err = BlockDescError;
 
-    fn try_from(implementation: &str) -> Result<Self, Self::Error> {
+    fn from_str(implementation: &str) -> Result<Self, Self::Err> {
         match implementation {
             "native" => Ok(BlockImplementation::Native),
             "external" => Ok(BlockImplementation::External),
-            _ => Err(format!("Invalid implementation: {implementation}")),
+            _ => Err(BlockDescError::UnknownImplementation {
+                value: implementation.to_string(),
+            }),
         }
     }
 }
@@ -230,6 +247,8 @@ impl Display for BlockImplementation {
 ///
 /// `#[non_exhaustive]`, like [`BlockDesc`] that holds it: another run
 /// condition can be added without breaking a `match` on it.
+///
+/// It parses from, and displays as, `"change"` or `"always"`.
 #[derive(Default, Debug, Clone, PartialEq)]
 #[non_exhaustive]
 pub enum BlockRunCondition {
@@ -240,21 +259,23 @@ pub enum BlockRunCondition {
     Always,
 }
 
-impl TryFrom<&str> for BlockRunCondition {
-    type Error = String;
+impl FromStr for BlockRunCondition {
+    type Err = BlockDescError;
 
-    fn try_from(run_condition: &str) -> Result<Self, Self::Error> {
+    fn from_str(run_condition: &str) -> Result<Self, Self::Err> {
         match run_condition {
             "change" => Ok(BlockRunCondition::Change),
             "always" => Ok(BlockRunCondition::Always),
-            _ => Err(format!("Invalid run condition: {run_condition}")),
+            _ => Err(BlockDescError::UnknownRunCondition {
+                value: run_condition.to_string(),
+            }),
         }
     }
 }
 
 impl Display for BlockRunCondition {
     fn fmt(&self, fmt: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        // Must render exactly the strings `TryFrom<&str>` accepts, so a
+        // Must render exactly the strings `FromStr` accepts, so a
         // listed description round-trips back through registration.
         let kind = match self {
             BlockRunCondition::Change => "change",
@@ -267,12 +288,14 @@ impl Display for BlockRunCondition {
 #[cfg(test)]
 mod tests {
     use super::{BlockImplementation, BlockRunCondition};
+    use crate::base::error::BlockDescError;
 
     #[test]
-    fn run_condition_display_round_trips_through_try_from() {
+    fn run_condition_display_round_trips_through_from_str() {
         for cond in [BlockRunCondition::Change, BlockRunCondition::Always] {
             let rendered = cond.to_string();
-            let parsed = BlockRunCondition::try_from(rendered.as_str())
+            let parsed: BlockRunCondition = rendered
+                .parse()
                 .expect("rendered run condition parses back");
             assert_eq!(parsed, cond);
         }
@@ -280,25 +303,44 @@ mod tests {
         assert_eq!(BlockRunCondition::Always.to_string(), "always");
     }
 
+    /// Regression: the parse error was a bare `String`.
     #[test]
-    fn run_condition_error_names_the_run_condition() {
-        let err = BlockRunCondition::try_from("bogus").expect_err("bogus is rejected");
-        assert_eq!(err, "Invalid run condition: bogus");
+    fn run_condition_error_is_typed() {
+        let err = "bogus"
+            .parse::<BlockRunCondition>()
+            .expect_err("bogus is rejected");
+        assert_eq!(
+            err,
+            BlockDescError::UnknownRunCondition {
+                value: "bogus".to_string()
+            }
+        );
+        assert_eq!(err.to_string(), "Invalid run condition: bogus");
     }
 
     #[test]
-    fn implementation_display_round_trips_through_try_from() {
+    fn implementation_display_round_trips_through_from_str() {
         for imp in [BlockImplementation::Native, BlockImplementation::External] {
             let rendered = imp.to_string();
-            let parsed = BlockImplementation::try_from(rendered.as_str())
+            let parsed: BlockImplementation = rendered
+                .parse()
                 .expect("rendered implementation parses back");
             assert_eq!(parsed, imp);
         }
     }
 
+    /// Regression: the parse error was a bare `String`.
     #[test]
-    fn implementation_error_names_the_implementation() {
-        let err = BlockImplementation::try_from("bogus").expect_err("bogus is rejected");
-        assert_eq!(err, "Invalid implementation: bogus");
+    fn implementation_error_is_typed() {
+        let err = "bogus"
+            .parse::<BlockImplementation>()
+            .expect_err("bogus is rejected");
+        assert_eq!(
+            err,
+            BlockDescError::UnknownImplementation {
+                value: "bogus".to_string()
+            }
+        );
+        assert_eq!(err.to_string(), "Invalid implementation: bogus");
     }
 }

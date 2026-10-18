@@ -14,6 +14,7 @@ pub(crate) mod sealed;
 pub mod status;
 
 pub use error::{
-    ConnectorError, EngineError, Error, ExternalError, LinkEnd, RegistryError, Result, ValueError,
+    BlockDescError, ConnectorError, EngineError, Error, ExternalError, LinkEnd, RegistryError,
+    Result, ValueError,
 };
 pub use status::Status;
