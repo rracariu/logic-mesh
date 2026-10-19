@@ -47,7 +47,7 @@
 //!   `handle_cmd` that turns a command into mutations on the owned block.
 //! - `actor` — the per-block task loop (`block_actor_task`) and the
 //!   change-of-value detector that runs after each step.
-//! - [`engine`] — [`SingleThreadedEngine`] itself: lifecycle, the [`Engine`]
+//! - `engine` — [`SingleThreadedEngine`] itself: lifecycle, the [`Engine`]
 //!   trait impl, sync configuration helpers, and the async APIs that
 //!   `message_dispatch` routes external requests to.
 //! - `graph` (shared with the multi-threaded engine) — the
@@ -55,12 +55,12 @@
 //!   writes, link wiring, block removal, program save and load.
 //!
 //! [`Engine`]: crate::base::engine::Engine
+//! [`BlockHandle`]: crate::base::engine::BlockHandle
 
 mod actor;
 mod engine;
 
-pub use super::graph::BlockHandle;
-pub use engine::{Messages, SingleThreadedEngine};
+pub use engine::SingleThreadedEngine;
 
 #[cfg(not(target_arch = "wasm32"))]
 #[cfg(test)]
@@ -130,7 +130,7 @@ mod tests {
 
     #[tokio::test(flavor = "current_thread")]
     async fn engine_test() {
-        use crate::base::block::connect::connect_output;
+        use crate::base::block::connect_output;
 
         let mut add1 = Add::new();
         let add_uuid = *add1.id();
@@ -207,7 +207,7 @@ mod tests {
         assert_eq!(
             format!("{eng:?}"),
             "SingleThreadedEngine { phase: \"Idle\", executing: false, blocks: 2, links: 1, \
-             pending_programs: 0, connectors: [], .. }"
+             pending_programs: 0, connectors: [], scan_interval: 200ms, .. }"
         );
         assert_eq!(
             format!("{:?}", eng.block_handle(&target_id).expect("scheduled")),
@@ -333,6 +333,14 @@ mod tests {
         async fn a_registered_block_loads_and_saves() {
             runtime_descs::a_registered_block_loads_and_saves(SingleThreadedEngine::new()).await;
         }
+
+        #[tokio::test(flavor = "current_thread")]
+        async fn a_registered_block_is_found_by_its_name_alone() {
+            runtime_descs::a_registered_block_is_found_by_its_name_alone(
+                SingleThreadedEngine::new(),
+            )
+            .await;
+        }
     }
 
     /// Regression: a panic in `execute` killed the block's actor task —
@@ -430,6 +438,43 @@ mod tests {
                 SingleThreadedEngine::new(),
             )
             .await;
+        }
+    }
+
+    /// Regression: the scan interval was one process-wide value, which
+    /// every engine shared. See `test_support::scan_intervals`.
+    mod scan_intervals {
+        use super::*;
+        use crate::tokio_impl::engine::test_support::scan_intervals;
+
+        #[tokio::test(flavor = "current_thread")]
+        async fn each_engine_keeps_its_own_scan_interval() {
+            scan_intervals::each_engine_keeps_its_own_scan_interval(
+                SingleThreadedEngine::new(),
+                SingleThreadedEngine::new(),
+            )
+            .await;
+        }
+
+        #[tokio::test(flavor = "current_thread")]
+        async fn a_new_scan_interval_reaches_scheduled_blocks() {
+            scan_intervals::a_new_scan_interval_reaches_scheduled_blocks(
+                SingleThreadedEngine::new(),
+            )
+            .await;
+        }
+    }
+
+    /// Regression: generic code could not configure an engine through
+    /// the `Engine` trait. See `test_support::configuration`.
+    mod configuration {
+        use super::*;
+        use crate::tokio_impl::engine::test_support::configuration;
+
+        #[tokio::test(flavor = "current_thread")]
+        async fn an_engine_is_configured_through_the_trait() {
+            configuration::an_engine_is_configured_through_the_trait(SingleThreadedEngine::new())
+                .await;
         }
     }
 
@@ -724,7 +769,7 @@ mod tests {
         /// through the connector subscription into the pin graph.
         #[tokio::test(flavor = "current_thread")]
         async fn external_in_feeds_add() {
-            use crate::base::block::connect::connect_output;
+            use crate::base::block::connect_output;
 
             let name = format!("e2e-{}", Uuid::new_v4());
             let mock = Arc::new(MockConnector::default());

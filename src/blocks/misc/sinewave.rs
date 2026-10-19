@@ -4,9 +4,9 @@
 
 use std::time::Duration;
 
-use crate::base::output::props::OutputProps;
+use crate::base::output::OutputProps;
 use crate::{
-    base::{block::Block, input::input_reader::InputReader, output::Output},
+    base::{block::Block, input::InputReader, output::Output},
     blocks::utils::{input_as_float_or_default, input_to_millis_or_default},
 };
 

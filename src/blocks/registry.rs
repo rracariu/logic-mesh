@@ -6,7 +6,7 @@ use crate::base::block::{
     Block, BlockConstruct, BlockDesc, BlockInput, BlockOutput, BlockProps, BlockState,
     BlockStaticDesc,
 };
-use crate::base::input::input_reader::InputReader;
+use crate::base::input::InputReader;
 use libhaystack::val::Value;
 
 use crate::base::engine::{Engine, MaybeSendSync};
@@ -200,23 +200,22 @@ impl Block for RegisteredBlock {
 /// available through [`get_block`], [`schedule_block`], and
 /// [`eval_static_block`].
 ///
-/// Within the `logic-mesh` crate this macro is invoked by auto-generated
-/// code from `build.rs`, which scans `src/blocks/` for
-/// `#[block]`-annotated structs. Downstream crates should use
-/// [`register`] to add blocks at runtime instead.
+/// Crate-local: it is invoked once, by the code `build.rs` generates
+/// from the `#[block]`-annotated structs under `src/blocks/`, and
+/// expands to items that use this module's private names. Downstream
+/// crates add blocks at runtime with [`register`] instead.
 ///
 /// # Examples
 ///
 /// ```ignore
-/// use crate::blocks::math::add::Add;
-/// use crate::blocks::misc::sine_wave::SineWave;
+/// use crate::blocks::math::Add;
+/// use crate::blocks::misc::SineWave;
 ///
 /// register_blocks!(
 ///     Add,
 ///     SineWave
 /// );
 /// ```
-#[macro_export]
 macro_rules! register_blocks {
     ( $( $block_name:ty ),* ) => {
 
@@ -239,15 +238,16 @@ macro_rules! register_blocks {
 		///
 		/// Statically compiled blocks are handed over as their concrete
 		/// type; anything else falls back to the runtime registry and is
-		/// handed over as a [`RegisteredBlock`]. `lib` of [`None`]
-		/// searches all libraries and errors if the name is ambiguous.
+		/// handed over as a [`RegisteredBlock`]. `lib` is resolved as
+		/// [`get_block`] resolves it.
 		pub(crate) fn make_block_into<K: BlockSink>(
 			name: &str,
 			lib: Option<&str>,
 			uuid: Option<uuid::Uuid>,
 			sink: &mut K,
 		) -> Result<uuid::Uuid> {
-			if lib == Some(CORE_LIB) {
+			let lib = resolve_library(name, lib)?;
+			if lib == CORE_LIB {
 				match name {
 					$(
 						stringify!($block_name) => {
@@ -263,7 +263,7 @@ macro_rules! register_blocks {
 					_ => {}
 				}
 			}
-			let block = make_registered(name, lib, uuid)?;
+			let block = make_registered(name, &lib, uuid)?;
 			let id = *block.id();
 			sink.accept(block)?;
 			Ok(id)
@@ -273,8 +273,8 @@ macro_rules! register_blocks {
 		/// output values.
 		///
 		/// Creates a temporary block instance, feeds it the given `inputs`,
-		/// executes it, and returns the outputs. `lib` of [`None`] searches
-		/// all libraries.
+		/// executes it, and returns the outputs. `lib` is resolved as
+		/// [`get_block`] resolves it.
 		///
 		/// # Examples
 		///
@@ -289,7 +289,8 @@ macro_rules! register_blocks {
 		/// # }
 		/// ```
 		pub async fn eval_static_block(name: &str, lib: Option<&str>, inputs: Vec<Value>) -> Result<Vec<Value>> {
-			if lib == Some(CORE_LIB) {
+			let lib = resolve_library(name, lib)?;
+			if lib == CORE_LIB {
 				match name {
 					$(
 						stringify!($block_name) => {
@@ -300,7 +301,7 @@ macro_rules! register_blocks {
 					_ => {}
 				}
 			}
-			eval_registered(name, lib, inputs).await
+			eval_registered(name, &lib, inputs).await
 		}
     };
 }
@@ -309,22 +310,36 @@ macro_rules! register_blocks {
 // by build.rs scanning for #[block] annotated structs in src/blocks/.
 include!(concat!(env!("OUT_DIR"), "/block_registry.rs"));
 
-/// Constructs block properties from the registry.
-pub fn make(name: &str, lib: Option<&str>) -> Option<Box<DynBlockProps>> {
-    get_block(name, lib)?.make()
+/// Constructs the properties of the block registered under `name`,
+/// with `lib` resolved as [`get_block`] resolves it.
+///
+/// # Errors
+///
+/// Fails as [`get_block`] does, and with
+/// [`RegistryError::BlockNotFound`] for a description-only entry, whose
+/// implementation lives outside the registry.
+pub fn make(name: &str, lib: Option<&str>) -> Result<Box<DynBlockProps>, RegistryError> {
+    let entry = get_block(name, lib)?;
+    entry.make().ok_or_else(|| RegistryError::BlockNotFound {
+        library: entry.desc.library.clone(),
+        name: name.to_string(),
+    })
 }
 
 /// Schedules a block by name on `eng`, returning its UUID.
 ///
 /// The block must be statically registered, or registered at runtime
-/// via [`register`]. `lib` of [`None`] searches all libraries and errors
-/// if the name is ambiguous. Works with every engine: registered blocks
-/// meet the multi-threaded engine's [`Send`] + [`Sync`] requirement.
+/// via [`register`]. `lib` is resolved as [`get_block`] resolves it.
+/// Works with every engine: registered blocks meet the multi-threaded
+/// engine's [`Send`] + [`Sync`] requirement.
 ///
 /// # Examples
 ///
 /// ```
-/// use logic_mesh::{blocks::registry::schedule_block, single_threaded::SingleThreadedEngine};
+/// use logic_mesh::{
+///     base::engine::Engine, blocks::registry::schedule_block,
+///     single_threaded::SingleThreadedEngine,
+/// };
 ///
 /// let mut engine = SingleThreadedEngine::new();
 /// let id = schedule_block("Add", Some("core"), &mut engine)?;
@@ -352,28 +367,99 @@ where
     make_block_into(name, lib, Some(uuid), &mut ScheduleOn(eng))
 }
 
-/// Returns a block entry from the registry.
+/// Returns the entry of the block registered under `name`.
+///
+/// Every registry lookup that takes a library — this one,
+/// [`schedule_block`], [`eval_static_block`], [`make`] and the engine
+/// requests that name a block — resolves it the same way: `Some(lib)`
+/// looks only in library `lib`, and [`None`] searches every library,
+/// the core library included, for the one that holds a block named
+/// `name`.
+///
+/// # Errors
+///
+/// - [`RegistryError::BlockNotFound`] if `lib` is given and holds no
+///   block named `name`;
+/// - [`RegistryError::BlockNotRegistered`] if `lib` is [`None`] and no
+///   library holds one;
+/// - [`RegistryError::AmbiguousBlockName`] if `lib` is [`None`] and
+///   more than one library holds one: qualify the lookup with one of
+///   the libraries it lists.
 ///
 /// # Examples
 ///
 /// ```
 /// use logic_mesh::blocks::registry::get_block;
 ///
-/// let entry = get_block("Add", Some("core")).expect("Add exists");
+/// let entry = get_block("Add", Some("core"))?;
 /// assert_eq!(entry.desc.name, "Add");
 /// assert_eq!(entry.desc.category, "math");
+///
+/// // Unqualified, the name is looked up in every library.
+/// assert_eq!(get_block("Add", None)?.desc.library, "core");
+/// # Ok::<(), logic_mesh::RegistryError>(())
 /// ```
-pub fn get_block(name: &str, lib: Option<&str>) -> Option<BlockEntry> {
+pub fn get_block(name: &str, lib: Option<&str>) -> Result<BlockEntry, RegistryError> {
     let reg = BLOCKS.lock().expect("Block registry is locked");
-    let lib = lib.unwrap_or(CORE_LIB);
-
-    let reg = reg.get(lib)?;
-    reg.get(name).cloned()
+    resolve(&reg, name, lib).map(|(_, entry)| entry.clone())
 }
 
-/// Returns a core block entry.
-pub fn get_core_block(name: &str) -> Option<BlockEntry> {
+/// Returns the entry of the core block named `name` — [`get_block`]
+/// qualified by [`CORE_LIB`].
+///
+/// # Errors
+///
+/// Returns [`RegistryError::BlockNotFound`] if the core library holds
+/// no block named `name`.
+pub fn get_core_block(name: &str) -> Result<BlockEntry, RegistryError> {
     get_block(name, Some(CORE_LIB))
+}
+
+/// Finds the block registered under `name` and the library holding
+/// it, resolving `lib` as documented on [`get_block`].
+fn resolve<'r>(
+    reg: &'r MapType,
+    name: &str,
+    lib: Option<&str>,
+) -> Result<(&'r str, &'r BlockEntry), RegistryError> {
+    if let Some(lib) = lib {
+        return reg
+            .get_key_value(lib)
+            .and_then(|(lib, blocks)| Some((lib.as_str(), blocks.get(name)?)))
+            .ok_or_else(|| RegistryError::BlockNotFound {
+                library: lib.to_string(),
+                name: name.to_string(),
+            });
+    }
+
+    let mut matches = reg
+        .iter()
+        .filter_map(|(lib, blocks)| Some((lib.as_str(), blocks.get(name)?)));
+    match (matches.next(), matches.next()) {
+        (None, _) => Err(RegistryError::BlockNotRegistered {
+            name: name.to_string(),
+        }),
+        (Some(found), None) => Ok(found),
+        (Some(first), Some(second)) => {
+            let mut libraries: Vec<_> = [first, second]
+                .into_iter()
+                .chain(matches)
+                .map(|(lib, _)| lib.to_string())
+                .collect();
+            libraries.sort_unstable();
+            Err(RegistryError::AmbiguousBlockName {
+                name: name.to_string(),
+                libraries,
+            })
+        }
+    }
+}
+
+/// The library holding the block registered under `name`, resolving
+/// `lib` as documented on [`get_block`].
+fn resolve_library(name: &str, lib: Option<&str>) -> Result<String, RegistryError> {
+    let reg = BLOCKS.lock().expect("Block registry is locked");
+    resolve(&reg, name, lib).map(|(lib, _)| lib.to_string())
 }
 
 /// Returns all block descriptions from the registry.
@@ -495,7 +581,7 @@ impl<
 /// use logic_mesh::{
 ///     BlockProps, block,
 ///     base::block::{Block, BlockProps as _},
-///     base::input::input_reader::InputReader,
+///     base::input::InputReader,
 ///     base::output::Output,
 ///     blocks::{InputImpl, OutputImpl, registry},
 /// };
@@ -516,7 +602,7 @@ impl<
 /// }
 ///
 /// registry::register::<MyBlock>()?;
-/// assert!(registry::get_block("MyBlock", Some("my_lib")).is_some());
+/// assert!(registry::get_block("MyBlock", Some("my_lib")).is_ok());
 /// # Ok::<(), logic_mesh::RegistryError>(())
 /// ```
 pub fn register<B: RegisterableBlock>() -> Result<(), RegistryError> {
@@ -525,12 +611,13 @@ pub fn register<B: RegisterableBlock>() -> Result<(), RegistryError> {
     register_impl::<B>(&mut reg)
 }
 
-/// Instantiate a runtime-registered block by name. A qualified lookup
-/// (`lib` given) resolves directly in that library; an unqualified one
-/// searches all libraries and errors if the name is ambiguous.
+/// Instantiates the runtime-registered block `name` of library `lib`.
+///
+/// A description-only entry has nothing to instantiate, so it is
+/// reported as [`RegistryError::BlockNotFound`] too.
 fn make_registered(
     name: &str,
-    lib: Option<&str>,
+    lib: &str,
     uuid: Option<Uuid>,
 ) -> Result<RegisteredBlock, RegistryError> {
     // Resolve the constructor and release the lock before running it:
@@ -538,45 +625,14 @@ fn make_registered(
     // and a panicking one would poison the lock for the whole process.
     let make = {
         let reg = BLOCKS.lock().expect("Block registry is locked");
-
-        if let Some(lib) = lib {
-            reg.get(lib)
-                .and_then(|blocks| blocks.get(name))
-                .and_then(|entry| entry.factory)
-                .map(|factory| factory.make_erased)
-                .ok_or_else(|| RegistryError::BlockNotFound {
-                    library: lib.to_string(),
-                    name: name.to_string(),
-                })?
-        } else {
-            let matches: Vec<_> = reg
-                .iter()
-                .filter_map(|(lib, blocks)| {
-                    blocks
-                        .get(name)
-                        .and_then(|entry| entry.factory)
-                        .map(|factory| (lib.as_str(), factory.make_erased))
-                })
-                .collect();
-
-            match matches.as_slice() {
-                [] => {
-                    return Err(RegistryError::BlockNotRegistered {
-                        name: name.to_string(),
-                    });
-                }
-                [(_, make)] => *make,
-                _ => {
-                    let mut libraries: Vec<_> =
-                        matches.iter().map(|(lib, _)| lib.to_string()).collect();
-                    libraries.sort_unstable();
-                    return Err(RegistryError::AmbiguousBlockName {
-                        name: name.to_string(),
-                        libraries,
-                    });
-                }
-            }
-        }
+        resolve(&reg, name, Some(lib))?
+            .1
+            .factory
+            .map(|factory| factory.make_erased)
+            .ok_or_else(|| RegistryError::BlockNotFound {
+                library: lib.to_string(),
+                name: name.to_string(),
+            })?
     };
 
     Ok(make(uuid))
@@ -585,18 +641,13 @@ fn make_registered(
 /// Evaluates a runtime-registered block. Fallback used by
 /// [`eval_static_block`] when the name doesn't match a statically
 /// compiled block.
-#[doc(hidden)]
-pub async fn eval_registered(
-    name: &str,
-    lib: Option<&str>,
-    inputs: Vec<Value>,
-) -> Result<Vec<Value>> {
+async fn eval_registered(name: &str, lib: &str, inputs: Vec<Value>) -> Result<Vec<Value>> {
     let mut block = make_registered(name, lib, None)?;
     eval_block_impl(&mut block, inputs).await
 }
 
 /// Evaluates `block` directly with the given `inputs`.
-pub async fn eval_block_impl<B: Block<Reader = ReaderImpl, Writer = WriterImpl>>(
+pub(crate) async fn eval_block_impl<B: Block<Reader = ReaderImpl, Writer = WriterImpl>>(
     block: &mut B,
     inputs: Vec<Value>,
 ) -> Result<Vec<Value>> {
@@ -664,7 +715,7 @@ fn register_impl<B: RegisterableBlock>(reg: &mut MapType) -> Result<(), Registry
 #[cfg(test)]
 mod test {
 
-    use crate::base::block::connect::connect_output;
+    use crate::base::block::connect_output;
     use crate::base::error::Error;
     use assert_matches::assert_matches;
 
@@ -753,6 +804,7 @@ mod test {
 
     mod runtime_registered {
         use super::super::*;
+        use super::{Error, assert_matches};
         use crate::base::block::Block;
         use crate::blocks::{InputImpl, OutputImpl};
 
@@ -770,7 +822,7 @@ mod test {
         impl Block for Increment {
             async fn execute(&mut self) {
                 use crate::base::input::InputProps;
-                use crate::base::input::input_reader::InputReader;
+                use crate::base::input::InputReader;
                 use crate::base::output::Output;
 
                 self.read_inputs_until_ready().await;
@@ -810,24 +862,34 @@ mod test {
 
         /// A description-only entry — how JS blocks are registered —
         /// carries no factory, so it cannot be built by the registry.
+        /// It is a registered block all the same: an unqualified lookup
+        /// finds it, and it makes a name it shares ambiguous.
         #[test]
         fn description_only_entry_has_no_factory() {
             let mut desc =
                 <Increment as crate::base::block::BlockStaticDesc>::static_desc().clone();
+            desc.name = "DescOnly".to_string();
             desc.library = "desc_only_test".to_string();
             register_block_desc(&desc).expect("registered");
 
-            let entry = get_block("Increment", Some("desc_only_test")).expect("entry");
+            let entry = get_block("DescOnly", None).expect("entry");
+            assert_eq!(entry.desc.library, "desc_only_test");
             assert!(entry.make().is_none());
+            assert_matches!(
+                make("DescOnly", Some("desc_only_test")).map(|_| ()),
+                Err(RegistryError::BlockNotFound { library, .. }) if library == "desc_only_test"
+            );
 
             let mut eng = crate::single_threaded::SingleThreadedEngine::new();
-            let err = schedule_block("Increment", Some("desc_only_test"), &mut eng)
-                .expect_err("nothing to construct");
-            assert_matches::assert_matches!(
-                err,
-                crate::base::error::Error::Registry(RegistryError::BlockNotFound { library, .. })
-                    if library == "desc_only_test"
-            );
+            for lib in [Some("desc_only_test"), None] {
+                let err =
+                    schedule_block("DescOnly", lib, &mut eng).expect_err("nothing to construct");
+                assert_matches!(
+                    err,
+                    Error::Registry(RegistryError::BlockNotFound { library, .. })
+                        if library == "desc_only_test"
+                );
+            }
         }
 
         #[tokio::test]
@@ -888,6 +950,62 @@ mod test {
             assert_eq!(
                 err.to_string(),
                 "Block name 'Clash' is ambiguous across libraries: 'clash_lib_a', 'clash_lib_b'"
+            );
+        }
+
+        /// Regression: an unqualified `get_block` looked in the core
+        /// library only, where `schedule_block` searched every library.
+        #[test]
+        fn unqualified_lookup_searches_every_library() {
+            let _ = register::<Increment>();
+
+            let entry = get_block("Increment", None).expect("found in its own library");
+            assert_eq!(entry.desc.library, "runtime_test");
+            assert_eq!(get_block("Add", None).expect("core").desc.library, CORE_LIB);
+            assert_matches!(
+                get_block("Increment", Some(CORE_LIB)),
+                Err(RegistryError::BlockNotFound { library, .. }) if library == CORE_LIB
+            );
+        }
+
+        #[test]
+        fn unqualified_lookup_rejects_an_ambiguous_name() {
+            let _ = register::<lib_a::Clash>();
+            let _ = register::<lib_b::Clash>();
+
+            assert_matches!(
+                get_block("Clash", None),
+                Err(RegistryError::AmbiguousBlockName { name, libraries })
+                    if name == "Clash" && libraries == ["clash_lib_a", "clash_lib_b"]
+            );
+            assert!(make("Clash", None).is_err());
+            assert!(get_block("Clash", Some("clash_lib_b")).is_ok());
+        }
+
+        #[test]
+        fn unknown_names_report_what_was_searched() {
+            assert_matches!(
+                get_block("NoSuchBlock", None),
+                Err(RegistryError::BlockNotRegistered { name }) if name == "NoSuchBlock"
+            );
+            assert_matches!(
+                get_block("NoSuchBlock", Some("no_such_lib")),
+                Err(RegistryError::BlockNotFound { library, name })
+                    if library == "no_such_lib" && name == "NoSuchBlock"
+            );
+        }
+
+        /// An unqualified evaluation resolves the name like every other
+        /// lookup: it is rejected when ambiguous rather than picking a
+        /// library.
+        #[tokio::test]
+        async fn unqualified_eval_rejects_an_ambiguous_name() {
+            let _ = register::<lib_a::Clash>();
+            let _ = register::<lib_b::Clash>();
+
+            assert_matches!(
+                eval_static_block("Clash", None, vec![]).await,
+                Err(Error::Registry(RegistryError::AmbiguousBlockName { .. }))
             );
         }
 

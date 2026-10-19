@@ -2,10 +2,10 @@
 
 //! Time-related blocks.
 
-pub mod calendar;
-pub mod now;
-pub mod schedule;
-pub mod sun;
+mod calendar;
+mod now;
+mod schedule;
+mod sun;
 
 // Re-export implementations working with inputs and outputs
 pub use calendar::Calendar;

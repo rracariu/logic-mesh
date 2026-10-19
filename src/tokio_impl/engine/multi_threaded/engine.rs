@@ -22,17 +22,23 @@
 //! The engine assumes it is running inside a tokio multi-thread runtime
 //! (`#[tokio::main(flavor = "multi_thread")]` or a manually-constructed
 //! `Runtime::new`). It does not create worker threads or runtimes of its
-//! own — that's the caller's responsibility.
+//! own — that's the caller's responsibility, and so is enabling tokio's
+//! `rt-multi-thread`, which this crate never does (see the public
+//! module docs).
 
 use std::collections::BTreeMap;
 use std::marker::PhantomData;
 use std::sync::Arc;
+use std::time::Duration;
 
-use crate::base::error::{EngineError, RegistryError, Result, parse_block_uuid};
+use futures::future::BoxFuture;
+use tokio::runtime::Handle;
+
+use crate::base::error::{EngineError, Result, parse_block_uuid};
 use libhaystack::val::Value;
 use tokio::sync::{
     RwLock,
-    mpsc::{self, Receiver, Sender, UnboundedSender},
+    mpsc::{self, Receiver, Sender},
     watch,
 };
 use uuid::Uuid;
@@ -46,19 +52,16 @@ use crate::base::{
     block::{Block, BlockDesc},
     engine::{
         Engine, EngineState, Idle, MaybeSendSync, Running,
-        messages::{BlockDefinition, EngineMessage, WatchMessage},
+        messages::{BlockDefinition, EngineMessage},
     },
-    program::{Program, data::LinkData},
+    program::{LinkData, Position, Program},
 };
-use crate::blocks::registry::{BlockSink, CORE_LIB, get_block};
-use crate::tokio_impl::engine::{ensure_schedulable_mt, phase_name, schedule_block_on_engine_mt};
+use crate::blocks::registry::{BlockSink, get_block};
+use crate::tokio_impl::engine::{
+    Messages, ensure_schedulable_mt, phase_name, schedule_block_on_engine_mt,
+};
+use crate::tokio_impl::scan::ScanInterval;
 use crate::tokio_impl::{MtBlock, ReaderImpl, WriterImpl};
-
-/// Concrete engine-message type.
-///
-/// The watch-event sender is unbounded — see `wasm/engine_command.rs`
-/// `create_watch` for the rationale.
-pub type Messages = EngineMessage<UnboundedSender<WatchMessage>>;
 
 /// Multi-threaded execution environment for blocks.
 ///
@@ -68,11 +71,15 @@ pub type Messages = EngineMessage<UnboundedSender<WatchMessage>>;
 ///
 /// # Examples
 ///
+/// `#[tokio::main]` builds a multi-thread runtime, so the application's
+/// tokio needs its `rt-multi-thread` feature — see
+/// [Runtime](crate::multi_threaded#runtime).
+///
 /// ```no_run
 /// use logic_mesh::{
-///     base::block::{Block, BlockProps, connect::connect_output},
-///     base::engine::Engine,
+///     base::block::connect_output,
 ///     blocks::{math::Add, misc::SineWave},
+///     prelude::*,
 ///     multi_threaded::MultiThreadedEngine,
 /// };
 ///
@@ -109,6 +116,8 @@ pub struct MultiThreadedEngine<S: EngineState = Idle> {
     /// runtime from `schedule` on and keep serving their mailbox either
     /// way; the gate is what holds their blocks while idle or paused.
     execution: watch::Sender<bool>,
+    /// The scan interval every block actor task runs with.
+    scan: ScanInterval,
     /// The lifecycle phase, tracked in the type only.
     state: PhantomData<S>,
 }
@@ -120,8 +129,9 @@ impl Default for MultiThreadedEngine {
 }
 
 /// Shows the engine's phase, whether its blocks may execute, how many
-/// blocks, links and staged programs it holds and the connectors it
-/// manages — not the blocks or channels themselves.
+/// blocks, links and staged programs it holds, the connectors it
+/// manages and its scan interval — not the blocks or channels
+/// themselves.
 impl<S: EngineState> std::fmt::Debug for MultiThreadedEngine<S> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("MultiThreadedEngine")
@@ -131,6 +141,7 @@ impl<S: EngineState> std::fmt::Debug for MultiThreadedEngine<S> {
             .field("links", &self.graph.link_count())
             .field("pending_programs", &self.pending.len())
             .field("connectors", &self.connectors.as_slice())
+            .field("scan_interval", &self.scan.get())
             .finish_non_exhaustive()
     }
 }
@@ -139,15 +150,20 @@ impl Engine for MultiThreadedEngine<Idle> {
     type Writer = WriterImpl;
     type Reader = ReaderImpl;
     type Channel = Sender<Messages>;
+    type RunFuture = BoxFuture<'static, Self>;
 
     /// Schedules a block on the engine. The [`Send`] + [`Sync`] bound
     /// lets the actor task go to [`tokio::spawn`], where the runtime is
     /// free to migrate it between worker threads.
     ///
-    /// Must be called from within a tokio multi-thread runtime context
-    /// (`#[tokio::main(flavor = "multi_thread")]`, `Runtime::block_on`,
-    /// or an already-spawned task on such a runtime). Calling this
-    /// outside a runtime panics — that's a [`tokio::spawn`] invariant.
+    /// # Errors
+    ///
+    /// Besides the errors every engine reports, returns
+    /// [`EngineError::NoRuntime`] when called outside a tokio runtime
+    /// (`#[tokio::main]`, `Runtime::block_on`, or a task spawned on
+    /// one): the block's actor task is spawned onto the ambient
+    /// runtime as it is scheduled. The same holds for every other way
+    /// of scheduling a block on this engine.
     fn schedule<B>(&mut self, block: B) -> Result<()>
     where
         B: Block<Writer = Self::Writer, Reader = Self::Reader> + MaybeSendSync + 'static,
@@ -163,10 +179,50 @@ impl Engine for MultiThreadedEngine<Idle> {
         Ok(())
     }
 
-    async fn run(self) -> Self {
-        let mut engine = self.into_state::<Running>();
-        engine.event_loop().await;
-        engine.into_state()
+    fn add_connector(&mut self, name: &str, handle: impl Into<ConnectorHandle>) -> Result<()> {
+        register_connector(name, handle)?;
+        self.connectors.push(name.to_string());
+        Ok(())
+    }
+
+    fn connector_names(&self) -> Vec<String> {
+        self.connectors.to_vec()
+    }
+
+    fn block_handles(&self) -> Vec<&BlockHandle> {
+        self.graph.handles()
+    }
+
+    fn block_handle(&self, id: &Uuid) -> Option<&BlockHandle> {
+        self.graph.handle(id)
+    }
+
+    fn set_block_metadata(
+        &mut self,
+        id: &Uuid,
+        label: Option<String>,
+        position: Option<Position>,
+    ) -> Result<()> {
+        Ok(self.graph.set_metadata(id, label, position)?)
+    }
+
+    fn scan_interval(&self) -> Duration {
+        self.scan.get()
+    }
+
+    fn set_scan_interval(&mut self, interval: Duration) {
+        self.scan.set(interval);
+    }
+
+    fn run(self) -> Self::RunFuture {
+        // The event loop evaluates blocks too (`EvaluateBlockReq`), so it
+        // runs with the engine's scan interval like the actor tasks.
+        let scan = self.scan.clone();
+        Box::pin(scan.scope(async move {
+            let mut engine = self.into_state::<Running>();
+            engine.event_loop().await;
+            engine.into_state()
+        }))
     }
 
     fn create_message_channel(
@@ -195,35 +251,9 @@ impl MultiThreadedEngine<Idle> {
             watchers: Arc::new(RwLock::new(BTreeMap::new())),
             connectors: ManagedConnectors::default(),
             execution: watch::Sender::new(false),
+            scan: ScanInterval::default(),
             state: PhantomData,
         }
-    }
-
-    /// Registers `handle` in the process-wide connector registry under
-    /// `name` and puts it under this engine's lifecycle management.
-    ///
-    /// The engine awaits the connector's `start` when [`run`](Engine::run)
-    /// begins — before pending links are wired, before any block
-    /// executes and before any engine message is serviced — and its
-    /// `stop` on shutdown; the connector stays registered so a re-run
-    /// picks it up again. A reset unregisters the connector first and
-    /// then stops it. Dropping the engine unregisters any still-tracked
-    /// connectors without awaiting `stop`. Start/stop failures and
-    /// timeouts are logged, not fatal.
-    ///
-    /// Connectors own their IO loops: spawn them from `start` via the
-    /// ambient `tokio::spawn` and wind them down in `stop`. Pausing the
-    /// engine does not pause these tasks — pause only stops block
-    /// execution.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if a connector with this name is already
-    /// registered.
-    pub fn add_connector(&mut self, name: &str, handle: impl Into<ConnectorHandle>) -> Result<()> {
-        register_connector(name, handle)?;
-        self.connectors.push(name.to_string());
-        Ok(())
     }
 }
 
@@ -239,6 +269,7 @@ impl<S: EngineState> MultiThreadedEngine<S> {
             watchers,
             connectors,
             execution,
+            scan,
             state: _,
         } = self;
         MultiThreadedEngine {
@@ -250,6 +281,7 @@ impl<S: EngineState> MultiThreadedEngine<S> {
             watchers,
             connectors,
             execution,
+            scan,
             state: PhantomData,
         }
     }
@@ -258,22 +290,6 @@ impl<S: EngineState> MultiThreadedEngine<S> {
     fn set_execution(&self, open: bool) {
         self.execution
             .send_if_modified(|current| std::mem::replace(current, open) != open);
-    }
-
-    /// The names of the connectors this engine manages.
-    pub fn connector_names(&self) -> Vec<String> {
-        self.connectors.to_vec()
-    }
-
-    /// Returns sync metadata handles for every scheduled block. Use the
-    /// async snapshot APIs (`inspect_block`, etc.) to read dynamic state.
-    pub fn block_handles(&self) -> Vec<&BlockHandle> {
-        self.graph.handles()
-    }
-
-    /// Returns the handle for a specific block, if scheduled.
-    pub fn block_handle(&self, id: &Uuid) -> Option<&BlockHandle> {
-        self.graph.handle(id)
     }
 
     /// Spawns `block`'s actor task onto the ambient runtime and records
@@ -286,16 +302,20 @@ impl<S: EngineState> MultiThreadedEngine<S> {
     where
         B: MtBlock + 'static,
     {
+        // Checked before the block is recorded, so a failed schedule
+        // leaves no handle without an actor behind.
+        let runtime =
+            Handle::try_current().map_err(|_| EngineError::NoRuntime { id: *block.id() })?;
         let (mailbox_tx, mailbox_rx) = mpsc::channel::<BlockMailboxCmd>(BLOCK_MAILBOX_CAP);
         self.graph.insert(&block, mailbox_tx)?;
 
         let watchers = self.watchers.clone();
-        tokio::spawn(block_actor_task(
+        runtime.spawn(self.scan.scope(block_actor_task(
             block,
             mailbox_rx,
             watchers,
             self.execution.subscribe(),
-        ));
+        )));
         Ok(())
     }
 }
@@ -407,12 +427,7 @@ impl MultiThreadedEngine<Running> {
         block_id: Option<Uuid>,
         lib: Option<String>,
     ) -> Result<Uuid> {
-        let block_def = get_block(block_name.as_str(), lib.as_deref()).ok_or_else(|| {
-            RegistryError::BlockNotFound {
-                library: lib.as_deref().unwrap_or(CORE_LIB).to_string(),
-                name: block_name.clone(),
-            }
-        })?;
+        let block_def = get_block(block_name.as_str(), lib.as_deref())?;
         schedule_block_on_engine_mt(&block_def.desc, block_id, self)
     }
 
@@ -527,15 +542,14 @@ impl MultiThreadedEngine<Running> {
             }
 
             EngineMessage::EvaluateBlockReq(sender_uuid, name, inputs, lib) => {
-                let Some(block) = get_block(name.as_str(), lib.as_deref()) else {
-                    let err = RegistryError::BlockNotFound {
-                        library: lib.as_deref().unwrap_or(CORE_LIB).to_string(),
-                        name,
-                    };
-                    return self.reply_to_sender(
-                        sender_uuid,
-                        EngineMessage::EvaluateBlockRes(Err(err.to_string())),
-                    );
+                let block = match get_block(name.as_str(), lib.as_deref()) {
+                    Ok(block) => block,
+                    Err(err) => {
+                        return self.reply_to_sender(
+                            sender_uuid,
+                            EngineMessage::EvaluateBlockRes(Err(err.to_string())),
+                        );
+                    }
                 };
                 let response = crate::tokio_impl::engine::eval_block(&block.desc, inputs).await;
                 self.reply_to_sender(
@@ -625,7 +639,7 @@ impl MultiThreadedEngine<Running> {
             EngineMessage::ListConnectorsReq(sender_uuid) => {
                 log::debug!("ListConnectorsReq");
 
-                let res = Ok(self.connector_names());
+                let res = Ok(self.connectors.to_vec());
                 self.reply_to_sender(sender_uuid, EngineMessage::ListConnectorsRes(res));
             }
 
@@ -641,7 +655,7 @@ mod test {
     use std::time::Duration;
 
     use crate::base;
-    use crate::base::program::data::LinkData;
+    use crate::base::program::LinkData;
     use crate::blocks::{math::Add, misc::SineWave};
     use base::block::{BlockConnect, BlockProps};
     use base::engine::messages::EngineMessage::{InspectBlockReq, InspectBlockRes, Shutdown};
@@ -670,7 +684,7 @@ mod test {
         assert_eq!(
             format!("{eng:?}"),
             "MultiThreadedEngine { phase: \"Idle\", executing: false, blocks: 2, links: 1, \
-             pending_programs: 0, connectors: [], .. }"
+             pending_programs: 0, connectors: [], scan_interval: 200ms, .. }"
         );
         assert_eq!(
             format!("{:?}", eng.block_handle(&target_id).expect("scheduled")),
@@ -683,7 +697,7 @@ mod test {
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
     async fn multi_threaded_engine_test() {
-        use crate::base::block::connect::connect_output;
+        use crate::base::block::connect_output;
 
         let mut add1 = Add::new();
         let add_uuid = *add1.id();
@@ -1012,6 +1026,14 @@ mod test {
         async fn a_registered_block_loads_and_saves() {
             runtime_descs::a_registered_block_loads_and_saves(MultiThreadedEngine::new()).await;
         }
+
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn a_registered_block_is_found_by_its_name_alone() {
+            runtime_descs::a_registered_block_is_found_by_its_name_alone(
+                MultiThreadedEngine::new(),
+            )
+            .await;
+        }
     }
 
     /// Regression: see the single-threaded `atomic_loads`.
@@ -1078,6 +1100,92 @@ mod test {
             )
             .await;
         }
+    }
+
+    /// Regression: see the single-threaded `scan_intervals`.
+    mod scan_intervals {
+        use super::*;
+        use crate::tokio_impl::engine::test_support::scan_intervals;
+
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn each_engine_keeps_its_own_scan_interval() {
+            scan_intervals::each_engine_keeps_its_own_scan_interval(
+                MultiThreadedEngine::new(),
+                MultiThreadedEngine::new(),
+            )
+            .await;
+        }
+
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn a_new_scan_interval_reaches_scheduled_blocks() {
+            scan_intervals::a_new_scan_interval_reaches_scheduled_blocks(
+                MultiThreadedEngine::new(),
+            )
+            .await;
+        }
+    }
+
+    /// Regression: see the single-threaded `configuration`.
+    mod configuration {
+        use super::*;
+        use crate::tokio_impl::engine::test_support::configuration;
+
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn an_engine_is_configured_through_the_trait() {
+            configuration::an_engine_is_configured_through_the_trait(MultiThreadedEngine::new())
+                .await;
+        }
+    }
+
+    /// Regression: scheduling outside a tokio runtime panicked inside
+    /// `tokio::spawn`, although `schedule` returns a `Result`.
+    #[test]
+    fn scheduling_outside_a_runtime_is_an_error() {
+        use crate::blocks::registry::{CORE_LIB, schedule_block};
+        use crate::tokio_impl::engine::test_support::add_program;
+        use crate::{EngineError, Error};
+        use assert_matches::assert_matches;
+
+        let mut eng = MultiThreadedEngine::new();
+        let add = Add::new();
+        let id = *add.id();
+        assert_matches!(
+            eng.schedule(add),
+            Err(Error::Engine(EngineError::NoRuntime { id: refused })) if refused == id
+        );
+        assert_matches!(
+            schedule_block("Add", Some(CORE_LIB), &mut eng),
+            Err(Error::Engine(EngineError::NoRuntime { .. }))
+        );
+        let program = add_program([Uuid::new_v4().to_string().as_str()]);
+        assert_matches!(
+            eng.schedule_program_blocks(&program),
+            Err(Error::Engine(EngineError::NoRuntime { .. }))
+        );
+        assert!(eng.block_handles().is_empty());
+    }
+
+    /// The multi-threaded engine's run future is `Send`, and code
+    /// generic over [`Engine`] can require that and spawn it.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn generic_code_can_spawn_the_run_future() {
+        fn spawn_run<E>(engine: E) -> tokio::task::JoinHandle<E>
+        where
+            E: Engine + Send + 'static,
+            E::RunFuture: Send + 'static,
+        {
+            tokio::spawn(engine.run())
+        }
+
+        let mut eng = MultiThreadedEngine::new();
+        let (reply, _replies) = mpsc::channel(1);
+        let sender = eng.create_message_channel(Uuid::new_v4(), reply);
+        let running = spawn_run(eng);
+        sender.send(Shutdown).await.expect("engine listening");
+        tokio::time::timeout(Duration::from_secs(5), running)
+            .await
+            .expect("engine shut down")
+            .expect("run task completed");
     }
 
     /// Regression: see the single-threaded `rejections`.

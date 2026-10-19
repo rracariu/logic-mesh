@@ -143,7 +143,7 @@ mod test {
     use super::InputImpl;
     use crate::base::{
         Status,
-        block::connect::connect_input,
+        block::connect_input,
         input::{Input, InputProps},
     };
 

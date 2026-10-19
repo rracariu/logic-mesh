@@ -4,7 +4,7 @@
 
 use crate::base::{
     block::{Block, BlockProps},
-    input::input_reader::InputReader,
+    input::InputReader,
     output::Output,
 };
 

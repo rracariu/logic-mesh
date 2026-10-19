@@ -34,6 +34,14 @@ workspace = true
 
 [features]
 default = []
+# The multi-threaded engine, for a tokio multi-thread runtime. Native
+# targets only: wasm32 has no threads to run it on, and there the
+# feature adds nothing. It enables no tokio feature: the engine only
+# spawns onto the runtime it is called from, and the application that
+# builds that runtime enables `rt-multi-thread` on its own tokio. Cargo
+# cannot enable a dependency feature for one target only, and tokio
+# rejects `rt-multi-thread` on wasm32, so enabling it here would break
+# every wasm32 build of a crate that turns this feature on.
 multi-threaded = []
 
 [lib]
@@ -56,17 +64,12 @@ futures = "^0.3"
 rand = "^0.9"
 thiserror = "^2.0"
 log = "^0.4"
-
-[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-tokio = { version = "^1.50", features = [
-	"rt-multi-thread",
-	"sync",
-	"time",
-	"macros",
-] }
+# The engines need the scheduler-independent runtime pieces (`rt`)
+# only, natively as on wasm32; which runtime drives them is the
+# application's choice.
+tokio = { version = "^1.50", features = ["rt", "sync", "time", "macros"] }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
-tokio = { version = "^1.50", features = ["rt", "sync", "time", "macros"] }
 uuid = { version = "^1.23", features = ["v4", "js"] }
 wasm-bindgen = { version = "^0.2", features = ["serde-serialize"] }
 serde-wasm-bindgen = "^0.6"
@@ -96,6 +99,13 @@ anyhow = "^1.0"
 ratatui = "^0.30"
 crossterm = "^0.29"
 serde_json = "^1.0"
+
+# The tests drive engines from a multi-thread runtime on a thread of
+# their own, and the multi-threaded engine's doctest runs on one, as an
+# application's would: like an application, they enable the runtime
+# flavor they use on their own tokio.
+[target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
+tokio = { version = "^1.50", features = ["rt-multi-thread", "macros"] }
 
 [[example]]
 name = "minimal"

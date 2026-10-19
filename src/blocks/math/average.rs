@@ -5,7 +5,7 @@
 use crate::{
     base::{
         block::{Block, BlockProps, BlockState},
-        input::input_reader::InputReader,
+        input::InputReader,
         output::Output,
     },
     blocks::utils::convert_units,
@@ -70,9 +70,7 @@ impl Block for Average {
 mod test {
 
     use crate::base::block::test_utils::write_block_inputs;
-    use crate::{
-        base::block::Block, base::input::input_reader::InputReader, blocks::math::Average,
-    };
+    use crate::{base::block::Block, base::input::InputReader, blocks::math::Average};
 
     #[tokio::test]
     async fn test_average_block() {

@@ -41,6 +41,12 @@ jobs:
         if: matrix.features == ''
         run: cargo check -p logic-mesh --all-targets
 
+      # The library alone, without the dev-dependencies, whose tokio
+      # enables `rt-multi-thread` for the tests: logic-mesh itself must
+      # build without it, whatever the features.
+      - name: Run cargo check (logic-mesh library)
+        run: cargo check -p logic-mesh --lib ${{ matrix.features && format('--features {0}', matrix.features) || '' }}
+
   test:
     name: Test Suite (${{ matrix.features == '' && 'default' || matrix.features }})
     runs-on: ubuntu-latest
@@ -189,6 +195,12 @@ jobs:
       # which do not build for wasm32.
       - name: Run cargo clippy
         run: cargo clippy --lib --target wasm32-unknown-unknown -- -D warnings
+
+      # A cross-platform crate that turns on `multi-threaded` builds
+      # logic-mesh for wasm32 with it, so every feature must build
+      # there, even one that adds nothing on wasm32.
+      - name: Run cargo clippy (all features)
+        run: cargo clippy --lib --target wasm32-unknown-unknown --all-features -- -D warnings
 
   package:
     name: Package

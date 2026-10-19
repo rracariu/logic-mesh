@@ -9,10 +9,10 @@
 
 use crate::base::engine::{Running, messages::EngineMessage};
 
-use crate::base::error::{RegistryError, parse_block_uuid};
-use crate::blocks::registry::{CORE_LIB, get_block};
-use crate::single_threaded::Messages;
+use crate::base::error::parse_block_uuid;
+use crate::blocks::registry::get_block;
 use crate::single_threaded::SingleThreadedEngine;
+use crate::tokio_impl::engine::Messages;
 use uuid::Uuid;
 
 use super::eval_block;
@@ -68,16 +68,15 @@ pub(super) async fn dispatch_message(engine: &mut SingleThreadedEngine<Running>,
         }
 
         EngineMessage::EvaluateBlockReq(sender_uuid, name, inputs, lib) => {
-            let Some(block) = get_block(name.as_str(), lib.as_deref()) else {
-                let err = RegistryError::BlockNotFound {
-                    library: lib.as_deref().unwrap_or(CORE_LIB).to_string(),
-                    name,
-                };
-                return reply_to_sender(
-                    engine,
-                    sender_uuid,
-                    EngineMessage::EvaluateBlockRes(Err(err.to_string())),
-                );
+            let block = match get_block(name.as_str(), lib.as_deref()) {
+                Ok(block) => block,
+                Err(err) => {
+                    return reply_to_sender(
+                        engine,
+                        sender_uuid,
+                        EngineMessage::EvaluateBlockRes(Err(err.to_string())),
+                    );
+                }
             };
 
             let response = eval_block(&block.desc, inputs).await;
@@ -197,7 +196,7 @@ pub(super) async fn dispatch_message(engine: &mut SingleThreadedEngine<Running>,
         EngineMessage::ListConnectorsReq(sender_uuid) => {
             log::debug!("ListConnectorsReq");
 
-            let res = Ok(engine.connector_names());
+            let res = Ok(engine.managed_connectors());
             reply_to_sender(engine, sender_uuid, EngineMessage::ListConnectorsRes(res));
         }
 

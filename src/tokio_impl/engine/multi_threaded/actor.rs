@@ -168,7 +168,7 @@ mod test {
 
     use super::block_actor_task;
     use crate::base::Status;
-    use crate::base::block::connect::connect_output;
+    use crate::base::block::connect_output;
     use crate::base::engine::messages::BlockDefinition;
     use crate::base::input::Input;
     use crate::blocks::{InputImpl, math::Add};

@@ -52,10 +52,21 @@
 //!   description, and unregisters the managed connectors, whether or
 //!   not the engine is paused. A paused engine stays paused.
 
+use std::future::Future;
+use std::time::Duration;
+
+use uuid::Uuid;
+
+use super::connector::ConnectorHandle;
 use super::error::Result;
-use super::{block::Block, program::Program};
+use super::{
+    block::Block,
+    program::{Position, Program},
+};
 
 pub mod messages;
+
+pub use crate::tokio_impl::engine::{BlockHandle, Messages};
 
 mod sealed {
     pub trait Sealed {}
@@ -81,6 +92,10 @@ impl sealed::Sealed for Idle {}
 impl sealed::Sealed for Running {}
 impl EngineState for Idle {}
 impl EngineState for Running {}
+
+impl sealed::Sealed for crate::single_threaded::SingleThreadedEngine<Idle> {}
+#[cfg(all(feature = "multi-threaded", not(target_arch = "wasm32")))]
+impl sealed::Sealed for crate::multi_threaded::MultiThreadedEngine<Idle> {}
 
 /// [`Send`] + [`Sync`] on native targets; no bound on `wasm32`.
 ///
@@ -111,6 +126,10 @@ impl<T: ?Sized> MaybeSendSync for T {}
 /// Implemented by engines in the [`Idle`] phase; see the
 /// [module docs](self) for the phase model.
 ///
+/// Sealed — implemented by this crate's engines only, so that methods
+/// can be added to it without a breaking change. Code generic over the
+/// engines takes an `E: Engine`.
+///
 /// # Examples
 ///
 /// ```no_run
@@ -120,7 +139,7 @@ impl<T: ?Sized> MaybeSendSync for T {}
 ///     single_threaded::SingleThreadedEngine,
 /// };
 ///
-/// # #[tokio::main]
+/// # #[tokio::main(flavor = "current_thread")]
 /// # async fn main() -> Result<(), Box<dyn std::error::Error>> {
 /// let mut engine = SingleThreadedEngine::new();
 /// engine.schedule(Add::new())?;
@@ -129,7 +148,7 @@ impl<T: ?Sized> MaybeSendSync for T {}
 /// # Ok(())
 /// # }
 /// ```
-pub trait Engine: Sized {
+pub trait Engine: sealed::Sealed + Sized {
     /// The transmission type of the blocks.
     type Writer;
     /// The reception type of the blocks.
@@ -137,6 +156,28 @@ pub trait Engine: Sized {
 
     /// The type used to send messages to/from this engine.
     type Channel: Send + Sync + Clone;
+
+    /// The future [`run`](Self::run) returns.
+    ///
+    /// A named type rather than an `async fn`, so generic code can
+    /// require what it needs of it — `E::RunFuture: Send` to hand an
+    /// engine's run to [`tokio::spawn`]. The multi-threaded engine's is
+    /// [`Send`]; the single-threaded engine's is not, since its blocks
+    /// live on a [`LocalSet`](tokio::task::LocalSet).
+    ///
+    /// ```
+    /// use logic_mesh::base::engine::Engine;
+    ///
+    /// /// Runs `engine` on its own task until it shuts down.
+    /// fn spawn_engine<E>(engine: E) -> tokio::task::JoinHandle<E>
+    /// where
+    ///     E: Engine + Send + 'static,
+    ///     E::RunFuture: Send + 'static,
+    /// {
+    ///     tokio::spawn(engine.run())
+    /// }
+    /// ```
+    type RunFuture: Future<Output = Self>;
 
     /// Schedules a block to be executed by this engine.
     ///
@@ -149,7 +190,7 @@ pub trait Engine: Sized {
     ///
     /// # Errors
     ///
-    /// Returns [`EngineError::DuplicateBlockId`](crate::base::error::EngineError::DuplicateBlockId)
+    /// Returns [`EngineError::DuplicateBlockId`](crate::EngineError::DuplicateBlockId)
     /// if a block with the same id is already scheduled — a scheduled
     /// block is never replaced.
     ///
@@ -208,23 +249,97 @@ pub trait Engine: Sized {
     /// blocks is scheduled, and a program failing a check schedules
     /// nothing. The checks: every block id parses and is neither
     /// scheduled already nor named twice in `program`
-    /// ([`EngineError::DuplicateBlockId`](crate::base::error::EngineError::DuplicateBlockId));
+    /// ([`EngineError::DuplicateBlockId`](crate::EngineError::DuplicateBlockId));
     /// every block type resolves and the engine can host it; every pin
     /// a saved value names exists
-    /// ([`EngineError::InputNotFound`](crate::base::error::EngineError::InputNotFound),
-    /// [`EngineError::OutputNotFound`](crate::base::error::EngineError::OutputNotFound));
+    /// ([`EngineError::InputNotFound`](crate::EngineError::InputNotFound),
+    /// [`EngineError::OutputNotFound`](crate::EngineError::OutputNotFound));
     /// every link id parses and is free
-    /// ([`EngineError::InvalidLinkUuid`](crate::base::error::EngineError::InvalidLinkUuid),
-    /// [`EngineError::DuplicateLinkId`](crate::base::error::EngineError::DuplicateLinkId));
+    /// ([`EngineError::InvalidLinkUuid`](crate::EngineError::InvalidLinkUuid),
+    /// [`EngineError::DuplicateLinkId`](crate::EngineError::DuplicateLinkId));
     /// every link joins existing pins
-    /// ([`EngineError::PinNotFound`](crate::base::error::EngineError::PinNotFound))
+    /// ([`EngineError::PinNotFound`](crate::EngineError::PinNotFound))
     /// of blocks of `program`
-    /// ([`EngineError::LinkBlockNotInProgram`](crate::base::error::EngineError::LinkBlockNotInProgram)),
+    /// ([`EngineError::LinkBlockNotInProgram`](crate::EngineError::LinkBlockNotInProgram)),
     /// and no two links join the same pins
-    /// ([`EngineError::DuplicateLink`](crate::base::error::EngineError::DuplicateLink)).
+    /// ([`EngineError::DuplicateLink`](crate::EngineError::DuplicateLink)).
     /// A link the blocks still reject when `run` wires it, or a pin value
     /// they reject, is dropped with a warning.
     fn schedule_program_blocks(&mut self, program: &Program) -> Result<()>;
+
+    /// Registers `handle` in the process-wide connector registry under
+    /// `name` and puts it under this engine's lifecycle management.
+    ///
+    /// The engine awaits the connector's `start` when [`run`](Self::run)
+    /// begins — before any block executes, so blocks never resolve an
+    /// unstarted connector — and its `stop` on shutdown; the connector
+    /// stays registered so a re-run picks it up again. A reset
+    /// unregisters the connector first and then stops it. Dropping the
+    /// engine unregisters any still-tracked connectors without awaiting
+    /// `stop`. Start/stop failures and timeouts are logged, not fatal.
+    ///
+    /// Connectors own their IO loops: spawn them from `start` (via the
+    /// ambient `tokio::spawn` natively, `wasm_bindgen_futures::spawn_local`
+    /// on wasm) and wind them down in `stop`. Pausing the engine does not
+    /// pause these tasks — pause only stops block execution.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ConnectorError::AlreadyRegistered`](crate::ConnectorError::AlreadyRegistered)
+    /// if a connector with this name is already registered.
+    fn add_connector(&mut self, name: &str, handle: impl Into<ConnectorHandle>) -> Result<()>;
+
+    /// The names of the connectors this engine manages.
+    fn connector_names(&self) -> Vec<String>;
+
+    /// Returns the handle of every scheduled block. A handle carries a
+    /// block's static identity and UI metadata; the engine's messages
+    /// read its dynamic state.
+    fn block_handles(&self) -> Vec<&BlockHandle>;
+
+    /// Returns the handle of block `id`, if it is scheduled.
+    fn block_handle(&self, id: &Uuid) -> Option<&BlockHandle>;
+
+    /// Updates the UI metadata block `id` is saved with: each of `label`
+    /// and `position` that is given replaces the stored one.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`EngineError::BlockInstanceNotFound`](crate::EngineError::BlockInstanceNotFound)
+    /// if no block `id` is scheduled.
+    fn set_block_metadata(
+        &mut self,
+        id: &Uuid,
+        label: Option<String>,
+        position: Option<Position>,
+    ) -> Result<()>;
+
+    /// The engine's scan interval: the period at which its blocks that
+    /// poll check their state — the timers, `Sequencer`, `Runtime`, an
+    /// `ExternalIn` waiting to resubscribe — and the shortest wait of a
+    /// block with no linked inputs between cycles. 200 ms unless
+    /// [`set_scan_interval`](Self::set_scan_interval) changed it.
+    fn scan_interval(&self) -> Duration;
+
+    /// Sets the [scan interval](Self::scan_interval), in whole
+    /// milliseconds, for this engine's blocks only — those scheduled
+    /// already included. Every engine keeps its own.
+    fn set_scan_interval(&mut self, interval: Duration);
+
+    /// [`set_scan_interval`](Self::set_scan_interval), as a builder.
+    ///
+    /// ```
+    /// use std::time::Duration;
+    /// use logic_mesh::{base::engine::Engine, single_threaded::SingleThreadedEngine};
+    ///
+    /// let engine = SingleThreadedEngine::new().with_scan_interval(Duration::from_millis(50));
+    /// assert_eq!(engine.scan_interval(), Duration::from_millis(50));
+    /// ```
+    #[must_use = "the engine is returned with the new interval"]
+    fn with_scan_interval(mut self, interval: Duration) -> Self {
+        self.set_scan_interval(interval);
+        self
+    }
 
     /// Runs the event loop of this engine and executes the scheduled blocks.
     ///
@@ -241,8 +356,7 @@ pub trait Engine: Sized {
     /// cancellation point. Dropping it mid-flight can leave a
     /// multi-step dispatch (link wiring, connector attach) half-applied,
     /// and drops the engine with it.
-    #[allow(async_fn_in_trait)]
-    async fn run(self) -> Self;
+    fn run(self) -> Self::RunFuture;
 
     /// Returns a handle to this engine's messaging system so external
     /// systems can communicate with this engine once it is running.
@@ -258,7 +372,7 @@ pub trait Engine: Sized {
     /// the engine — so keep the channel drained.
     fn create_message_channel(
         &mut self,
-        sender_id: uuid::Uuid,
+        sender_id: Uuid,
         sender_channel: Self::Channel,
     ) -> Self::Channel;
 }

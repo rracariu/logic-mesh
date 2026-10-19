@@ -2,8 +2,8 @@
 
 //! Rate limiter block.
 
-use crate::base::output::props::OutputProps;
-use crate::base::{block::Block, input::input_reader::InputReader, output::Output};
+use crate::base::output::OutputProps;
+use crate::base::{block::Block, input::InputReader, output::Output};
 use crate::blocks::utils::{input_as_float_or_default, input_to_millis_or_default};
 use crate::tokio_impl::sleep::current_time_millis;
 

@@ -6,7 +6,7 @@ use uuid::Uuid;
 
 use crate::base::{input::Input, link::Link, output::Output};
 
-use super::{BlockState, desc::BlockDesc};
+use super::{BlockDesc, BlockState};
 
 /// Trait-alias shorthand for "an [`Input`] with reader/writer types
 /// pinned to `R` and `W`". Lets [`BlockProps`] return-position types stay

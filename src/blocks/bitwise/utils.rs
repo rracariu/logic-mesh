@@ -2,7 +2,7 @@
 
 use crate::base::block::Block;
 use crate::base::block::BlockState;
-use crate::base::input::input_reader::InputReader;
+use crate::base::input::InputReader;
 use libhaystack::val::Value;
 
 pub(super) async fn execute_impl<B: Block>(block: &mut B, calc: impl Fn(i64, i64) -> i64) {

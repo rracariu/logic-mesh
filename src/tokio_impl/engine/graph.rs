@@ -34,9 +34,7 @@ use super::block_mailbox::{BlockMailboxCmd, mailbox_request, mailbox_send, termi
 use super::program_block_ids;
 use crate::base::block::{BlockDesc, BlockProps};
 use crate::base::engine::messages::BlockDefinition;
-use crate::base::error::{
-    EngineError, LinkEnd, RegistryError, Result, parse_block_uuid, parse_link_uuid,
-};
+use crate::base::error::{EngineError, LinkEnd, Result, parse_block_uuid, parse_link_uuid};
 use crate::base::program::{
     Program,
     data::{LinkData, PinValue, Position, ProgramBlock},
@@ -259,15 +257,18 @@ impl BlockGraph {
         id: &Uuid,
         label: Option<String>,
         position: Option<Position>,
-    ) {
-        if let Some(handle) = self.handles.get_mut(id) {
-            if let Some(label) = label {
-                handle.label = Some(label);
-            }
-            if let Some(position) = position {
-                handle.position = Some(position);
-            }
+    ) -> Result<(), EngineError> {
+        let handle = self
+            .handles
+            .get_mut(id)
+            .ok_or(EngineError::BlockInstanceNotFound { id: *id })?;
+        if let Some(label) = label {
+            handle.label = Some(label);
         }
+        if let Some(position) = position {
+            handle.position = Some(position);
+        }
+        Ok(())
     }
 
     /// Records `name` and `description` as those of the program the
@@ -990,12 +991,7 @@ fn check_program<'p, H: ProgramHost>(host: &H, program: &'p Program) -> Result<C
     let mut blocks = Vec::new();
     let mut pins = Vec::new();
     for (id, block) in program_block_ids(program, |id| graph.contains(id))? {
-        let entry = get_block(&block.name, Some(&block.lib)).ok_or_else(|| {
-            RegistryError::BlockNotFound {
-                library: block.lib.clone(),
-                name: block.name.clone(),
-            }
-        })?;
+        let entry = get_block(&block.name, Some(&block.lib))?;
         host.ensure_schedulable(&entry.desc)?;
         for (output, pins_of, values) in [
             (false, &entry.desc.inputs, &block.inputs),

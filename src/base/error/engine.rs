@@ -62,6 +62,15 @@ pub enum EngineError {
         id: Uuid,
     },
 
+    /// The multi-threaded engine was asked to schedule a block outside
+    /// a tokio runtime, which it spawns every block's actor task onto.
+    /// Schedule from within the runtime that will run the engine.
+    #[error("No tokio runtime to spawn the actor of block '{id}' on")]
+    NoRuntime {
+        /// The id of the block that was not scheduled.
+        id: Uuid,
+    },
+
     /// A block instance id could not be parsed as a UUID.
     #[error("Invalid block uuid '{uuid}'")]
     InvalidBlockUuid {

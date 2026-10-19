@@ -10,11 +10,22 @@ use uuid::Uuid;
 
 use crate::{
     base::{
-        block::{BlockDesc, desc::BlockImplementation},
-        program::{Program, data::ProgramBlock},
+        block::{BlockDesc, BlockImplementation},
+        engine::messages::{EngineMessage, WatchMessage},
+        program::{Program, ProgramBlock},
     },
     blocks::registry::{BlockSink, eval_static_block, make_block_into},
 };
+
+pub use graph::BlockHandle;
+
+/// The messages both engines exchange over their
+/// [`Channel`](crate::base::engine::Engine::Channel).
+///
+/// The watch-event sender is unbounded — see `wasm/engine_command.rs`
+/// `create_watch` for the rationale (fault notifications must not drop
+/// under burst load).
+pub type Messages = EngineMessage<tokio::sync::mpsc::UnboundedSender<WatchMessage>>;
 
 mod actor_step;
 mod block_mailbox;

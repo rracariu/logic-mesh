@@ -2,15 +2,15 @@
 
 //! Control logic blocks.
 
-pub mod clamp;
-pub mod deadband;
-pub mod economizer;
-pub mod lead_lag;
-pub mod pid;
-pub mod priority_array;
-pub mod reset;
-pub mod sequencer;
-pub mod trim_respond;
+mod clamp;
+mod deadband;
+mod economizer;
+mod lead_lag;
+mod pid;
+mod priority_array;
+mod reset;
+mod sequencer;
+mod trim_respond;
 
 pub use clamp::Clamp;
 pub use deadband::Deadband;

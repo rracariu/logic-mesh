@@ -2,17 +2,17 @@
 
 //! Miscellaneous blocks.
 
-pub mod change_of_value;
-pub mod derivative;
-pub mod ema;
-pub mod has_value;
-pub mod integrator;
-pub mod moving_average;
-pub mod parse_bool;
-pub mod parse_number;
-pub mod random;
-pub mod sample_hold;
-pub mod sinewave;
+mod change_of_value;
+mod derivative;
+mod ema;
+mod has_value;
+mod integrator;
+mod moving_average;
+mod parse_bool;
+mod parse_number;
+mod random;
+mod sample_hold;
+mod sinewave;
 
 pub use change_of_value::ChangeOfValue;
 pub use derivative::Derivative;

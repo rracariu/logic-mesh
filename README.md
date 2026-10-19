@@ -60,13 +60,13 @@ Wire two sine waves into an adder and run them:
 
 ```rust,no_run
 use logic_mesh::{
-    base::block::{Block, BlockConnect, BlockProps, connect::connect_output},
-    base::engine::Engine,
+    base::block::connect_output,
     blocks::{math::Add, misc::SineWave},
+    prelude::*,
     single_threaded::SingleThreadedEngine,
 };
 
-#[tokio::main]
+#[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut add1 = Add::new();
 

@@ -4,9 +4,10 @@
 
 use std::time::Duration;
 
-use crate::base::output::props::OutputProps;
-use crate::base::{block::Block, input::input_reader::InputReader, output::Output};
-use crate::blocks::utils::{get_sleep_dur, input_as_number, input_to_millis_or_default};
+use crate::base::output::OutputProps;
+use crate::base::{block::Block, input::InputReader, output::Output};
+use crate::blocks::utils::{input_as_number, input_to_millis_or_default};
+use crate::tokio_impl::scan::scan_interval_millis;
 use crate::tokio_impl::sleep::current_time_millis;
 
 use crate::{blocks::InputImpl, blocks::OutputImpl};
@@ -37,7 +38,7 @@ pub struct Sequencer {
 
 impl Block for Sequencer {
     async fn execute(&mut self) {
-        let poll = get_sleep_dur();
+        let poll = scan_interval_millis();
         self.wait_on_inputs(Duration::from_millis(poll)).await;
 
         if !self.out.is_connected() {

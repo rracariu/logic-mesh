@@ -6,11 +6,11 @@ use std::time::Duration;
 
 use rand::Rng;
 
-use crate::base::output::props::OutputProps;
+use crate::base::output::OutputProps;
 use crate::{
     base::{
         block::{Block, BlockProps, BlockState},
-        input::input_reader::InputReader,
+        input::InputReader,
         output::Output,
     },
     blocks::utils::{input_as_number, input_to_millis_or_default},

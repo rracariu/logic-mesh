@@ -14,12 +14,12 @@ use wasm_bindgen::JsCast;
 use wasm_bindgen::JsValue;
 use wasm_bindgen_futures::JsFuture;
 
-use crate::base::block::desc::BlockRunCondition;
+use crate::base::block::BlockRunCondition;
 use crate::base::block::{Block, BlockState};
 
 use crate::blocks::registry::{BlockSink, eval_block_impl};
-use crate::blocks::utils::get_sleep_dur;
 use crate::tokio_impl::block::drain_ready_inputs;
+use crate::tokio_impl::scan::scan_interval_millis;
 use crate::{
     base::{
         block::{BlockDesc, BlockProps},
@@ -315,7 +315,7 @@ impl Block for JsBlock {
             drain_ready_inputs(self);
         } else {
             if let Some(BlockRunCondition::Always) = self.desc.run_condition {
-                self.wait_on_inputs(Duration::from_millis(get_sleep_dur()))
+                self.wait_on_inputs(Duration::from_millis(scan_interval_millis()))
                     .await;
             } else {
                 self.read_inputs_until_ready().await;
