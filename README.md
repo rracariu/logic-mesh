@@ -66,7 +66,7 @@ use logic_mesh::{
     single_threaded::SingleThreadedEngine,
 };
 
-#[tokio::main]
+#[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut add1 = Add::new();
 
