@@ -486,6 +486,12 @@ impl SingleThreadedEngine<Running> {
         connectors::attach_connector(&mut self.connectors, name).await
     }
 
+    /// The names of the connectors this engine manages, for
+    /// [`ListConnectorsReq`](EngineMessage::ListConnectorsReq).
+    pub(crate) fn managed_connectors(&self) -> Vec<String> {
+        self.connectors.to_vec()
+    }
+
     /// Detaches an engine-managed connector: stops tracking it,
     /// unregisters it from the process-wide registry, and then awaits
     /// its `stop` — the same ordering as a reset, so no block can
@@ -498,12 +504,6 @@ impl SingleThreadedEngine<Running> {
     /// # Errors
     ///
     /// Returns an error message if `name` is not engine-managed.
-    /// The names of the connectors this engine manages, for
-    /// [`ListConnectorsReq`](EngineMessage::ListConnectorsReq).
-    pub(crate) fn managed_connectors(&self) -> Vec<String> {
-        self.connectors.to_vec()
-    }
-
     pub(crate) async fn detach_connector(&mut self, name: &str) -> Result<String, String> {
         connectors::detach_connector(&mut self.connectors, name).await
     }

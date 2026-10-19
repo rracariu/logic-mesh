@@ -337,7 +337,8 @@ pub fn make(name: &str, lib: Option<&str>) -> Result<Box<DynBlockProps>, Registr
 ///
 /// ```
 /// use logic_mesh::{
-///     base::engine::Engine, blocks::registry::schedule_block, single_threaded::SingleThreadedEngine,
+///     base::engine::Engine, blocks::registry::schedule_block,
+///     single_threaded::SingleThreadedEngine,
 /// };
 ///
 /// let mut engine = SingleThreadedEngine::new();
