@@ -93,6 +93,10 @@ impl sealed::Sealed for Running {}
 impl EngineState for Idle {}
 impl EngineState for Running {}
 
+impl sealed::Sealed for crate::single_threaded::SingleThreadedEngine<Idle> {}
+#[cfg(all(feature = "multi-threaded", not(target_arch = "wasm32")))]
+impl sealed::Sealed for crate::multi_threaded::MultiThreadedEngine<Idle> {}
+
 /// [`Send`] + [`Sync`] on native targets; no bound on `wasm32`.
 ///
 /// This is the thread-safety a block needs to be scheduled through the
@@ -122,6 +126,10 @@ impl<T: ?Sized> MaybeSendSync for T {}
 /// Implemented by engines in the [`Idle`] phase; see the
 /// [module docs](self) for the phase model.
 ///
+/// Sealed — implemented by this crate's engines only, so that methods
+/// can be added to it without a breaking change. Code generic over the
+/// engines takes an `E: Engine`.
+///
 /// # Examples
 ///
 /// ```no_run
@@ -140,7 +148,7 @@ impl<T: ?Sized> MaybeSendSync for T {}
 /// # Ok(())
 /// # }
 /// ```
-pub trait Engine: Sized {
+pub trait Engine: sealed::Sealed + Sized {
     /// The transmission type of the blocks.
     type Writer;
     /// The reception type of the blocks.
