@@ -10,12 +10,31 @@
 //! generic. The new [`Program`] is plain data — engine instances are
 //! managed separately and load it via [`crate::base::engine::Engine`].
 //! To assemble one in code, use [`ProgramBuilder`].
+//!
+//! # Format versions
+//!
+//! A program records the format it was written in as
+//! [`version`](Program::version):
+//!
+//! - **1** — the format this crate writes
+//!   ([`Program::FORMAT_VERSION`]). Each block saves its type's version
+//!   ([`ProgramBlock::ver`]) and may carry opaque editor metadata
+//!   ([`ProgramBlock::editor`]); its UI position is keyed `position`.
+//! - **missing (read as 0)** — a save from before format versions,
+//!   written by logic-mesh 1.x. It is the same shape as version 1
+//!   without `ver` and `editor`, with the position keyed `positions`,
+//!   which [`ProgramBlock::position`] still reads, so it loads
+//!   unchanged. A save of the loaded program writes version 1.
+//!
+//! An engine rejects a program from a newer format with
+//! [`EngineError::UnsupportedProgramVersion`](crate::EngineError::UnsupportedProgramVersion)
+//! before it schedules any of its blocks.
 
 pub(crate) mod builder;
 pub(crate) mod data;
 
 pub use builder::{BlockRef, ProgramBlockBuilder, ProgramBuilder};
-pub use data::{LinkData, PinValue, Position, Program, ProgramBlock};
+pub use data::{EditorMetadata, LinkData, PinValue, Position, Program, ProgramBlock};
 
 #[cfg(test)]
 mod test {
@@ -151,7 +170,7 @@ mod test {
                 name: "Add".to_string(),
                 lib: "core".to_string(),
                 label: Some("Demand sum".to_string()),
-                positions: Some(Position { x: 120.5, y: 80.0 }),
+                position: Some(Position { x: 120.5, y: 80.0 }),
                 ..Default::default()
             },
         );

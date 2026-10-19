@@ -253,27 +253,12 @@ where
 
 /// A program of unlinked core `Add` blocks keyed by `ids`, verbatim.
 pub(crate) fn add_program<'a>(ids: impl IntoIterator<Item = &'a str>) -> Program {
-    Program {
-        name: None,
-        description: None,
-        blocks: ids
-            .into_iter()
-            .map(|id| {
-                (
-                    id.to_string(),
-                    ProgramBlock {
-                        name: "Add".to_string(),
-                        lib: "core".to_string(),
-                        label: None,
-                        positions: None,
-                        inputs: Default::default(),
-                        outputs: Default::default(),
-                    },
-                )
-            })
-            .collect(),
-        links: Default::default(),
-    }
+    let mut program = Program::new();
+    program.blocks = ids
+        .into_iter()
+        .map(|id| (id.to_string(), ProgramBlock::new("Add", "core")))
+        .collect();
+    program
 }
 
 /// Blocks for the actor-level fault tests of both engines.
@@ -658,8 +643,10 @@ pub(crate) mod link_ids {
 pub(crate) mod round_trip {
     use super::lifecycle::TestEngine;
     use super::*;
+    use crate::base::block::BlockDesc;
     use crate::base::engine::messages::EngineMessage::Reset;
-    use crate::base::program::{PinValue, Position};
+    use crate::base::program::data::PROGRAM_1_0_JSON;
+    use crate::base::program::{EditorMetadata, PinValue, Position};
 
     /// The ids in a [`sample`] program.
     #[derive(Clone, Copy)]
@@ -674,8 +661,24 @@ pub(crate) mod round_trip {
         named: Uuid,
     }
 
+    /// Editor metadata exercising every JSON kind.
+    fn editor_metadata(kind: &str) -> EditorMetadata {
+        let editor = serde_json::json!({
+            "widget": {
+                "kind": kind,
+                "config": {"series": [{"label": "a", "address": null}], "min": -1, "step": 0.1},
+                "visible": true,
+            },
+        });
+        match editor {
+            serde_json::Value::Object(editor) => editor,
+            _ => unreachable!("an object literal"),
+        }
+    }
+
     /// A program using everything a save keeps: a name and description,
-    /// block labels and positions, constant inputs, and links.
+    /// block versions, labels, positions and editor metadata, constant
+    /// inputs, and links.
     fn sample() -> (Program, Ids) {
         let ids = Ids {
             first: Uuid::new_v4(),
@@ -691,8 +694,10 @@ pub(crate) mod round_trip {
                 .blocks
                 .get_mut(&id.to_string())
                 .expect("in the program");
+            block.ver = Some(BlockDesc::DEFAULT_VER.to_string());
             block.label = Some(label.to_string());
-            block.positions = Some(Position { x, y: 20.5 });
+            block.position = Some(Position { x, y: 20.5 });
+            block.editor = Some(editor_metadata(label));
         }
         let first = program
             .blocks
@@ -733,6 +738,7 @@ pub(crate) mod round_trip {
 
     /// Checks that `saved` keeps everything [`sample`] put in `program`.
     fn assert_keeps_the_sample(saved: &Program, program: &Program, ids: Ids) {
+        assert_eq!(saved.version, Program::FORMAT_VERSION);
         assert_eq!(saved.name, program.name);
         assert_eq!(saved.description, program.description);
         assert_eq!(
@@ -742,8 +748,10 @@ pub(crate) mod round_trip {
         for (id, block) in &program.blocks {
             let saved = &saved.blocks[id];
             assert_eq!((&saved.name, &saved.lib), (&block.name, &block.lib));
+            assert_eq!(saved.ver, block.ver);
             assert_eq!(saved.label, block.label);
-            assert_eq!(saved.positions, block.positions);
+            assert_eq!(saved.position, block.position);
+            assert_eq!(saved.editor, block.editor);
             for (pin, value) in &block.inputs {
                 assert_eq!(saved.inputs[pin].value, value.value, "{id}.{pin}");
             }
@@ -781,6 +789,64 @@ pub(crate) mod round_trip {
 
             assert_eq!(client.remove_link(ids.keyed).await, Ok(true));
             assert!(!client.inspect(ids.second).await.inputs["in0"].is_connected);
+        })
+        .await;
+    }
+
+    /// A program saved by logic-mesh 1.0 — no format version, the
+    /// position keyed `positions`, no block versions — loads, and saves
+    /// in the current format with everything it was loaded with.
+    pub(crate) async fn a_1_0_program_loads_and_saves_in_the_current_format<E: TestEngine>(
+        engine: E,
+    ) {
+        let program: Program = serde_json::from_str(PROGRAM_1_0_JSON).expect("a 1.0 save parses");
+        let first = Uuid::parse_str("00000000-0000-4000-8000-000000000001").expect("uuid");
+        let second = Uuid::parse_str("00000000-0000-4000-8000-000000000002").expect("uuid");
+        let link = "00000000-0000-4000-8000-0000000000aa";
+
+        drive(engine, move |mut client| async move {
+            client.load(program).await.expect("a 1.0 program loads");
+            client.wait_for_output(second, "out", 20.into()).await;
+
+            let saved = client.save().await;
+            assert_eq!(saved.version, Program::FORMAT_VERSION);
+            assert_eq!(saved.name.as_deref(), Some("Demand sum"));
+            let block = &saved.blocks[&first.to_string()];
+            assert_eq!(block.ver.as_deref(), Some(BlockDesc::DEFAULT_VER));
+            assert_eq!(block.label.as_deref(), Some("Zone A + B"));
+            assert_eq!(block.position, Some(Position::new(81.0, -72.5)));
+            assert_eq!(block.inputs["in0"].value, 12.into());
+            assert_eq!(
+                saved.blocks[&second.to_string()].position,
+                Some(Position::new(267.0, 25.0))
+            );
+            assert_eq!(saved.links[link].id.as_deref(), Some(link));
+            let written = json(&saved);
+            assert!(written["blocks"][first.to_string()]["positions"].is_null());
+            assert_eq!(written["version"], Program::FORMAT_VERSION);
+        })
+        .await;
+    }
+
+    /// A block saved at another version of its type that is compatible
+    /// with the registered one loads, and saves at the registered one.
+    pub(crate) async fn a_block_saved_at_a_compatible_version_loads<E: TestEngine>(engine: E) {
+        let id = Uuid::new_v4();
+        let mut program = add_program([id.to_string().as_str()]);
+        for block in program.blocks.values_mut() {
+            block.ver = Some("1.7.3".to_string());
+        }
+
+        drive(engine, move |mut client| async move {
+            client
+                .load(program)
+                .await
+                .expect("a compatible version loads");
+            let saved = client.save().await;
+            assert_eq!(
+                saved.blocks[&id.to_string()].ver.as_deref(),
+                Some(BlockDesc::DEFAULT_VER)
+            );
         })
         .await;
     }
@@ -829,6 +895,7 @@ pub(crate) mod round_trip {
 pub(crate) mod atomic_loads {
     use super::lifecycle::TestEngine;
     use super::*;
+    use crate::base::block::BlockDesc;
     use crate::base::error::{ConnectError, EngineError, LinkEnd, RegistryError};
     use crate::base::program::PinValue;
 
@@ -855,6 +922,27 @@ pub(crate) mod atomic_loads {
     /// already on the engine.
     fn failing_programs(outside: Uuid) -> Vec<(&'static str, Program, String)> {
         let mut cases = Vec::new();
+
+        let (mut program, _, _) = two_adds();
+        program.version = Program::FORMAT_VERSION + 1;
+        let err = EngineError::UnsupportedProgramVersion {
+            found: Program::FORMAT_VERSION + 1,
+            supported: Program::FORMAT_VERSION,
+        };
+        cases.push(("a newer format version", program, err.to_string()));
+
+        for saved in ["2.0.0", "0.9.0"] {
+            let (mut program, _, second) = two_adds();
+            let block = program.blocks.get_mut(&second.to_string()).expect("block");
+            block.ver = Some(saved.to_string());
+            let err = EngineError::BlockVersionMismatch {
+                block: second,
+                name: "Add".to_string(),
+                saved: saved.to_string(),
+                registered: BlockDesc::DEFAULT_VER.to_string(),
+            };
+            cases.push(("an incompatible block version", program, err.to_string()));
+        }
 
         let (mut program, _, second) = two_adds();
         let block = program.blocks.get_mut(&second.to_string()).expect("block");
@@ -2151,7 +2239,7 @@ pub(crate) mod configuration {
             let saved = client.save().await;
             let block = &saved.blocks[&source.to_string()];
             assert_eq!(block.label.as_deref(), Some("source"));
-            assert_eq!(block.positions, Some(position));
+            assert_eq!(block.position, Some(position));
         })
         .await;
     }
