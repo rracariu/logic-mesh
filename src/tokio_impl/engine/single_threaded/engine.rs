@@ -50,6 +50,10 @@ use futures::future::LocalBoxFuture;
 ///
 /// # Examples
 ///
+/// The engine runs its blocks on the thread that drives it, so a
+/// current-thread runtime (tokio's `rt` and `macros` features) is all it
+/// needs.
+///
 /// ```no_run
 /// use logic_mesh::{
 ///     base::block::connect_output,
@@ -58,7 +62,7 @@ use futures::future::LocalBoxFuture;
 ///     single_threaded::SingleThreadedEngine,
 /// };
 ///
-/// #[tokio::main]
+/// #[tokio::main(flavor = "current_thread")]
 /// async fn main() -> Result<(), Box<dyn std::error::Error>> {
 ///     let mut sine = SineWave::new();
 ///     let mut add = Add::new();

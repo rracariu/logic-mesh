@@ -131,7 +131,7 @@ impl<T: ?Sized> MaybeSendSync for T {}
 ///     single_threaded::SingleThreadedEngine,
 /// };
 ///
-/// # #[tokio::main]
+/// # #[tokio::main(flavor = "current_thread")]
 /// # async fn main() -> Result<(), Box<dyn std::error::Error>> {
 /// let mut engine = SingleThreadedEngine::new();
 /// engine.schedule(Add::new())?;
