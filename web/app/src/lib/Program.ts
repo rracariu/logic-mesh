@@ -1,35 +1,56 @@
 import type { Edge, Node } from '@xyflow/svelte';
-import type { Program } from 'logic-mesh';
-import { cloneWidget, type Block } from './Block';
+import {
+  PROGRAM_FORMAT_VERSION,
+  type PinValue,
+  type Position,
+  type Program,
+  type ProgramBlock,
+} from 'logic-mesh';
+import { cloneWidget, type Block, type Widget } from './Block';
 import { useEngine } from './Engine';
 import { widgetBlockDescs } from './Widgets';
 
 const { command } = useEngine();
+
+/** The editor metadata this editor saves with a block. */
+export type BlockEditor = {
+  /** Widget identity, for ExternalIn/ExternalOut blocks placed as widgets. */
+  widget?: Widget;
+};
+
+/** A program as this editor saves and loads it. */
+export type EditorProgram = Program<BlockEditor>;
+
+type EditorBlock = ProgramBlock<BlockEditor>;
 
 export function save(ops: {
   name: string;
   desc?: string;
   nodes: Node[];
   edges: Edge[];
-}): Program {
-  const program: Program = {
+}): EditorProgram {
+  const program: EditorProgram = {
+    version: PROGRAM_FORMAT_VERSION,
     name: ops.name,
     description: ops.desc,
-  } as Program;
+    blocks: {},
+    links: {},
+  };
 
   ops.nodes.forEach((node) => {
     const blockRef = node.data as { value: Block };
     const data = blockRef.value;
     const { desc } = data;
 
-    program.blocks = program.blocks || {};
-    program.blocks[node.id] = {
+    const curProgram: EditorBlock = {
       name: desc.name,
       lib: desc.lib,
-      positions: { x: node.position.x, y: node.position.y },
+      ver: desc.ver,
+      position: { x: node.position.x, y: node.position.y },
     };
+    program.blocks[node.id] = curProgram;
     if (data.label) {
-      program.blocks[node.id].label = data.label;
+      curProgram.label = data.label;
     }
     if (data.widget) {
       const widget = cloneWidget(data.widget);
@@ -37,17 +58,15 @@ export function save(ops: {
       if (widget.configSources && !Object.keys(widget.configSources).length) {
         delete widget.configSources;
       }
-      program.blocks[node.id].widget = widget;
+      curProgram.editor = { widget };
     }
-
-    const curProgram = program.blocks[node.id];
 
     Object.entries(data.inputs).forEach(([name, input]) => {
       if (input.value != null) {
         curProgram.inputs = curProgram.inputs || {};
         curProgram.inputs[name] = {
           value: input.value,
-          isConnected: input.isConnected,
+          isConnected: !!input.isConnected,
         };
       }
     });
@@ -55,13 +74,12 @@ export function save(ops: {
     Object.entries(data.outputs).forEach(([name, output]) => {
       if (output.value != null) {
         curProgram.outputs = curProgram.outputs || {};
-        curProgram.outputs[name] = { value: output.value };
+        curProgram.outputs[name] = { value: output.value, isConnected: false };
       }
     });
   });
 
   ops.edges.forEach((edge) => {
-    program.links = program.links || {};
     program.links[
       (edge.data as { id?: string } | undefined)?.id ?? crypto.randomUUID()
     ] = {
@@ -75,7 +93,69 @@ export function save(ops: {
   return program;
 }
 
-type ProgramBlock = NonNullable<Program['blocks']>[string];
+/**
+ * A block as a save from before format versions wrote it: the position
+ * keyed `positions`, the widget beside the block's fields rather than in
+ * its editor metadata, and pins whose value or connected flag may be
+ * missing.
+ */
+type LegacyBlock = Omit<EditorBlock, 'inputs' | 'outputs'> & {
+  positions?: Position;
+  widget?: Widget;
+  inputs?: Record<string, Partial<PinValue>>;
+  outputs?: Record<string, Partial<PinValue>>;
+};
+
+/** A save from before format versions, see {@link LegacyBlock}. */
+type LegacyProgram = Omit<EditorProgram, 'version' | 'blocks' | 'links'> & {
+  version?: undefined;
+  blocks?: Record<string, LegacyBlock>;
+  links?: EditorProgram['links'];
+};
+
+/**
+ * Bring a saved program to the current format, in place, so the same
+ * object is valid for both node building and `pushToEngine`.
+ *
+ * A save from before format versions — one without `version`, written
+ * by logic-mesh 1.x or an earlier build of this editor — moves its
+ * `positions` to `position` and a block's `widget` into its editor
+ * metadata, and gets the pin fields it left out. A program from a newer
+ * format is rejected before anything is built from it.
+ */
+function upgradeFormat(saved: unknown): EditorProgram {
+  const program = saved as EditorProgram | LegacyProgram;
+  if (program.version !== undefined) {
+    if (program.version > PROGRAM_FORMAT_VERSION) {
+      throw new Error(
+        `Program format version ${program.version} is newer than this editor reads (${PROGRAM_FORMAT_VERSION})`,
+      );
+    }
+    return program;
+  }
+
+  const blocks = (program.blocks ??= {});
+  for (const block of Object.values(blocks)) {
+    if (block.positions) {
+      block.position ??= block.positions;
+      delete block.positions;
+    }
+    if (block.widget) {
+      block.editor = { ...block.editor, widget: block.widget };
+      delete block.widget;
+    }
+    for (const pins of [block.inputs, block.outputs]) {
+      for (const pin of Object.values(pins ?? {})) {
+        pin.value ??= null;
+        pin.isConnected ??= false;
+      }
+    }
+  }
+  program.links ??= {};
+  return Object.assign(program, {
+    version: PROGRAM_FORMAT_VERSION,
+  }) as EditorProgram;
+}
 
 // Widget names from the legacy JS-block UI library (lib 'ui'), split by
 // data direction: input widgets became ExternalIn, display widgets
@@ -95,7 +175,7 @@ const LEGACY_DISPLAY_WIDGETS = legacyWidgetKinds('out');
 // Extracts the widget config from a legacy block's config pins.
 function legacyConfig(
   name: string,
-  block: ProgramBlock,
+  block: EditorBlock,
 ): Record<string, unknown> | undefined {
   const pin = (p: string) => block.inputs?.[p]?.value;
   const out = block.outputs?.['out']?.value;
@@ -175,7 +255,7 @@ interface LegacyBlockInfo {
   /** `Kind 'label'` (or just the kind) for warning messages. */
   who: string;
   /** The pre-migration input pins, kept for label literals. */
-  oldInputs: NonNullable<ProgramBlock['inputs']>;
+  oldInputs: NonNullable<EditorBlock['inputs']>;
 }
 
 /** What a migration pass did, for surfacing to the user on load. */
@@ -209,13 +289,13 @@ export interface MigrationReport {
  * (nested config keys are not drivable) and links from removed output
  * pins — is dropped, and every drop is reported so the load can warn.
  */
-function migrateLegacyUiBlocks(program: Program): MigrationReport {
+function migrateLegacyUiBlocks(program: EditorProgram): MigrationReport {
   const report: MigrationReport = { converted: [], dropped: [] };
   if (!program.blocks) return report;
 
   const migrated = new Map<string, LegacyBlockInfo>();
   for (const [uuid, block] of Object.entries(program.blocks)) {
-    if (block.lib !== 'ui' || block.widget) continue;
+    if (block.lib !== 'ui' || block.editor?.widget) continue;
     const name = block.name ?? '';
     const direction = LEGACY_INPUT_WIDGETS.has(name)
       ? 'in'
@@ -238,27 +318,19 @@ function migrateLegacyUiBlocks(program: Program): MigrationReport {
         : undefined;
     const outPin = direction === 'in' ? block.outputs?.['out'] : undefined;
 
-    block.widget = { kind: name, config };
+    block.editor = { ...block.editor, widget: { kind: name, config } };
     block.name = direction === 'in' ? 'ExternalIn' : 'ExternalOut';
     block.lib = 'core';
-    const inputs: NonNullable<ProgramBlock['inputs']> = {
+    const inputs: NonNullable<EditorBlock['inputs']> = {
       connector: { value: 'ui', isConnected: false },
       address: { value: uuid, isConnected: false },
     };
     if (inPin) {
-      // The engine-side pin payload has no default for `value`, so a
-      // connected pin with no cached literal still needs an explicit
-      // null — omitting the field makes the wasm loader reject the
-      // whole program. Null is inert: the load skips it and the block
-      // never fires on it.
-      inputs['in'] = {
-        value: inPin.value ?? null,
-        isConnected: inPin.isConnected ?? false,
-      };
+      inputs['in'] = { value: inPin.value, isConnected: inPin.isConnected };
     }
     block.inputs = inputs;
     if (outPin && outPin.value != null) {
-      block.outputs = { out: { value: outPin.value } };
+      block.outputs = { out: { value: outPin.value, isConnected: false } };
     } else {
       // Remove the key outright rather than assigning `undefined`: the
       // migrated object goes to `loadProgram` as-is (no JSON round-trip
@@ -317,21 +389,18 @@ function migrateLegacyUiBlocks(program: Program): MigrationReport {
     const uuid = crypto.randomUUID();
     const n = synthCount.get(widgetUuid) ?? 0;
     synthCount.set(widgetUuid, n + 1);
-    const widgetPos = program.blocks[widgetUuid]?.positions;
+    const widgetPos = program.blocks[widgetUuid]?.position;
     program.blocks[uuid] = {
       name: 'ExternalOut',
       lib: 'core',
       label,
       // To the widget's left, staggered per synthesized block, so the
       // rerouted links stay short and nothing piles up at the origin.
-      positions: {
+      position: {
         x: (widgetPos?.x ?? 0) - 240,
         y: (widgetPos?.y ?? 0) + 90 * n,
       },
       inputs: {
-        // Explicit inert null: the engine-side pin payload has no
-        // default for `value`, and omitting it makes the wasm loader
-        // reject the whole program.
         in: { value: null, isConnected: true },
         connector: { value: 'ui', isConnected: false },
         address: { value: uuid, isConnected: false },
@@ -356,7 +425,7 @@ function migrateLegacyUiBlocks(program: Program): MigrationReport {
     const tgt = migrated.get(link.targetBlockUuid);
     if (!tgt) continue;
     const pin = link.targetBlockPinName;
-    const widget = program.blocks[link.targetBlockUuid]?.widget;
+    const widget = program.blocks[link.targetBlockUuid]?.editor?.widget;
 
     if (tgt.kind === 'MultiChart') {
       if (pin === 'a') {
@@ -470,17 +539,21 @@ function migrateLegacyUiBlocks(program: Program): MigrationReport {
  * engine is still processing the load — get dropped because the watcher
  * callback can't find the block id yet.
  *
- * Migrates legacy UI JS-block programs in place first, so the same
- * (migrated) object is what later reaches `pushToEngine`. The returned
- * `migration` report says what the migration converted and what it had
- * to drop — callers surface it to the user (a load must not silently
- * lose links).
+ * Brings a save from before format versions to the current format and
+ * migrates legacy UI JS-block programs, both in place, and returns the
+ * (migrated) `program` to pass to `pushToEngine`. A program from a newer
+ * format throws before anything is built. The returned `migration`
+ * report says what the UI-block migration converted and what it had to
+ * drop — callers surface it to the user (a load must not silently lose
+ * links).
  */
-export function prepare(program: Program): {
+export function prepare(saved: unknown): {
+  program: EditorProgram;
   nodes: Node[];
   edges: Edge[];
   migration: MigrationReport;
 } {
+  const program = upgradeFormat(saved);
   const migration = migrateLegacyUiBlocks(program);
   const nodes: Node[] = [];
   const edges: Edge[] = [];
@@ -490,12 +563,12 @@ export function prepare(program: Program): {
     nodes.push({
       id: blockUuid,
       type: 'custom',
-      position: { x: block.positions?.x ?? 0, y: block.positions?.y ?? 0 },
+      position: { x: block.position?.x ?? 0, y: block.position?.y ?? 0 },
       data: {
         name: block.name ?? '',
         lib: block.lib ?? '',
         label: block.label ?? '',
-        widget: block.widget,
+        widget: block.editor?.widget,
         inputs: block.inputs ?? {},
         outputs: block.outputs ?? {},
       },
@@ -513,20 +586,20 @@ export function prepare(program: Program): {
     });
   }
 
-  return { nodes, edges, migration };
+  return { program, nodes, edges, migration };
 }
 
 /**
  * Push the program into the wasm engine in a single atomic call.
  *
  * The Rust engine accepts a full `Program` (blocks + links + pin values
- * + UI metadata) via `loadProgram` and handles scheduling, wiring, and
+ * + UI and editor metadata) via `loadProgram` and handles scheduling, wiring, and
  * value writes internally — no JS-side `addBlock` / `createLink` /
  * `writeBlockInput` chain. Call AFTER `prepare()` + registering the
  * block instances so change-of-value notifications fired during the
  * load have a registered destination.
  */
-export async function pushToEngine(program: Program): Promise<void> {
+export async function pushToEngine(program: EditorProgram): Promise<void> {
   await command.loadProgram(program);
 }
 
@@ -537,10 +610,13 @@ export async function pushToEngine(program: Program): Promise<void> {
  * first round of COV notifications, call `prepare` and `pushToEngine`
  * separately and register your instances between them.
  */
-export async function load(
-  program: Program,
-): Promise<{ nodes: Node[]; edges: Edge[]; migration: MigrationReport }> {
-  const { nodes, edges, migration } = prepare(program);
-  await pushToEngine(program);
-  return { nodes, edges, migration };
+export async function load(saved: unknown): Promise<{
+  program: EditorProgram;
+  nodes: Node[];
+  edges: Edge[];
+  migration: MigrationReport;
+}> {
+  const prepared = prepare(saved);
+  await pushToEngine(prepared.program);
+  return prepared;
 }
