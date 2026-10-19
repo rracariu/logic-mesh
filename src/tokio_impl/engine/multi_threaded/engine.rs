@@ -22,7 +22,9 @@
 //! The engine assumes it is running inside a tokio multi-thread runtime
 //! (`#[tokio::main(flavor = "multi_thread")]` or a manually-constructed
 //! `Runtime::new`). It does not create worker threads or runtimes of its
-//! own — that's the caller's responsibility.
+//! own — that's the caller's responsibility, and so is enabling tokio's
+//! `rt-multi-thread`, which this crate never does (see the public
+//! module docs).
 
 use std::collections::BTreeMap;
 use std::marker::PhantomData;
@@ -68,6 +70,10 @@ use crate::tokio_impl::{MtBlock, ReaderImpl, WriterImpl};
 /// [`Idle`] engine, then [`run`](Engine::run) it.
 ///
 /// # Examples
+///
+/// `#[tokio::main]` builds a multi-thread runtime, so the application's
+/// tokio needs its `rt-multi-thread` feature — see
+/// [Runtime](crate::multi_threaded#runtime).
 ///
 /// ```no_run
 /// use logic_mesh::{
