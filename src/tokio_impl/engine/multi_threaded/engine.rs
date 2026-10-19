@@ -1100,6 +1100,20 @@ mod test {
             )
             .await;
         }
+
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn a_1_0_program_loads_and_saves_in_the_current_format() {
+            round_trip::a_1_0_program_loads_and_saves_in_the_current_format(
+                MultiThreadedEngine::new(),
+            )
+            .await;
+        }
+
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn a_block_saved_at_a_compatible_version_loads() {
+            round_trip::a_block_saved_at_a_compatible_version_loads(MultiThreadedEngine::new())
+                .await;
+        }
     }
 
     /// Regression: see the single-threaded `scan_intervals`.

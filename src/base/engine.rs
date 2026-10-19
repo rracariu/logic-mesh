@@ -247,10 +247,15 @@ pub trait Engine: sealed::Sealed + Sized {
     ///
     /// All or nothing: the program is checked whole before any of its
     /// blocks is scheduled, and a program failing a check schedules
-    /// nothing. The checks: every block id parses and is neither
+    /// nothing. The checks: the program's format is one this crate reads
+    /// ([`EngineError::UnsupportedProgramVersion`](crate::EngineError::UnsupportedProgramVersion));
+    /// every block id parses and is neither
     /// scheduled already nor named twice in `program`
     /// ([`EngineError::DuplicateBlockId`](crate::EngineError::DuplicateBlockId));
-    /// every block type resolves and the engine can host it; every pin
+    /// every block type resolves, at a version compatible with the one
+    /// it was saved at
+    /// ([`EngineError::BlockVersionMismatch`](crate::EngineError::BlockVersionMismatch)),
+    /// and the engine can host it; every pin
     /// a saved value names exists
     /// ([`EngineError::InputNotFound`](crate::EngineError::InputNotFound),
     /// [`EngineError::OutputNotFound`](crate::EngineError::OutputNotFound));
