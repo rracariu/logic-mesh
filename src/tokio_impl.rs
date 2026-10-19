@@ -18,10 +18,10 @@ pub mod sleep;
 pub type PinPayload = (Value, Status);
 
 /// Tokio-based Reader: a watch-channel [`Receiver`] of a pin's value paired
-/// with the producer's [`Status`]. The channel coalesces — only the latest value is observed, which is what a
-/// reactive dataflow engine wants. Edge-detection blocks track their own
-/// previous state in the block struct rather than relying on every transition
-/// being delivered.
+/// with the producer's [`Status`]. The channel coalesces — only the latest
+/// value is observed, which is what a reactive dataflow engine wants.
+/// Edge-detection blocks track their own previous state in the block struct
+/// rather than relying on every transition being delivered.
 pub type ReaderImpl = Receiver<PinPayload>;
 /// Tokio-based Writer: the matching watch [`Sender`]. `send` overwrites the
 /// current value and never blocks or fails on a "full" channel.

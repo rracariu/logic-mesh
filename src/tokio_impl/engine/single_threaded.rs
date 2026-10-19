@@ -441,10 +441,8 @@ mod tests {
         }
     }
 
-    /// Regression: a block that rejected a request answered with a bare
-    /// message, which the engine wrapped in a `BlockRequestRejected`
-    /// string naming neither the block nor the pin. See
-    /// `test_support::rejections`.
+    /// Regression: the scan interval was one process-wide value, which
+    /// every engine shared. See `test_support::scan_intervals`.
     mod scan_intervals {
         use super::*;
         use crate::tokio_impl::engine::test_support::scan_intervals;
@@ -467,6 +465,8 @@ mod tests {
         }
     }
 
+    /// Regression: generic code could not configure an engine through
+    /// the `Engine` trait. See `test_support::configuration`.
     mod configuration {
         use super::*;
         use crate::tokio_impl::engine::test_support::configuration;
@@ -478,6 +478,10 @@ mod tests {
         }
     }
 
+    /// Regression: a block that rejected a request answered with a bare
+    /// message, which the engine wrapped in a `BlockRequestRejected`
+    /// string naming neither the block nor the pin. See
+    /// `test_support::rejections`.
     mod rejections {
         use super::*;
         use crate::tokio_impl::engine::test_support::rejections;
