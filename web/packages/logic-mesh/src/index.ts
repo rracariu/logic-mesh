@@ -292,17 +292,107 @@ export interface LinkData {
 }
 
 /**
+ * The program save format version this package writes, and the newest
+ * its engine loads. `getProgram` returns programs in this version;
+ * `loadProgram` rejects a program with a higher one.
+ *
+ * A program with no `version` is a save from before format versions
+ * (logic-mesh 1.x): the same shape, except that a block's position is
+ * keyed `positions`. `loadProgram` still loads it.
+ */
+export const PROGRAM_FORMAT_VERSION = 1;
+
+/**
+ * A block's UI position in a saved program.
+ */
+export interface Position {
+  x: number;
+  y: number;
+}
+
+/**
+ * A pin value in a saved program.
+ */
+export interface PinValue {
+  /**
+   * The pin value, a Haystack value encoded as JSON. `null` when the
+   * pin has none; a load does not write a `null`.
+   */
+  value: unknown;
+
+  /**
+   * True if the pin is linked to another pin. `loadProgram` reads a
+   * missing flag as `false`.
+   */
+  isConnected: boolean;
+}
+
+/**
+ * Opaque editor state saved with a block: any JSON object. The engine
+ * keeps it without reading it, and `getProgram` returns it as
+ * `loadProgram` received it. Values JSON cannot encode, such as
+ * `undefined`, come back as `null`.
+ */
+export type EditorMetadata = Record<string, unknown>;
+
+/**
+ * One block of a saved program.
+ *
+ * `Editor` types the block's editor metadata for an application that
+ * knows what it stores there.
+ */
+export interface ProgramBlock<Editor extends object = EditorMetadata> {
+  /** The block type name. */
+  name: string;
+
+  /** The library of the block type. */
+  lib: string;
+
+  /**
+   * The version of the block type the program was saved with (the
+   * block's `BlockDesc.ver`). A load rejects a block saved at an
+   * incompatible version of its type — another major version, or below
+   * 1.0 another minor version. Left out, the block is not checked.
+   */
+  ver?: string;
+
+  /** User-supplied display label shown alongside the block-type name. */
+  label?: string;
+
+  /** The block's position in the editor. */
+  position?: Position;
+
+  /** Opaque editor metadata, see {@link EditorMetadata}. */
+  editor?: Editor;
+
+  /** Input pin values by pin name. */
+  inputs?: Record<string, PinValue>;
+
+  /** Output pin values by pin name. */
+  outputs?: Record<string, PinValue>;
+}
+
+/**
  * Describes a program that would be loaded in the engine.
  *
  * The program is a set of blocks and links between them.
  * The program and the blocks have meta data that would be used in the editor
  * for example to position the blocks.
+ *
+ * This is the shape `getProgram` returns and `loadProgram` takes. Beyond
+ * it, `loadProgram` accepts a program without `version` (a pre-2.0
+ * save), and reads missing `blocks` or `links` as empty.
  */
-export interface Program {
+export interface Program<Editor extends object = EditorMetadata> {
   /**
-   * The program name
+   * The save format version, see {@link PROGRAM_FORMAT_VERSION}.
    */
-  name: string;
+  version: number;
+
+  /**
+   * Optional program name
+   */
+  name?: string;
 
   /**
    * Optional program description
@@ -310,46 +400,12 @@ export interface Program {
   description?: string;
 
   /**
-   * Blocks used in the program
+   * Blocks used in the program, by block uuid
    */
-  blocks: {
-    [blockUuid: string]: {
-      name: string;
-      lib: string;
-
-      /** User-supplied display label shown alongside the block-type name. */
-      label?: string;
-
-      /**
-       * UI widget identity for ExternalIn/ExternalOut blocks placed as
-       * widgets. Editor-only metadata; the engine ignores it.
-       */
-      widget?: {
-        kind: string;
-        config?: Record<string, unknown>;
-        configSources?: Record<string, string>;
-        valueSource?: string;
-      };
-
-      positions: {
-        x: number;
-        y: number;
-      };
-
-      inputs?: {
-        [pinName: string]: { value?: unknown; isConnected?: boolean };
-      };
-
-      outputs?: {
-        [pinName: string]: { value?: unknown; isConnected?: boolean };
-      };
-    };
-  };
+  blocks: Record<string, ProgramBlock<Editor>>;
 
   /**
-   * Links between blocks
+   * Links between blocks, by link uuid
    */
-  links: {
-    [linkUuid: string]: LinkData;
-  };
+  links: Record<string, LinkData>;
 }
