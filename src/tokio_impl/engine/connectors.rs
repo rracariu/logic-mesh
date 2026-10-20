@@ -236,11 +236,49 @@ pub(super) mod test_support {
         Arc,
         atomic::{AtomicBool, Ordering},
     };
+    use std::time::Duration;
 
     use libhaystack::val::Value;
 
     use crate::base::connector::{Connector, ConnectorFuture, ValueStream};
     use crate::base::error::ConnectorError;
+
+    /// How long a [`SlowStopConnector`]'s `stop` takes.
+    pub(crate) const SLOW_STOP: Duration = Duration::from_millis(200);
+
+    /// `stop` takes [`SLOW_STOP`], then records that it finished — so a
+    /// test can tell an answer sent once the stop is done from one sent
+    /// while it is still under way.
+    pub(crate) struct SlowStopConnector {
+        pub(crate) stopped: Arc<AtomicBool>,
+    }
+
+    impl Connector for SlowStopConnector {
+        fn start(&self) -> ConnectorFuture<'_, ()> {
+            Box::pin(async { Ok(()) })
+        }
+
+        fn stop(&self) -> ConnectorFuture<'_, ()> {
+            let stopped = self.stopped.clone();
+            Box::pin(async move {
+                tokio::time::sleep(SLOW_STOP).await;
+                stopped.store(true, Ordering::SeqCst);
+                Ok(())
+            })
+        }
+
+        fn subscribe(&self, _address: &str) -> ConnectorFuture<'_, ValueStream> {
+            Box::pin(async { Ok(Box::pin(futures::stream::empty()) as ValueStream) })
+        }
+
+        fn publish(&self, _address: &str, _value: Value) -> ConnectorFuture<'_, ()> {
+            Box::pin(async { Ok(()) })
+        }
+
+        fn request(&self, _address: &str, value: Value) -> ConnectorFuture<'_, Value> {
+            Box::pin(async move { Ok(value) })
+        }
+    }
 
     /// Records `start`/`stop` calls so tests can observe the engine
     /// driving the lifecycle.
