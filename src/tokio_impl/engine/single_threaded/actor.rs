@@ -16,18 +16,17 @@ use std::collections::{BTreeMap, HashMap};
 use std::rc::Rc;
 
 use libhaystack::val::Value;
-use tokio::sync::mpsc::{self, UnboundedSender};
-use uuid::Uuid;
+use tokio::sync::mpsc;
 
 use super::super::actor_step::{ExecutionGate, PanicHold, Step, run_one_step};
 use super::super::block_mailbox::BlockMailboxCmd;
 use crate::base::Status;
 use crate::base::block::{Block, BlockState};
-use crate::base::engine::messages::{ChangeSource, WatchMessage};
+use crate::base::engine::messages::{ChangeSource, WatchId, WatchMessage, WatchSender};
 use crate::tokio_impl::EngineBlock;
 
 /// ST-side watchers handle: single-threaded, no thread-safety needed.
-pub(super) type WatchersHandle = Rc<RefCell<BTreeMap<Uuid, UnboundedSender<WatchMessage>>>>;
+pub(super) type WatchersHandle = Rc<RefCell<BTreeMap<WatchId, WatchSender>>>;
 
 /// Per-block actor task. Owns the block by value; processes mailbox commands
 /// interleaved with `block.execute()` cycles, which run only while the
@@ -185,7 +184,7 @@ mod test {
     use super::block_actor_task;
     use crate::base::Status;
     use crate::base::block::connect_output;
-    use crate::base::engine::messages::BlockDefinition;
+    use crate::base::engine::messages::{BlockDefinition, WatchId};
     use crate::base::input::Input;
     use crate::blocks::{InputImpl, math::Add};
     use crate::tokio_impl::engine::block_mailbox::{BLOCK_MAILBOX_CAP, BlockMailboxCmd};
@@ -224,7 +223,7 @@ mod test {
         let (mailbox_tx, mailbox_rx) = mpsc::channel(BLOCK_MAILBOX_CAP);
         let (_gate, gate_rx) = watch::channel(true);
         let watchers = super::WatchersHandle::default();
-        let (live, gone) = (Uuid::new_v4(), Uuid::new_v4());
+        let (live, gone) = (WatchId::new(0), WatchId::new(1));
         let (live_tx, mut live_rx) = mpsc::unbounded_channel();
         let (gone_tx, gone_rx) = mpsc::unbounded_channel();
         drop(gone_rx);

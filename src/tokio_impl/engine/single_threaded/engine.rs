@@ -6,10 +6,9 @@
 use std::{cell::RefCell, collections::BTreeMap, marker::PhantomData, rc::Rc, time::Duration};
 
 use crate::base::error::{EngineError, Result};
-use libhaystack::val::Value;
 use tokio::{
     sync::{
-        mpsc::{self, Receiver, Sender, UnboundedSender},
+        mpsc::{self, Receiver},
         watch,
     },
     task::LocalSet,
@@ -27,17 +26,15 @@ use crate::base::{
     block::{Block, BlockDesc},
     engine::{
         Engine, EngineState, Idle, MaybeSendSync, Running,
-        messages::{BlockDefinition, EngineMessage, WatchMessage},
+        messages::{ClientId, RequestMessage, RequestSender, ResponseSender, WatchId, WatchSender},
     },
-    program::{
-        EditorMetadata, Program,
-        data::{LinkData, Position},
-    },
+    program::{EditorMetadata, Program, data::Position},
 };
-use crate::blocks::registry::{BlockSink, get_block};
-use crate::tokio_impl::engine::Messages;
-use crate::tokio_impl::engine::message_dispatch::dispatch_message;
-use crate::tokio_impl::engine::{ensure_schedulable, phase_name, schedule_block_on_engine};
+use crate::blocks::registry::BlockSink;
+use crate::tokio_impl::engine::message_dispatch::{Clients, Flow, RunningHost, dispatch};
+use crate::tokio_impl::engine::{
+    REQUEST_CHANNEL_CAP, ensure_schedulable, phase_name, schedule_block_on_engine,
+};
 use crate::tokio_impl::scan::ScanInterval;
 use crate::tokio_impl::{ReaderImpl, WriterImpl};
 use futures::future::LocalBoxFuture;
@@ -88,16 +85,14 @@ pub struct SingleThreadedEngine<S: EngineState = Idle> {
     /// applied at `run()` start (which pumps the LocalSet so the actor
     /// tasks can answer the round-trips).
     pending: Vec<StagedProgram>,
-    /// External-command channel (receiving end).
-    sender: Sender<Messages>,
-    receiver: Receiver<Messages>,
-    /// Reply channels for external command issuers. `pub(in super::super)`
-    /// so the message-dispatch loop (sibling of `single_threaded/`) can
-    /// iterate it to deliver replies.
-    pub(in super::super) reply_senders: BTreeMap<Uuid, Sender<Messages>>,
-    /// Watchers for change-of-value notifications. Same visibility note as
-    /// `reply_senders`.
-    pub(in super::super) watchers: Rc<RefCell<BTreeMap<Uuid, UnboundedSender<WatchMessage>>>>,
+    /// The request channel every client sends on; the engine keeps a
+    /// sender to hand out to new clients.
+    sender: RequestSender,
+    receiver: Receiver<RequestMessage>,
+    /// The clients' response channels.
+    clients: Clients,
+    /// Watchers for change-of-value notifications, by watch id.
+    watchers: Rc<RefCell<BTreeMap<WatchId, WatchSender>>>,
     /// Names of the connectors whose lifecycle this engine manages. The
     /// handles themselves live in the process-wide connector registry —
     /// the single source of truth blocks also resolve against. Dropping
@@ -140,7 +135,6 @@ impl<S: EngineState> std::fmt::Debug for SingleThreadedEngine<S> {
 impl Engine for SingleThreadedEngine<Idle> {
     type Writer = WriterImpl;
     type Reader = ReaderImpl;
-    type Channel = Sender<Messages>;
     type RunFuture = LocalBoxFuture<'static, Self>;
 
     fn schedule<B>(&mut self, block: B) -> Result<()>
@@ -210,27 +204,22 @@ impl Engine for SingleThreadedEngine<Idle> {
         }))
     }
 
-    fn create_message_channel(
-        &mut self,
-        sender_id: uuid::Uuid,
-        sender_channel: Self::Channel,
-    ) -> Self::Channel {
-        self.reply_senders.insert(sender_id, sender_channel);
-        self.sender.clone()
+    fn create_message_channel(&mut self, responses: ResponseSender) -> (ClientId, RequestSender) {
+        (self.clients.register(responses), self.sender.clone())
     }
 }
 
 impl SingleThreadedEngine<Idle> {
     /// Creates a new single-threaded engine.
     pub fn new() -> Self {
-        let (sender, receiver) = mpsc::channel(32);
+        let (sender, receiver) = mpsc::channel(REQUEST_CHANNEL_CAP);
         Self {
             local: Rc::new(LocalSet::new()),
             graph: BlockGraph::default(),
             pending: Vec::new(),
             sender,
             receiver,
-            reply_senders: BTreeMap::new(),
+            clients: Clients::default(),
             watchers: Rc::default(),
             connectors: ManagedConnectors::default(),
             execution: watch::Sender::new(false),
@@ -295,7 +284,7 @@ impl<S: EngineState> SingleThreadedEngine<S> {
             pending,
             sender,
             receiver,
-            reply_senders,
+            clients,
             watchers,
             connectors,
             execution,
@@ -308,7 +297,7 @@ impl<S: EngineState> SingleThreadedEngine<S> {
             pending,
             sender,
             receiver,
-            reply_senders,
+            clients,
             watchers,
             connectors,
             execution,
@@ -352,7 +341,10 @@ impl<S: EngineState> SingleThreadedEngine<S> {
     /// Validates `link_data` against the scheduled blocks — see
     /// `BlockGraph::validate_link`.
     #[cfg(test)]
-    pub(super) fn validate_link(&self, link_data: &LinkData) -> Result<(Uuid, LinkRecord)> {
+    pub(super) fn validate_link(
+        &self,
+        link_data: &crate::base::program::LinkData,
+    ) -> Result<(Uuid, LinkRecord)> {
         self.graph.validate_link(link_data)
     }
 }
@@ -379,17 +371,17 @@ impl<S: EngineState> ProgramHost for SingleThreadedEngine<S> {
         ensure_schedulable(desc)
     }
 
-    fn schedule_desc(&mut self, desc: &BlockDesc, id: Uuid) -> Result<Uuid> {
-        schedule_block_on_engine(desc, Some(id), self)
+    fn schedule_desc(&mut self, desc: &BlockDesc, id: Option<Uuid>) -> Result<Uuid> {
+        schedule_block_on_engine(desc, id, self)
     }
 }
 
 impl SingleThreadedEngine<Running> {
     /// The event loop: starts the managed connectors, wires the links
     /// and pushes the pin values of the programs scheduled while idle,
-    /// opens the execution gate, then services engine messages until
-    /// [`Shutdown`](EngineMessage::Shutdown) — see the
-    /// [lifecycle contract](crate::base::engine#lifecycle-messages).
+    /// opens the execution gate, then answers engine requests until a
+    /// [`Shutdown`](crate::base::engine::messages::EngineRequest::Shutdown) — see the
+    /// [lifecycle contract](crate::base::engine#lifecycle-requests).
     async fn event_loop(&mut self) {
         // Clone the LocalSet handle so the loop body can drive `local`
         // and mutate `self` independently of each other.
@@ -416,176 +408,44 @@ impl SingleThreadedEngine<Running> {
             // The LocalSet is driven while waiting in every state: with
             // the gate closed, actors serve their mailboxes but no block
             // executes.
-            let mut engine_msg = None;
+            let mut request = None;
             local
                 .run_until(async {
-                    engine_msg = self.receiver.recv().await;
+                    request = self.receiver.recv().await;
                 })
                 .await;
 
             // The engine holds a sender itself, so the channel never
             // closes.
-            let Some(message) = engine_msg else {
+            let Some(request) = request else {
                 continue;
             };
-            match message {
-                EngineMessage::Shutdown => {
-                    // Blocks stay scheduled, held by the closed gate,
-                    // and resume on the next `run()`. Connectors stay
-                    // registered so the re-run gets the same bindings.
-                    self.set_execution(false);
-                    connectors::stop_connectors(&self.connectors).await;
-                    break;
-                }
-                EngineMessage::Reset => self.reset().await,
-                EngineMessage::Pause => self.set_execution(false),
-                EngineMessage::Resume => self.set_execution(true),
-                message => local.run_until(dispatch_message(self, message)).await,
+            if local.run_until(dispatch(self, request)).await == Flow::Shutdown {
+                break;
             }
         }
     }
+}
 
-    /// Terminates and removes every block, then unregisters and stops
-    /// the managed connectors.
-    ///
-    /// Runs outside `run_until`, where no actor makes progress, so the
-    /// actors are told to terminate without waiting on their mailboxes.
-    async fn reset(&mut self) {
-        self.graph.clear();
-        // Unregister first — no block can `get_connector` a connector
-        // that is being stopped — then stop the handles the
-        // unregistration handed back.
-        connectors::unregister_and_stop_connectors(&mut self.connectors).await;
+impl RunningHost for SingleThreadedEngine<Running> {
+    fn clients(&mut self) -> &mut Clients {
+        &mut self.clients
     }
 
-    /// Attaches an already-registered connector to this running engine:
-    /// resolves `name` in the process-wide connector registry, awaits
-    /// the connector's `start` (bounded by the lifecycle timeout), and
-    /// puts it under this engine's lifecycle management.
-    ///
-    /// This is the running-phase counterpart of
-    /// [`add_connector`](SingleThreadedEngine::add_connector), reachable
-    /// over the engine message channel
-    /// ([`AddConnectorReq`](EngineMessage::AddConnectorReq)). Handles
-    /// cannot ride in engine messages, so callers register the handle
-    /// first and attach it here by name.
-    ///
-    /// A registered connector must be attached to at most one engine:
-    /// the registry carries no ownership mark, so a second engine
-    /// attaching the same name would double-start the connector and
-    /// its reset would unregister the name out from under the first
-    /// engine.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error message if the name is not registered, is
-    /// already engine-managed, or the connector fails to start (or
-    /// times out). On a start failure the connector's `stop` is
-    /// awaited before returning — a failing `start` may have spawned
-    /// IO tasks before erroring (or completed after the timeout
-    /// cancelled the await), and nothing else would ever stop an
-    /// untracked connector. The name stays registered, so a retry
-    /// remains possible.
-    pub(crate) async fn attach_connector(&mut self, name: String) -> Result<String, String> {
-        connectors::attach_connector(&mut self.connectors, name).await
+    fn connectors(&mut self) -> &mut ManagedConnectors {
+        &mut self.connectors
     }
 
-    /// The names of the connectors this engine manages, for
-    /// [`ListConnectorsReq`](EngineMessage::ListConnectorsReq).
-    pub(crate) fn managed_connectors(&self) -> Vec<String> {
-        self.connectors.to_vec()
+    fn set_execution(&self, open: bool) {
+        SingleThreadedEngine::set_execution(self, open);
     }
 
-    /// Detaches an engine-managed connector: stops tracking it,
-    /// unregisters it from the process-wide registry, and then awaits
-    /// its `stop` — the same ordering as a reset, so no block can
-    /// resolve a connector that is being stopped. Stop failures and
-    /// timeouts are logged, not fatal.
-    ///
-    /// Reachable over the engine message channel
-    /// ([`RemoveConnectorReq`](EngineMessage::RemoveConnectorReq)).
-    ///
-    /// # Errors
-    ///
-    /// Returns an error message if `name` is not engine-managed.
-    pub(crate) async fn detach_connector(&mut self, name: &str) -> Result<String, String> {
-        connectors::detach_connector(&mut self.connectors, name).await
+    async fn add_watcher(&mut self, id: WatchId, sender: WatchSender) {
+        self.watchers.borrow_mut().insert(id, sender);
     }
 
-    pub(crate) async fn add_block(
-        &mut self,
-        block_name: String,
-        block_id: Option<Uuid>,
-        lib: Option<&str>,
-    ) -> Result<Uuid> {
-        let block_def = get_block(block_name.as_str(), lib)?;
-        // schedule_block_on_engine spawns the actor task immediately (via
-        // `spawn_block()`); it returns the assigned block id.
-        schedule_block_on_engine(&block_def.desc, block_id, self)
-    }
-
-    pub(crate) async fn inspect_block(&self, id: &Uuid) -> Result<BlockDefinition, EngineError> {
-        self.graph.inspect_block(id).await
-    }
-
-    pub(crate) async fn write_input(
-        &self,
-        id: &Uuid,
-        name: String,
-        value: Value,
-    ) -> Result<Option<Value>, EngineError> {
-        self.graph.write_input(id, name, value).await
-    }
-
-    pub(crate) async fn write_output(
-        &self,
-        id: &Uuid,
-        name: String,
-        value: Value,
-    ) -> Result<Value, EngineError> {
-        self.graph.write_output(id, name, value).await
-    }
-
-    /// Connects two blocks (source pin → target input). The source pin can
-    /// be either an output or an input (the latter is input-fanout).
-    pub(crate) async fn connect_blocks(&mut self, link_data: &LinkData) -> Result<LinkData> {
-        self.graph.connect_blocks(link_data).await
-    }
-
-    pub(crate) async fn remove_block(&mut self, block_id: &Uuid) -> Result<Uuid> {
-        self.graph.remove_block(block_id).await
-    }
-
-    /// Snapshot the full program: every scheduled block with its UI
-    /// metadata + current pin values, plus every link. This is the
-    /// canonical save format — round-trips through `load_program`.
-    pub(crate) async fn save_program(&self) -> Result<Program> {
-        self.graph.save_program().await
-    }
-
-    /// Load a full [`Program`], all or nothing: schedule every block,
-    /// wire every link, push the saved input/output values, and store
-    /// the UI metadata and the program's name and description.
-    ///
-    /// The whole program is checked before anything is scheduled — see
-    /// `stage_program` for the checks; among them, the engine must not
-    /// already hold any of the program's block or link ids (reset it
-    /// first via [`Reset`](EngineMessage::Reset)). A failure after
-    /// that, while wiring, removes the program's blocks again, so a
-    /// failed load leaves the engine as it was.
-    ///
-    /// Running-phase only: the actor tasks need to be live to handle the
-    /// WriteInput/Output mailbox cmds. Reached through the engine message
-    /// channel ([`LoadProgramReq`](EngineMessage::LoadProgramReq)).
-    pub(crate) async fn load_program(&mut self, program: Program) -> Result<()> {
-        // Sync: check the program and schedule its blocks. After this
-        // the per-block actor tasks have been spawned.
-        let staged = stage_program(self, &program)?;
-        self.graph.load_staged(staged).await
-    }
-
-    pub(crate) async fn disconnect_link_by_id(&mut self, link_id: &Uuid) -> Result<bool> {
-        self.graph.disconnect_link_by_id(link_id).await
+    async fn remove_watcher(&mut self, id: WatchId) -> bool {
+        self.watchers.borrow_mut().remove(&id).is_some()
     }
 }
 
@@ -598,6 +458,7 @@ mod test {
 
     use super::*;
     use crate::base::block::BlockProps;
+    use crate::base::engine::messages::{EngineRequest, EngineResponse, Envelope, RequestId};
     use crate::blocks::math::Add;
 
     /// Regression: reset awaited each `Terminate` send outside
@@ -609,6 +470,8 @@ mod test {
         let add = Add::new();
         let id = *add.id();
         eng.schedule(add).expect("scheduled");
+        let (responses, mut answered) = mpsc::unbounded_channel();
+        let (client, _) = eng.create_message_channel(responses);
         let mut eng = eng.into_state::<Running>();
 
         // Nothing drives the LocalSet here, so nothing drains these.
@@ -620,9 +483,12 @@ mod test {
             .is_ok()
         {}
 
-        timeout(Duration::from_secs(2), eng.reset())
+        let reset = Envelope::new(client, RequestId(0), EngineRequest::Reset);
+        timeout(Duration::from_secs(2), dispatch(&mut eng, reset))
             .await
             .expect("reset completes despite the full mailbox");
         assert!(eng.graph.handles().is_empty());
+        let ack = answered.try_recv().expect("the reset is answered");
+        assert!(matches!(ack.body, EngineResponse::Reset { result: Ok(()) }));
     }
 }
