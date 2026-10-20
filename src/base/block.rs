@@ -20,7 +20,7 @@ use uuid::Uuid;
 
 /// Operational state a block is in.
 ///
-/// Phase 1 fault propagation: [`BlockState::Fault`] carries the reason so the engine and
+/// [`BlockState::Fault`] carries the reason so the engine and
 /// UI can show *why* the block isn't producing trustworthy output. Recovery
 /// is automatic — the actor task optimistically clears Fault before each
 /// execute cycle, and re-enters it if drain or execute set it again or if
@@ -58,8 +58,8 @@ pub enum BlockState {
         /// The proximate cause of the fault.
         reason: String,
     },
-    /// Block exists but is intentionally not executing. Phase 1 doesn't
-    /// have a path that sets this; reserved for explicit user disable.
+    /// Block exists but is intentionally not executing. Nothing sets it
+    /// yet; reserved for explicit user disable.
     Disabled,
     /// Block has been removed and the actor task is exiting.
     Terminated,

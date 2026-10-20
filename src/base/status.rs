@@ -4,10 +4,10 @@
 //! channel. Mirrors a subset of Project Haystack's `curStatus` tag and
 //! OPC UA quality codes.
 //!
-//! For Phase 1 of fault propagation the status is essentially block-level
-//! — every output of a faulted block emits [`Status::Fault`], and a consumer that
-//! drains a [`Status::Fault`]-status value faults itself. Phase 2 will introduce
-//! per-pin granularity.
+//! The status is set per block today: every output of a faulted block
+//! emits [`Status::Fault`], and a consumer that drains a
+//! [`Status::Fault`]-status value faults itself. Per-pin statuses may
+//! follow; the enum is `#[non_exhaustive]` so they can be added.
 
 use serde::{Deserialize, Serialize};
 
@@ -27,7 +27,7 @@ pub enum Status {
     Fault,
     /// The producer has not delivered an update within the expected
     /// freshness window. The accompanying value is the last known good.
-    /// Phase 1 doesn't set this anywhere; reserved for staleness checks.
+    /// Nothing sets it yet; reserved for staleness checks.
     Stale,
 }
 
