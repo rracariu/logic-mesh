@@ -5,13 +5,13 @@
 use crate::blocks::registry::{list_registered_blocks, register_block_desc};
 use crate::single_threaded::SingleThreadedEngine;
 use crate::wasm::engine_command::EngineCommand;
-use crate::wasm::error::{js_error, js_error_from};
+use crate::wasm::error::{js_error, js_error_from, js_type_name};
 use crate::wasm::js_block::JS_FNS;
 use crate::wasm::types::JsBlockDesc;
 use js_sys::Array;
 
-use wasm_bindgen::JsValue;
 use wasm_bindgen::prelude::wasm_bindgen;
+use wasm_bindgen::{JsCast, JsValue};
 
 use crate::base::engine::Engine;
 use crate::base::error::{BlockDescError, ErrorChain, ErrorCode, RequestError};
@@ -63,22 +63,22 @@ impl BlocksEngine {
     /// Registers a new JS block in the registry and returns its name.
     ///
     /// `func`, if provided, is a factory that returns the function
-    /// executing the block — without it the block is a no-op. Pin kinds
-    /// must be the lowercase Haystack names (`"number"`, `"str"`, …).
+    /// executing the block — without it (`null` or `undefined`) the
+    /// block is a no-op. Pin kinds must be the lowercase Haystack names
+    /// (`"number"`, `"str"`, …).
     ///
     /// Throws a `LogicMeshError`: `InvalidArgument` if `desc` is not a
-    /// block description, `UnknownPinKind`, `UnknownRunCondition` or
-    /// `BlockNotExternal` for a bad field, and `BlockAlreadyRegistered`
-    /// if the library already has a block of that name.
+    /// block description or `func` is neither a function nor left out,
+    /// `UnknownPinKind`, `UnknownRunCondition` or `BlockNotExternal` for
+    /// a bad field, and `BlockAlreadyRegistered` if the library already
+    /// has a block of that name. Nothing is registered then.
     #[wasm_bindgen(js_name = "registerBlock")]
     pub fn register_block(
         &mut self,
         #[wasm_bindgen(unchecked_param_type = "BlockDesc")] desc: JsValue,
         // A custom type loses the `?` of an optional parameter; a
         // trailing parameter that takes `void` may be left out too.
-        #[wasm_bindgen(unchecked_param_type = "JsBlockFactory | null | void")] func: Option<
-            js_sys::Function,
-        >,
+        #[wasm_bindgen(unchecked_param_type = "JsBlockFactory | null | void")] func: JsValue,
     ) -> Result<String, JsValue> {
         let desc: JsBlockDesc = serde_wasm_bindgen::from_value(desc).map_err(|err| {
             js_error_from(
@@ -96,13 +96,17 @@ impl BlocksEngine {
             desc.try_into().map_err(|err: BlockDescError| {
                 js_error(RequestError::new(err.code(), ErrorChain(&err).to_string()))
             })?;
+        // wasm-bindgen checks no argument against its declared type, so
+        // read the factory before registering anything: a bad one would
+        // only show when the block is added, with its name already taken.
+        let factory = block_factory(func)?;
         register_block_desc(&desc).map_err(|err| js_error(RequestError::from(err)))?;
 
-        if let Some(func) = func {
-            JS_FNS.with_borrow_mut(|reg| {
-                reg.entry(lib).or_default().insert(name.clone(), func);
-            });
-        }
+        // Registered with or without a factory, so a block without one
+        // resolves to a no-op whatever else its library holds.
+        JS_FNS.with_borrow_mut(|reg| {
+            reg.entry(lib).or_default().insert(name.clone(), factory);
+        });
 
         Ok(name)
     }
@@ -154,4 +158,23 @@ impl BlocksEngine {
         let engine = std::mem::take(&mut self.engine);
         self.engine = engine.run().await;
     }
+}
+
+/// Reads the block factory `registerBlock` was given: `None` for `null`
+/// or `undefined`.
+fn block_factory(func: JsValue) -> Result<Option<js_sys::Function>, JsValue> {
+    if func.is_null() || func.is_undefined() {
+        return Ok(None);
+    }
+    func.dyn_into::<js_sys::Function>()
+        .map(Some)
+        .map_err(|func| {
+            js_error_from(
+                ErrorCode::InvalidArgument,
+                format!(
+                    "Invalid block factory: expected a function, null or undefined, got {}",
+                    js_type_name(&func)
+                ),
+            )
+        })
 }

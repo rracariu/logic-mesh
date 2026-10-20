@@ -20,7 +20,7 @@ use crate::base::block::{Block, BlockState};
 use crate::blocks::registry::{BlockSink, eval_block_impl};
 use crate::tokio_impl::block::drain_ready_inputs;
 use crate::tokio_impl::scan::scan_interval_millis;
-use crate::wasm::error::js_detail;
+use crate::wasm::error::{js_detail, js_type_name};
 use crate::{
     base::{
         block::{BlockDesc, BlockProps},
@@ -31,7 +31,9 @@ use crate::{
     blocks::{InputImpl, OutputImpl},
 };
 
-type ExternFuncRegistryType = HashMap<String, HashMap<String, js_sys::Function>>;
+/// The factory of every block `registerBlock` registered, by library
+/// and block name — `None` for a block registered without one.
+type ExternFuncRegistryType = HashMap<String, HashMap<String, Option<js_sys::Function>>>;
 
 thread_local! {
     /// A registry of JS functions that implement block logic.
@@ -375,41 +377,47 @@ pub(crate) async fn eval_js_block(desc: &BlockDesc, inputs: Vec<Value>) -> Resul
     eval_block_impl(&mut block, inputs).await
 }
 
+/// The function executing a block of type `desc`: what its factory
+/// returns, or `None` for a block registered without a factory, which
+/// is a no-op.
+///
+/// A block `registerBlock` never registered — an external block a Rust
+/// application put in the registry — has no executor, and is rejected
+/// with [`ExternalError::LibraryNotFound`].
 fn resolve_js_execute_function(
     desc: &BlockDesc,
 ) -> Result<Option<js_sys::Function>, ExternalError> {
     JS_FNS.with(|fns| {
         let fns = fns.borrow();
-        let lib = fns.get(&desc.library);
+        let factory = fns
+            .get(&desc.library)
+            .and_then(|lib| lib.get(desc.name.as_str()));
 
-        let Some(lib) = lib else {
+        let Some(factory) = factory else {
             return Err(ExternalError::LibraryNotFound {
                 library: desc.library.clone(),
                 name: desc.name.clone(),
             });
         };
+        let Some(factory) = factory else {
+            return Ok(None);
+        };
 
-        let func = lib.get(desc.name.as_str());
-        let func = match func {
-            Some(func) => {
-                let func =
-                    func.call0(&JsValue::NULL)
-                        .map_err(|err| ExternalError::FactoryCallFailed {
-                            name: desc.name.clone(),
-                            detail: format!("{err:#?}"),
-                        })?;
-
-                let func = func.dyn_into::<js_sys::Function>().map_err(|err| {
-                    ExternalError::FactoryReturnedNonFunction {
-                        name: desc.name.clone(),
-                        detail: format!("{err:#?}"),
-                    }
+        let func =
+            factory
+                .call0(&JsValue::NULL)
+                .map_err(|err| ExternalError::FactoryCallFailed {
+                    name: desc.name.clone(),
+                    detail: js_detail(&err),
                 })?;
 
-                Some(func)
+        let func = func.dyn_into::<js_sys::Function>().map_err(|func| {
+            ExternalError::FactoryReturnedNonFunction {
+                name: desc.name.clone(),
+                detail: format!("it returned a value of type {}", js_type_name(&func)),
             }
-            None => None,
-        };
-        Ok(func)
+        })?;
+
+        Ok(Some(func))
     })
 }

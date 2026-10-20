@@ -8,6 +8,7 @@ import type {
   BlockNotification,
   ConnectorCallback,
   EngineSession,
+  JsBlockFactory,
   JsConnector,
   LogicMeshError,
 } from '../src/index';
@@ -366,6 +367,80 @@ describe('synchronous bindings', () => {
     ).toBe('InvalidArgument');
     expect(() => new logicMesh.BlocksEngine(25)).not.toThrow();
     expect(() => initEngine(0)).not.toThrow();
+  });
+});
+
+describe('registerBlock', () => {
+  /** {@link jsDesc} in a library of its own. */
+  function freshDesc(name: string): BlockDesc {
+    return { ...jsDesc(name), lib: `register-block-${crypto.randomUUID()}` };
+  }
+
+  // Regression: a block registered without a factory, documented as a
+  // no-op, was rejected with ExternalLibraryNotFound when added or
+  // evaluated, unless another block of its library had a factory.
+  it('registers a block without a factory as a no-op', async () => {
+    const session = track(createEngineSession({ scanInterval: 10 }));
+    const left = freshDesc('NoFactory');
+    const nulled = freshDesc('NullFactory');
+    session.engine.registerBlock(left);
+    session.engine.registerBlock(nulled, null);
+    session.start();
+    const { command } = session;
+
+    for (const desc of [left, nulled]) {
+      const id = await command.addBlock(desc.name, undefined, desc.lib);
+      await command.writeBlockInput(id, 'in', 1);
+      expect((await command.inspectBlock(id)).state).toBe('running');
+      const outputs = await command.evalBlock(desc.name, [1], desc.lib);
+      expect(outputs).toHaveLength(1);
+      expect(outputs[0] ?? null).toBeNull();
+    }
+  });
+
+  // Regression: a factory that is not a function was kept unchecked
+  // and took the block's name, and adding the block then rejected with
+  // a dump of the value and the wasm-bindgen glue.
+  it('rejects a factory that is not a function, registering nothing', () => {
+    const engine = initEngine(10);
+    const desc = freshDesc('NotAFunction');
+
+    const err = thrown(() =>
+      engine.registerBlock(desc, 42 as unknown as JsBlockFactory),
+    );
+    expect(err.code).toBe('InvalidArgument');
+    expect(err.message).toContain('got number');
+    expect(engine.registerBlock(desc, () => () => [1])).toBe('NotAFunction');
+  });
+
+  it('reports a factory that fails with what it threw or returned', async () => {
+    const session = track(createEngineSession({ scanInterval: 10 }));
+    const throws = freshDesc('FactoryThrows');
+    const returns = freshDesc('FactoryReturns');
+    session.engine.registerBlock(throws, () => {
+      throw new TypeError('no executor');
+    });
+    session.engine.registerBlock(
+      returns,
+      (() => 42) as unknown as JsBlockFactory,
+    );
+    session.start();
+    const { command } = session;
+
+    const threw = await rejection(
+      command.addBlock(throws.name, undefined, throws.lib),
+    );
+    expect(threw.code).toBe('ExternalFactoryCallFailed');
+    expect(threw.message).toBe(
+      "External block 'FactoryThrows' factory function failed: TypeError: no executor",
+    );
+    const returned = await rejection(
+      command.evalBlock(returns.name, [1], returns.lib),
+    );
+    expect(returned.code).toBe('ExternalFactoryReturnedNonFunction');
+    expect(returned.message).toBe(
+      "External block 'FactoryReturns' factory did not return a function: it returned a value of type number",
+    );
   });
 });
 

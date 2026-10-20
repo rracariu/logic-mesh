@@ -39,3 +39,12 @@ pub(crate) fn js_detail(err: &JsValue) -> String {
 
     err.as_string().unwrap_or_else(|| format!("{err:?}"))
 }
+
+/// What kind of JavaScript value `value` is, for a message about a value
+/// of the wrong kind: its `typeof`, except that `null` is `"null"`.
+pub(crate) fn js_type_name(value: &JsValue) -> String {
+    if value.is_null() {
+        return "null".to_string();
+    }
+    value.js_typeof().as_string().unwrap_or_default()
+}

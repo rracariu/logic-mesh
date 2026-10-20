@@ -29,7 +29,9 @@ pub enum ExternalError {
     UnsupportedMultiThreaded,
 
     /// The JavaScript library that provides an external block's executor
-    /// function is not registered with the engine.
+    /// function is not registered with the engine: the JavaScript
+    /// bindings never registered the block, so it has no executor, not
+    /// even a no-op one.
     #[error(
         "Missing library: '{library}'. Can't find the executor JavaScript function for: '{name}' block."
     )]
