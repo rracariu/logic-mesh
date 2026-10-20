@@ -303,7 +303,8 @@ impl EngineClient {
     }
 
     /// Evaluates block type `name` once with `inputs`, returning its
-    /// output values. See [`EngineRequest::EvalBlock`].
+    /// output values. See [`EngineRequest::EvalBlock`], which also says
+    /// how a panicking or never-finishing evaluation fails.
     pub async fn eval_block(
         &self,
         name: &str,

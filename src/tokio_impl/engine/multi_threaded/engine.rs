@@ -1036,6 +1036,26 @@ mod test {
         }
     }
 
+    /// Regression: see the single-threaded `evaluation`.
+    mod evaluation {
+        use super::*;
+        use crate::tokio_impl::engine::test_support::evaluation;
+
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn a_panicking_evaluation_fails_and_the_engine_answers_on() {
+            evaluation::a_panicking_evaluation_fails_and_the_engine_answers_on(
+                MultiThreadedEngine::new(),
+            )
+            .await;
+        }
+
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn an_evaluation_missing_its_inputs_times_out() {
+            evaluation::an_evaluation_missing_its_inputs_times_out(MultiThreadedEngine::new())
+                .await;
+        }
+    }
+
     /// Regression: see the single-threaded `link_ids`.
     mod link_ids {
         use super::*;

@@ -225,6 +225,9 @@ impl EngineCommand {
     /// Creates a temporary block instance, feeds it the given `inputs`,
     /// executes it, and returns the outputs. Without `lib`, the block is
     /// looked up in every library, as for [`add_block`](Self::add_block).
+    /// An evaluation still running after 5 s — a block waiting for an
+    /// input `inputs` does not supply, say — rejects with
+    /// `EvalTimeout`, and the engine goes on answering commands.
     #[wasm_bindgen(js_name = "evalBlock")]
     pub async fn eval_block(
         &self,

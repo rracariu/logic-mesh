@@ -38,6 +38,8 @@ export type LogicMeshErrorCode =
   | 'ConnectorStartTimeout'
   | 'EngineGone'
   | 'UnexpectedResponse'
+  | 'EvalPanicked'
+  | 'EvalTimeout'
   // Links
   | 'AlreadyConnected'
   | 'SelfLink'

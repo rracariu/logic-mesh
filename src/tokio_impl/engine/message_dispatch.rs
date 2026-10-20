@@ -17,9 +17,11 @@ use crate::base::engine::messages::{
     ClientId, EngineRequest, EngineResponse, Envelope, RequestId, RequestMessage, ResponseSender,
     WatchId, WatchSender,
 };
-use crate::base::error::Result;
+use crate::base::error::{EngineError, Result};
 use crate::blocks::registry::get_block;
+use crate::tokio_impl::sleep::sleep_millis;
 
+use super::actor_step::catch_panic;
 use super::connectors::{self, ManagedConnectors};
 use super::eval_block;
 use super::graph::{ProgramHost, stage_program};
@@ -300,12 +302,43 @@ fn add_block<E: RunningHost>(
     engine.schedule_desc(&block.desc, block_id)
 }
 
+/// How long an [`EngineRequest::EvalBlock`] evaluation may run, in
+/// milliseconds, before it fails with [`EngineError::EvalTimeout`].
+///
+/// The evaluation runs on the event loop, which answers no other
+/// request meanwhile, so it is bounded like a connector's start: a
+/// block that waits on an input the evaluation did not supply holds the
+/// engine up this long, not forever.
+pub(super) const EVAL_TIMEOUT_MILLIS: u64 = 5000;
+
 /// Evaluates block type `name` from `lib` once, with `inputs`.
+///
+/// The evaluation runs block code on the event loop itself, not in an
+/// actor, so it gets the actors' guard: a panic is caught and fails the
+/// request with [`EngineError::EvalPanicked`] (on native targets; a
+/// panic aborts a `wasm32` instance), and an evaluation still running
+/// after [`EVAL_TIMEOUT_MILLIS`] is dropped and fails it with
+/// [`EngineError::EvalTimeout`].
 async fn evaluate(
     name: &str,
     inputs: Vec<libhaystack::val::Value>,
     lib: Option<&str>,
 ) -> Result<Vec<libhaystack::val::Value>> {
     let block = get_block(name, lib)?;
-    eval_block(&block.desc, inputs).await
+    let desc = &block.desc;
+    tokio::select! {
+        outcome = catch_panic(eval_block(desc, inputs)) => {
+            outcome.map_err(|message| EngineError::EvalPanicked {
+                library: desc.library.clone(),
+                name: desc.name.clone(),
+                message,
+            })?
+        }
+        () = sleep_millis(EVAL_TIMEOUT_MILLIS) => Err(EngineError::EvalTimeout {
+            library: desc.library.clone(),
+            name: desc.name.clone(),
+            millis: EVAL_TIMEOUT_MILLIS,
+        }
+        .into()),
+    }
 }

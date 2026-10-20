@@ -422,6 +422,15 @@ pub enum EngineRequest {
     /// temporary block of type `name` gets `inputs` and executes, and
     /// its output values are the answer. Without `library`, every
     /// library is searched, as for [`AddBlock`](Self::AddBlock).
+    ///
+    /// The block runs on the engine's event loop, which answers no
+    /// other request until it is done, so the evaluation is guarded: a
+    /// panic in the block fails it with
+    /// [`EngineError::EvalPanicked`](crate::EngineError::EvalPanicked)
+    /// (on native targets; a panic aborts a `wasm32` instance), and one
+    /// still running after 5 s — a block waiting for an input that
+    /// `inputs` does not supply, say — is dropped and fails with
+    /// [`EngineError::EvalTimeout`](crate::EngineError::EvalTimeout).
     EvalBlock {
         /// The block type name.
         name: String,

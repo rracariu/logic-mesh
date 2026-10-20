@@ -254,6 +254,35 @@ pub enum EngineError {
         response: &'static str,
     },
 
+    /// A block type evaluated with
+    /// [`EngineRequest::EvalBlock`](crate::base::engine::messages::EngineRequest::EvalBlock)
+    /// panicked. The panic is caught, as a scheduled block's is, so the
+    /// engine goes on answering requests.
+    #[error("Evaluating block '{name}' of library '{library}' panicked: {message}")]
+    EvalPanicked {
+        /// The library of the block type.
+        library: String,
+        /// The block type name.
+        name: String,
+        /// The message the block panicked with.
+        message: String,
+    },
+
+    /// A block type evaluated with
+    /// [`EngineRequest::EvalBlock`](crate::base::engine::messages::EngineRequest::EvalBlock)
+    /// did not finish in time — typically one that waits for an input
+    /// the evaluation did not supply. The evaluation is dropped, so the
+    /// engine goes on answering requests.
+    #[error("Evaluating block '{name}' of library '{library}' did not finish within {millis} ms")]
+    EvalTimeout {
+        /// The library of the block type.
+        library: String,
+        /// The block type name.
+        name: String,
+        /// The deadline that elapsed, in milliseconds.
+        millis: u64,
+    },
+
     /// A block rejected a link while the engine wired it, after the
     /// engine's own checks passed — for example an input linked to
     /// another input of its own block.

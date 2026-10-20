@@ -561,6 +561,28 @@ mod tests {
         }
     }
 
+    /// Regression: an evaluated block ran on the event loop unguarded,
+    /// so one that panicked ended `run()` and one waiting for an input
+    /// stopped the engine answering. See `test_support::evaluation`.
+    mod evaluation {
+        use super::*;
+        use crate::tokio_impl::engine::test_support::evaluation;
+
+        #[tokio::test(flavor = "current_thread")]
+        async fn a_panicking_evaluation_fails_and_the_engine_answers_on() {
+            evaluation::a_panicking_evaluation_fails_and_the_engine_answers_on(
+                SingleThreadedEngine::new(),
+            )
+            .await;
+        }
+
+        #[tokio::test(flavor = "current_thread")]
+        async fn an_evaluation_missing_its_inputs_times_out() {
+            evaluation::an_evaluation_missing_its_inputs_times_out(SingleThreadedEngine::new())
+                .await;
+        }
+    }
+
     /// Regression: wiring a link always made up a fresh id, so a link
     /// lost the id a connect request named or a loaded program saved it
     /// under — and removing it by that id failed. See

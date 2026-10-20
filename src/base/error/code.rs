@@ -130,6 +130,10 @@ error_codes! {
     EngineGone,
     /// [`EngineError::UnexpectedResponse`].
     UnexpectedResponse,
+    /// [`EngineError::EvalPanicked`].
+    EvalPanicked,
+    /// [`EngineError::EvalTimeout`].
+    EvalTimeout,
 
     // --- Connect --------------------------------------------------------
     /// [`ConnectError::AlreadyConnected`].
@@ -259,6 +263,8 @@ impl EngineError {
             EngineError::ConnectorStartTimeout { .. } => ErrorCode::ConnectorStartTimeout,
             EngineError::EngineGone => ErrorCode::EngineGone,
             EngineError::UnexpectedResponse { .. } => ErrorCode::UnexpectedResponse,
+            EngineError::EvalPanicked { .. } => ErrorCode::EvalPanicked,
+            EngineError::EvalTimeout { .. } => ErrorCode::EvalTimeout,
             EngineError::Connect(err) => err.code(),
         }
     }

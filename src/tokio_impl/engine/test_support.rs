@@ -2573,3 +2573,101 @@ pub(crate) mod rejections {
         .await;
     }
 }
+
+/// Block evaluations, written once against the [`Engine`] trait and run
+/// by each engine's tests. An evaluation runs block code on the event
+/// loop itself, not in an actor, so whatever the block does, the engine
+/// must go on answering requests.
+pub(crate) mod evaluation {
+    use assert_matches::assert_matches;
+
+    use super::lifecycle::TestEngine;
+    use super::*;
+    use crate::base::block::Block;
+    use crate::base::error::{EngineError, ErrorCode};
+    use crate::blocks::{OutputImpl, registry};
+    use crate::tokio_impl::engine::message_dispatch::EVAL_TIMEOUT_MILLIS;
+
+    /// The library [`PanicOnEval`] is registered in.
+    const LIBRARY: &str = "eval_test";
+
+    /// Panics on every execute cycle.
+    #[block]
+    #[derive(BlockProps, Debug)]
+    #[library = "eval_test"]
+    #[category = "test"]
+    pub(crate) struct PanicOnEval {
+        #[output(kind = "Number")]
+        out: OutputImpl,
+    }
+
+    impl Block for PanicOnEval {
+        async fn execute(&mut self) {
+            panic!("evaluated");
+        }
+    }
+
+    /// Regression: an evaluated block that panicked unwound through the
+    /// dispatcher and ended `run()`, losing every block, and every
+    /// later request failed with `EngineGone`.
+    pub(crate) async fn a_panicking_evaluation_fails_and_the_engine_answers_on<E: TestEngine>(
+        mut engine: E,
+    ) {
+        let _ = registry::register::<PanicOnEval>();
+        let add = Add::new();
+        let block = *add.id();
+        engine.schedule(add).expect("scheduled");
+
+        drive(engine, move |client| async move {
+            let reply = answer(client.eval_block("PanicOnEval", vec![], Some(LIBRARY))).await;
+            let expected = EngineError::EvalPanicked {
+                library: LIBRARY.to_string(),
+                name: "PanicOnEval".to_string(),
+                message: "evaluated".to_string(),
+            };
+            assert_eq!(reply, Err(expected.into()));
+
+            client.write_input(block, "in0", 2.into()).await;
+            client.wait_for_output(block, "out", 2.into()).await;
+        })
+        .await;
+    }
+
+    /// Regression: evaluating a block without the inputs it waits for
+    /// never finished, so the dispatcher answered nothing from then on.
+    /// The evaluation now times out, the requests sent meanwhile are
+    /// answered after it, and later evaluations work.
+    pub(crate) async fn an_evaluation_missing_its_inputs_times_out<E: TestEngine>(engine: E) {
+        let bound = Duration::from_millis(EVAL_TIMEOUT_MILLIS) + REPLY_TIMEOUT;
+
+        drive(engine, move |client| async move {
+            let evaluating = client.clone();
+            let eval =
+                tokio::spawn(
+                    async move { evaluating.eval_block("Sub", vec![], Some("core")).await },
+                );
+            // Let the evaluation reach the dispatcher first.
+            sleep(Duration::from_millis(100)).await;
+            let queuing = client.clone();
+            let queued = tokio::spawn(async move { queuing.list_connectors().await });
+
+            let (eval, queued) = timeout(bound, async { (eval.await, queued.await) })
+                .await
+                .expect("the engine answers both requests");
+            let err = eval.expect("eval task").expect_err("times out");
+            assert_eq!(err.code, ErrorCode::EvalTimeout);
+            assert_matches!(
+                err.error(),
+                Some(crate::Error::Engine(EngineError::EvalTimeout { library, name, millis }))
+                    if library == "core" && name == "Sub" && *millis == EVAL_TIMEOUT_MILLIS
+            );
+            assert_eq!(queued.expect("queued task"), Ok(vec![]));
+
+            let outputs = answer(client.eval_block("Sub", vec![3.into(), 1.into()], Some("core")))
+                .await
+                .expect("evaluated");
+            assert_eq!(outputs, vec![Value::from(2)]);
+        })
+        .await;
+    }
+}
