@@ -339,9 +339,21 @@ export type EditorMetadata = Record<string, unknown>;
  * One block of a saved program.
  *
  * `Editor` types the block's editor metadata for an application that
- * knows what it stores there.
+ * knows what it stores there. Like the engine, it takes a plain JSON
+ * object only — not an array, a function or a class instance such as a
+ * `Date` — so declare it as an object type with `type`: an `interface`
+ * has no index signature, and does not satisfy {@link EditorMetadata}.
+ *
+ * ```ts
+ * type BlockEditor = { widget?: { kind: string } };
+ * const block: ProgramBlock<BlockEditor> = {
+ *   name: 'Add',
+ *   lib: 'core',
+ *   editor: { widget: { kind: 'Slider' } },
+ * };
+ * ```
  */
-export interface ProgramBlock<Editor extends object = EditorMetadata> {
+export interface ProgramBlock<Editor extends EditorMetadata = EditorMetadata> {
   /** The block type name. */
   name: string;
 
@@ -382,8 +394,10 @@ export interface ProgramBlock<Editor extends object = EditorMetadata> {
  * This is the shape `getProgram` returns and `loadProgram` takes. Beyond
  * it, `loadProgram` accepts a program without `version` (a pre-2.0
  * save), and reads missing `blocks` or `links` as empty.
+ *
+ * `Editor` types the blocks' editor metadata, see {@link ProgramBlock}.
  */
-export interface Program<Editor extends object = EditorMetadata> {
+export interface Program<Editor extends EditorMetadata = EditorMetadata> {
   /**
    * The save format version, see {@link PROGRAM_FORMAT_VERSION}.
    */
