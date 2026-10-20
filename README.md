@@ -1,5 +1,5 @@
 [![GitHub CI](https://github.com/rracariu/logic-mesh/actions/workflows/main.yml/badge.svg)](https://github.com/rracariu/logic-mesh/actions/workflows/main.yml)
-[![License](https://img.shields.io/badge/License-BSD_3--Clause-blue.svg)](https://github.com/rracariu/logic-mesh/blob/master/LICENSE)
+[![License](https://img.shields.io/badge/License-BSD_3--Clause-blue.svg)](https://github.com/rracariu/logic-mesh/blob/main/LICENSE)
 [![crates.io](https://img.shields.io/crates/v/logic-mesh.svg)](https://crates.io/crates/logic-mesh)
 [![npm](https://img.shields.io/npm/v/logic-mesh.svg)](https://www.npmjs.com/package/logic-mesh)
 
@@ -49,16 +49,27 @@ Widget configuration can also be driven by the running program: any config field
 
 ## Getting started
 
+Logic Mesh 2.0 changed the API in places. Coming from 1.x, see the
+[migration guide](https://github.com/rracariu/logic-mesh/blob/main/docs/migration-2.0.md); the
+[CHANGELOG](https://github.com/rracariu/logic-mesh/blob/main/CHANGELOG.md) lists every change.
+
 ### Rust
+
+The crate needs Rust 1.88 or newer. The engine runs on the application's
+tokio runtime, so add tokio with the features the application uses:
 
 ```toml
 [dependencies]
-logic-mesh = "1.0"
+logic-mesh = "2.0"
+tokio = { version = "1", features = ["rt", "macros", "time"] }
 ```
 
-Wire two sine waves into an adder and run them:
+Wire two sine waves into an adder, run them, and read the sum through an
+`EngineClient`, the typed handle that drives a running engine:
 
 ```rust,no_run
+use std::time::Duration;
+
 use logic_mesh::{
     base::block::connect_output,
     blocks::{math::Add, misc::SineWave},
@@ -68,39 +79,68 @@ use logic_mesh::{
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let mut add1 = Add::new();
+    let mut add = Add::new();
+    let sum = *add.id();
 
     let mut sine1 = SineWave::new();
     sine1.amplitude.set(3);
     sine1.freq.set(200);
-    connect_output(&mut sine1.out, add1.inputs_mut()[0])?;
+    connect_output(&mut sine1.out, add.inputs_mut()[0])?;
 
     let mut sine2 = SineWave::new();
     sine2.amplitude.set(7);
     sine2.freq.set(400);
-    sine2.connect_output("out", add1.inputs_mut()[1])?;
+    sine2.connect_output("out", add.inputs_mut()[1])?;
 
     let mut engine = SingleThreadedEngine::new();
-    engine.schedule(add1)?;
+    engine.schedule(add)?;
     engine.schedule(sine1)?;
     engine.schedule(sine2)?;
-    engine.run().await;
+
+    // A client is created while the engine is idle, and answered once it runs.
+    let client = engine.client();
+    let driver = async move {
+        tokio::time::sleep(Duration::from_secs(1)).await;
+        let block = client.inspect_block(sum).await?;
+        println!("sum = {:?}", block.outputs["out"].val);
+        // `run()` resolves once the engine has shut down.
+        client.shutdown().await
+    };
+    let (_engine, driven) = tokio::join!(engine.run(), driver);
+    driven?;
     Ok(())
 }
 ```
 
-A multi-threaded engine is available behind the `multi-threaded` Cargo feature.
+The single-threaded engine runs its blocks on the thread that drives it,
+hence the current-thread runtime. A multi-threaded engine, which spreads the
+blocks over a tokio multi-thread runtime, is behind the `multi-threaded`
+Cargo feature; the application then enables tokio's `rt-multi-thread` itself
+(see [`multi_threaded`](https://docs.rs/logic-mesh/latest/logic_mesh/multi_threaded/index.html#runtime)).
+
+On `wasm32` the default `js` feature builds the JavaScript bindings the npm
+package uses. A Rust application that builds the crate for `wasm32` with
+bindings of its own turns it off with `default-features = false`.
 
 ### Browser / Node.js
 
 ```sh
-npm install logic-mesh
+npm install logic-mesh zod
 ```
 
-The npm package wraps the WASM build. Define a custom block in TypeScript:
+The npm package wraps the WASM build, with TypeScript declarations. It is
+ESM only, loads in Node.js `^22.19.0` or `>=24.5.0` and in bundlers set up
+for WebAssembly, and takes [Zod](https://zod.dev) 4.6 or newer as a peer
+dependency. The
+[package README](https://github.com/rracariu/logic-mesh/blob/main/web/packages/logic-mesh/README.md) covers
+the setup.
+
+`startEngine()` creates the engine and starts it, and its `command` handle
+sends requests to it. Define a custom block in TypeScript with
+`defineBlock`, and register it before the engine starts:
 
 ```ts
-import { defineBlock, initEngine } from 'logic-mesh';
+import { createEngineSession, defineBlock } from 'logic-mesh';
 import { z } from 'zod';
 
 const Scale = defineBlock({
@@ -110,10 +150,18 @@ const Scale = defineBlock({
   execute: async ([input, factor]) => [input * factor],
 });
 
-const engine = initEngine();
-Scale.register(engine);
-// then wire blocks via engine.engineCommand() and engine.run()
+// Blocks are registered on the engine before it starts.
+const session = createEngineSession();
+Scale.register(session.engine);
+session.start();
+
+const id = await session.command.addBlock('Scale', undefined, 'custom');
+await session.command.writeBlockInput(id, 'factor', 2);
+await session.command.writeBlockInput(id, 'in', 21); // out becomes 42
 ```
+
+A failed command rejects with a `LogicMeshError` whose `code` names the
+failure, such as `'BlockInstanceNotFound'`.
 
 Or bridge the engine to an external system with a connector implemented in plain JavaScript:
 
@@ -156,6 +204,10 @@ const id = await jsBlocks.addBlock(session.command, 'scale');
 await session.command.writeBlockInput(id, 'in', 21); // out becomes 42
 ```
 
+The [connector guide](https://github.com/rracariu/logic-mesh/blob/main/docs/connectors.md) describes the
+integration layer in depth: the `Connector` contract, the engine-managed
+lifecycle, the external blocks, and their delivery and timeout guarantees.
+
 ## Possible applications
 
 - **Building automation systems (BAS).** AHU/VAV/chiller sequences, schedules and overrides, energy logic, equipment runtime tracking. The block vocabulary maps directly to ASHRAE G36 patterns.
@@ -168,11 +220,13 @@ await session.command.writeBlockInput(id, 'in', 21); // out becomes 42
 
 - **Block trait** — every unit of work implements `async fn execute(&mut self)`. The `#[block]` attribute macro generates the boilerplate (description, registration, default impl).
 - **Reactive scheduler** — blocks suspend on input pins via `read_inputs_until_ready` (event-driven) or `wait_on_inputs(timeout)` (event + periodic throttle). The engine only resumes blocks whose data has actually changed.
-- **Type-checked pins** — pin kinds (`Number`, `Bool`, `Str`, `Dict`, `List`, `Null`) are validated at link time; mismatched values fault the receiving block instead of silently corrupting state.
-- **Connectors** — external systems implement the `Connector` trait (`subscribe`/`publish`/`request`, plus optional `start`/`stop`); the engine manages their lifecycle and connectors can be added or removed at runtime through engine messages. `ExternalIn` streams subscribed values into the graph, `ExternalOut` publishes wired values, and `Request` does request/response — both with timeout and cancellation. See `examples/connector_demo.rs` for a concrete implementation.
-- **Threading models** — single-threaded (default) and multi-threaded (`features = ["multi-threaded"]`) engines on native; WASM uses single-threaded with the browser event loop.
+- **Typed pins** — every pin has a kind (`Number`, `Bool`, `Str`, `Dict`, `List`, `Null`, …). A value that reaches an input is converted to the input's kind, and one that cannot be converted faults the receiving block instead of silently corrupting state.
+- **Fault isolation** — a faulted block marks its outputs, so the blocks downstream fault too, and it recovers on its own once a cycle completes cleanly. On native targets a panicking block faults instead of taking the engine down.
+- **Typed requests and errors** — a running engine answers typed requests (`EngineRequest` / `EngineResponse`), correlated by id. `EngineClient` sends them as async methods, and every failure carries a stable `ErrorCode`, in Rust and as the `code` of the JavaScript `LogicMeshError`.
+- **Connectors** — external systems implement the `Connector` trait (`subscribe`/`publish`/`request`, plus optional `start`/`stop`); the engine manages their lifecycle, and connectors can be attached to or detached from a running engine through `EngineClient` requests. `ExternalIn` streams subscribed values into the graph, `ExternalOut` publishes wired values, and `Request` does request/response — all with a timeout whose deadline survives cancellation. See `examples/connector_demo.rs` for a concrete implementation and the [connector guide](https://github.com/rracariu/logic-mesh/blob/main/docs/connectors.md) for the design.
+- **Threading models** — single-threaded (default) and multi-threaded (`features = ["multi-threaded"]`) engines on native, configured through the same `Engine` trait; WASM uses single-threaded with the browser event loop.
 - **Auto-discovered registry** — `build.rs` walks `src/blocks/<category>/` and assembles the static block registry, so adding a new block is one file plus a `mod.rs` re-export.
-- **Save/load format** — programs serialize to a stable JSON shape (blocks, links, positions, optional labels and per-program description) understood by both the Rust API and the web editor.
+- **Save/load format** — programs serialize to a versioned JSON format understood by both the Rust API and the web editor: blocks with their type version, pin values, labels, positions and opaque editor metadata; links with their ids; the program's name and description. Loads are all or nothing, saves from 1.x load unchanged, and a program from a newer format is rejected by its version.
 
 ## Project layout
 
@@ -191,5 +245,7 @@ web/
 ## Status & contributing
 
 - **License:** BSD-3-Clause.
-- **Stability:** APIs are stable enough for application use; expect occasional additive changes as new blocks land.
+- **Stability:** the crate and the npm package follow [semantic versioning](https://semver.org/spec/v2.0.0.html). 2.x releases are additive: new blocks, new APIs, and new variants of the `#[non_exhaustive]` enums and error codes. Breaking changes wait for 3.0. Every 2.x release loads the programs that 1.x and earlier 2.x releases saved. Error codes are stable; error messages are meant for people and may change. Items marked `#[doc(hidden)]`, such as the block macros' support module, are not public API.
+- **MSRV:** Rust 1.88. The minimum supported Rust version may rise in a minor release, never in a patch release, and the CHANGELOG says so when it does.
+- **JavaScript runtimes:** Node.js `^22.19.0` or `>=24.5.0`, and browsers through a bundler with WebAssembly ESM support (Vite with `vite-plugin-wasm`, webpack 5 with `asyncWebAssembly`).
 - **Issues and PRs welcome** — especially new blocks for under-served domains (lighting, irrigation, industrial process), additional UI primitives, and worked example programs.
