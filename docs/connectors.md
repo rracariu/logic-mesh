@@ -1,8 +1,9 @@
 # External Integration API
 
-> **Design note.** Describes the protocol-agnostic integration layer in `logic-mesh`.
+> **Design note.** Describes the protocol-agnostic integration layer in `logic-mesh` 2.0.
 > Motivated by issue [#3](https://github.com/rracariu/logic-mesh/issues/3) and implemented
-> by PR [#13](https://github.com/rracariu/logic-mesh/pull/13).
+> by PR [#13](https://github.com/rracariu/logic-mesh/pull/13). The Rust examples are compiled as
+> part of the crate's doctests.
 
 ---
 
@@ -86,7 +87,9 @@ trait and registering it under a name; no core code changes and no new block typ
 
 ### 4.1 The `Connector` trait — `src/base/connector.rs`
 
-```rust
+`logic_mesh::base::connector::Connector`, in outline (§11 implements it):
+
+```rust,ignore
 pub trait Connector: Send + Sync {            // no Send/Sync bounds on wasm32
     fn start(&self) -> ConnectorFuture<'_, ()> { /* default: no-op */ }
     fn stop(&self)  -> ConnectorFuture<'_, ()> { /* default: no-op */ }
@@ -121,18 +124,21 @@ Five contract rules shape everything downstream:
 
 ### 4.3 Error model — `src/base/error/connector.rs`
 
-| Variant | Raised when |
-|---|---|
-| `NotFound { name }` | lookup of an unregistered name |
-| `AlreadyRegistered { name }` | registering a duplicate name |
-| `Subscribe { address, detail, source }` | `subscribe` failed, or a stream item was an error |
-| `Publish { address, detail, source }` | `publish` failed |
-| `Request { address, detail, source }` | `request` failed |
-| `Timeout { address, millis }` | an `ExternalIn`, `ExternalOut` or `Request` block's deadline elapsed |
-| `Transport { detail, source }` | connection-level failure outside a specific operation |
+| Variant | `ErrorCode` | Raised when |
+|---|---|---|
+| `NotFound { name }` | `ConnectorNotFound` | lookup of an unregistered name |
+| `AlreadyRegistered { name }` | `ConnectorAlreadyRegistered` | registering a duplicate name |
+| `Subscribe { address, detail, source }` | `ConnectorSubscribeFailed` | `subscribe` failed, or a stream item was an error |
+| `Publish { address, detail, source }` | `ConnectorPublishFailed` | `publish` failed |
+| `Request { address, detail, source }` | `ConnectorRequestFailed` | `request` failed |
+| `Timeout { address, millis }` | `ConnectorTimeout` | an `ExternalIn`, `ExternalOut` or `Request` block's deadline elapsed |
+| `Transport { detail, source }` | `ConnectorTransport` | connection-level failure outside a specific operation |
 
 Each operation variant carries the address, so callers can identify the failing route without
-parsing display strings. Inside blocks these surface as `BlockState::fault(...)`.
+parsing display strings. `ConnectorError::code()` returns the variant's stable `ErrorCode`, the
+code an engine request reports it with, and the `code` of the error the JavaScript bindings throw.
+Inside blocks these errors surface as `BlockState::fault(...)`, with the error's message as the
+fault reason.
 
 The variants a connector reports are `#[non_exhaustive]`: connectors build them with
 `ConnectorError::subscribe`, `publish`, `request` and `transport`, and attach the protocol client's
@@ -194,13 +200,34 @@ block can `get_connector` a connector that is mid-shutdown.
 Connector handles never travel in engine requests — they are not `Send` on every target — so the
 running-engine path is *register the handle, then attach it by name*. Three requests cover it:
 `EngineRequest::AddConnector`, `RemoveConnector` and `ManagedConnectors`, each answered by the
-`EngineResponse` of the same name. `EngineClient` sends them as `add_connector`,
-`remove_connector` and `managed_connectors`, and the wasm `EngineCommand` as `addConnector`,
-`removeConnector`, and `listConnectors`. `managed_connectors` names only the connectors the engine
-manages, as `Engine::managed_connectors()` does on an idle engine; the registry's
-`list_connectors()` names every registered connector, managed or not. A failed attach or detach answers with a typed error:
-`ConnectorNotFound`, `ConnectorAlreadyManaged`, `ConnectorStartFailed`, `ConnectorStartTimeout`
-or `ConnectorNotManaged` (the `ErrorCode`, and the JS error's `code`).
+`EngineResponse` of the same name once it took effect. `EngineClient` sends them as
+`add_connector`, `remove_connector` and `managed_connectors`, and the wasm `EngineCommand` as
+`addConnector`, `removeConnector`, and `listConnectors`. `managed_connectors` names only the
+connectors the engine manages, as `Engine::managed_connectors()` does on an idle engine; the
+registry's `list_connectors()` names every registered connector, managed or not. A failed attach or
+detach answers with a typed error, whose `ErrorCode` (and the JS error's `code`) is the variant name:
+
+| Failure | Error | `ErrorCode` |
+|---|---|---|
+| no connector registered under the name | `ConnectorError::NotFound` | `ConnectorNotFound` |
+| the engine already manages it | `EngineError::ConnectorAlreadyManaged` | `ConnectorAlreadyManaged` |
+| `start` failed; the start error is its source, and part of the request error's message | `EngineError::ConnectorStartFailed` | `ConnectorStartFailed` |
+| `start` did not finish within 5 s | `EngineError::ConnectorStartTimeout` | `ConnectorStartTimeout` |
+| detaching a connector the engine does not manage | `EngineError::ConnectorNotManaged` | `ConnectorNotManaged` |
+
+```rust
+use logic_mesh::{ErrorCode, RequestError, base::engine::EngineClient};
+
+/// Attaches the registered connector `name` to a running engine, unless
+/// the engine manages it already.
+async fn attach(client: &EngineClient, name: &str) -> Result<(), RequestError> {
+    match client.add_connector(name).await {
+        Ok(_) => Ok(()),
+        Err(err) if err.code == ErrorCode::ConnectorAlreadyManaged => Ok(()),
+        Err(err) => Err(err),
+    }
+}
+```
 
 Route and subscription management needs no dedicated requests: re-pointing an external block is a
 write to its `connector` / `address` pins over the existing `WriteInput` path, and
@@ -512,7 +539,7 @@ sequenceDiagram
 
   Note over Page,Eng: startup
   Page->>UI: registerUiConnector() — registry only
-  Page->>Eng: connectorCommand = engineCommand(), then run()
+  Page->>Eng: createEngineSession() — handles, connectorCommand included, then start()
   Page->>UI: attachUiConnector(connectorCommand)
   UI->>Eng: listConnectors()
   Eng-->>UI: []
@@ -525,10 +552,11 @@ sequenceDiagram
   UI->>Eng: listConnectors(), then addConnector("ui")
 ```
 
-Every command handle used after startup is created **before** `engine.run()`: wasm-bindgen guards
-exported objects with a `RefCell`, and the future `run()` returns holds the engine's mutable borrow
-for as long as the engine lives, so any `engine.*` call from a promise continuation afterwards throws
-("recursive use of an object detected"). Registration takes the same detour — `registerConnector`,
+Every command handle used after startup is created **before** `engine.run()`, which the session's
+`start()` calls: wasm-bindgen guards exported objects with a `RefCell`, and the future `run()`
+returns holds the engine's mutable borrow for as long as the engine lives, so any `engine.*` call
+from a promise continuation afterwards throws ("recursive use of an object detected"). A command
+handle itself takes overlapping calls. Registration takes the same detour — `registerConnector`,
 `unregisterConnector` and `connectorRegistered` are module-level exports against the process-wide
 registry, not engine methods, so re-registering after a reset never touches the engine object.
 
@@ -545,8 +573,8 @@ value per touched address on resume.
 ## 9. Compatibility
 
 Programs saved before this design store UI widgets as `lib: 'ui'` block entries. They are migrated in
-place when loaded, inside `prepare(program)`, so the same migrated object is what later reaches
-`pushToEngine`.
+place when loaded, inside `prepare(saved)` — after the save is upgraded to the current format
+(`ProgramFormat.ts`) — so the same migrated object is what later reaches `pushToEngine`.
 
 ```mermaid
 flowchart TD
@@ -618,6 +646,9 @@ Two widget behaviours change as a consequence of the design:
 `examples/connector_demo.rs`.
 
 ```rust
+use logic_mesh::base::connector::{Connector, ConnectorFuture, ConnectorHandle, ValueStream};
+use logic_mesh::{Value, prelude::*, single_threaded::SingleThreadedEngine};
+
 struct Echo;
 
 impl Connector for Echo {
@@ -636,8 +667,23 @@ impl Connector for Echo {
     }
 }
 
-let mut engine = SingleThreadedEngine::new();
-engine.add_connector("echo", ConnectorHandle::new(Echo))?;   // started when run() begins
+fn main() -> logic_mesh::Result<()> {
+    let mut engine = SingleThreadedEngine::new();
+    engine.add_connector("echo", ConnectorHandle::new(Echo))?; // started when run() begins
+    assert_eq!(engine.connector_names(), ["echo"]);
+    Ok(())
+}
+```
+
+A connector reports a failure with the `ConnectorError` constructors, and attaches the protocol
+client's own error as its source:
+
+```rust
+use logic_mesh::ConnectorError;
+
+fn publish_failed(address: &str, cause: std::io::Error) -> ConnectorError {
+    ConnectorError::publish(address, "broker refused the message").with_source(cause)
+}
 ```
 
 **JavaScript** — a plain object, registered and then attached to the running engine.
@@ -645,6 +691,10 @@ The npm package wraps the ordering-sensitive start sequence shown below in
 `startEngine()`; the raw sequence stays authoritative for what actually happens.
 
 ```ts
+import { initEngine, registerConnector } from 'logic-mesh';
+
+const engine = initEngine();
+
 // Module-level export against the process-wide registry — safe to call at any
 // time, even from a continuation after run() (engine methods are not).
 registerConnector('sensors', {
