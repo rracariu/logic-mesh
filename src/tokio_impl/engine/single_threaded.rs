@@ -428,6 +428,20 @@ mod tests {
             lifecycle::shutdown_is_acknowledged(SingleThreadedEngine::new()).await;
         }
 
+        #[tokio::test(flavor = "current_thread")]
+        async fn reset_is_acknowledged_once_connectors_stopped() {
+            lifecycle::reset_is_acknowledged_once_connectors_stopped(SingleThreadedEngine::new())
+                .await;
+        }
+
+        #[tokio::test(flavor = "current_thread")]
+        async fn shutdown_is_acknowledged_once_connectors_stopped() {
+            lifecycle::shutdown_is_acknowledged_once_connectors_stopped(
+                SingleThreadedEngine::new(),
+            )
+            .await;
+        }
+
         /// Regression: replies carried no request id, so a channel could
         /// have one request in flight at a time.
         #[tokio::test(flavor = "current_thread")]

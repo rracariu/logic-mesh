@@ -262,13 +262,20 @@ pub(crate) mod faults {
 /// written once against the [`Engine`] trait and run by each engine's
 /// tests.
 pub(crate) mod lifecycle {
+    use std::sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    };
+
     use assert_matches::assert_matches;
 
     use tokio::sync::mpsc;
 
     use super::*;
+    use crate::base::connector::get_connector;
     use crate::base::engine::messages::{ClientId, EngineRequest, Envelope, RequestId};
     use crate::base::error::ErrorCode;
+    use crate::tokio_impl::engine::connectors::test_support::SlowStopConnector;
 
     /// An engine the lifecycle tests can drive.
     pub(crate) trait TestEngine: Engine<Writer = WriterImpl, Reader = ReaderImpl> {}
@@ -387,6 +394,70 @@ pub(crate) mod lifecycle {
 
         // The driver's shutdown was acknowledged, and `run` returned.
         assert!(engine.block_handles().is_empty());
+    }
+
+    /// Adds a [`SlowStopConnector`] to `engine` under a unique name — the
+    /// connector registry is process-wide — returning the name and the
+    /// flag its `stop` sets once done.
+    fn add_slow_stopping_connector<E: TestEngine>(engine: &mut E) -> (String, Arc<AtomicBool>) {
+        let name = format!("slow-stop-{}", Uuid::new_v4());
+        let stopped = Arc::new(AtomicBool::new(false));
+        let connector = SlowStopConnector {
+            stopped: stopped.clone(),
+        };
+        engine
+            .add_connector(&name, Arc::new(connector))
+            .expect("added");
+        (name, stopped)
+    }
+
+    /// Regression guard: a reset is acknowledged once its connectors
+    /// stopped, not while they are stopping. Checked before any other
+    /// request — the engine handles requests in order, so a later
+    /// request would find the reset done even after an early answer.
+    pub(crate) async fn reset_is_acknowledged_once_connectors_stopped<E: TestEngine>(
+        mut engine: E,
+    ) {
+        let (name, stopped) = add_slow_stopping_connector(&mut engine);
+
+        drive(engine, move |client| async move {
+            client.reset().await;
+            assert!(
+                stopped.load(Ordering::SeqCst),
+                "the connector stopped before the reset was acknowledged"
+            );
+            assert!(get_connector(&name).is_none(), "and was unregistered");
+        })
+        .await;
+    }
+
+    /// Regression guard: a shutdown is acknowledged once its connectors
+    /// stopped, not while they are stopping — checked as the
+    /// acknowledgement arrives, while `run` may still be going.
+    pub(crate) async fn shutdown_is_acknowledged_once_connectors_stopped<E: TestEngine>(
+        mut engine: E,
+    ) {
+        let (name, stopped) = add_slow_stopping_connector(&mut engine);
+        let client = connect(&mut engine);
+
+        let acknowledged = async {
+            let ack = client.0.shutdown().await;
+            (ack, stopped.load(Ordering::SeqCst))
+        };
+        let (engine, (ack, stopped_when_acknowledged)) =
+            answer(async { tokio::join!(engine.run(), acknowledged) }).await;
+        assert_eq!(ack, Ok(()));
+        assert!(
+            stopped_when_acknowledged,
+            "the connector stopped before the shutdown was acknowledged"
+        );
+        assert!(
+            get_connector(&name).is_some(),
+            "a shutdown keeps the connector registered for a re-run"
+        );
+
+        drop(engine);
+        assert!(get_connector(&name).is_none());
     }
 
     /// A shutdown is acknowledged before `run` returns the idle engine.

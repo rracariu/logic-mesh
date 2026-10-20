@@ -8,13 +8,17 @@ import type {
   BlockDesc,
   BlockNotification,
   EngineSession,
+  JsConnector,
   LogicMeshError,
 } from '../src/index';
 import {
+  connectorRegistered,
   createEngineSession,
   initEngine,
   isLogicMeshError,
+  registerConnector,
   startEngine,
+  unregisterConnector,
 } from '../src/index';
 
 const UUID_RE =
@@ -106,6 +110,31 @@ describe('startEngine', () => {
   });
 });
 
+/**
+ * Registers, under a unique name, a JS connector whose `stop()` takes a
+ * while before it records that it finished — so a test can tell an
+ * answer sent once the stop is done from one sent while it is under
+ * way.
+ */
+function registerSlowStoppingConnector(): {
+  name: string;
+  stopped: () => boolean;
+} {
+  const name = `slow-stop-${crypto.randomUUID()}`;
+  let stopped = false;
+  const connector: JsConnector = {
+    subscribe: () => {},
+    publish: () => {},
+    request: (_address, value) => value,
+    stop: async () => {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      stopped = true;
+    },
+  };
+  registerConnector(name, connector);
+  return { name, stopped: () => stopped };
+}
+
 /** Awaits `promise`, expecting it to reject with a `LogicMeshError`. */
 async function rejection(promise: Promise<unknown>): Promise<LogicMeshError> {
   const err: unknown = await promise.then(
@@ -169,15 +198,36 @@ describe('EngineCommand', () => {
   });
 
   // Regression: control commands resolved once enqueued, not once
-  // done.
-  it('resolves resetEngine once the engine is empty', async () => {
+  // done. The connector is checked before any other command: the
+  // engine handles commands in order, so a later one would find the
+  // reset done even after an early answer.
+  it('resolves resetEngine once its connectors stopped and the engine is empty', async () => {
     const session = track(startEngine({ sleepDuration: 10 }));
+    const { name, stopped } = registerSlowStoppingConnector();
+    await session.command.addConnector(name);
     const id = await session.command.addBlock('Add');
 
     await session.command.resetEngine();
+    expect(stopped()).toBe(true);
+    expect(connectorRegistered(name)).toBe(false);
     expect(
       (await rejection(session.connectorCommand.inspectBlock(id))).code,
     ).toBe('BlockInstanceNotFound');
+  });
+
+  it('resolves stopEngine once its connectors stopped', async () => {
+    // A bare engine rather than a session, whose stop() would also
+    // wait for run() to end — after the connectors stopped either way.
+    const engine = initEngine(10);
+    const command = engine.engineCommand();
+    const run = engine.run();
+    const { name, stopped } = registerSlowStoppingConnector();
+    await command.addConnector(name);
+
+    await command.stopEngine();
+    expect(stopped()).toBe(true);
+    await run;
+    unregisterConnector(name);
   });
 });
 

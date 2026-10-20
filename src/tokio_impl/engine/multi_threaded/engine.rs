@@ -711,6 +711,18 @@ mod test {
             lifecycle::shutdown_is_acknowledged(MultiThreadedEngine::new()).await;
         }
 
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn reset_is_acknowledged_once_connectors_stopped() {
+            lifecycle::reset_is_acknowledged_once_connectors_stopped(MultiThreadedEngine::new())
+                .await;
+        }
+
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn shutdown_is_acknowledged_once_connectors_stopped() {
+            lifecycle::shutdown_is_acknowledged_once_connectors_stopped(MultiThreadedEngine::new())
+                .await;
+        }
+
         /// Regression: replies carried no request id, so a channel could
         /// have one request in flight at a time.
         #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
