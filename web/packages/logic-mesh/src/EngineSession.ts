@@ -142,16 +142,16 @@ export class EngineSession implements AsyncDisposable {
    * here on the engine object must not be touched — everything goes
    * through the pre-created command handles.
    *
-   * Throws after {@link stop}: a stopped engine cannot be restarted —
-   * without the guard the session would look started while every
-   * command hangs forever against the ended message loop.
+   * Throws after {@link stop}: a session runs its engine once. Once
+   * the engine has stopped, the session answers {@link watch},
+   * {@link unwatch}, {@link reset} and {@link stop} without asking the
+   * engine, and a restart under it would contradict that.
    */
   start(): void {
     if (this.stopDone) {
       throw new Error(
-        'EngineSession.start() called after stop(): a stopped engine ' +
-          'cannot be restarted — its message loop has ended and commands ' +
-          'would hang forever. Create a new session to run again.',
+        'EngineSession.start() called after stop(): a session runs its ' +
+          'engine once. Create a new session to run again.',
       );
     }
     if (this.runDone) return;
@@ -243,20 +243,25 @@ export class EngineSession implements AsyncDisposable {
    * the reset is done, so a command issued afterwards sees the engine
    * empty.
    *
-   * Throws after {@link stop} — there is nothing left to reset, and
-   * the request would otherwise wait on the ended message loop
-   * forever. (A reset issued concurrently with stop() is fine: both go
-   * through the control chain, reset first.)
+   * Rejects once the engine has stopped — through {@link stop}, or a
+   * `stopEngine` sent on a command handle — or if it stops before
+   * answering: there is nothing left to reset, and the request would
+   * otherwise wait on the ended message loop forever. (A reset issued
+   * concurrently with stop() is fine: both go through the control
+   * chain, reset first.)
    */
   reset(): Promise<void> {
-    if (this.stopDone) {
+    const stopped = (): never => {
       throw new Error(
         'EngineSession.reset() called after stop(): the engine has shut ' +
           'down and no longer services commands. Create a new session to ' +
           'run again.',
       );
-    }
-    return this.enqueueControl(() => this.control.resetEngine());
+    };
+    if (this.stopDone) return Promise.resolve().then(stopped);
+    return this.enqueueControl(() =>
+      this.unlessStopped(() => this.control.resetEngine(), stopped),
+    );
   }
 
   /**
@@ -264,6 +269,11 @@ export class EngineSession implements AsyncDisposable {
    * completed. A no-op before {@link start}. The session is spent
    * afterwards — commands are no longer serviced; create a new session
    * to run again.
+   *
+   * If the engine has already stopped — through a `stopEngine` sent on
+   * a command handle — or stops while this waits, it resolves once
+   * `run()`'s future has completed, without waiting for an answer the
+   * stopped engine will never send.
    */
   stop(): Promise<void> {
     const runDone = this.runDone;
@@ -271,7 +281,10 @@ export class EngineSession implements AsyncDisposable {
     // Idempotent: a second Shutdown would wait on the ended message
     // loop forever, so every caller shares the first stop's promise.
     this.stopDone ??= this.enqueueControl(async () => {
-      await this.control.stopEngine();
+      await this.unlessStopped(
+        () => this.control.stopEngine(),
+        () => undefined,
+      );
       await runDone;
     });
     return this.stopDone;

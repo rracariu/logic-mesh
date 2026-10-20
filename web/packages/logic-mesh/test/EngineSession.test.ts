@@ -471,18 +471,63 @@ describe('EngineSession lifecycle edges', () => {
     expect(session.started).toBe(true);
   });
 
-  it('start() after stop() throws instead of arming a dead session', async () => {
+  it('start() after stop() throws: a session runs its engine once', async () => {
     const session = track(startEngine({ scanInterval: 10 }));
     await session.stop();
-    // Without the guard the session would look started while every
-    // command hangs forever against the ended message loop.
     expect(() => session.start()).toThrow(/after stop\(\)/);
   });
 
-  it('reset() after stop() throws instead of silently no-opping', async () => {
+  // Regression: reset() threw synchronously from a method that returns
+  // a promise, so `session.reset().catch(...)` did not catch it.
+  it('reset() after stop() rejects instead of silently no-opping', async () => {
     const session = track(startEngine({ scanInterval: 10 }));
     await session.stop();
-    expect(() => session.reset()).toThrow(/after stop\(\)/);
+    let reset: Promise<void> | undefined;
+    expect(() => {
+      reset = session.reset();
+    }).not.toThrow();
+    await expect(reset).rejects.toThrow(/after stop\(\)/);
+  });
+
+  // Regression: once a command handle's stopEngine had stopped the
+  // engine, stop() and reset() sent their request to the ended message
+  // loop and waited forever — and so did the end of an `await using`
+  // scope around the session.
+  it('stop() and reset() settle after a stopEngine on a command handle', async () => {
+    const session = track(startEngine({ scanInterval: 10 }));
+    await session.command.stopEngine();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    await expect(within(session.reset(), 'reset()')).rejects.toThrow(
+      /after stop\(\)/,
+    );
+    await within(session.stop(), 'stop()');
+
+    const scope = async (): Promise<void> => {
+      await using scoped = startEngine({ scanInterval: 10 });
+      await scoped.command.stopEngine();
+    };
+    await within(scope(), 'the end of the `await using` scope');
+  });
+
+  it('settles a stop() and a reset() sent while a stopEngine is under way', async () => {
+    const session = track(startEngine({ scanInterval: 10 }));
+    const { name } = registerSlowStoppingConnector();
+    await session.command.addConnector(name);
+
+    // The connector takes 100 ms to stop, so the engine has read the
+    // shutdown request, and reads no other, by the time these send.
+    const stopping = session.command.stopEngine();
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    const reset = within(session.reset(), 'reset()').then(
+      () => undefined,
+      (err: unknown) => err,
+    );
+    const stop = within(session.stop(), 'stop()');
+    await stopping;
+    expect(String(await reset)).toMatch(/after stop\(\)/);
+    await stop;
+    unregisterConnector(name);
   });
 
   // Regression: a stopped engine answers nothing, so closing a watch
