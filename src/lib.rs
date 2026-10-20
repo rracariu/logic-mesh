@@ -71,3 +71,11 @@ pub mod wasm;
 #[doc(hidden)]
 #[path = "macro_support.rs"]
 pub mod __private;
+
+/// The Rust examples of the guides under `docs/`, compiled and run as
+/// doctests so they keep up with the API.
+#[cfg(doctest)]
+mod guides {
+    #[doc = include_str!("../docs/migration-2.0.md")]
+    mod migration_2_0 {}
+}
