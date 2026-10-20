@@ -189,6 +189,29 @@ function registerSlowStoppingConnector(): {
   return { name, stopped: () => stopped };
 }
 
+/**
+ * Settles as `promise` does, or rejects once `ms` passed without it
+ * settling — so a hang fails the test with a message saying what hung.
+ */
+async function within<T>(
+  promise: Promise<T>,
+  what: string,
+  ms = 1000,
+): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(
+      () => reject(new Error(`${what} did not settle within ${ms} ms`)),
+      ms,
+    );
+  });
+  try {
+    return await Promise.race([promise, timeout]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 /** Awaits `promise`, expecting it to reject with a `LogicMeshError`. */
 async function rejection(promise: Promise<unknown>): Promise<LogicMeshError> {
   const err: unknown = await promise.then(
@@ -460,5 +483,53 @@ describe('EngineSession lifecycle edges', () => {
     const session = track(startEngine({ scanInterval: 10 }));
     await session.stop();
     expect(() => session.reset()).toThrow(/after stop\(\)/);
+  });
+
+  // Regression: a stopped engine answers nothing, so closing a watch
+  // after stop() — the order a UI's teardown often runs in — waited
+  // forever, and so did the end of an `await using` scope after it.
+  it('closes a watch after stop(), resolving false', async () => {
+    const session = track(startEngine({ scanInterval: 10 }));
+    const closed = await session.watch(() => {});
+    const unwatched = await session.watch(() => {});
+    const scope = async (): Promise<void> => {
+      await using watch = await session.watch(() => {});
+      expect(typeof watch.id).toBe('number');
+      await session.stop();
+    };
+    await within(scope(), 'the end of the `await using` scope');
+
+    expect(await within(closed.close(), 'close()')).toBe(false);
+    expect(await within(session.unwatch(unwatched.id), 'unwatch()')).toBe(
+      false,
+    );
+  });
+
+  it('settles a close() sent while stop() is under way', async () => {
+    const session = track(startEngine({ scanInterval: 10 }));
+    const { name, stopped } = registerSlowStoppingConnector();
+    await session.command.addConnector(name);
+    const watch = await session.watch(() => {});
+
+    // The connector takes 100 ms to stop, so the engine has read the
+    // shutdown request, and reads no other, by the time close() sends.
+    const stop = session.stop();
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    expect(stopped()).toBe(false);
+    const closing = watch.close();
+    await stop;
+    expect(typeof (await within(closing, 'close()'))).toBe('boolean');
+    unregisterConnector(name);
+  });
+
+  it('rejects watch() after stop() instead of waiting forever', async () => {
+    const session = track(startEngine({ scanInterval: 10 }));
+    await session.stop();
+    await expect(
+      within(
+        session.watch(() => {}),
+        'watch()',
+      ),
+    ).rejects.toThrow(/after stop\(\)/);
   });
 });

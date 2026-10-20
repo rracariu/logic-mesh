@@ -32,8 +32,9 @@ export interface WatchSubscription extends AsyncDisposable {
 
   /**
    * Closes the watch, resolving with whether the engine still had it
-   * open. The callback is not called from the moment this is called.
-   * Idempotent: later calls share the first call's promise.
+   * open — `false` once the session has stopped. The callback is not
+   * called from the moment this is called. Idempotent: later calls
+   * share the first call's promise.
    */
   close(): Promise<boolean>;
 }
@@ -119,6 +120,10 @@ export class EngineSession implements AsyncDisposable {
 
   private stopDone: Promise<void> | undefined;
 
+  /** Whether `run()`'s future has completed: the engine answers
+   * nothing from then on. */
+  private ended = false;
+
   constructor(options: EngineSessionOptions = {}) {
     this.engine = options.engine ?? initEngine(options.scanInterval);
     this.command = this.engine.engineCommand();
@@ -152,9 +157,13 @@ export class EngineSession implements AsyncDisposable {
     if (this.runDone) return;
     const run = this.engine.run();
     this.runDone = run;
-    // Keep a shutdown-time rejection from surfacing as an unhandled
-    // rejection when nobody ever calls stop(); stop() still sees it.
-    run.catch(() => {});
+    // Handling a rejection too keeps a shutdown-time one from surfacing
+    // as an unhandled rejection when nobody ever calls stop(); stop()
+    // still sees it.
+    const end = (): void => {
+      this.ended = true;
+    };
+    run.then(end, end);
   }
 
   /**
@@ -187,28 +196,45 @@ export class EngineSession implements AsyncDisposable {
    * // ...
    * // Closed when the scope ends, or earlier with `watch.close()`.
    * ```
+   *
+   * The watch may outlive the session: once the session has stopped,
+   * closing it resolves `false` at once. Rejects if the session stops
+   * before the engine opened the watch.
    */
   async watch(
     callback: (notification: BlockNotification) => void,
   ): Promise<WatchSubscription> {
     // Closing turns delivery off at once, before the engine answers.
     let open = true;
-    const id = await this.command.createWatch((notification) => {
-      if (open) callback(notification);
-    });
+    const id = await this.unlessStopped(
+      () =>
+        this.command.createWatch((notification) => {
+          if (open) callback(notification);
+        }),
+      () => {
+        throw new Error(
+          'EngineSession.watch() called after stop(): the engine has shut ' +
+            'down and opens no watches. Create a new session to run again.',
+        );
+      },
+    );
     return new Subscription(id, () => {
       open = false;
-      return this.command.removeWatch(id);
+      return this.unwatch(id);
     });
   }
 
   /**
    * Closes the watch with id `watchId` — one `EngineCommand.createWatch`
    * opened, or a {@link WatchSubscription.id} — resolving with whether
-   * it was open.
+   * it was open. Once the session has stopped, resolves `false`: the
+   * engine is gone, and its watches with it.
    */
   unwatch(watchId: number): Promise<boolean> {
-    return this.command.removeWatch(watchId);
+    return this.unlessStopped(
+      () => this.command.removeWatch(watchId),
+      () => false,
+    );
   }
 
   /**
@@ -261,6 +287,25 @@ export class EngineSession implements AsyncDisposable {
    */
   async [Symbol.asyncDispose](): Promise<void> {
     await this.stop();
+  }
+
+  /**
+   * Sends a request with `send` and settles as it does — or with
+   * `stopped()` once the engine has stopped without answering it, or
+   * at once, without sending, if it already has. A stopped engine
+   * answers nothing, and its channel keeps a request it will never
+   * read, so the request would otherwise wait forever.
+   */
+  private unlessStopped<T>(
+    send: () => Promise<T>,
+    stopped: () => T,
+  ): Promise<T> {
+    if (this.ended) return Promise.resolve().then(stopped);
+    const request = send();
+    const runDone = this.runDone;
+    // Before start(), the request waits for the engine to start.
+    if (!runDone) return request;
+    return Promise.race([request, runDone.then(stopped, stopped)]);
   }
 
   private enqueueControl<T>(op: () => Promise<T>): Promise<T> {
