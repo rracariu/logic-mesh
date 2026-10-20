@@ -19,7 +19,7 @@ use std::sync::Arc;
 use libhaystack::val::Value;
 use tokio::sync::{RwLock, mpsc};
 
-use super::super::actor_step::{ExecutionGate, PanicHold, Step, run_one_step};
+use super::super::actor_step::{ExecutionGate, PanicHold, Step, run_one_step, yield_between_steps};
 use super::super::block_mailbox::BlockMailboxCmd;
 use crate::base::Status;
 use crate::base::block::{Block, BlockState};
@@ -69,7 +69,8 @@ pub(super) async fn block_actor_task<B>(
             break;
         }
 
-        tokio::task::yield_now().await;
+        // Co-operative yield, as on the single-threaded engine.
+        yield_between_steps().await;
     }
 }
 

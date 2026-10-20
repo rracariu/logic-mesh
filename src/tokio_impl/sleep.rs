@@ -6,7 +6,7 @@
 #[cfg(target_arch = "wasm32")]
 mod wasm32;
 #[cfg(target_arch = "wasm32")]
-pub(crate) use wasm32::{current_time_millis, monotonic_millis, sleep_millis};
+pub(crate) use wasm32::{current_time_millis, monotonic_millis, sleep_millis, yield_to_host};
 
 /// Milliseconds on a monotonic clock (non-WASM version): only the
 /// difference between two readings means anything, and wall-clock
