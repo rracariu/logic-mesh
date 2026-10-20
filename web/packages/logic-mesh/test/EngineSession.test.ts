@@ -197,6 +197,20 @@ describe('EngineCommand', () => {
     expect(inspected.map((block) => block.id)).toStrictEqual(ids);
   });
 
+  // Regression: evaluating a block without the inputs it waits for
+  // never answered, and the engine answered no command after it.
+  it('rejects an evaluation missing its inputs with EvalTimeout', async () => {
+    const { command } = track(startEngine({ sleepDuration: 10 }));
+    const evaluation = rejection(command.evalBlock('Sub', [], 'core'));
+    const queued = command.listConnectors();
+
+    const err = await evaluation;
+    expect(err.code).toBe('EvalTimeout');
+    expect(err.message).toContain("'Sub'");
+    expect(await queued).toEqual([]);
+    expect(await command.evalBlock('Sub', [3, 1], 'core')).toEqual([2]);
+  }, 15_000);
+
   // Regression: an inspection named the fault reason `fault_reason`,
   // in snake_case next to the camelCase `isConnected` of its pins.
   it('inspects a faulted block with a camelCase faultReason', async () => {
