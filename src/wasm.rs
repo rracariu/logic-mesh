@@ -8,6 +8,9 @@
 //! turns the feature off (`default-features = false`): it then gets
 //! neither these exports nor the module start hook, which installs a
 //! panic hook and a console logger.
+//!
+//! The doc comments of the exported items are the TypeScript
+//! declarations' docs too, so they name items as JavaScript sees them.
 
 pub mod engine;
 pub mod engine_command;
@@ -18,6 +21,7 @@ pub mod types;
 
 use std::str::FromStr;
 use std::sync::Once;
+use std::time::Duration;
 
 use log::{LevelFilter, debug};
 use wasm_bindgen::JsValue;
@@ -32,12 +36,24 @@ use crate::base::error::ErrorCode;
 /// JavaScript raises it with `setLogLevel`.
 const DEFAULT_LOG_LEVEL: LevelFilter = LevelFilter::Warn;
 
-/// Creates and returns a new [`BlocksEngine`].
+/// The largest integer a JavaScript number holds exactly.
+pub(crate) const MAX_SAFE_INTEGER: f64 = 9_007_199_254_740_991.0;
+
+/// Creates a new `BlocksEngine`, as its constructor does.
+///
+/// `scan_interval` is the engine's scan interval in milliseconds: how
+/// long a block that runs on every cycle waits between runs. Left out,
+/// the engine's default applies. A fraction of a millisecond is
+/// dropped.
+///
+/// Throws a `LogicMeshError` with the `InvalidArgument` code if
+/// `scan_interval` is negative, not finite, or above
+/// `Number.MAX_SAFE_INTEGER`.
 #[wasm_bindgen(js_name = "initEngine")]
-pub fn init_engine(sleep_duration: Option<u32>) -> BlocksEngine {
-    let engine = BlocksEngine::new(sleep_duration.map(u64::from));
+pub fn init_engine(scan_interval: Option<f64>) -> Result<BlocksEngine, JsValue> {
+    let engine = BlocksEngine::new(scan_interval)?;
     debug!("Blocks engine initialized.");
-    engine
+    Ok(engine)
 }
 
 /// Sets the most verbose level the module logs to the console at:
@@ -50,7 +66,9 @@ pub fn init_engine(sleep_duration: Option<u32>) -> BlocksEngine {
 /// Throws a `LogicMeshError` with the `InvalidArgument` code for any
 /// other level.
 #[wasm_bindgen(js_name = "setLogLevel")]
-pub fn set_log_level(level: &str) -> Result<(), JsValue> {
+pub fn set_log_level(
+    #[wasm_bindgen(unchecked_param_type = "LogLevel")] level: &str,
+) -> Result<(), JsValue> {
     let level = LevelFilter::from_str(level).map_err(|_| {
         js_error_from(
             ErrorCode::InvalidArgument,
@@ -79,4 +97,17 @@ pub fn start() {
         }
         debug!("Blocks module loaded.");
     });
+}
+
+/// Reads a scan interval in milliseconds from JavaScript.
+pub(crate) fn scan_interval(millis: f64) -> Result<Duration, JsValue> {
+    if !(millis.is_finite() && (0.0..=MAX_SAFE_INTEGER).contains(&millis)) {
+        return Err(js_error_from(
+            ErrorCode::InvalidArgument,
+            format!(
+                "Invalid scan interval {millis}: expected a number of milliseconds from 0 to Number.MAX_SAFE_INTEGER"
+            ),
+        ));
+    }
+    Ok(Duration::from_millis(millis as u64))
 }

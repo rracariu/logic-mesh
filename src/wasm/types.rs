@@ -2,14 +2,45 @@
 
 //! TypeScript-facing data types.
 
+use std::collections::BTreeMap;
+
 use libhaystack::val::Value;
 use serde::{Deserialize, Serialize};
+use wasm_bindgen::prelude::wasm_bindgen;
 
 use crate::base::{
     block::{BlockDesc, BlockImplementation, BlockPin},
-    engine::messages::{ChangeSource, WatchMessage},
+    engine::messages::{
+        BlockDefinition, BlockInputData, BlockOutputData, ChangeSource, WatchMessage,
+    },
     error::BlockDescError,
 };
+
+/// The TypeScript types the generated declarations name in place of
+/// `any`, through `unchecked_param_type` and `unchecked_return_type`.
+/// They are declared by hand in the npm package's `src/index.ts`, next
+/// to the wrapper that re-exports the bindings.
+///
+/// The import makes the declarations of the generated module and of
+/// the package's index import each other. That is fine for types, but
+/// it makes the built `index.d.ts` an input of the package's `tsc`, so
+/// rerunning `tsc` over a finished build fails with TS5055: the package
+/// scripts build from a clean `dist/`.
+#[wasm_bindgen(typescript_custom_section)]
+const TS_IMPORTS: &'static str = r#"
+import type {
+  BlockDesc,
+  BlockInspection,
+  BlockNotification,
+  EditorMetadata,
+  JsBlockFactory,
+  JsConnector,
+  LinkData,
+  LogLevel,
+  Position,
+  Program,
+} from './index.js';
+"#;
 
 /// Block field properties, inputs or output
 #[derive(Default, Clone, Serialize, Deserialize)]
@@ -208,6 +239,44 @@ impl From<WatchMessage> for JsWatchNotification {
             changes,
             state,
             fault_reason,
+        }
+    }
+}
+
+/// A block's state and pin values, as `inspectBlock` resolves with them
+/// — the JavaScript form of a [`BlockDefinition`], with the field names
+/// of the other JavaScript types.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct JsBlockInspection {
+    /// Block UUID as a string.
+    pub id: String,
+    /// Block type name.
+    pub name: String,
+    /// Library of the block type.
+    pub lib: String,
+    /// Input pins by name.
+    pub inputs: BTreeMap<String, BlockInputData>,
+    /// Output pins by name.
+    pub outputs: BTreeMap<String, BlockOutputData>,
+    /// The block's operational state
+    /// (`running | fault | disabled | terminated`).
+    pub state: String,
+    /// Fault reason when `state == "fault"`, else [`None`].
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub fault_reason: Option<String>,
+}
+
+impl From<BlockDefinition> for JsBlockInspection {
+    fn from(block: BlockDefinition) -> Self {
+        Self {
+            id: block.id,
+            name: block.name,
+            lib: block.library,
+            inputs: block.inputs,
+            outputs: block.outputs,
+            state: block.state,
+            fault_reason: block.fault_reason,
         }
     }
 }

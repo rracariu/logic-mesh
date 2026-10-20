@@ -14,7 +14,7 @@ describe('the module start hook', () => {
     start();
     start();
 
-    const session = startEngine({ sleepDuration: 10 });
+    const session = startEngine({ scanInterval: 10 });
     try {
       expect(await session.command.evalBlock('Add', [1, 2])).toStrictEqual([3]);
     } finally {

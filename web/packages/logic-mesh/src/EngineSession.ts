@@ -14,11 +14,12 @@ export interface EngineSessionOptions {
   engine?: BlocksEngine;
 
   /**
-   * Block sleep duration in milliseconds, forwarded to `initEngine`
+   * The engine's scan interval in milliseconds — how long a block that
+   * runs on every cycle waits between runs — forwarded to `initEngine`
    * when the session creates the engine itself. Ignored when an
    * `engine` is supplied.
    */
-  sleepDuration?: number;
+  scanInterval?: number;
 }
 
 /**
@@ -84,7 +85,7 @@ export class EngineSession {
   private stopDone: Promise<void> | undefined;
 
   constructor(options: EngineSessionOptions = {}) {
-    this.engine = options.engine ?? initEngine(options.sleepDuration);
+    this.engine = options.engine ?? initEngine(options.scanInterval);
     this.command = this.engine.engineCommand();
     this.connectorCommand = this.engine.engineCommand();
     this.control = this.engine.engineCommand();

@@ -52,7 +52,7 @@ async function until<T>(
 
 describe('startEngine', () => {
   it('returns handles that keep working after run() has been polled', async () => {
-    const session = track(startEngine({ sleepDuration: 10 }));
+    const session = track(startEngine({ scanInterval: 10 }));
 
     // Two settled microtask hops guarantee run()'s future has been
     // polled — from here on the engine object's wasm borrow is held.
@@ -70,12 +70,12 @@ describe('startEngine', () => {
   });
 
   it('createCommand after start throws a descriptive error, not the wasm one', () => {
-    const session = track(startEngine({ sleepDuration: 10 }));
+    const session = track(startEngine({ scanInterval: 10 }));
     expect(() => session.createCommand()).toThrow(/before start\(\)/);
   });
 
   it('delivers block notifications through a watch opened after start', async () => {
-    const session = track(startEngine({ sleepDuration: 10 }));
+    const session = track(startEngine({ scanInterval: 10 }));
     await Promise.resolve();
     await Promise.resolve();
 
@@ -94,7 +94,7 @@ describe('startEngine', () => {
   // Regression: each watch used to hold a command handle forever, so
   // a session ran out of watches after its pre-created slots.
   it('opens any number of watches, and unwatch stops one', async () => {
-    const session = track(startEngine({ sleepDuration: 10 }));
+    const session = track(startEngine({ scanInterval: 10 }));
     const kept: BlockNotification[] = [];
     const closed: BlockNotification[] = [];
     await session.watch((n) => kept.push(n));
@@ -151,7 +151,7 @@ describe('EngineCommand', () => {
   // Regression: rejections were bare strings, so callers could only
   // tell failures apart by their wording.
   it('rejects with LogicMeshErrors carrying a stable code', async () => {
-    const { command } = track(startEngine({ sleepDuration: 10 }));
+    const { command } = track(startEngine({ scanInterval: 10 }));
     const unknown = '00000000-0000-4000-8000-0000000000ff';
 
     const missing = await rejection(command.inspectBlock(unknown));
@@ -176,7 +176,7 @@ describe('EngineCommand', () => {
 
   // Regression: an unparseable block id silently became the nil UUID.
   it('rejects an unparseable block id instead of using the nil UUID', async () => {
-    const { command } = track(startEngine({ sleepDuration: 10 }));
+    const { command } = track(startEngine({ scanInterval: 10 }));
     const err = await rejection(command.inspectBlock('not-a-uuid'));
     expect(err.code).toBe('InvalidBlockUuid');
     expect(err.message).toContain('not-a-uuid');
@@ -185,7 +185,7 @@ describe('EngineCommand', () => {
   // Regression: replies carried no request id, so overlapping calls on
   // one handle tripped the wasm borrow guard and crashed the process.
   it('answers overlapping calls on one handle each with its own result', async () => {
-    const { command } = track(startEngine({ sleepDuration: 10 }));
+    const { command } = track(startEngine({ scanInterval: 10 }));
     const ids = await Promise.all(
       Array.from({ length: 8 }, () => command.addBlock('Add')),
     );
@@ -243,7 +243,7 @@ describe('EngineCommand', () => {
   // engine handles commands in order, so a later one would find the
   // reset done even after an early answer.
   it('resolves resetEngine once its connectors stopped and the engine is empty', async () => {
-    const session = track(startEngine({ sleepDuration: 10 }));
+    const session = track(startEngine({ scanInterval: 10 }));
     const { name, stopped } = registerSlowStoppingConnector();
     await session.command.addConnector(name);
     const id = await session.command.addBlock('Add');
@@ -274,7 +274,7 @@ describe('EngineCommand', () => {
 
 describe('createEngineSession', () => {
   it('defers start; handles minted before start work after it', async () => {
-    const session = track(createEngineSession({ sleepDuration: 10 }));
+    const session = track(createEngineSession({ scanInterval: 10 }));
     expect(session.started).toBe(false);
 
     // Pre-start setup on the engine object is still allowed.
@@ -306,7 +306,7 @@ describe('registerBlock / listBlocks round-trip', () => {
   } satisfies BlockDesc;
 
   it("lists runCondition 'always' as 'always', and the listed desc re-registers", () => {
-    const session = track(createEngineSession({ sleepDuration: 10 }));
+    const session = track(createEngineSession({ scanInterval: 10 }));
     session.engine.registerBlock(desc);
 
     const listed = (session.engine.listBlocks() as BlockDesc[]).find(
@@ -326,7 +326,7 @@ describe('registerBlock / listBlocks round-trip', () => {
   });
 
   it('rejects a wrong implementation or run condition with a field-naming error', () => {
-    const session = track(createEngineSession({ sleepDuration: 10 }));
+    const session = track(createEngineSession({ scanInterval: 10 }));
     // registerBlock only ever registers JS blocks, which are external
     // by definition — 'native' is a caller mistake, not a choice.
     expect(() =>
@@ -348,7 +348,7 @@ describe('registerBlock / listBlocks round-trip', () => {
 
 describe('EngineSession.stop', () => {
   it("resolves run()'s future and is idempotent", async () => {
-    const session = startEngine({ sleepDuration: 10 });
+    const session = startEngine({ scanInterval: 10 });
     const id = await session.command.addBlock('SineWave');
     expect(id).toMatch(UUID_RE);
 
@@ -358,7 +358,7 @@ describe('EngineSession.stop', () => {
   });
 
   it('is a no-op on a session that was never started', async () => {
-    const session = createEngineSession({ sleepDuration: 10 });
+    const session = createEngineSession({ scanInterval: 10 });
     await session.stop();
     expect(session.started).toBe(false);
   });
@@ -366,7 +366,7 @@ describe('EngineSession.stop', () => {
 
 describe('EngineSession lifecycle edges', () => {
   it('start() is idempotent', async () => {
-    const session = track(createEngineSession({ sleepDuration: 10 }));
+    const session = track(createEngineSession({ scanInterval: 10 }));
     session.start();
     // A second start() must be a no-op, not a second run() — that
     // would trip the engine object's wasm borrow guard.
@@ -384,7 +384,7 @@ describe('EngineSession lifecycle edges', () => {
   });
 
   it('runs a same-tick reset() and stop() in order: reset, then stop', async () => {
-    const session = track(startEngine({ sleepDuration: 10 }));
+    const session = track(startEngine({ scanInterval: 10 }));
     await session.command.addBlock('SineWave');
     // A stop issued first would leave the reset waiting on the ended
     // message loop forever.
@@ -395,7 +395,7 @@ describe('EngineSession lifecycle edges', () => {
   });
 
   it('start() after stop() throws instead of arming a dead session', async () => {
-    const session = track(startEngine({ sleepDuration: 10 }));
+    const session = track(startEngine({ scanInterval: 10 }));
     await session.stop();
     // Without the guard the session would look started while every
     // command hangs forever against the ended message loop.
@@ -403,7 +403,7 @@ describe('EngineSession lifecycle edges', () => {
   });
 
   it('reset() after stop() throws instead of silently no-opping', async () => {
-    const session = track(startEngine({ sleepDuration: 10 }));
+    const session = track(startEngine({ scanInterval: 10 }));
     await session.stop();
     expect(() => session.reset()).toThrow(/after stop\(\)/);
   });
