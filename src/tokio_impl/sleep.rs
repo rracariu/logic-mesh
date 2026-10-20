@@ -1,11 +1,12 @@
 // Copyright (c) 2022-2024, Radu Racariu.
 
+// The engine's timers and clocks on wasm32 come from the JavaScript
+// host. They are part of the engine, not of the `js` bindings, so a
+// wasm32 build without that feature has them too.
 #[cfg(target_arch = "wasm32")]
-pub(crate) use crate::wasm::sleep::current_time_millis;
+mod wasm32;
 #[cfg(target_arch = "wasm32")]
-pub(crate) use crate::wasm::sleep::monotonic_millis;
-#[cfg(target_arch = "wasm32")]
-pub(crate) use crate::wasm::sleep::sleep_millis;
+pub(crate) use wasm32::{current_time_millis, monotonic_millis, sleep_millis};
 
 /// Milliseconds on a monotonic clock (non-WASM version): only the
 /// difference between two readings means anything, and wall-clock

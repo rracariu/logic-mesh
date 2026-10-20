@@ -7,7 +7,6 @@ pub mod engine_command;
 pub(crate) mod error;
 pub mod js_block;
 pub mod js_connector;
-pub(crate) mod sleep;
 pub mod types;
 
 use log::info;

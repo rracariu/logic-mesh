@@ -2,8 +2,9 @@
 
 use std::collections::BTreeSet;
 
-// External blocks only exist on `wasm32`, where the host supplies their
-// executor; every other target rejects them with `ExternalError`.
+// External blocks only exist on `wasm32` with the `js` bindings, where
+// the host supplies their executor; every other build rejects them
+// with `ExternalError`.
 use crate::base::error::{EngineError, ExternalError, Result, parse_block_uuid};
 use libhaystack::val::Value;
 use uuid::Uuid;
@@ -53,12 +54,12 @@ pub(super) fn schedule_block_on_engine(
     sink: &mut impl BlockSink,
 ) -> Result<Uuid> {
     if block.implementation == BlockImplementation::External {
-        #[cfg(target_arch = "wasm32")]
+        #[cfg(all(target_arch = "wasm32", feature = "js"))]
         {
             use crate::wasm::js_block::schedule_js_block;
             schedule_js_block(sink, block, block_id)
         }
-        #[cfg(not(target_arch = "wasm32"))]
+        #[cfg(not(all(target_arch = "wasm32", feature = "js")))]
         {
             Err(ExternalError::Unsupported.into())
         }
@@ -69,10 +70,12 @@ pub(super) fn schedule_block_on_engine(
 
 /// Checks, without constructing anything, that
 /// [`schedule_block_on_engine`] supports the kind of block `block`
-/// describes: external blocks only exist on `wasm32`, where the host
-/// supplies their executor.
+/// describes: external blocks only exist on `wasm32` with the `js`
+/// bindings, where the host supplies their executor.
 pub(super) fn ensure_schedulable(block: &BlockDesc) -> Result<()> {
-    if cfg!(not(target_arch = "wasm32")) && block.implementation == BlockImplementation::External {
+    if cfg!(not(all(target_arch = "wasm32", feature = "js")))
+        && block.implementation == BlockImplementation::External
+    {
         return Err(ExternalError::Unsupported.into());
     }
     Ok(())
@@ -130,12 +133,12 @@ pub(super) fn program_block_ids(
 
 pub(super) async fn eval_block(block: &BlockDesc, inputs: Vec<Value>) -> Result<Vec<Value>> {
     if block.implementation == BlockImplementation::External {
-        #[cfg(target_arch = "wasm32")]
+        #[cfg(all(target_arch = "wasm32", feature = "js"))]
         {
             use crate::wasm::js_block::eval_js_block;
             eval_js_block(block, inputs).await
         }
-        #[cfg(not(target_arch = "wasm32"))]
+        #[cfg(not(all(target_arch = "wasm32", feature = "js")))]
         {
             Err(ExternalError::Unsupported.into())
         }
