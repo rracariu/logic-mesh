@@ -4,8 +4,18 @@
 // creates its own engine; sessions are stopped afterwards so no engine
 // loop outlives its test.
 import { afterEach, describe, expect, it } from 'vitest';
-import type { BlockDesc, BlockNotification, EngineSession } from '../src/index';
-import { createEngineSession, initEngine, startEngine } from '../src/index';
+import type {
+  BlockDesc,
+  BlockNotification,
+  EngineSession,
+  LogicMeshError,
+} from '../src/index';
+import {
+  createEngineSession,
+  initEngine,
+  isLogicMeshError,
+  startEngine,
+} from '../src/index';
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
@@ -60,13 +70,14 @@ describe('startEngine', () => {
     expect(() => session.createCommand()).toThrow(/before start\(\)/);
   });
 
-  it('delivers block notifications through a pre-created watch slot', async () => {
+  it('delivers block notifications through a watch opened after start', async () => {
     const session = track(startEngine({ sleepDuration: 10 }));
     await Promise.resolve();
     await Promise.resolve();
 
     const notes: BlockNotification[] = [];
-    session.watch((n) => notes.push(n));
+    const watchId = await session.watch((n) => notes.push(n));
+    expect(typeof watchId).toBe('number');
 
     const id = await session.command.addBlock('SineWave');
     const note = await until(
@@ -76,10 +87,97 @@ describe('startEngine', () => {
     expect(note.state).toBe('running');
   });
 
-  it('watch throws once the pre-created slots are used up', () => {
-    const session = track(startEngine({ sleepDuration: 10, watchSlots: 1 }));
-    session.watch(() => {});
-    expect(() => session.watch(() => {})).toThrow(/watchSlots/);
+  // Regression: each watch used to hold a command handle forever, so
+  // a session ran out of watches after its pre-created slots.
+  it('opens any number of watches, and unwatch stops one', async () => {
+    const session = track(startEngine({ sleepDuration: 10 }));
+    const kept: BlockNotification[] = [];
+    const closed: BlockNotification[] = [];
+    await session.watch((n) => kept.push(n));
+    const closedId = await session.watch((n) => closed.push(n));
+    await session.watch(() => {});
+
+    expect(await session.unwatch(closedId)).toBe(true);
+    expect(await session.unwatch(closedId)).toBe(false);
+
+    const id = await session.command.addBlock('SineWave');
+    await until(() => kept.find((n) => n.id === id), 'a SineWave notification');
+    expect(closed.find((n) => n.id === id)).toBeUndefined();
+  });
+});
+
+/** Awaits `promise`, expecting it to reject with a `LogicMeshError`. */
+async function rejection(promise: Promise<unknown>): Promise<LogicMeshError> {
+  const err: unknown = await promise.then(
+    () => undefined,
+    (err: unknown) => err,
+  );
+  if (!isLogicMeshError(err)) {
+    throw new Error(`expected a LogicMeshError, got ${String(err)}`);
+  }
+  return err;
+}
+
+describe('EngineCommand', () => {
+  // Regression: rejections were bare strings, so callers could only
+  // tell failures apart by their wording.
+  it('rejects with LogicMeshErrors carrying a stable code', async () => {
+    const { command } = track(startEngine({ sleepDuration: 10 }));
+    const unknown = '00000000-0000-4000-8000-0000000000ff';
+
+    const missing = await rejection(command.inspectBlock(unknown));
+    expect(missing).toBeInstanceOf(Error);
+    expect(missing.name).toBe('LogicMeshError');
+    expect(missing.code).toBe('BlockInstanceNotFound');
+    expect(missing.message).toContain(unknown);
+
+    expect((await rejection(command.addBlock('NoSuchBlock'))).code).toBe(
+      'BlockNotRegistered',
+    );
+    expect((await rejection(command.removeLink('link-1'))).code).toBe(
+      'InvalidLinkUuid',
+    );
+    expect((await rejection(command.removeConnector('nope'))).code).toBe(
+      'ConnectorNotManaged',
+    );
+    expect((await rejection(command.removeWatch(-1))).code).toBe(
+      'InvalidArgument',
+    );
+  });
+
+  // Regression: an unparseable block id silently became the nil UUID.
+  it('rejects an unparseable block id instead of using the nil UUID', async () => {
+    const { command } = track(startEngine({ sleepDuration: 10 }));
+    const err = await rejection(command.inspectBlock('not-a-uuid'));
+    expect(err.code).toBe('InvalidBlockUuid');
+    expect(err.message).toContain('not-a-uuid');
+  });
+
+  // Regression: replies carried no request id, so overlapping calls on
+  // one handle tripped the wasm borrow guard and crashed the process.
+  it('answers overlapping calls on one handle each with its own result', async () => {
+    const { command } = track(startEngine({ sleepDuration: 10 }));
+    const ids = await Promise.all(
+      Array.from({ length: 8 }, () => command.addBlock('Add')),
+    );
+    expect(new Set(ids).size).toBe(8);
+
+    const inspected = (await Promise.all(
+      ids.map((id) => command.inspectBlock(id)),
+    )) as { id: string }[];
+    expect(inspected.map((block) => block.id)).toStrictEqual(ids);
+  });
+
+  // Regression: control commands resolved once enqueued, not once
+  // done.
+  it('resolves resetEngine once the engine is empty', async () => {
+    const session = track(startEngine({ sleepDuration: 10 }));
+    const id = await session.command.addBlock('Add');
+
+    await session.command.resetEngine();
+    expect(
+      (await rejection(session.connectorCommand.inspectBlock(id))).code,
+    ).toBe('BlockInstanceNotFound');
   });
 });
 
@@ -194,12 +292,11 @@ describe('EngineSession lifecycle edges', () => {
     expect(id).toMatch(UUID_RE);
   });
 
-  it('serializes a same-tick reset() and stop() on the control handle', async () => {
+  it('runs a same-tick reset() and stop() in order: reset, then stop', async () => {
     const session = track(startEngine({ sleepDuration: 10 }));
     await session.command.addBlock('SineWave');
-    // Overlapping calls on one handle crash the whole process (an
-    // uncaught throw inside the wasm poll), so the control chain must
-    // run these strictly one after the other: reset first, then stop.
+    // A stop issued first would leave the reset waiting on the ended
+    // message loop forever.
     const reset = session.reset();
     const stop = session.stop();
     await Promise.all([reset, stop]);

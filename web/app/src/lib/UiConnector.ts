@@ -226,16 +226,15 @@ export function registerUiConnector() {
   registerConnector(UI_CONNECTOR_NAME, uiConnector);
 }
 
-// Serializes attach attempts: the app resets via `session.reset()`,
-// which resolves when Reset is merely enqueued, and concurrent
-// attaches (initial mount + reset handler) must not interleave their
-// check-then-attach sequences.
+// Serializes attach attempts: concurrent attaches (initial mount +
+// reset handler) must not interleave their check-then-attach
+// sequences.
 let attachChain: Promise<void> = Promise.resolve();
 
 async function doAttach(command: EngineCommand): Promise<void> {
-  // Request/reply barrier: engine messages are FIFO and this only
-  // resolves after the engine processed everything queued before it —
-  // including a pending Reset that unregisters attached connectors.
+  // The engine handles requests in order, so this answer reflects
+  // every request made before it — a reset that unregistered the
+  // connector included.
   const attached = await command.listConnectors();
   if (attached.includes(UI_CONNECTOR_NAME)) return;
 

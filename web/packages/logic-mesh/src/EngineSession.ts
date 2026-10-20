@@ -19,14 +19,6 @@ export interface EngineSessionOptions {
    * `engine` is supplied.
    */
   sleepDuration?: number;
-
-  /**
-   * How many watch handles to pre-create for {@link EngineSession.watch}.
-   * Each watch permanently consumes one command handle (`createWatch`
-   * never resolves), and handles cannot be created after the engine
-   * starts. Defaults to 1.
-   */
-  watchSlots?: number;
 }
 
 /**
@@ -47,18 +39,16 @@ export interface EngineSessionOptions {
  *    Awaiting `run()` before issuing commands deadlocks, and so does
  *    awaiting a command before `run()` has been kicked off.
  *
- * The session bakes the correct order in: every handle — including the
- * watch slots and an internal control handle — is created up front,
- * {@link start} kicks `run()` off without awaiting it, and
- * {@link stop} / {@link reset} travel through the dedicated control
- * handle so they never touch the engine object and never collide with
- * a caller's in-flight command on a shared handle (overlapping calls
- * on one handle trip the same borrow guard).
+ * The session bakes the correct order in: its command handles are
+ * created up front, {@link start} kicks `run()` off without awaiting
+ * it, and {@link stop} / {@link reset} travel through a dedicated
+ * control handle so they never touch the engine object.
  *
- * All handles feed the same FIFO engine queue, so a request/reply
- * command awaited on one handle (e.g. `listConnectors`) doubles as a
- * barrier proving the engine has processed everything queued before it
- * on every handle — the property connector attach flows rely on.
+ * A command handle takes any number of calls at once: each call's
+ * promise settles with the engine's answer to that call. Every handle
+ * feeds the same engine, which handles requests in the order they
+ * arrive. A failed command rejects with a `LogicMeshError` (see
+ * `isLogicMeshError`).
  *
  * Create a session with {@link startEngine} (creates, then starts) or
  * {@link createEngineSession} (handles now, {@link start} later — for
@@ -77,21 +67,16 @@ export class EngineSession {
   readonly command: EngineCommand;
 
   /**
-   * A handle dedicated to connector attachment, so attach flows that
-   * run from promise continuations (after a reset, on mount) never
-   * contend with in-flight commands on {@link command}. Its
-   * `listConnectors` reply is the FIFO barrier described above.
+   * A handle dedicated to connector attachment, kept for callers that
+   * want their attach flows on a handle of their own.
    */
   readonly connectorCommand: EngineCommand;
 
   /** Stop/reset handle — see the class docs. */
   private readonly control: EngineCommand;
 
-  /** Pre-created handles {@link watch} draws from after start. */
-  private readonly watchReserve: EngineCommand[];
-
-  /** Serializes control-handle operations (stop/reset) — overlapping
-   * calls on one handle trip the wasm borrow guard. */
+  /** Orders control operations: a reset issued before a stop runs
+   * first. */
   private controlChain: Promise<unknown> = Promise.resolve();
 
   private runDone: Promise<void> | undefined;
@@ -103,9 +88,6 @@ export class EngineSession {
     this.command = this.engine.engineCommand();
     this.connectorCommand = this.engine.engineCommand();
     this.control = this.engine.engineCommand();
-    this.watchReserve = Array.from({ length: options.watchSlots ?? 1 }, () =>
-      this.engine.engineCommand(),
-    );
   }
 
   /** Whether {@link start} has been called. */
@@ -143,7 +125,8 @@ export class EngineSession {
    * Mints an additional command handle. Only possible before
    * {@link start} — afterwards the engine's wasm borrow is held by
    * `run()`'s future and this throws a descriptive error instead of
-   * the raw "recursive use of an object" one.
+   * the raw "recursive use of an object" one. The session's handles
+   * take overlapping calls, so most hosts need no more.
    */
   createCommand(): EngineCommand {
     if (this.started) {
@@ -151,50 +134,40 @@ export class EngineSession {
         'EngineSession.createCommand() called after start(): once the ' +
           "engine runs, run()'s future holds the engine object's wasm " +
           'borrow and no further command handles can be created. Create ' +
-          'every handle up front — before start(), or via the watchSlots ' +
-          'option for watches.',
+          'every handle up front, before start().',
       );
     }
     return this.engine.engineCommand();
   }
 
   /**
-   * Registers `callback` for block change notifications. Each watch
-   * permanently consumes one command handle (`createWatch` never
-   * resolves): before {@link start} a fresh handle is minted, after it
-   * one of the pre-created `watchSlots` handles is used — when those
-   * run out this throws instead of tripping the wasm borrow guard.
+   * Registers `callback` for block change notifications, resolving with
+   * the watch's id once the engine opened it — before or after
+   * {@link start}: before, the watch opens as the engine starts. Pass
+   * the id to {@link unwatch} to stop the notifications.
    */
-  watch(callback: (notification: BlockNotification) => void): void {
-    const handle = this.started
-      ? this.watchReserve.pop()
-      : this.engine.engineCommand();
-    if (!handle) {
-      throw new Error(
-        'EngineSession.watch() has no command handle left: watches ' +
-          'created after start() draw from the pre-created watchSlots ' +
-          `pool (size ${String(this.watchReserve.length)} now). Raise the ` +
-          'watchSlots option, or create watches before start().',
-      );
-    }
-    // createWatch resolves only on failure to reach the engine; a
-    // healthy watch keeps the promise pending forever.
-    handle.createWatch(callback).catch((err: unknown) => {
-      console.error('logic-mesh: block watch failed:', err);
-    });
+  watch(callback: (notification: BlockNotification) => void): Promise<number> {
+    return this.command.createWatch(callback);
+  }
+
+  /**
+   * Closes the watch {@link watch} resolved with `watchId`, resolving
+   * with whether it was open.
+   */
+  unwatch(watchId: number): Promise<boolean> {
+    return this.command.removeWatch(watchId);
   }
 
   /**
    * Resets the engine — terminates all blocks and links, and detaches,
-   * stops and unregisters the engine-managed connectors. Sent through
-   * the internal control handle; resolves when the reset is enqueued
-   * (engine messages are FIFO, so anything awaited on any handle
-   * afterwards observes the reset done).
+   * stops and unregisters the engine-managed connectors. Resolves once
+   * the reset is done, so a command issued afterwards sees the engine
+   * empty.
    *
    * Throws after {@link stop} — there is nothing left to reset, and
-   * the request would otherwise be swallowed silently by the ended
-   * message loop. (A reset issued concurrently with stop() is fine:
-   * both go through the serialized control handle, reset first.)
+   * the request would otherwise wait on the ended message loop
+   * forever. (A reset issued concurrently with stop() is fine: both go
+   * through the control chain, reset first.)
    */
   reset(): Promise<void> {
     if (this.stopDone) {
@@ -216,9 +189,8 @@ export class EngineSession {
   stop(): Promise<void> {
     const runDone = this.runDone;
     if (!runDone) return Promise.resolve();
-    // Idempotent: a second Shutdown would be sent into the already
-    // closed message channel and reject, so every caller shares the
-    // first stop's promise.
+    // Idempotent: a second Shutdown would wait on the ended message
+    // loop forever, so every caller shares the first stop's promise.
     this.stopDone ??= this.enqueueControl(async () => {
       await this.control.stopEngine();
       await runDone;
