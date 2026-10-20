@@ -183,8 +183,10 @@ impl PinValue {
 pub struct ProgramBlock {
     /// Block type name (looked up in the block registry at load time).
     pub name: String,
-    /// Block library, e.g. `"core"`.
-    pub lib: String,
+    /// Block library, e.g. `"core"`. Saved under the key `lib`, the
+    /// name the JS `Program` interface and earlier saves use.
+    #[serde(rename = "lib")]
+    pub library: String,
     /// The version of the block type the program was saved with, its
     /// [`BlockDesc::ver`](crate::base::block::BlockDesc::ver). A load
     /// rejects a block whose saved version is incompatible with the
@@ -218,12 +220,12 @@ pub struct ProgramBlock {
 }
 
 impl ProgramBlock {
-    /// A block of type `name` from library `lib`, with no metadata and
-    /// no pin values.
-    pub fn new(name: impl Into<String>, lib: impl Into<String>) -> Self {
+    /// A block of type `name` from `library`, with no metadata and no
+    /// pin values.
+    pub fn new(name: impl Into<String>, library: impl Into<String>) -> Self {
         Self {
             name: name.into(),
-            lib: lib.into(),
+            library: library.into(),
             ..Default::default()
         }
     }
@@ -476,7 +478,10 @@ mod test {
         assert_matches!(program.check_version(), Ok(()));
         assert_eq!(program.name.as_deref(), Some("Demand sum"));
         let first = &program.blocks["00000000-0000-4000-8000-000000000001"];
-        assert_eq!((first.name.as_str(), first.lib.as_str()), ("Add", "core"));
+        assert_eq!(
+            (first.name.as_str(), first.library.as_str()),
+            ("Add", "core")
+        );
         assert_eq!(first.label.as_deref(), Some("Zone A + B"));
         assert_eq!(first.position, Some(Position::new(81.0, -72.5)));
         assert_eq!(first.inputs["in0"], PinValue::new(12, false));
@@ -673,6 +678,23 @@ mod test {
             Some(editor)
         );
         assert_eq!(serde_json::to_value(&program).expect("serializes"), written);
+    }
+
+    /// The Rust field is `library`, like every other type that names a
+    /// block's library, but the save format keeps the key `lib`.
+    #[test]
+    fn the_library_is_saved_under_lib() {
+        let block = ProgramBlock {
+            library: "custom".to_string(),
+            ..ProgramBlock::new("Scale", "core")
+        };
+
+        let written = serde_json::to_value(&block).expect("serializes");
+        assert_eq!(written, json!({"name": "Scale", "lib": "custom"}));
+
+        let read: ProgramBlock =
+            serde_json::from_value(json!({"name": "Scale", "lib": "custom"})).expect("reads");
+        assert_eq!(read.library, "custom");
     }
 
     /// A save naming the position under both keys is malformed.

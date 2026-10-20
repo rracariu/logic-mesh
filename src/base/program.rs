@@ -52,7 +52,7 @@ mod test {
     fn add_block(lib: &str) -> ProgramBlock {
         ProgramBlock {
             name: "Add".to_string(),
-            lib: lib.to_string(),
+            library: lib.to_string(),
             ..Default::default()
         }
     }
@@ -105,7 +105,7 @@ mod test {
                 "00000000-0000-0000-0000-000000000000",
                 ProgramBlock {
                     name: "Missing".to_string(),
-                    lib: "core".to_string(),
+                    library: "core".to_string(),
                     ..Default::default()
                 },
             )],
@@ -171,7 +171,7 @@ mod test {
             "00000000-0000-0000-0000-000000000000".to_string(),
             ProgramBlock {
                 name: "Add".to_string(),
-                lib: "core".to_string(),
+                library: "core".to_string(),
                 label: Some("Demand sum".to_string()),
                 position: Some(Position { x: 120.5, y: 80.0 }),
                 ..Default::default()

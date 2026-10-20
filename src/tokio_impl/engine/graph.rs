@@ -667,7 +667,7 @@ impl BlockGraph {
                 id.to_string(),
                 ProgramBlock {
                     name: handle.name.clone(),
-                    lib: handle.library.clone(),
+                    library: handle.library.clone(),
                     ver: Some(handle.desc.ver.clone()),
                     label: handle.label.clone(),
                     position: handle.position,
@@ -1023,7 +1023,7 @@ fn check_program<'p, H: ProgramHost>(host: &H, program: &'p Program) -> Result<C
     let mut blocks = Vec::new();
     let mut pins = Vec::new();
     for (id, block) in program_block_ids(program, |id| graph.contains(id))? {
-        let entry = get_block(&block.name, Some(&block.lib))?;
+        let entry = get_block(&block.name, Some(&block.library))?;
         if let Some(saved) = &block.ver {
             check_block_version(id, &block.name, saved, &entry.desc.ver)?;
         }

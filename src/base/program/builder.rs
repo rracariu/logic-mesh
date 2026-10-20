@@ -86,18 +86,18 @@ impl ProgramBuilder {
         self.add_block_in(name, CORE_LIB)
     }
 
-    /// Adds block `name` from library `lib`. The block name comes first,
-    /// as in every other lookup that names a library. The block is saved
+    /// Adds block `name` from `library`. The block name comes first, as
+    /// in every other lookup that names a library. The block is saved
     /// with its registered version.
     ///
     /// # Errors
     ///
     /// Returns an error if no such block is registered.
-    pub fn add_block_in(&mut self, name: &str, lib: &str) -> Result<ProgramBlockBuilder<'_>> {
-        let entry = get_block(name, Some(lib))?;
+    pub fn add_block_in(&mut self, name: &str, library: &str) -> Result<ProgramBlockBuilder<'_>> {
+        let entry = get_block(name, Some(library))?;
 
         let id = Uuid::new_v4();
-        let mut block = ProgramBlock::new(name, lib);
+        let mut block = ProgramBlock::new(name, library);
         block.ver = Some(entry.desc.ver.clone());
         self.program.blocks.insert(id.to_string(), block);
         self.descs.insert(id, entry.desc);
@@ -246,7 +246,10 @@ mod test {
 
         let program = builder.build();
         let block = &program.blocks[&add.id().to_string()];
-        assert_eq!((block.name.as_str(), block.lib.as_str()), ("Add", CORE_LIB));
+        assert_eq!(
+            (block.name.as_str(), block.library.as_str()),
+            ("Add", CORE_LIB)
+        );
 
         let mut builder = ProgramBuilder::new("swapped");
         assert_matches!(

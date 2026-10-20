@@ -747,7 +747,7 @@ pub(crate) mod round_trip {
         );
         for (id, block) in &program.blocks {
             let saved = &saved.blocks[id];
-            assert_eq!((&saved.name, &saved.lib), (&block.name, &block.lib));
+            assert_eq!((&saved.name, &saved.library), (&block.name, &block.library));
             assert_eq!(saved.ver, block.ver);
             assert_eq!(saved.label, block.label);
             assert_eq!(saved.position, block.position);
@@ -1544,7 +1544,7 @@ pub(crate) mod connector_deadlines {
                 .collect();
             let block = ProgramBlock {
                 name: name.to_string(),
-                lib: "core".to_string(),
+                library: "core".to_string(),
                 inputs,
                 ..Default::default()
             };
@@ -2037,7 +2037,10 @@ pub(crate) mod runtime_descs {
             let saved = client.save().await;
             for id in [first, second, third] {
                 let block = &saved.blocks[&id.to_string()];
-                assert_eq!((block.name.as_str(), block.lib.as_str()), ("Echo", LIBRARY));
+                assert_eq!(
+                    (block.name.as_str(), block.library.as_str()),
+                    ("Echo", LIBRARY)
+                );
             }
             let mut links: Vec<_> = saved.links.into_keys().collect();
             links.sort();
@@ -2092,7 +2095,7 @@ pub(crate) mod runtime_descs {
         let mut program = add_program([first.to_string().as_str(), &second.to_string()]);
         for block in program.blocks.values_mut() {
             block.name = "Registered".to_string();
-            block.lib = LIBRARY.to_string();
+            block.library = LIBRARY.to_string();
         }
         let link = Uuid::new_v4();
         program.links.insert(
