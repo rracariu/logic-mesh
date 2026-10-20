@@ -478,6 +478,12 @@ mod tests {
             )
             .await;
         }
+
+        #[tokio::test(flavor = "current_thread")]
+        async fn pin_writes_answer_with_the_previous_value() {
+            pin_writes::pin_writes_answer_with_the_previous_value(SingleThreadedEngine::new())
+                .await;
+        }
     }
 
     /// Regression: the scan interval was one process-wide value, which

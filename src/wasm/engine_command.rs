@@ -141,7 +141,7 @@ impl EngineCommand {
         self.client.disconnect(link).await.map_err(js_error)
     }
 
-    /// Writes a value to a block's output pin.
+    /// Writes a value to a block's output pin, returning the previous value.
     #[wasm_bindgen(js_name = "writeBlockOutput")]
     pub async fn write_block_output(
         &self,

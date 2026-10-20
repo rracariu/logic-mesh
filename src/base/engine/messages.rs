@@ -402,7 +402,8 @@ pub enum EngineRequest {
     },
 
     /// Writes a value to a block's output pin, which reaches the inputs
-    /// linked to it. Answered with the value written.
+    /// linked to it. Answered with the output's previous value, as
+    /// [`WriteInput`](Self::WriteInput) is with the input's.
     WriteOutput {
         /// The block.
         block: Uuid,
@@ -632,7 +633,7 @@ pub enum EngineResponse {
     },
     /// Answers [`EngineRequest::WriteOutput`].
     WriteOutput {
-        /// The value written.
+        /// The output's previous value.
         result: Result<Value, RequestError>,
     },
     /// Answers [`EngineRequest::InspectBlock`].

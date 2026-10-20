@@ -616,6 +616,34 @@ pub(crate) mod pin_writes {
         })
         .await;
     }
+
+    /// Regression: `WriteOutput` was documented as answering with the
+    /// value written, while it answers, like `WriteInput`, with the
+    /// pin's previous value.
+    pub(crate) async fn pin_writes_answer_with_the_previous_value<E: TestEngine>(mut engine: E) {
+        let add = Add::new();
+        let id = *add.id();
+        engine.schedule(add).expect("scheduled");
+
+        drive(engine, move |client| async move {
+            // Held, the block cannot recompute `out` between the writes.
+            client.pause().await;
+
+            let first = answer(client.0.write_output(id, "out", 5.into())).await;
+            assert_eq!(first, Ok(Value::Null));
+            let second = answer(client.0.write_output(id, "out", 7.into())).await;
+            assert_eq!(second, Ok(Value::from(5)));
+
+            let first = answer(client.0.write_input(id, "in0", 1.into())).await;
+            assert_eq!(first, Ok(None));
+            let second = answer(client.0.write_input(id, "in0", 2.into())).await;
+            assert_eq!(second, Ok(Some(Value::from(1))));
+
+            assert_eq!(client.output(id, "out").await, Value::from(7));
+            client.resume().await;
+        })
+        .await;
+    }
 }
 
 /// `program` as JSON, for comparing two programs whole.

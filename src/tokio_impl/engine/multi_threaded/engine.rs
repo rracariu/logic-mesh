@@ -781,6 +781,11 @@ mod test {
             )
             .await;
         }
+
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn pin_writes_answer_with_the_previous_value() {
+            pin_writes::pin_writes_answer_with_the_previous_value(MultiThreadedEngine::new()).await;
+        }
     }
 
     /// Regression: see the single-threaded `dead_actors`.

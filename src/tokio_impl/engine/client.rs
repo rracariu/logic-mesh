@@ -280,7 +280,7 @@ impl EngineClient {
     }
 
     /// Writes `value` to output `pin` of block `block`, returning the
-    /// value written. See [`EngineRequest::WriteOutput`].
+    /// output's previous value. See [`EngineRequest::WriteOutput`].
     pub async fn write_output(
         &self,
         block: Uuid,
