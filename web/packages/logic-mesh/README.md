@@ -22,6 +22,10 @@ bundler) and in Node.js — see [Environment support](#environment-support).
 npm install logic-mesh zod
 ```
 
+Upgrading from 1.x? The
+[migration guide](https://github.com/rracariu/logic-mesh/blob/main/docs/migration-2.0.md#9-the-javascript-api)
+lists what changed in the JavaScript API.
+
 [Zod](https://zod.dev) 4.6 or newer is a peer dependency: `defineBlock`
 describes pins with your Zod schemas, so the package must use the same `zod`
 your code imports. Upgrade an app on an older Zod first: npm refuses to
@@ -101,8 +105,11 @@ starts the engine's message loop — in the one order that works.
 ```ts
 import { startEngine } from 'logic-mesh';
 
-// Engine created and running; `command` is ready to use
-const { command } = startEngine();
+// Engine created and running; `command` is ready to use. The scan
+// interval — how often the blocks that poll check their state — is in
+// milliseconds, 200 by default.
+const session = startEngine({ scanInterval: 100 });
+const { command } = session;
 
 // Add a SineWave block
 const sineWaveId = await command.addBlock('SineWave');
@@ -113,6 +120,13 @@ const strLenId = await command.addBlock('StrLen');
 // A handle takes overlapping calls too: each promise settles with the
 // engine's answer to its own call.
 await command.createLink(sineWaveId, strLenId, 'out', 'in');
+
+// Read a block's state and pin values, as plain objects
+const block = await command.inspectBlock(strLenId);
+console.log(block.state, block.outputs.out.val);
+
+// Stop the engine; the promise resolves once it has stopped
+await session.stop();
 ```
 
 Under the hood the sequence matters, and getting it wrong fails in
@@ -280,10 +294,9 @@ The executor may be re-invoked with the same inputs if the engine
 interrupts a call mid-flight (at-least-once), so side-effecting
 executors should be idempotent.
 
-Note the trigger trap: a reactive registered block (the default
-`runCondition: 'change'`) fires on link-delivered values — a bare
-`writeBlockInput` on its pins does not trigger execution. Use
-`runCondition: 'always'` or drive the pin over a link.
+A registered block runs when its inputs change: a value delivered over a
+link, or one written with `writeBlockInput`, whether or not the pin is
+linked.
 
 ### Which extension point to use
 
@@ -346,6 +359,47 @@ await command.writeBlockInput(outputId, 'address', 'actuator/1');
 // lifecycle from here (it is stopped and detached on engine reset)
 await command.addConnector('demo');
 ```
+
+### Save and load programs
+
+`getProgram()` resolves with the engine's program in the save format, as
+plain JSON: store it with `JSON.stringify` and hand it back to
+`loadProgram()`. A load is all or nothing, and a program saved by a newer
+release rejects with code `'UnsupportedProgramVersion'`. Programs saved by
+logic-mesh 1.x load as they are.
+
+```ts
+import { startEngine, type Program } from 'logic-mesh';
+
+const { command } = startEngine();
+
+const program = await command.getProgram();
+localStorage.setItem('program', JSON.stringify(program));
+
+// Later, on an engine with no blocks of its own
+await command.resetEngine();
+await command.loadProgram(
+  JSON.parse(localStorage.getItem('program')!) as Program,
+);
+```
+
+A block can carry the editor's own state in `editor`, any JSON object
+the engine saves back unchanged. Type it through `Program`'s parameter,
+and declare the type with `type`, not `interface`:
+
+```ts
+import type { Program } from 'logic-mesh';
+
+type MyEditor = { widget?: string; collapsed?: boolean };
+
+const saved = (await command.getProgram()) as Program<MyEditor>;
+for (const block of Object.values(saved.blocks)) {
+  console.log(block.name, block.editor?.widget);
+}
+```
+
+On a running engine, `command.setBlockMetadata(id, label, position)` and
+`command.setBlockEditor(id, editor)` change what a block is saved with.
 
 ### List all registered blocks
 
