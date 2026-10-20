@@ -8,6 +8,8 @@ concurrency:
   group: web-check-${{ github.ref }}
   cancel-in-progress: true
 
+# This workflow runs only on pull requests, so npm-publish.yml repeats
+# every one of these checks before it publishes. Change both together.
 jobs:
   site:
     name: Check demo site build
