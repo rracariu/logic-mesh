@@ -64,8 +64,8 @@
     if (!engineRunning) {
       engineRunning = true;
       // Kick off the engine through the session so it knows it has
-      // started (watches then use the pre-created slots); same effect
-      // as the old direct `engine.run()` call, same tick.
+      // started; same effect as the old direct `engine.run()` call,
+      // same tick.
       start();
 
       // addConnector is a message to the now-running engine;
