@@ -67,15 +67,23 @@ export type LogicMeshErrorCode =
   | 'ConnectorRequestFailed'
   | 'ConnectorTimeout'
   | 'ConnectorTransport'
+  // Block descriptions (registerBlock)
+  | 'UnknownImplementation'
+  | 'UnknownRunCondition'
+  | 'UnknownPinKind'
+  | 'BlockNotExternal'
   // Command arguments and results
   | 'InvalidProgram'
   | 'InvalidArgument'
+  | 'InvalidValue'
   | 'Serialization';
 
 /**
- * The `Error` an `EngineCommand` promise rejects with: `name` is
- * `'LogicMeshError'`, `code` says what failed, and `message` describes
- * it, including the underlying causes.
+ * The `Error` an `EngineCommand` promise rejects with, and the one the
+ * synchronous bindings — `initEngine`, the `BlocksEngine` constructor,
+ * `registerBlock`, `registerConnector`, `setLogLevel` — throw: `name`
+ * is `'LogicMeshError'`, `code` says what failed, and `message`
+ * describes it, including the underlying causes.
  *
  * ```ts
  * try {
@@ -94,7 +102,7 @@ export interface LogicMeshError extends Error {
 
 /**
  * Whether `err` is a {@link LogicMeshError}: an engine command's
- * rejection.
+ * rejection, or an error a synchronous binding threw.
  */
 export function isLogicMeshError(err: unknown): err is LogicMeshError {
   return (

@@ -22,7 +22,7 @@ afterEach(async () => {
  * collecting every block notification.
  */
 function session(): { session: EngineSession; notes: BlockNotification[] } {
-  const s = startEngine({ sleepDuration: 10 });
+  const s = startEngine({ scanInterval: 10 });
   sessions.push(s);
   const notes: BlockNotification[] = [];
   s.watch((n) => notes.push(n));

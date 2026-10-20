@@ -1,8 +1,9 @@
 // Copyright (c) 2022-2026, Radu Racariu.
 
-//! The errors the JavaScript bindings throw.
+//! The errors the JavaScript bindings throw, and the reading of errors
+//! JavaScript throws.
 
-use wasm_bindgen::JsValue;
+use wasm_bindgen::{JsCast, JsValue};
 
 use crate::base::error::{ErrorCode, RequestError};
 
@@ -12,7 +13,7 @@ pub(crate) const JS_ERROR_NAME: &str = "LogicMeshError";
 /// `err` as a JavaScript `Error` named [`JS_ERROR_NAME`], whose
 /// `message` is the request error's message and whose `code` property
 /// is its [`ErrorCode`] name — what an engine command's promise rejects
-/// with.
+/// with, and what the synchronous bindings throw.
 pub(crate) fn js_error(err: RequestError) -> JsValue {
     let error = js_sys::Error::new(&err.message);
     error.set_name(JS_ERROR_NAME);
@@ -25,4 +26,16 @@ pub(crate) fn js_error(err: RequestError) -> JsValue {
 /// A request error with `code` and `message`, as a JavaScript error.
 pub(crate) fn js_error_from(code: ErrorCode, message: impl Into<String>) -> JsValue {
     js_error(RequestError::new(code, message))
+}
+
+/// Renders a JS exception or rejection reason as a detail message: an
+/// `Error` via its own `toString()` (preserving the error name, e.g.
+/// `"TypeError: ..."`), a plain string as-is, anything else via its
+/// debug representation.
+pub(crate) fn js_detail(err: &JsValue) -> String {
+    if let Some(error) = err.dyn_ref::<js_sys::Error>() {
+        return String::from(js_sys::Error::to_string(error));
+    }
+
+    err.as_string().unwrap_or_else(|| format!("{err:?}"))
 }

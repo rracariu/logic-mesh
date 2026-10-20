@@ -64,7 +64,7 @@ pub use base::error::{
     ErrorCode, ExternalError, LinkEnd, RegistryError, RequestError, Result, ValueError,
 };
 
-#[cfg(target_arch = "wasm32")]
+#[cfg(all(target_arch = "wasm32", feature = "js"))]
 pub mod wasm;
 
 /// Not public API: what the block macros' generated code calls.

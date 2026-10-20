@@ -75,7 +75,7 @@ let blockSerial = 0;
  * ignored. Returns handles to drive and observe the block.
  */
 async function gatedBlockSession(pins: { drive: string; poke: string }) {
-  const session = createEngineSession({ sleepDuration: 10 });
+  const session = createEngineSession({ scanInterval: 10 });
   sessions.push(session);
 
   const name = `Gated${blockSerial++}`;
@@ -213,7 +213,7 @@ describe('registered JS block under mailbox cancellation', () => {
 
 describe('registerBlock pin-kind validation', () => {
   it('rejects an unrecognized pin kind instead of degrading it to Null', () => {
-    const session = createEngineSession({ sleepDuration: 10 });
+    const session = createEngineSession({ scanInterval: 10 });
     sessions.push(session);
 
     const desc = {

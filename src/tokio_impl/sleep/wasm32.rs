@@ -15,15 +15,29 @@ extern "C" {
     fn performance_now() -> f64;
 }
 
+/// The longest delay `setTimeout` waits for. Hosts fire a longer one at
+/// once, and a delay cast to `i32` would wrap to a short or negative one.
+const MAX_TIMEOUT_MILLIS: u64 = i32::MAX as u64;
+
 /// Sleeps for the given number of milliseconds.
 ///
 /// Uses `setTimeout` so it integrates with the browser's or Node's event loop.
+/// A sleep longer than `setTimeout` takes is a run of the longest ones.
 pub(crate) async fn sleep_millis(millis: u64) {
-    let promise = js_sys::Promise::new(&mut |resolve, _| {
-        setTimeout(&resolve, millis as i32);
-    });
+    let mut remaining = millis;
+    loop {
+        let timeout = remaining.min(MAX_TIMEOUT_MILLIS);
+        let promise = js_sys::Promise::new(&mut |resolve, _| {
+            // At most `i32::MAX`, so the cast keeps the value.
+            setTimeout(&resolve, timeout as i32);
+        });
+        let _ = JsFuture::from(promise).await;
 
-    let _ = JsFuture::from(promise).await;
+        remaining -= timeout;
+        if remaining == 0 {
+            break;
+        }
+    }
 }
 
 /// Returns the current wall-clock time in milliseconds since the Unix epoch.
