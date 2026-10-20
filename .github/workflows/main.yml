@@ -210,6 +210,11 @@ jobs:
       - name: Run cargo package
         run: cargo package --locked -p logic_mesh_block_macro -p logic-mesh
 
+      # BSD-3-Clause requires the license text in every copy of the
+      # source, so each .crate must carry the root LICENSE.
+      - name: Check that the packaged crates carry the license
+        run: .github/scripts/check-crate-license.sh logic_mesh_block_macro logic-mesh
+
   msrv:
     name: MSRV
     runs-on: ubuntu-latest

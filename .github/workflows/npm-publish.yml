@@ -33,10 +33,12 @@ jobs:
       - uses: actions/setup-node@v6
         with:
           node-version: lts/*
-          registry-url: 'https://registry.npmjs.org'
           package-manager-cache: false
 
-      # The same checks web-check.yml runs on pull requests.
+      # Every check web-check.yml runs, in the same order, on the build
+      # this job publishes. web-check.yml runs only on pull requests,
+      # and a commit can reach main without one, so this job is the
+      # only gate every release passes. Keep the two in step.
       - name: wasm-pack installer
         run: curl https://wasm-bindgen.github.io/wasm-pack/installer/init.sh -sSf | bash
       - name: install
@@ -50,6 +52,13 @@ jobs:
       - name: wasm-build
         run: npm run build --workspace=logic-mesh
 
+      # publint + attw on the manifest, then pack the package, install the
+      # tarball into a scratch project and import it with plain `node`.
+      - name: package check
+        run: |
+          npm run check:package --workspace=logic-mesh
+          npm run test:pack --workspace=logic-mesh
+
       - name: lint
         run: |
           npm run lint --workspace=logic-mesh
@@ -57,6 +66,27 @@ jobs:
 
       - name: test
         run: npm test --workspace=logic-mesh
+
+      - name: build
+        run: npm run build --workspace=web-app
+
+      # The low end of the package's `engines` range: 22.19 is the first
+      # Node 22 release that imports the wasm module without
+      # --experimental-wasm-modules.
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22.19.0
+          package-manager-cache: false
+      - name: package smoke test on the minimum Node
+        run: npm run test:pack --workspace=logic-mesh
+
+      # Back to the LTS to publish: Trusted Publishing needs npm 11.5.1
+      # or later, and Node 22.19.0 ships npm 10.
+      - uses: actions/setup-node@v6
+        with:
+          node-version: lts/*
+          registry-url: 'https://registry.npmjs.org'
+          package-manager-cache: false
 
       # Prereleases (2.1.0-rc.1) go to the `next` dist-tag so that
       # `npm install logic-mesh` keeps resolving to the latest release.
