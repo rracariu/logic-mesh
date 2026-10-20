@@ -337,8 +337,33 @@ impl fmt::Display for ClientId {
 /// The client chooses it. An engine echoes it back without reading it,
 /// so ids only need to be unique among a client's requests in flight —
 /// [`EngineClient`](crate::base::engine::EngineClient) numbers them.
+///
+/// A custom transport makes one with [`new`](Self::new) and reads its
+/// number with [`get`](Self::get), as for a [`WatchId`].
+///
+/// # Examples
+///
+/// ```
+/// use logic_mesh::base::engine::messages::RequestId;
+///
+/// let id = RequestId::new(7);
+/// assert_eq!(RequestId::new(id.get()), id);
+/// assert_eq!(id.to_string(), "request#7");
+/// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct RequestId(pub u64);
+pub struct RequestId(u64);
+
+impl RequestId {
+    /// The request id numbered `id`.
+    pub fn new(id: u64) -> Self {
+        Self(id)
+    }
+
+    /// The id as a number.
+    pub fn get(self) -> u64 {
+        self.0
+    }
+}
 
 impl fmt::Display for RequestId {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

@@ -192,7 +192,7 @@ impl EngineClient {
     /// handled but failed is an `Ok` response carrying the error.
     pub async fn request(&self, request: EngineRequest) -> Result<EngineResponse, RequestError> {
         let inner = &*self.inner;
-        let id = RequestId(inner.next_id.fetch_add(1, Ordering::Relaxed));
+        let id = RequestId::new(inner.next_id.fetch_add(1, Ordering::Relaxed));
         let (waiting, mut response) = oneshot::channel();
         inner.pending().insert(id, waiting);
         let _in_flight = InFlight { inner, id };

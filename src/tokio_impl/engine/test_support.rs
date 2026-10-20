@@ -493,7 +493,7 @@ pub(crate) mod lifecycle {
             };
             let stranger = ClientId::new(u64::MAX);
             requests
-                .send(Envelope::new(stranger, RequestId(0), request))
+                .send(Envelope::new(stranger, RequestId::new(0), request))
                 .await
                 .expect("the engine is receiving");
 

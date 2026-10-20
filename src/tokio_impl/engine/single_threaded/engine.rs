@@ -483,7 +483,7 @@ mod test {
             .is_ok()
         {}
 
-        let reset = Envelope::new(client, RequestId(0), EngineRequest::Reset);
+        let reset = Envelope::new(client, RequestId::new(0), EngineRequest::Reset);
         timeout(Duration::from_secs(2), dispatch(&mut eng, reset))
             .await
             .expect("reset completes despite the full mailbox");
