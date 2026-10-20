@@ -30,7 +30,7 @@ use crate::base::{
         messages::{BlockDefinition, EngineMessage, WatchMessage},
     },
     program::{
-        Program,
+        EditorMetadata, Program,
         data::{LinkData, Position},
     },
 };
@@ -185,6 +185,10 @@ impl Engine for SingleThreadedEngine<Idle> {
         position: Option<Position>,
     ) -> Result<()> {
         Ok(self.graph.set_metadata(id, label, position)?)
+    }
+
+    fn set_block_editor(&mut self, id: &Uuid, editor: Option<EditorMetadata>) -> Result<()> {
+        Ok(self.graph.set_editor(id, editor)?)
     }
 
     fn scan_interval(&self) -> Duration {

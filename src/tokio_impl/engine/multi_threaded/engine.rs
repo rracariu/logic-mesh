@@ -54,7 +54,7 @@ use crate::base::{
         Engine, EngineState, Idle, MaybeSendSync, Running,
         messages::{BlockDefinition, EngineMessage},
     },
-    program::{LinkData, Position, Program},
+    program::{EditorMetadata, LinkData, Position, Program},
 };
 use crate::blocks::registry::{BlockSink, get_block};
 use crate::tokio_impl::engine::{
@@ -204,6 +204,10 @@ impl Engine for MultiThreadedEngine<Idle> {
         position: Option<Position>,
     ) -> Result<()> {
         Ok(self.graph.set_metadata(id, label, position)?)
+    }
+
+    fn set_block_editor(&mut self, id: &Uuid, editor: Option<EditorMetadata>) -> Result<()> {
+        Ok(self.graph.set_editor(id, editor)?)
     }
 
     fn scan_interval(&self) -> Duration {
@@ -1147,6 +1151,12 @@ mod test {
         #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
         async fn an_engine_is_configured_through_the_trait() {
             configuration::an_engine_is_configured_through_the_trait(MultiThreadedEngine::new())
+                .await;
+        }
+
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn editor_metadata_is_set_through_the_trait() {
+            configuration::editor_metadata_is_set_through_the_trait(MultiThreadedEngine::new())
                 .await;
         }
     }
