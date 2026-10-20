@@ -319,15 +319,6 @@ with before and after code, for Rust and for JavaScript and TypeScript.
 - `Status`, `BlockState`, `LinkState` and `ChangeSource` are
   `#[non_exhaustive]`, and so are `WatchMessage`, `BlockDefinition`,
   `BlockInputData` and `BlockOutputData` ([#26]).
-- `ConnectorError`'s operation variants carry an optional source and are
-  `#[non_exhaustive]`, and `Transport` is a struct variant ([#26]).
-- `ValueError::ZincDecode` no longer converts from `std::io::Error`, and
-  `ZincDecode`, `ZincEncode` and `ParseBool` keep their cause in `source()`
-  rather than in the message. Fault reasons render the whole source chain
-  ([#26]).
-- `ProgramBuilder`, `ProgramBlockBuilder`, `BlockRef`,
-  `ProgramBuilder::build` and `ConnectorHandle::new` are `#[must_use]`
-  ([#26]).
 
 #### Save format
 
@@ -357,8 +348,6 @@ with before and after code, for Rust and for JavaScript and TypeScript.
   and the `Messages` alias are removed ([#29]).
 - A watch is identified by an engine-assigned `WatchId`, and a client can
   hold any number of them ([#29]).
-- The rustdoc anchor `base::engine#lifecycle-messages` is now
-  `base::engine#lifecycle-requests` ([#29]).
 - The multi-threaded engine's public async methods are reached through
   `EngineClient` instead ([#18], [#29]).
 
@@ -378,15 +367,13 @@ with before and after code, for Rust and for JavaScript and TypeScript.
   missing values ([#28]). `inspectBlock` returns a `BlockInspection` of plain
   objects, keyed `lib` and `faultReason` ([#30]).
 - `createWatch` resolves with the watch id once the watch is open ([#29]).
-  `EngineSession.watch` resolves with a `WatchSubscription` ([#30]).
-- `pauseExecution`, `resumeExecution`, `resetEngine` and `stopEngine`, and
-  `EngineSession.reset` and `stop`, resolve once the engine has applied
-  them ([#29]). A paused engine answers every command ([#22]).
+- `pauseExecution`, `resumeExecution`, `resetEngine` and `stopEngine`
+  resolve once the engine has applied them ([#29]). A paused engine answers
+  every command ([#22]).
 - `new BlocksEngine(scanInterval)` and `initEngine(scanInterval)` take a
   validated `number` of milliseconds, set the interval of the engine they
   create only, and throw `InvalidArgument` for a negative, non-finite or
-  too large value ([#27], [#30]). The `EngineSessionOptions` field
-  `sleepDuration` is renamed `scanInterval` ([#30]).
+  too large value ([#27], [#30]).
 - The generated declarations name the package's types instead of `any`, and
   `LinkData` is a `type` ([#30]).
 - The `Program` types follow the save format: `version`, `ver`, an optional
@@ -441,21 +428,14 @@ with before and after code, for Rust and for JavaScript and TypeScript.
   block with `blocks::registry::schedule_block` or
   `schedule_block_with_uuid` while the engine is idle, or with
   `EngineClient::add_block` while it runs ([#18]).
-- `EngineError::ScheduleRequiresSend`: a block that is not `Send + Sync` is
-  a compile error on `Engine::schedule` ([#18]).
 - `schedule_block_send` and `schedule_block_send_with_uuid` ([#18]).
-- `EngineError::BlockRequestRejected`, replaced by
-  `InputNotFound`/`OutputNotFound` and `EngineError::Connect` ([#24]).
 - `blocks::utils::set_sleep_dur` and `get_sleep_dur` ([#27]).
 - `disconnect_block`, `disconnect_link`, `ProgramMeta`, and the public
-  `register_blocks!`, `eval_block_impl`, `eval_registered` and `BlockData`
-  ([#27]).
-- The duplicate paths to every public item, including `base::error`,
-  `base::status`, the blocks' leaf modules and `multi_threaded::engine`
-  ([#27]).
+  `register_blocks!`, `eval_block_impl` and `BlockData` ([#27]).
+- The duplicate paths to every public item, including `base::status`, the
+  blocks' leaf modules and `multi_threaded::engine` ([#27]).
 - `TryFrom<&str>` for `BlockImplementation` and `BlockRunCondition` ([#26]).
 - `EngineMessage`, `Messages` and `Engine::Channel` ([#29]).
-- TS `EngineSessionOptions.watchSlots` ([#29]) and `sleepDuration` ([#30]).
 
 ### Fixed
 
@@ -495,6 +475,9 @@ they affect only code built from git in between:
 - `ProgramBuilder::add_block_in(lib, name)` is now `add_block_in(name, lib)`.
   Old calls still compile and fail at runtime with
   `RegistryError::BlockNotFound` ([#27]).
+- `ProgramBuilder`, `ProgramBlockBuilder`, `BlockRef`,
+  `ProgramBuilder::build` and `ConnectorHandle::new` are `#[must_use]`
+  ([#26]).
 - `ConnectorError::Subscribe`, `Publish` and `Request` gained a `source`,
   `Transport(String)` became `Transport { detail, source }`, and all four are
   `#[non_exhaustive]` ([#26]). `ConnectorError` is no longer `UnwindSafe`
@@ -503,13 +486,30 @@ they affect only code built from git in between:
   `ListConnectors` requests, with typed errors ([#29]).
 - `ExternalIn` gained its `timeout` input, and `ExternalOut` and `Request`
   count their deadline from the first issue of an operation ([#23]).
+- The `ExternalIn`, `ExternalOut` and `Request` fault reasons render the
+  connector error's whole source chain ([#26]).
 - `JsConnector::from_js` returns `ExternalError` instead of `String` ([#26]).
-- `EngineSessionOptions.watchSlots` is removed and `sleepDuration` is
-  renamed `scanInterval`; `EngineSession.watch` resolves with a
-  `WatchSubscription` ([#29], [#30]).
-- `add_connector`, `connector_names`, `block_handles` and `block_handle`
-  moved from the engines onto the `Engine` trait ([#27]).
-- `SingleThreadedEngine::schedule_local` returns a `Result` ([#22]).
+- `ValueError::ZincDecode` no longer converts from `std::io::Error`, and
+  `ZincDecode`, `ZincEncode` and `ParseBool` keep their cause in `source()`
+  rather than in the message ([#26]).
+- `EngineError::ScheduleRequiresSend` is removed: a block that is not
+  `Send + Sync` is a compile error on `Engine::schedule` ([#18]).
+- `EngineError::BlockRequestRejected` is removed, replaced by
+  `InputNotFound`/`OutputNotFound` and `EngineError::Connect` ([#24]).
+- `base::error` and its submodules are removed: the errors are at the crate
+  root only ([#27]).
+- `blocks::registry::eval_registered` is crate-private: use
+  `eval_static_block` ([#27]).
+- `EngineSessionOptions.watchSlots` is removed ([#29]) and `sleepDuration` is
+  renamed `scanInterval` ([#30]). `EngineSession.watch` resolves with a
+  `WatchSubscription` ([#30]), and `EngineSession.reset` and `stop` resolve
+  once the engine has applied them ([#29]).
+- `add_connector` and `connector_names` moved from the engines onto the
+  `Engine` trait ([#27]).
+- `SingleThreadedEngine::schedule_local`, added in [#18], returns a `Result`
+  ([#22]).
+- The rustdoc anchor `base::engine#lifecycle-messages` is now
+  `base::engine#lifecycle-requests` ([#29]).
 
 ## [1.0.0]
 

@@ -241,7 +241,7 @@ The paths that moved:
 | `blocks::<category>::<module>::<Block>`, e.g. `blocks::math::add::Add` | `blocks::<category>::<Block>`, e.g. `blocks::math::Add` |
 | `single_threaded::{BlockHandle, Messages}`, `multi_threaded::{BlockHandle, Messages}`, `multi_threaded::engine::*` | `base::engine::BlockHandle`; `Messages` is removed (see [section 4](#4-driving-a-running-engine-engineclient)); the engines stay at `single_threaded::SingleThreadedEngine` and `multi_threaded::MultiThreadedEngine` |
 | `blocks::utils::{set_sleep_dur, get_sleep_dur}` | Removed. Use the per-engine scan interval (see [section 3](#3-building-and-running-engines)) |
-| `blocks::registry::{eval_block_impl, eval_registered}` | Crate-private. Use `blocks::registry::eval_static_block` |
+| `blocks::registry::eval_block_impl` | Crate-private. Use `blocks::registry::eval_static_block` |
 | `register_blocks!` | Crate-private. Register a block type with `blocks::registry::register::<B>()` |
 | Errors (2.0 only; 1.x used `anyhow`) | Crate root only: `logic_mesh::{Error, Result, EngineError, …}` |
 
@@ -1235,13 +1235,24 @@ against `main` in between needs these changes too.
 - `EngineError::BlockRequestRejected(String)` is gone. A missing pin is
   `EngineError::InputNotFound` / `OutputNotFound { block, pin }`, and a link
   the block rejects is `EngineError::Connect(ConnectError)`.
+- The `base::error` module and its submodules are gone: import the errors
+  from the crate root, `logic_mesh::{Error, EngineError, …}` ([#27]).
 
-**Engines** (changed in [#18]):
+**Engines** (changed in [#18] and [#22]):
 
-- `SingleThreadedEngine::schedule_local` returns `logic_mesh::Result<()>`.
-- `EngineError::ScheduleRequiresSend` is removed: a block that is not
+- `SingleThreadedEngine::schedule_local`, added in [#18], returns
+  `logic_mesh::Result<()>` since [#22].
+- `EngineError::ScheduleRequiresSend` is removed ([#18]): a block that is not
   `Send + Sync` is a compile error on `Engine::schedule`.
 
+**Registry** (changed in [#27]):
+
+- `blocks::registry::eval_registered`, added in [#5], is crate-private. Use
+  `eval_static_block(name, lib, inputs)`.
+
+[#5]: https://github.com/rracariu/logic-mesh/pull/5
 [#11]: https://github.com/rracariu/logic-mesh/pull/11
 [#13]: https://github.com/rracariu/logic-mesh/pull/13
 [#18]: https://github.com/rracariu/logic-mesh/pull/18
+[#22]: https://github.com/rracariu/logic-mesh/pull/22
+[#27]: https://github.com/rracariu/logic-mesh/pull/27
