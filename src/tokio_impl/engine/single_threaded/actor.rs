@@ -132,7 +132,7 @@ fn change_of_value_check<B: Block + 'static>(
     });
 
     block.inputs().iter().for_each(|input| {
-        let val = input.get_value();
+        let val = input.value();
         if let Some(val) = val {
             let pin = input.name().to_string();
             if last_pin_values.get(&pin) != Some(val) {

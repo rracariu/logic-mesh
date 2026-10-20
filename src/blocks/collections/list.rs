@@ -29,7 +29,7 @@ impl Block for List {
         let list = self
             .inputs()
             .into_iter()
-            .filter_map(|input| input.get_value().cloned())
+            .filter_map(|input| input.value().cloned())
             .collect();
 
         self.out.set(Value::make_list(list));

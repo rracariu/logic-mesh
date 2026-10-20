@@ -30,7 +30,7 @@ impl Block for Dict {
         self.read_inputs_until_ready().await;
 
         if let (Some(Value::List(keys)), Some(Value::List(values))) =
-            (self.keys.get_value(), self.values.get_value())
+            (self.keys.value(), self.values.value())
         {
             let mut dict = HDict::new();
 

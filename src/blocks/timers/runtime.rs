@@ -46,8 +46,8 @@ impl Block for Runtime {
             return;
         }
 
-        let on = matches!(self.input.get_value(), Some(Value::Bool(b)) if b.value);
-        let reset = matches!(self.reset.get_value(), Some(Value::Bool(b)) if b.value);
+        let on = matches!(self.input.value(), Some(Value::Bool(b)) if b.value);
+        let reset = matches!(self.reset.value(), Some(Value::Bool(b)) if b.value);
         let now = current_time_millis();
 
         // Reset on rising edge of `reset` so the accumulator clears once,

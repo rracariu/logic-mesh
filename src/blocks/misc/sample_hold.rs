@@ -33,11 +33,11 @@ impl Block for SampleHold {
     async fn execute(&mut self) {
         self.read_inputs_until_ready().await;
 
-        let trig = matches!(self.trigger.get_value(), Some(Value::Bool(b)) if b.value);
+        let trig = matches!(self.trigger.value(), Some(Value::Bool(b)) if b.value);
         let rising = matches!(self.prev_trigger, Some(false)) && trig;
         self.prev_trigger = Some(trig);
 
-        if rising && let Some(v) = self.input.get_value() {
+        if rising && let Some(v) = self.input.value() {
             self.out.set(v.clone());
         }
     }

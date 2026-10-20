@@ -27,7 +27,7 @@ impl Block for ParseNumber {
     async fn execute(&mut self) {
         self.read_inputs_until_ready().await;
 
-        if let Some(Value::Str(input)) = self.input.get_value() {
+        if let Some(Value::Str(input)) = self.input.value() {
             let parsed = input.parse::<f64>();
             if let Ok(parsed) = parsed {
                 self.out.set(parsed.into());

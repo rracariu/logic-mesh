@@ -35,7 +35,7 @@ impl Block for Add {
         let val = self
             .inputs()
             .into_iter()
-            .filter_map(|input| match input.get_value().as_ref() {
+            .filter_map(|input| match input.value().as_ref() {
                 Some(Value::Number(num)) => Some(*num),
                 _ => None,
             })

@@ -42,7 +42,7 @@ impl Block for OnDelay {
             return;
         }
 
-        let input = matches!(self.input.get_value(), Some(Value::Bool(b)) if b.value);
+        let input = matches!(self.input.value(), Some(Value::Bool(b)) if b.value);
         let delay_ms = input_to_millis_or_default(&self.delay.val);
         let now = current_time_millis();
 

@@ -44,8 +44,8 @@ impl Block for LeadLag {
     async fn execute(&mut self) {
         self.read_inputs_until_ready().await;
 
-        let enable = matches!(self.enable.get_value(), Some(Value::Bool(b)) if b.value);
-        let rotate = matches!(self.rotate.get_value(), Some(Value::Bool(b)) if b.value);
+        let enable = matches!(self.enable.value(), Some(Value::Bool(b)) if b.value);
+        let rotate = matches!(self.rotate.value(), Some(Value::Bool(b)) if b.value);
         let demand = input_as_number(&self.demand)
             .map(|n| n.value as i32)
             .unwrap_or(0)

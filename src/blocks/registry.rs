@@ -775,7 +775,7 @@ mod test {
 
                 self.read_inputs_until_ready().await;
 
-                if let Some(value) = self.input.get_value()
+                if let Some(value) = self.input.value()
                     && let Ok(num) = f64::try_from(value)
                 {
                     self.out.set((num + 1.0).into());

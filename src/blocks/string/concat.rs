@@ -30,7 +30,7 @@ impl Block for Concat {
         let result = self
             .inputs()
             .iter()
-            .filter_map(|input| match input.get_value() {
+            .filter_map(|input| match input.value() {
                 Some(Value::Str(val)) => Some(val.value().to_owned()),
                 _ => None,
             })

@@ -31,7 +31,7 @@ impl Block for Pow {
         self.read_inputs_until_ready().await;
 
         if let (Some(Value::Number(base)), Some(Value::Number(exponent))) =
-            (self.base.get_value(), self.exponent.get_value())
+            (self.base.value(), self.exponent.value())
         {
             self.out.set(
                 Number {

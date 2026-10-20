@@ -326,7 +326,7 @@ impl Block for JsBlock {
         let values = self
             .inputs
             .iter()
-            .map(|input| input.get_value())
+            .map(|input| input.value())
             .collect::<Vec<_>>();
 
         match serde_wasm_bindgen::to_value(&values) {

@@ -121,8 +121,11 @@ pub trait InputProps: Sealed {
     /// Returns a mutable reference to this input's writer.
     fn writer(&mut self) -> &mut Self::Writer;
 
-    /// Returns the current value of this input.
-    fn get_value(&self) -> Option<&Value>;
+    /// Returns the current value of this input, or `None` while it has
+    /// none: it was never set and no value has arrived on its links.
+    /// The output counterpart is
+    /// [`OutputProps::value`](crate::base::output::OutputProps::value).
+    fn value(&self) -> Option<&Value>;
 
     /// Increments the connection count when this input
     /// is linked to another block's output.

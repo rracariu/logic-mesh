@@ -195,7 +195,7 @@ where
         BlockMailboxCmd::WriteInput { name, value, reply } => {
             let result = match block.get_input_mut(&name) {
                 Some(input) => {
-                    let prev = input.get_value().cloned();
+                    let prev = input.value().cloned();
                     write_input_value(input, value);
                     Ok(prev)
                 }
@@ -236,7 +236,7 @@ where
         BlockMailboxCmd::GetInputValue { name, reply } => {
             let value = block
                 .get_input(&name)
-                .and_then(|input| input.get_value().cloned());
+                .and_then(|input| input.value().cloned());
             let _ = reply.send(value);
         }
 
@@ -295,7 +295,7 @@ where
 
         BlockMailboxCmd::RefreshInput { name } => {
             if let Some(input) = block.get_input_mut(&name) {
-                let value = input.get_value().cloned().unwrap_or_default();
+                let value = input.value().cloned().unwrap_or_default();
                 let status = input.status();
                 let _ = input.writer().send((value, status));
             }
@@ -365,7 +365,7 @@ fn snapshot_block_definition<B: BlockProps + ?Sized>(block: &B) -> BlockDefiniti
             input.name(),
             BlockInputData::new(
                 input.kind().to_string(),
-                input.get_value().cloned().unwrap_or_default(),
+                input.value().cloned().unwrap_or_default(),
                 input.is_connected(),
             ),
         );

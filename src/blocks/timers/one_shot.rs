@@ -43,7 +43,7 @@ impl Block for OneShot {
             return;
         }
 
-        let current = matches!(self.input.get_value(), Some(Value::Bool(b)) if b.value);
+        let current = matches!(self.input.value(), Some(Value::Bool(b)) if b.value);
         let width_ms = input_to_millis_or_default(&self.width.val);
         let now = current_time_millis();
 

@@ -34,8 +34,8 @@ impl Block for CycleCount {
     async fn execute(&mut self) {
         self.read_inputs_until_ready().await;
 
-        let input = matches!(self.input.get_value(), Some(Value::Bool(b)) if b.value);
-        let reset = matches!(self.reset.get_value(), Some(Value::Bool(b)) if b.value);
+        let input = matches!(self.input.value(), Some(Value::Bool(b)) if b.value);
+        let reset = matches!(self.reset.value(), Some(Value::Bool(b)) if b.value);
 
         let rising_reset = matches!(self.prev_reset, Some(false)) && reset;
         self.prev_reset = Some(reset);

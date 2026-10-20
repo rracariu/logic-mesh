@@ -152,7 +152,7 @@ impl BlockState {
 ///     async fn execute(&mut self) {
 ///         self.read_inputs_until_ready().await;
 ///
-///         if let Some(logic_mesh::Value::Number(n)) = self.input.get_value() {
+///         if let Some(logic_mesh::Value::Number(n)) = self.input.value() {
 ///             self.out.set((n.value * 2.0).into());
 ///         }
 ///     }

@@ -28,7 +28,7 @@ impl Block for Even {
     async fn execute(&mut self) {
         self.read_inputs_until_ready().await;
 
-        if let Some(Value::Number(a)) = self.input.get_value() {
+        if let Some(Value::Number(a)) = self.input.value() {
             let is_even = a.value % 2.0 == 0.0;
             self.out.set(is_even.into());
         }

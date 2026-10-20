@@ -1893,7 +1893,7 @@ pub(crate) mod runtime_descs {
     impl Block for Echo {
         async fn execute(&mut self) {
             self.read_inputs_until_ready().await;
-            if let Some(value) = self.input.get_value().cloned() {
+            if let Some(value) = self.input.value().cloned() {
                 self.out.set(value);
             }
         }
@@ -1915,7 +1915,7 @@ pub(crate) mod runtime_descs {
     impl Block for Registered {
         async fn execute(&mut self) {
             self.read_inputs_until_ready().await;
-            if let Some(value) = self.input.get_value().cloned() {
+            if let Some(value) = self.input.value().cloned() {
                 self.out.set(value);
             }
         }

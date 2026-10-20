@@ -32,7 +32,7 @@ impl Block for Trigger {
     async fn execute(&mut self) {
         self.read_inputs_until_ready().await;
 
-        let op = match self.operation.get_value() {
+        let op = match self.operation.value() {
             Some(Value::Str(s)) => s.value().into(),
             _ => Op::RisingEdge,
         };
@@ -42,7 +42,7 @@ impl Block for Trigger {
             return;
         }
 
-        let input = self.input.get_value();
+        let input = self.input.value();
 
         if !matches!(input, Some(Value::Bool(_))) {
             self.out.set(Value::Null);

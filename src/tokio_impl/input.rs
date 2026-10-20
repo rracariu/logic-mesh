@@ -58,7 +58,7 @@ impl InputImpl {
     ///
     /// let mut sine = SineWave::new();
     /// sine.amplitude.set(3);
-    /// assert_eq!(sine.amplitude.get_value(), Some(&3.into()));
+    /// assert_eq!(sine.amplitude.value(), Some(&3.into()));
     /// ```
     pub fn set(&mut self, value: impl Into<Value>) {
         Input::set_value(self, value.into(), Status::Ok);
@@ -137,7 +137,7 @@ impl Input for InputImpl {
 
 #[cfg(test)]
 mod test {
-    use libhaystack::val::kind::HaystackKind;
+    use libhaystack::val::{Value, kind::HaystackKind};
     use uuid::Uuid;
 
     use super::InputImpl;
@@ -145,7 +145,9 @@ mod test {
         Status,
         block::connect::connect_input,
         input::{Input, InputProps},
+        output::{Output, OutputProps},
     };
+    use crate::tokio_impl::output::OutputImpl;
 
     #[test]
     fn test_input_init() {
@@ -166,8 +168,31 @@ mod test {
 
         source.set(3);
 
-        assert_eq!(source.get_value(), Some(&3.into()));
+        assert_eq!(source.value(), Some(&3.into()));
         assert_eq!(source.status(), Status::Ok);
         assert_eq!(target.try_take(), Some((3.into(), Status::Ok)));
+    }
+
+    /// Regression: the input accessor was `InputProps::get_value` while
+    /// the output one is `OutputProps::value`, so block code read the
+    /// two pin kinds through different names. Both are `value` now.
+    #[test]
+    fn inputs_and_outputs_read_their_value_by_the_same_name() {
+        fn input_value<I: InputProps>(input: &I) -> Option<&Value> {
+            input.value()
+        }
+        fn output_value<O: OutputProps>(output: &O) -> &Value {
+            output.value()
+        }
+
+        let block_id = Uuid::new_v4();
+        let mut input = InputImpl::new("in", HaystackKind::Number, block_id);
+        let mut output = OutputImpl::new(HaystackKind::Number, block_id);
+        assert_eq!(input_value(&input), None);
+
+        input.set(3);
+        output.set(3.into());
+
+        assert_eq!(input_value(&input), Some(output_value(&output)));
     }
 }

@@ -48,7 +48,7 @@ impl Block for Integrator {
         }
 
         let v = input_as_number(&self.input).map(|n| n.value).unwrap_or(0.0);
-        let reset = matches!(self.reset.get_value(), Some(Value::Bool(b)) if b.value);
+        let reset = matches!(self.reset.value(), Some(Value::Bool(b)) if b.value);
         let now = current_time_millis();
 
         let rising_reset = matches!(self.prev_reset, Some(false)) && reset;

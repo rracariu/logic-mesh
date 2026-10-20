@@ -25,7 +25,7 @@ impl Block for Double {
     async fn execute(&mut self) {
         self.read_inputs_until_ready().await;
 
-        if let Some(value) = self.input.get_value() {
+        if let Some(value) = self.input.value() {
             let num: f64 = match value.try_into() {
                 Ok(num) => num,
                 Err(_) => return,
@@ -67,7 +67,7 @@ impl Block for Triple {
     async fn execute(&mut self) {
         self.read_inputs_until_ready().await;
 
-        if let Some(value) = self.input.get_value() {
+        if let Some(value) = self.input.value() {
             let num: f64 = match value.try_into() {
                 Ok(num) => num,
                 Err(_) => return,
@@ -113,7 +113,7 @@ impl Block for Prefixed {
     async fn execute(&mut self) {
         self.read_inputs_until_ready().await;
 
-        if let Some(value) = self.input.get_value() {
+        if let Some(value) = self.input.value() {
             let num: f64 = match value.try_into() {
                 Ok(num) => num,
                 Err(_) => return,

@@ -27,7 +27,7 @@ impl Block for Values {
     async fn execute(&mut self) {
         self.read_inputs_until_ready().await;
 
-        match self.input.get_value() {
+        match self.input.value() {
             Some(Value::Dict(dict)) => self
                 .out
                 .set(dict.values().cloned().collect::<Vec<_>>().into()),
