@@ -2474,6 +2474,49 @@ pub(crate) mod configuration {
     }
 }
 
+/// Watches, written once against the [`Engine`] trait and run by each
+/// engine's tests.
+pub(crate) mod watches {
+    use super::lifecycle::TestEngine;
+    use super::*;
+    use crate::base::engine::messages::WatchId;
+
+    /// Every open watch is told about a change, and a closed one's
+    /// notifications end. A watch id read back from its number closes
+    /// the watch from any client: watch ids are engine-wide.
+    pub(crate) async fn a_watch_is_closed_by_its_id_from_any_client<E: TestEngine>(mut engine: E) {
+        let add = Add::new();
+        let block = *add.id();
+        engine.schedule(add).expect("scheduled");
+        let other = connect(&mut engine);
+
+        drive(engine, move |client| async move {
+            let mut kept = answer(client.watch()).await.expect("opened");
+            let mut closed = answer(client.watch()).await.expect("opened");
+            assert_ne!(kept.id, closed.id);
+
+            // The number a transport would carry, read back elsewhere.
+            let carried = WatchId::new(closed.id.get());
+            assert_eq!(answer(other.unwatch(carried)).await, Ok(true));
+            assert_eq!(answer(client.unwatch(closed.id)).await, Ok(false));
+
+            client.write_input(block, "in0", 5.into()).await;
+            answer(async {
+                while let Some(note) = kept.notifications.recv().await {
+                    if note.block_id == block {
+                        return;
+                    }
+                }
+                panic!("the open watch ended");
+            })
+            .await;
+            // Whatever it was sent before it closed, then nothing.
+            answer(async { while closed.notifications.recv().await.is_some() {} }).await;
+        })
+        .await;
+    }
+}
+
 /// Rejected pin requests, written once against the [`Engine`] trait and
 /// run by each engine's tests: a block that rejects a request reports
 /// what it rejected as a typed error, not a bare message.
