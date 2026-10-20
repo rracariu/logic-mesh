@@ -1008,6 +1008,17 @@ mod test {
             .expect("run task completed");
     }
 
+    /// See the single-threaded `watches`.
+    mod watches {
+        use super::*;
+        use crate::tokio_impl::engine::test_support::watches;
+
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn a_watch_is_closed_by_its_id_from_any_client() {
+            watches::a_watch_is_closed_by_its_id_from_any_client(MultiThreadedEngine::new()).await;
+        }
+    }
+
     /// Regression: see the single-threaded `rejections`.
     mod rejections {
         use super::*;

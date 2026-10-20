@@ -529,6 +529,18 @@ mod tests {
         }
     }
 
+    /// Watches opened and closed through requests. See
+    /// `test_support::watches`.
+    mod watches {
+        use super::*;
+        use crate::tokio_impl::engine::test_support::watches;
+
+        #[tokio::test(flavor = "current_thread")]
+        async fn a_watch_is_closed_by_its_id_from_any_client() {
+            watches::a_watch_is_closed_by_its_id_from_any_client(SingleThreadedEngine::new()).await;
+        }
+    }
+
     /// Regression: a block that rejected a request answered with a bare
     /// message, which the engine wrapped in a `BlockRequestRejected`
     /// string naming neither the block nor the pin. See

@@ -259,13 +259,28 @@ impl fmt::Display for RequestId {
 /// which [`EngineRequest::Watch`] opens and [`EngineRequest::Unwatch`]
 /// closes.
 ///
-/// The engine assigns it, unique among the engine's watches.
+/// The engine assigns it, unique among the engine's watches. Watch ids
+/// are engine-wide, not scoped to the client that opened the watch: any
+/// client may close any watch, as any client may remove any block.
+///
+/// A transport that carries a watch id across as a number — its
+/// [`get`](Self::get) — reads it back with [`new`](Self::new).
+///
+/// # Examples
+///
+/// ```
+/// use logic_mesh::base::engine::messages::WatchId;
+///
+/// let id = WatchId::new(3);
+/// assert_eq!(WatchId::new(id.get()), id);
+/// assert_eq!(id.to_string(), "watch#3");
+/// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct WatchId(u64);
 
 impl WatchId {
     /// The watch id numbered `id`.
-    pub(crate) fn new(id: u64) -> Self {
+    pub fn new(id: u64) -> Self {
         Self(id)
     }
 
@@ -478,6 +493,10 @@ pub enum EngineRequest {
 
     /// Closes a watch, dropping its sender. Answered with whether the
     /// watch was open.
+    ///
+    /// Any client may close any watch: [`WatchId`]s are engine-wide. A
+    /// transport serving peers that must not close each other's watches
+    /// keeps its own record of which peer opened which watch.
     Unwatch {
         /// The watch to close.
         watch: WatchId,
