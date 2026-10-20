@@ -221,6 +221,10 @@ with before and after code, for Rust and for JavaScript and TypeScript.
   ([#27]).
 - The scan interval is per engine, set with `Engine::set_scan_interval` or
   `with_scan_interval`, instead of the process-wide `set_sleep_dur` ([#27]).
+- `block_handles`, `block_handle` and the single-threaded engine's
+  `set_block_metadata` are `Engine` trait methods instead of inherent ones,
+  so calling them needs the trait in scope (`logic_mesh::prelude::*` or
+  `base::engine::Engine`) ([#27]).
 - `Engine::set_block_metadata` returns a `Result` and rejects an unknown id
   with `EngineError::BlockInstanceNotFound` ([#27]).
 - `MultiThreadedEngine`: `schedule_send` is replaced by `schedule` ([#18]);
@@ -431,6 +435,10 @@ with before and after code, for Rust and for JavaScript and TypeScript.
 
 ### Removed
 
+- `MultiThreadedEngine::add_block(name, id, lib)`: schedule a registered
+  block with `blocks::registry::schedule_block` or
+  `schedule_block_with_uuid` while the engine is idle, or with
+  `EngineClient::add_block` while it runs ([#18]).
 - `EngineError::ScheduleRequiresSend`: a block that is not `Send + Sync` is
   a compile error on `Engine::schedule` ([#18]).
 - `schedule_block_send` and `schedule_block_send_with_uuid` ([#18]).

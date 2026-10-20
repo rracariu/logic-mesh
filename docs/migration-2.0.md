@@ -494,7 +494,28 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 The multi-threaded engine's public async methods from 1.x
 (`inspect_block`, `write_input`, `write_output`, `connect_blocks`,
 `remove_block`, `save_program`, `load_program`, `disconnect_link_by_id`) are
-gone too: use the client's methods.
+gone too: use the client's methods. So is its synchronous
+`add_block(name, id, lib)`. Schedule a registered block on the idle engine
+with `blocks::registry::schedule_block` or `schedule_block_with_uuid`, or add
+it to a running engine with `EngineClient::add_block`.
+
+Before:
+
+```rust,ignore
+let mut mt = MultiThreadedEngine::new();
+let id = mt.add_block("Add".to_string(), None, None)?;
+```
+
+After:
+
+```rust,ignore
+use logic_mesh::{Uuid, blocks::registry::schedule_block, multi_threaded::MultiThreadedEngine};
+
+// Call it inside a tokio runtime: the block's actor is spawned on it.
+fn add(mt: &mut MultiThreadedEngine) -> logic_mesh::Result<Uuid> {
+    schedule_block("Add", None, mt)
+}
+```
 
 ### Watches
 
