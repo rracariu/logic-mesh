@@ -12,6 +12,7 @@ import type {
 } from '../src/index';
 import * as logicMesh from '../src/index';
 import {
+  createEngineSession,
   initEngine,
   isLogicMeshError,
   registerConnector,
@@ -312,5 +313,44 @@ describe('synchronous bindings', () => {
     ).toBe('InvalidArgument');
     expect(() => new logicMesh.BlocksEngine(25)).not.toThrow();
     expect(() => initEngine(0)).not.toThrow();
+  });
+});
+
+describe('scan interval', () => {
+  // Regression: the interval reached setTimeout cast to an i32, which
+  // wrapped 2^31 ms to a negative delay, run at once, and 2^32 + 10 ms
+  // to 10 ms, so a block that runs on every cycle spun.
+  it('is waited out when longer than setTimeout takes', async () => {
+    const intervals = [10, 2 ** 31, 2 ** 32 + 10, Number.MAX_SAFE_INTEGER];
+    const runs = intervals.map(() => 0);
+    await Promise.all(
+      intervals.map((scanInterval, index) => {
+        const session = track(createEngineSession({ scanInterval }));
+        const desc: BlockDesc = {
+          name: `ScanEvery${index}`,
+          dis: `Scan every ${scanInterval} ms`,
+          lib: 'scan-interval-test',
+          ver: '0.0.1',
+          category: 'Test',
+          doc: 'Counts its runs.',
+          implementation: 'external',
+          inputs: [],
+          outputs: [{ name: 'out', kind: 'number' }],
+          runCondition: 'always',
+        };
+        session.engine.registerBlock(desc, () => () => {
+          runs[index]++;
+          return undefined;
+        });
+        session.start();
+        return session.command.addBlock(desc.name, undefined, desc.lib);
+      }),
+    );
+
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    // The block runs on every cycle of the 10 ms engine...
+    expect(runs[0]).toBeGreaterThan(5);
+    // ...and waits the longer intervals out.
+    expect(runs.slice(1)).toStrictEqual([0, 0, 0]);
   });
 });
