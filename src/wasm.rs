@@ -15,9 +15,9 @@
 pub mod engine;
 pub mod engine_command;
 pub(crate) mod error;
-pub mod js_block;
+pub(crate) mod js_block;
 pub mod js_connector;
-pub mod types;
+pub(crate) mod types;
 
 use std::str::FromStr;
 use std::sync::Once;

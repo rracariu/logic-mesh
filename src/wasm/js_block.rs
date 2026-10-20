@@ -1,6 +1,9 @@
 // Copyright (c) 2022-2023, Radu Racariu.
 
 //! JavaScript-backed block implementation.
+//!
+//! Crate-private: JavaScript registers these blocks with
+//! `registerBlock`, so nothing here is Rust API.
 
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -68,7 +71,7 @@ thread_local! {
 /// outputs are never committed. Keep executors bounded in time as
 /// well as idempotent.
 #[derive(Debug, Default)]
-pub struct JsBlock {
+pub(crate) struct JsBlock {
     id: Uuid,
     desc: BlockDesc,
     inputs: Vec<InputImpl>,
@@ -92,7 +95,11 @@ pub struct JsBlock {
 
 impl JsBlock {
     /// Creates a new instance of a block.
-    pub fn new(desc: BlockDesc, func: Option<js_sys::Function>, block_id: Option<Uuid>) -> Self {
+    pub(crate) fn new(
+        desc: BlockDesc,
+        func: Option<js_sys::Function>,
+        block_id: Option<Uuid>,
+    ) -> Self {
         let id = block_id.unwrap_or_else(uuid::Uuid::new_v4);
 
         let inputs = desc

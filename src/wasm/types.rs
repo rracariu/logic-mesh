@@ -1,6 +1,11 @@
 // Copyright (c) 2022-2023, Radu Racariu.
 
-//! TypeScript-facing data types.
+//! TypeScript-facing data types: the shapes values cross the bindings
+//! in.
+//!
+//! Crate-private, as the module and its types are: the bindings are
+//! their only users, so a JavaScript shape can grow a field without
+//! breaking the Rust API.
 
 use std::collections::BTreeMap;
 
@@ -44,37 +49,37 @@ import type {
 
 /// Block field properties, inputs or output
 #[derive(Default, Clone, Serialize, Deserialize)]
-pub struct JsBlockPin {
+pub(crate) struct JsBlockPin {
     /// Pin name.
-    pub name: String,
+    pub(crate) name: String,
     /// Haystack kind as a string.
-    pub kind: String,
+    pub(crate) kind: String,
 }
 
 /// Block description as a simple struct
 #[derive(Default, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct JsBlockDesc {
+pub(crate) struct JsBlockDesc {
     /// Block type name.
-    pub name: String,
+    pub(crate) name: String,
     /// Display name.
-    pub dis: String,
+    pub(crate) dis: String,
     /// Library the block belongs to.
-    pub lib: String,
+    pub(crate) lib: String,
     /// Semantic version.
-    pub ver: String,
+    pub(crate) ver: String,
     /// Functional category.
-    pub category: String,
+    pub(crate) category: String,
     /// Documentation string.
-    pub doc: String,
+    pub(crate) doc: String,
     /// Implementation kind (native or external).
-    pub implementation: String,
+    pub(crate) implementation: String,
     /// Input pin descriptors.
-    pub inputs: Vec<JsBlockPin>,
+    pub(crate) inputs: Vec<JsBlockPin>,
     /// Output pin descriptors.
-    pub outputs: Vec<JsBlockPin>,
+    pub(crate) outputs: Vec<JsBlockPin>,
     /// Optional run condition expression.
-    pub run_condition: Option<String>,
+    pub(crate) run_condition: Option<String>,
 }
 
 impl TryFrom<JsBlockDesc> for BlockDesc {
@@ -189,28 +194,28 @@ impl From<BlockDesc> for JsBlockDesc {
 /// A watch notification sent to JavaScript when a block's state changes.
 #[derive(Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct JsWatchNotification {
+pub(crate) struct JsWatchNotification {
     /// Block UUID as a string.
-    pub id: String,
+    pub(crate) id: String,
     /// Pin changes since the last notification.
-    pub changes: Vec<JsWatchChange>,
+    pub(crate) changes: Vec<JsWatchChange>,
     /// Block's operational state at the time of the notification
     /// (`running | fault | disabled | terminated`).
-    pub state: String,
+    pub(crate) state: String,
     /// Fault reason when `state == "fault"`, else [`None`].
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub fault_reason: Option<String>,
+    pub(crate) fault_reason: Option<String>,
 }
 
 /// A single pin value change within a [`JsWatchNotification`].
 #[derive(Default, Serialize, Deserialize)]
-pub struct JsWatchChange {
+pub(crate) struct JsWatchChange {
     /// Pin name that changed.
-    pub name: String,
+    pub(crate) name: String,
     /// `"input"` or `"output"`.
-    pub source: String,
+    pub(crate) source: String,
     /// New pin value.
-    pub value: Value,
+    pub(crate) value: Value,
 }
 
 impl From<WatchMessage> for JsWatchNotification {
@@ -246,9 +251,6 @@ impl From<WatchMessage> for JsWatchNotification {
 /// A block's state and pin values, as `inspectBlock` resolves with them
 /// — the JavaScript form of a [`BlockDefinition`], with the field names
 /// of the other JavaScript types.
-///
-/// Crate-private: the binding is its only user, so the JavaScript shape
-/// can grow a field without breaking the Rust API.
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct JsBlockInspection {
