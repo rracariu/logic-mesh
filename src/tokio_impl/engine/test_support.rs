@@ -2418,6 +2418,60 @@ pub(crate) mod configuration {
         })
         .await;
     }
+
+    /// A running engine's blocks take a new label, position and editor
+    /// metadata through requests, which a save then carries; a request
+    /// naming a block the engine does not hold changes nothing.
+    pub(crate) async fn block_metadata_is_set_through_requests<E: TestEngine>(mut engine: E) {
+        let (source, target) = schedule_linked_adds(&mut engine);
+        let first = Position { x: 1.0, y: 2.0 };
+        engine
+            .set_block_metadata(&target, Some("target".to_string()), Some(first))
+            .expect("scheduled");
+
+        drive(engine, move |client| async move {
+            let mut editor = EditorMetadata::new();
+            editor.insert("widget".to_string(), serde_json::json!({"kind": "Gauge"}));
+            let moved = Position { x: -3.5, y: 4.0 };
+
+            answer(client.set_block_metadata(source, Some("source".to_string()), Some(moved)))
+                .await
+                .expect("set");
+            // Left out, the label keeps its value.
+            answer(client.set_block_metadata(target, None, Some(moved)))
+                .await
+                .expect("set");
+            answer(client.set_block_editor(source, Some(editor.clone())))
+                .await
+                .expect("set");
+
+            let saved = client.save().await;
+            let (saved_source, saved_target) = (
+                &saved.blocks[&source.to_string()],
+                &saved.blocks[&target.to_string()],
+            );
+            assert_eq!(saved_source.label.as_deref(), Some("source"));
+            assert_eq!(saved_source.position, Some(moved));
+            assert_eq!(saved_source.editor, Some(editor.clone()));
+            assert_eq!(saved_target.label.as_deref(), Some("target"));
+            assert_eq!(saved_target.position, Some(moved));
+            assert_eq!(saved_target.editor, None);
+
+            answer(client.set_block_editor(source, None))
+                .await
+                .expect("removed");
+            assert_eq!(client.save().await.blocks[&source.to_string()].editor, None);
+
+            let unknown = Uuid::new_v4();
+            let missing = || Err(EngineError::BlockInstanceNotFound { id: unknown }.into());
+            let reply = answer(client.set_block_metadata(unknown, Some("x".to_string()), None));
+            assert_eq!(reply.await, missing());
+            let reply = answer(client.set_block_editor(unknown, Some(editor)));
+            assert_eq!(reply.await, missing());
+            assert_eq!(client.save().await.blocks.len(), 2);
+        })
+        .await;
+    }
 }
 
 /// Rejected pin requests, written once against the [`Engine`] trait and

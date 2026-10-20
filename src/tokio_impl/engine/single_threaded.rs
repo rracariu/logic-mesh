@@ -521,6 +521,12 @@ mod tests {
             configuration::editor_metadata_is_set_through_the_trait(SingleThreadedEngine::new())
                 .await;
         }
+
+        #[tokio::test(flavor = "current_thread")]
+        async fn block_metadata_is_set_through_requests() {
+            configuration::block_metadata_is_set_through_requests(SingleThreadedEngine::new())
+                .await;
+        }
     }
 
     /// Regression: a block that rejected a request answered with a bare
