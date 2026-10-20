@@ -680,6 +680,27 @@ mod test {
         assert_eq!(serde_json::to_value(&program).expect("serializes"), written);
     }
 
+    /// Editor state round-trips only under `editor`: a key beside the
+    /// block's own fields, such as the block-level `widget` the editor
+    /// wrote before format versions, is not part of the format and a
+    /// read drops it. `docs/connectors.md` §8 relies on this.
+    #[test]
+    fn only_editor_metadata_round_trips_a_widget() {
+        let widget = json!({"kind": "Slider", "config": {"max": 10}});
+        let block: ProgramBlock = serde_json::from_value(json!({
+            "name": "ExternalIn",
+            "lib": "core",
+            "widget": widget,
+            "editor": {"widget": widget},
+        }))
+        .expect("reads");
+
+        assert_eq!(
+            serde_json::to_value(&block).expect("serializes"),
+            json!({"name": "ExternalIn", "lib": "core", "editor": {"widget": widget}})
+        );
+    }
+
     /// The Rust field is `library`, like every other type that names a
     /// block's library, but the save format keeps the key `lib`.
     #[test]
