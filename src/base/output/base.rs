@@ -7,6 +7,7 @@ use uuid::Uuid;
 
 use crate::base::Status;
 use crate::base::link::Link;
+use crate::base::sealed::Sealed;
 
 use super::{OutputProps, props::OutDesc};
 
@@ -28,6 +29,8 @@ pub struct BaseOutput<L: Link> {
     /// recovery.
     pub effective_status: Status,
 }
+
+impl<L: Link> Sealed for BaseOutput<L> {}
 
 /// The implementation of the OutputProps trait.
 ///

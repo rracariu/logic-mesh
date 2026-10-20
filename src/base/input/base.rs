@@ -7,6 +7,7 @@ use uuid::Uuid;
 
 use crate::base::Status;
 use crate::base::link::{BaseLink, Link};
+use crate::base::sealed::Sealed;
 
 use super::InputProps;
 
@@ -33,6 +34,8 @@ pub struct BaseInput<Reader, Writer> {
     /// The links to other inputs.
     pub links: Vec<BaseLink<Writer>>,
 }
+
+impl<Reader, Writer> Sealed for BaseInput<Reader, Writer> {}
 
 /// Implements the [`InputProps`] trait for [`BaseInput`].
 ///
