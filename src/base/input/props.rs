@@ -6,9 +6,70 @@ use libhaystack::val::{Value, kind::HaystackKind};
 use uuid::Uuid;
 
 use crate::base::link::{BaseLink, Link};
+use crate::base::sealed::Sealed;
 
 /// Basic properties of a block input.
-pub trait InputProps {
+///
+/// # Sealed
+///
+/// Only [`BaseInput`](super::BaseInput) implements this trait, and no
+/// other crate can, so methods can be added to it, and to its subtrait
+/// [`Input`](super::Input), in a minor release. A block declares its
+/// inputs as [`InputImpl`](crate::blocks::InputImpl) fields:
+///
+/// ```compile_fail,E0277
+/// use logic_mesh::base::input::InputProps;
+/// use logic_mesh::base::link::{BaseLink, Link};
+/// use logic_mesh::{HaystackKind, Uuid, Value};
+///
+/// struct MyInput {
+///     kind: HaystackKind,
+///     block_id: Uuid,
+///     reader: (),
+///     writer: (),
+/// }
+///
+/// impl InputProps for MyInput {
+///     type Reader = ();
+///     type Writer = ();
+///
+///     fn name(&self) -> &str {
+///         "in"
+///     }
+///     fn kind(&self) -> &HaystackKind {
+///         &self.kind
+///     }
+///     fn block_id(&self) -> &Uuid {
+///         &self.block_id
+///     }
+///     fn is_connected(&self) -> bool {
+///         false
+///     }
+///     fn links(&self) -> Vec<&(dyn Link + Send)> {
+///         Vec::new()
+///     }
+///     fn add_link(&mut self, _link: BaseLink<()>) {}
+///     fn remove_link_by_id(&mut self, _link_id: &Uuid) {}
+///     fn remove_target_block_links(&mut self, _block_id: &Uuid) {}
+///     fn remove_all_links(&mut self) {}
+///     fn reader(&mut self) -> &mut () {
+///         &mut self.reader
+///     }
+///     fn writer(&mut self) -> &mut () {
+///         &mut self.writer
+///     }
+///     fn get_value(&self) -> Option<&Value> {
+///         None
+///     }
+///     fn increment_conn(&mut self) -> usize {
+///         0
+///     }
+///     fn decrement_conn(&mut self) -> usize {
+///         0
+///     }
+/// }
+/// ```
+pub trait InputProps: Sealed {
     /// The input's read type.
     type Reader;
     /// The input's write type.

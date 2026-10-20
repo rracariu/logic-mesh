@@ -6,6 +6,7 @@ use libhaystack::val::{Value, kind::HaystackKind};
 use uuid::Uuid;
 
 use crate::base::link::Link;
+use crate::base::sealed::Sealed;
 
 /// The description of an output pin.
 ///
@@ -31,7 +32,47 @@ impl OutDesc {
 }
 
 /// Properties of a block output pin.
-pub trait OutputProps {
+///
+/// # Sealed
+///
+/// Only [`BaseOutput`](super::BaseOutput) implements this trait, and no
+/// other crate can, so methods can be added to it, and to its subtrait
+/// [`Output`](super::Output), in a minor release. A block declares its
+/// outputs as [`OutputImpl`](crate::blocks::OutputImpl) fields:
+///
+/// ```compile_fail,E0277
+/// use logic_mesh::base::link::Link;
+/// use logic_mesh::base::output::{OutputProps, props::OutDesc};
+/// use logic_mesh::{Uuid, Value};
+///
+/// struct MyOutput {
+///     desc: OutDesc,
+///     block_id: Uuid,
+///     value: Value,
+/// }
+///
+/// impl OutputProps for MyOutput {
+///     fn desc(&self) -> &OutDesc {
+///         &self.desc
+///     }
+///     fn block_id(&self) -> &Uuid {
+///         &self.block_id
+///     }
+///     fn is_connected(&self) -> bool {
+///         false
+///     }
+///     fn links(&self) -> Vec<&(dyn Link + Send)> {
+///         Vec::new()
+///     }
+///     fn remove_link_by_id(&mut self, _link_id: &Uuid) {}
+///     fn remove_target_block_links(&mut self, _block_id: &Uuid) {}
+///     fn remove_all_links(&mut self) {}
+///     fn value(&self) -> &Value {
+///         &self.value
+///     }
+/// }
+/// ```
+pub trait OutputProps: Sealed {
     /// Returns the output's description.
     fn desc(&self) -> &OutDesc;
 
