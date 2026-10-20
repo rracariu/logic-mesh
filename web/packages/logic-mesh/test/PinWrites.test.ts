@@ -37,7 +37,7 @@ function lastOut(notes: BlockNotification[], id: string): unknown {
 
 describe('engine pin writes', () => {
   it('recompute a native block with no links', async () => {
-    const session = startEngine({ sleepDuration: 10 });
+    const session = startEngine({ scanInterval: 10 });
     sessions.push(session);
     const notes: BlockNotification[] = [];
     session.watch((n) => notes.push(n));
@@ -51,7 +51,7 @@ describe('engine pin writes', () => {
   });
 
   it('run a registered JS block whose inputs are not linked', async () => {
-    const session = createEngineSession({ sleepDuration: 10 });
+    const session = createEngineSession({ scanInterval: 10 });
     sessions.push(session);
     const desc: BlockDesc = {
       name: 'DoublesUnlinked',

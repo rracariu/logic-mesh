@@ -166,7 +166,8 @@ A command that fails rejects with a `LogicMeshError`: an `Error` whose
 `code` names the failure — `'BlockInstanceNotFound'`,
 `'UnsupportedProgramVersion'`, … (the `LogicMeshErrorCode` union) — and
 whose `message` describes it. The codes are stable; the messages are
-for people.
+for people. The synchronous calls — `initEngine`, `registerBlock`,
+`registerConnector`, `setLogLevel` — throw `LogicMeshError`s too.
 
 ```ts
 import { isLogicMeshError, startEngine } from 'logic-mesh';

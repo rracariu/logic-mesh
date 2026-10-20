@@ -2,6 +2,9 @@
 
 //! Commands sent from JavaScript to the engine.
 
+use std::fmt;
+
+use libhaystack::val::Value;
 use serde::Serialize;
 use uuid::Uuid;
 use wasm_bindgen::JsValue;
@@ -11,25 +14,21 @@ use crate::base::engine::EngineClient;
 use crate::base::engine::messages::WatchId;
 use crate::base::error::{EngineError, ErrorCode, RequestError, parse_block_uuid, parse_link_uuid};
 use crate::base::program::{EditorMetadata, LinkData, Position, Program};
+use crate::wasm::MAX_SAFE_INTEGER;
 use crate::wasm::error::{js_error, js_error_from};
-use crate::wasm::types::JsWatchNotification;
-
-/// The largest integer a JavaScript number holds exactly: the range a
-/// watch id crosses the boundary in.
-const MAX_SAFE_INTEGER: f64 = 9_007_199_254_740_991.0;
+use crate::wasm::types::{JsBlockInspection, JsWatchNotification};
 
 /// Commands a running instance of a Block Engine.
 ///
-/// A handle wraps an [`EngineClient`]: every method sends one request
-/// and resolves with the engine's response to it, matched by request
-/// id. Calls on one handle may overlap freely — each method borrows the
-/// handle shared — and every handle feeds the same engine, which
-/// handles requests in the order they arrive.
+/// Every method sends one request and resolves with the engine's
+/// response to it. Calls on one handle may overlap freely, and every
+/// handle feeds the same engine, which handles requests in the order
+/// they arrive.
 ///
-/// A failed request rejects its promise with an `Error` named
-/// `LogicMeshError`, whose `code` property is the stable
-/// [`ErrorCode`] name of the failure — `BlockInstanceNotFound`,
-/// `UnsupportedProgramVersion`, … — and whose `message` describes it.
+/// A failed request rejects its promise with a `LogicMeshError`: an
+/// `Error` whose `code` property is the stable name of the failure —
+/// `BlockInstanceNotFound`, `UnsupportedProgramVersion`, … — and whose
+/// `message` describes it.
 #[wasm_bindgen]
 pub struct EngineCommand {
     client: EngineClient,
@@ -46,10 +45,28 @@ fn to_js<T: Serialize>(value: &T) -> Result<JsValue, JsValue> {
         .map_err(|err| js_error_from(ErrorCode::Serialization, err.to_string()))
 }
 
-/// Reads a value written from JavaScript. A value that is not a
-/// Haystack value — `undefined` among them — writes `Null`.
-fn from_js_value(value: JsValue) -> libhaystack::val::Value {
-    serde_wasm_bindgen::from_value(value).unwrap_or_default()
+/// Converts a response for JavaScript as plain JSON-compatible values:
+/// maps are objects, not `Map`s, and a missing value is `null`.
+fn to_json_js<T: Serialize>(value: &T) -> Result<JsValue, JsValue> {
+    value
+        .serialize(&serde_wasm_bindgen::Serializer::json_compatible())
+        .map_err(|err| js_error_from(ErrorCode::Serialization, err.to_string()))
+}
+
+/// Reads a value written from JavaScript, for `target`. `null` and
+/// `undefined` are `Null`; anything else must be a Haystack value in
+/// its JSON encoding, or the request is rejected with the
+/// `InvalidValue` code.
+fn from_js_value(value: JsValue, target: impl fmt::Display) -> Result<Value, JsValue> {
+    if value.is_null() || value.is_undefined() {
+        return Ok(Value::Null);
+    }
+    serde_wasm_bindgen::from_value(value).map_err(|err| {
+        js_error_from(
+            ErrorCode::InvalidValue,
+            format!("Invalid value for {target}: {err}"),
+        )
+    })
 }
 
 /// Rejects a program whose `version` is newer than this crate reads
@@ -113,9 +130,9 @@ impl EngineCommand {
             .map_err(js_error)
     }
 
-    /// Creates a link between two blocks and returns the resulting
-    /// [`LinkData`].
-    #[wasm_bindgen(js_name = "createLink")]
+    /// Links an output (or input) of one block to an input of another,
+    /// and resolves with the link, its id assigned.
+    #[wasm_bindgen(js_name = "createLink", unchecked_return_type = "LinkData")]
     pub async fn create_link(
         &self,
         source_block_uuid: String,
@@ -141,51 +158,66 @@ impl EngineCommand {
         self.client.disconnect(link).await.map_err(js_error)
     }
 
-    /// Writes a value to a block's output pin.
-    #[wasm_bindgen(js_name = "writeBlockOutput")]
+    /// Writes a value to a block's output pin, resolving with the value
+    /// written.
+    ///
+    /// `value` is a Haystack value in its JSON encoding; `null` and
+    /// `undefined` write `Null`. Anything else rejects with the
+    /// `InvalidValue` code.
+    #[wasm_bindgen(js_name = "writeBlockOutput", unchecked_return_type = "unknown")]
     pub async fn write_block_output(
         &self,
         block_uuid: String,
         output_name: String,
-        value: JsValue,
+        #[wasm_bindgen(unchecked_param_type = "unknown")] value: JsValue,
     ) -> Result<JsValue, JsValue> {
+        let block = block_id(&block_uuid)?;
+        let value = from_js_value(value, format_args!("output '{output_name}'"))?;
         let written = self
             .client
-            .write_output(block_id(&block_uuid)?, &output_name, from_js_value(value))
+            .write_output(block, &output_name, value)
             .await
             .map_err(js_error)?;
         to_js(&written)
     }
 
-    /// Writes a value to a block's input pin, returning the previous value.
-    #[wasm_bindgen(js_name = "writeBlockInput")]
+    /// Writes a value to a block's input pin, resolving with the input's
+    /// previous value, or `undefined` if it had none.
+    ///
+    /// `value` is a Haystack value in its JSON encoding; `null` and
+    /// `undefined` write `Null`. Anything else rejects with the
+    /// `InvalidValue` code.
+    #[wasm_bindgen(js_name = "writeBlockInput", unchecked_return_type = "unknown")]
     pub async fn write_block_input(
         &self,
         block_uuid: String,
         input_name: String,
-        value: JsValue,
+        #[wasm_bindgen(unchecked_param_type = "unknown")] value: JsValue,
     ) -> Result<JsValue, JsValue> {
+        let block = block_id(&block_uuid)?;
+        let value = from_js_value(value, format_args!("input '{input_name}'"))?;
         let previous = self
             .client
-            .write_input(block_id(&block_uuid)?, &input_name, from_js_value(value))
+            .write_input(block, &input_name, value)
             .await
             .map_err(js_error)?;
         to_js(&previous)
     }
 
-    /// Atomically load a full program (blocks + links + pin values +
-    /// UI and editor metadata) into the engine. Replaces the previous
-    /// JS-side `addBlock` + `createLink` + `writeBlockInput` chain. The
-    /// engine is expected to be empty (call `resetEngine` first if
-    /// reloading).
+    /// Loads a full program (blocks, links, pin values, UI and editor
+    /// metadata) into the engine, all or nothing. The engine is
+    /// expected to be empty: call `resetEngine` first if reloading.
     ///
     /// A program with no `version` is a save from before format
     /// versions, and loads as one. A program from a newer format is
     /// rejected with the `UnsupportedProgramVersion` code before its
-    /// shape is read (see [`Program`]); one that is not a program at
-    /// all with `InvalidProgram`.
+    /// shape is read; one that is not a program at all with
+    /// `InvalidProgram`.
     #[wasm_bindgen(js_name = "loadProgram")]
-    pub async fn load_program(&self, program: JsValue) -> Result<(), JsValue> {
+    pub async fn load_program(
+        &self,
+        #[wasm_bindgen(unchecked_param_type = "Program")] program: JsValue,
+    ) -> Result<(), JsValue> {
         check_program_version(&program).map_err(js_error)?;
         let program: Program = serde_wasm_bindgen::from_value(program).map_err(|err| {
             js_error_from(
@@ -196,43 +228,46 @@ impl EngineCommand {
         self.client.load_program(program).await.map_err(js_error)
     }
 
-    /// Returns the current running engine program in the canonical save
-    /// format ([`Program`]) as plain JSON-compatible JS objects: maps are
-    /// objects, not `Map`s, and a missing value is `null`. Round-trips
-    /// through `loadProgram` without re-assembly, editor metadata
-    /// included.
-    #[wasm_bindgen(js_name = "getProgram")]
+    /// Returns the engine's current program in the save format, as
+    /// plain JSON-compatible objects: maps are objects, not `Map`s, and
+    /// a missing value is `null`. Round-trips through `loadProgram`,
+    /// editor metadata included.
+    #[wasm_bindgen(js_name = "getProgram", unchecked_return_type = "Program")]
     pub async fn get_program(&self) -> Result<JsValue, JsValue> {
         let program = self.client.save_program().await.map_err(js_error)?;
-        program
-            .serialize(&serde_wasm_bindgen::Serializer::json_compatible())
-            .map_err(|err| js_error_from(ErrorCode::Serialization, err.to_string()))
+        to_json_js(&program)
     }
 
-    /// Inspects the current state of a block.
-    #[wasm_bindgen(js_name = "inspectBlock")]
+    /// Resolves with a block's state and pin values, as plain
+    /// JSON-compatible objects.
+    #[wasm_bindgen(js_name = "inspectBlock", unchecked_return_type = "BlockInspection")]
     pub async fn inspect_block(&self, block_uuid: String) -> Result<JsValue, JsValue> {
         let block = self
             .client
             .inspect_block(block_id(&block_uuid)?)
             .await
             .map_err(js_error)?;
-        to_js(&block)
+        to_json_js(&JsBlockInspection::from(block))
     }
 
     /// Evaluates a block by name, returning its output values.
     ///
     /// Creates a temporary block instance, feeds it the given `inputs`,
     /// executes it, and returns the outputs. Without `lib`, the block is
-    /// looked up in every library, as for [`add_block`](Self::add_block).
-    #[wasm_bindgen(js_name = "evalBlock")]
+    /// looked up in every library, as for `addBlock`. Each input is read
+    /// as `writeBlockInput` reads its value.
+    #[wasm_bindgen(js_name = "evalBlock", unchecked_return_type = "unknown[]")]
     pub async fn eval_block(
         &self,
         block_name: String,
-        inputs: Vec<JsValue>,
+        #[wasm_bindgen(unchecked_param_type = "unknown[]")] inputs: Vec<JsValue>,
         lib: Option<String>,
     ) -> Result<JsValue, JsValue> {
-        let inputs = inputs.into_iter().map(from_js_value).collect();
+        let inputs = inputs
+            .into_iter()
+            .enumerate()
+            .map(|(index, value)| from_js_value(value, format_args!("input {index}")))
+            .collect::<Result<_, _>>()?;
         let outputs = self
             .client
             .eval_block(&block_name, inputs, lib.as_deref())
@@ -242,14 +277,13 @@ impl EngineCommand {
     }
 
     /// Updates the label and position a block is saved with: each of
-    /// `label` and `position` (`{ x, y }`) that is given replaces the
-    /// stored one.
+    /// `label` and `position` that is given replaces the stored one.
     #[wasm_bindgen(js_name = "setBlockMetadata")]
     pub async fn set_block_metadata(
         &self,
         block_uuid: String,
         label: Option<String>,
-        position: JsValue,
+        #[wasm_bindgen(unchecked_param_type = "Position | null | undefined")] position: JsValue,
     ) -> Result<(), JsValue> {
         let position: Option<Position> = serde_wasm_bindgen::from_value(position)
             .map_err(|err| js_error_from(ErrorCode::InvalidArgument, err.to_string()))?;
@@ -265,7 +299,7 @@ impl EngineCommand {
     pub async fn set_block_editor(
         &self,
         block_uuid: String,
-        editor: JsValue,
+        #[wasm_bindgen(unchecked_param_type = "EditorMetadata | null | undefined")] editor: JsValue,
     ) -> Result<(), JsValue> {
         let editor: Option<EditorMetadata> = serde_wasm_bindgen::from_value(editor)
             .map_err(|err| js_error_from(ErrorCode::InvalidArgument, err.to_string()))?;
@@ -280,16 +314,15 @@ impl EngineCommand {
     /// closes the watch. Resolves with the watch's id once the engine
     /// opened it.
     ///
-    /// The engine→UI watch channel is **unbounded**. The producer rate is
-    /// capped by per-block execution cadence and the payload is tiny
-    /// (one [`WatchMessage`](crate::base::engine::messages::WatchMessage)
-    /// per changed block per cycle); a bounded channel
-    /// (we had 32) was undersized for bursty loads — e.g., dozens of
-    /// blocks faulting simultaneously during program load — and silently
-    /// dropped fault notifications, which the UI is now load-bearing on
-    /// (red ring/edge rendering).
+    /// Notifications are queued without bound between the engine and
+    /// the callback, so a burst — such as many blocks faulting while a
+    /// program loads — is never dropped.
     #[wasm_bindgen(js_name = "createWatch")]
-    pub async fn create_watch(&self, callback: js_sys::Function) -> Result<f64, JsValue> {
+    pub async fn create_watch(
+        &self,
+        #[wasm_bindgen(unchecked_param_type = "(notification: BlockNotification) => void")]
+        callback: js_sys::Function,
+    ) -> Result<f64, JsValue> {
         let watch = self.client.watch().await.map_err(js_error)?;
         let id = watch.id;
         let mut notifications = watch.notifications;
@@ -315,7 +348,11 @@ impl EngineCommand {
     }
 
     /// Closes the watch `createWatch` resolved with `watch_id`, resolving
-    /// with whether it was open. Its callback is not called again.
+    /// with whether the engine had it open. Once this resolves, its
+    /// callback is not called again.
+    ///
+    /// Rejects with the `InvalidArgument` code if `watch_id` cannot be
+    /// a watch id.
     #[wasm_bindgen(js_name = "removeWatch")]
     pub async fn remove_watch(&self, watch_id: f64) -> Result<bool, JsValue> {
         if !(watch_id.fract() == 0.0 && (0.0..=MAX_SAFE_INTEGER).contains(&watch_id)) {
@@ -333,8 +370,8 @@ impl EngineCommand {
     /// Attaches an already-registered connector, by name, to the
     /// running engine: the engine resolves the name in the process-wide
     /// connector registry, starts the connector, and manages its
-    /// lifecycle from then on. Register the connector handle first —
-    /// handles never ride in engine requests.
+    /// lifecycle from then on. Register the connector first, with
+    /// `registerConnector`.
     ///
     /// A paused engine still answers this request, like every other.
     #[wasm_bindgen(js_name = "addConnector")]

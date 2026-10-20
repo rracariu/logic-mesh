@@ -13,7 +13,7 @@ afterEach(async () => {
 });
 
 function session(): EngineSession {
-  const s = startEngine({ sleepDuration: 10 });
+  const s = startEngine({ scanInterval: 10 });
   sessions.push(s);
   return s;
 }

@@ -13,7 +13,7 @@ pub(crate) const JS_ERROR_NAME: &str = "LogicMeshError";
 /// `err` as a JavaScript `Error` named [`JS_ERROR_NAME`], whose
 /// `message` is the request error's message and whose `code` property
 /// is its [`ErrorCode`] name — what an engine command's promise rejects
-/// with.
+/// with, and what the synchronous bindings throw.
 pub(crate) fn js_error(err: RequestError) -> JsValue {
     let error = js_sys::Error::new(&err.message);
     error.set_name(JS_ERROR_NAME);

@@ -46,7 +46,7 @@ function jsDesc(name: string): BlockDesc {
  * `notes` once it starts.
  */
 function session(): { session: EngineSession; notes: BlockNotification[] } {
-  const session = createEngineSession({ sleepDuration: 10 });
+  const session = createEngineSession({ scanInterval: 10 });
   sessions.push(session);
   const notes: BlockNotification[] = [];
   void session.watch((n) => notes.push(n));

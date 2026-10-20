@@ -372,7 +372,7 @@ let blockSerial = 0;
 
 describe('defineBlock against the real engine', () => {
   it('link-driven values reach execute; the pre-value window is a no-op, not a fault', async () => {
-    const session = createEngineSession({ sleepDuration: 10 });
+    const session = createEngineSession({ scanInterval: 10 });
     sessions.push(session);
 
     const name = `TypedDoubler${blockSerial++}`;
@@ -438,7 +438,7 @@ describe('defineBlock against the real engine', () => {
   });
 
   it('a .default(...) input lets the executor run without that pin being driven', async () => {
-    const session = createEngineSession({ sleepDuration: 10 });
+    const session = createEngineSession({ scanInterval: 10 });
     sessions.push(session);
 
     const name = `TypedOffset${blockSerial++}`;
