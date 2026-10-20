@@ -77,6 +77,7 @@ export type LogicMeshErrorCode =
   // Command arguments and results
   | 'InvalidProgram'
   | 'InvalidArgument'
+  | 'InvalidValue'
   | 'Serialization';
 
 /**
