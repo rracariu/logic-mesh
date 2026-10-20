@@ -184,6 +184,17 @@ try {
 }
 ```
 
+### Logging
+
+The engine logs warnings and errors to the console. `setLogLevel` makes
+it more verbose, or silences it:
+
+```ts
+import { setLogLevel } from 'logic-mesh';
+
+setLogLevel('debug'); // 'off' | 'error' | 'warn' | 'info' | 'debug' | 'trace'
+```
+
 ### Expose JavaScript functions as blocks
 
 `defineJsBlocks` turns plain JS functions — sync or async — into

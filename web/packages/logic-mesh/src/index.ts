@@ -6,6 +6,7 @@ export {
   unregisterConnector,
   connectorRegistered,
   connectorIs,
+  setLogLevel,
 } from './logic_mesh.js';
 export { defineBlock, TypedBlock } from './TypedBlock.js';
 export {
