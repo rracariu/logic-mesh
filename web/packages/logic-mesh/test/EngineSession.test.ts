@@ -80,8 +80,8 @@ describe('startEngine', () => {
     await Promise.resolve();
 
     const notes: BlockNotification[] = [];
-    const watchId = await session.watch((n) => notes.push(n));
-    expect(typeof watchId).toBe('number');
+    const watch = await session.watch((n) => notes.push(n));
+    expect(typeof watch.id).toBe('number');
 
     const id = await session.command.addBlock('SineWave');
     const note = await until(
@@ -98,15 +98,69 @@ describe('startEngine', () => {
     const kept: BlockNotification[] = [];
     const closed: BlockNotification[] = [];
     await session.watch((n) => kept.push(n));
-    const closedId = await session.watch((n) => closed.push(n));
+    const closedWatch = await session.watch((n) => closed.push(n));
     await session.watch(() => {});
 
-    expect(await session.unwatch(closedId)).toBe(true);
-    expect(await session.unwatch(closedId)).toBe(false);
+    expect(await session.unwatch(closedWatch.id)).toBe(true);
+    expect(await session.unwatch(closedWatch.id)).toBe(false);
 
     const id = await session.command.addBlock('SineWave');
     await until(() => kept.find((n) => n.id === id), 'a SineWave notification');
     expect(closed.find((n) => n.id === id)).toBeUndefined();
+  });
+
+  // The callback stops the moment the watch is closed, before the
+  // engine answered the close.
+  it('disposing a watch stops its callback and the engine prunes it', async () => {
+    const session = track(startEngine({ scanInterval: 1 }));
+    // Many changing blocks, so notifications keep arriving while the
+    // close is under way.
+    await Promise.all(
+      Array.from({ length: 50 }, () => session.command.addBlock('SineWave')),
+    );
+
+    let calls = 0;
+    let watchId: number;
+    let atDispose: number;
+    {
+      await using watch = await session.watch(() => calls++);
+      watchId = watch.id;
+      await until(() => (calls > 0 ? true : undefined), 'a notification');
+      atDispose = calls;
+    }
+    expect(calls).toBe(atDispose);
+
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect(calls).toBe(atDispose);
+    // The engine no longer holds a watcher with that id.
+    expect(await session.command.removeWatch(watchId)).toBe(false);
+  });
+
+  it('removeWatch stops a raw watch once it resolves', async () => {
+    const { command } = track(startEngine({ scanInterval: 1 }));
+    await Promise.all(
+      Array.from({ length: 50 }, () => command.addBlock('SineWave')),
+    );
+
+    let calls = 0;
+    const id = await command.createWatch(() => calls++);
+    await until(() => (calls > 0 ? true : undefined), 'a notification');
+    expect(await command.removeWatch(id)).toBe(true);
+    const afterRemove = calls;
+
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect(calls).toBe(afterRemove);
+  });
+
+  it('stops on `await using`', async () => {
+    let session: EngineSession | undefined;
+    {
+      await using scoped = startEngine({ scanInterval: 10 });
+      session = scoped;
+      await scoped.command.addBlock('Add');
+    }
+    // Stopped: restarting a stopped session throws.
+    expect(() => session?.start()).toThrow(/after stop\(\)/);
   });
 });
 
