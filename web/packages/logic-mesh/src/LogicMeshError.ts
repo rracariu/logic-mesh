@@ -3,8 +3,11 @@
  * name of the `ErrorCode` the Rust engine reported. A code never
  * changes meaning; new failures get new codes.
  *
- * The engine checks this list against its own codes in its test suite,
- * so it names every code a command can reject with.
+ * The union is closed for each package version: the engine that
+ * rejects is the wasm module shipped in this package, and its test
+ * suite checks this list against its own codes, so it names every code
+ * a command can reject with. A later version may add codes, so keep a
+ * `default` branch when switching on one.
  */
 export type LogicMeshErrorCode =
   // Block registry
