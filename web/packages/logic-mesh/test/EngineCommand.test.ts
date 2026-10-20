@@ -1,6 +1,7 @@
 // The engine commands, what they accept, and the errors the bindings
 // throw, against the real wasm engine in Node. Each test runs its own
 // engine session, stopped afterwards.
+import { runInNewContext } from 'node:vm';
 import { afterEach, describe, expect, it } from 'vitest';
 import type {
   BlockDesc,
@@ -229,6 +230,58 @@ describe('EngineCommand input validation', () => {
     await command.writeBlockInput(id, 'in0', 3);
     await command.writeBlockInput(id, 'in0', undefined);
     expect((await command.inspectBlock(id)).inputs.in0.val).toBeNull();
+  });
+
+  // Regression: serde-wasm-bindgen reads any object that is not
+  // iterable through its own properties, so a Date was written as an
+  // empty Dict and a class instance as a Dict of its fields. A cyclic
+  // value overflowed the stack.
+  it('rejects objects the JSON encoding has no use for', async () => {
+    const { command } = track(startEngine({ scanInterval: 10 }));
+    const id = await command.addBlock('Add');
+    class Reading {
+      constructor(readonly val: number) {}
+    }
+    const cyclic: Record<string, unknown> = {};
+    cyclic.self = cyclic;
+
+    const invalid: [unknown, string][] = [
+      [new Date(), 'Date objects are not Haystack values'],
+      [new Reading(1), 'Reading objects are not Haystack values'],
+      [Object(5), 'Number objects are not Haystack values'],
+      [{ list: [new Map([['at', new Date()]])] }, 'Date objects'],
+      [cyclic, 'levels deep'],
+    ];
+    for (const [value, detail] of invalid) {
+      const err = await rejection(command.writeBlockInput(id, 'in0', value));
+      expect(err.code).toBe('InvalidValue');
+      expect(err.message).toContain(detail);
+    }
+    expect(
+      (await rejection(command.evalBlock('Add', [1, new Date()]))).code,
+    ).toBe('InvalidValue');
+    // Nothing was written.
+    expect((await command.inspectBlock(id)).inputs.in0.val).toBeNull();
+
+    // Plain objects, from any realm or without a prototype, arrays and
+    // Maps are read.
+    const valid: unknown[] = [
+      { a: 1 },
+      Object.assign(Object.create(null) as object, { a: 1 }),
+      runInNewContext('({ a: 1 })'),
+      new Map([['a', 1]]),
+    ];
+    for (const value of valid) {
+      await command.writeBlockInput(id, 'in0', value);
+      expect((await command.inspectBlock(id)).inputs.in0.val).toStrictEqual({
+        a: 1,
+      });
+    }
+    await command.writeBlockInput(id, 'in0', [1, { b: 'x' }]);
+    expect((await command.inspectBlock(id)).inputs.in0.val).toStrictEqual([
+      1,
+      { b: 'x' },
+    ]);
   });
 
   it('rejects malformed block ids with InvalidBlockUuid', async () => {
