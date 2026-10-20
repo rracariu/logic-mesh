@@ -71,7 +71,7 @@ pub struct BlockHandle {
     /// save/load preserves the layout.
     position: Option<Position>,
     /// Opaque editor metadata. Same role as `label`: kept only so a save
-    /// returns it as it was loaded.
+    /// returns it as it was loaded or set.
     editor: Option<EditorMetadata>,
 }
 
@@ -100,7 +100,9 @@ impl BlockHandle {
     pub fn position(&self) -> Option<Position> {
         self.position
     }
-    /// Returns the editor metadata the block was loaded with, if any.
+    /// Returns the editor metadata, if any: the one the block was loaded
+    /// with, or the last one
+    /// [set](crate::base::engine::Engine::set_block_editor).
     pub fn editor(&self) -> Option<&EditorMetadata> {
         self.editor.as_ref()
     }
@@ -276,6 +278,20 @@ impl BlockGraph {
         if let Some(position) = position {
             handle.position = Some(position);
         }
+        Ok(())
+    }
+
+    /// Replaces block `id`'s editor metadata, or removes it for `None`.
+    pub(super) fn set_editor(
+        &mut self,
+        id: &Uuid,
+        editor: Option<EditorMetadata>,
+    ) -> Result<(), EngineError> {
+        let handle = self
+            .handles
+            .get_mut(id)
+            .ok_or(EngineError::BlockInstanceNotFound { id: *id })?;
+        handle.editor = editor;
         Ok(())
     }
 

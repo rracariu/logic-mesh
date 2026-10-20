@@ -2198,7 +2198,7 @@ pub(crate) mod configuration {
 
     use super::lifecycle::TestEngine;
     use super::*;
-    use crate::base::program::Position;
+    use crate::base::program::{EditorMetadata, Position};
     use crate::blocks::external::support::mock::MockConnector;
     use crate::{EngineError, Error};
 
@@ -2240,6 +2240,46 @@ pub(crate) mod configuration {
             let block = &saved.blocks[&source.to_string()];
             assert_eq!(block.label.as_deref(), Some("source"));
             assert_eq!(block.position, Some(position));
+        })
+        .await;
+    }
+
+    /// Regression: editor metadata reached an engine only with a loaded
+    /// program, so a block scheduled any other way was always saved
+    /// without it, and a loaded block's could not change.
+    pub(crate) async fn editor_metadata_is_set_through_the_trait<E: TestEngine>(mut engine: E) {
+        let mut editor = EditorMetadata::new();
+        editor.insert(
+            "widget".to_string(),
+            serde_json::json!({"kind": "Slider", "config": {"step": 0.5, "series": [null]}}),
+        );
+        let (source, target) = schedule_linked_adds(&mut engine);
+        engine
+            .set_block_editor(&source, Some(editor.clone()))
+            .expect("scheduled");
+        let handle = engine.block_handle(&source).expect("scheduled");
+        assert_eq!(handle.editor(), Some(&editor));
+
+        let loaded = Uuid::new_v4();
+        let mut program = add_program([loaded.to_string().as_str()]);
+        for block in program.blocks.values_mut() {
+            block.editor = Some(editor.clone());
+        }
+        engine.schedule_program_blocks(&program).expect("loads");
+        engine.set_block_editor(&loaded, None).expect("scheduled");
+        assert_eq!(engine.block_handle(&loaded).expect("loaded").editor(), None);
+
+        let unknown = Uuid::new_v4();
+        assert_matches!(
+            engine.set_block_editor(&unknown, Some(editor.clone())),
+            Err(Error::Engine(EngineError::BlockInstanceNotFound { id })) if id == unknown
+        );
+
+        drive(engine, move |mut client| async move {
+            let saved = client.save().await;
+            assert_eq!(saved.blocks[&source.to_string()].editor, Some(editor));
+            assert_eq!(saved.blocks[&target.to_string()].editor, None);
+            assert_eq!(saved.blocks[&loaded.to_string()].editor, None);
         })
         .await;
     }

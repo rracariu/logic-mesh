@@ -21,8 +21,9 @@ use crate::base::error::EngineError;
 /// Opaque editor or UI state saved with a block: any JSON object.
 ///
 /// The engine stores it without reading it and saves it back as it was
-/// loaded, so an editor can keep its own state — which widget shows a
-/// block, say — in the program. Through serde, and across the wasm
+/// loaded or [set](crate::base::engine::Engine::set_block_editor), so
+/// an editor can keep its own state — which widget shows a block, say —
+/// in the program. Through serde, and across the wasm
 /// boundary to and from a plain JS object, nested objects, arrays,
 /// strings, booleans, `null` and numbers come back as they went in; the
 /// usual JSON limits apply: object keys come back sorted, and a JS

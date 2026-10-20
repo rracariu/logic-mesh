@@ -61,7 +61,7 @@ use super::connector::ConnectorHandle;
 use super::error::Result;
 use super::{
     block::Block,
-    program::{Position, Program},
+    program::{EditorMetadata, Position, Program},
 };
 
 pub mod messages;
@@ -305,8 +305,10 @@ pub trait Engine: sealed::Sealed + Sized {
     /// Returns the handle of block `id`, if it is scheduled.
     fn block_handle(&self, id: &Uuid) -> Option<&BlockHandle>;
 
-    /// Updates the UI metadata block `id` is saved with: each of `label`
-    /// and `position` that is given replaces the stored one.
+    /// Updates the label and position block `id` is saved with: each of
+    /// `label` and `position` that is given replaces the stored one. Its
+    /// editor metadata is set with
+    /// [`set_block_editor`](Self::set_block_editor).
     ///
     /// # Errors
     ///
@@ -318,6 +320,16 @@ pub trait Engine: sealed::Sealed + Sized {
         label: Option<String>,
         position: Option<Position>,
     ) -> Result<()>;
+
+    /// Replaces the editor metadata block `id` is saved with
+    /// ([`ProgramBlock::editor`](crate::base::program::ProgramBlock::editor)),
+    /// or removes it if `editor` is `None`. The engine never reads it.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`EngineError::BlockInstanceNotFound`](crate::EngineError::BlockInstanceNotFound)
+    /// if no block `id` is scheduled.
+    fn set_block_editor(&mut self, id: &Uuid, editor: Option<EditorMetadata>) -> Result<()>;
 
     /// The engine's scan interval: the period at which its blocks that
     /// poll check their state — the timers, `Sequencer`, `Runtime`, an
