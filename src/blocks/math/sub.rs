@@ -36,7 +36,6 @@ impl Block for Sub {
             match *a - *b {
                 Ok(res) => self.out.set(res.into()),
                 Err(e) => {
-                    log::error!("Error while subtracting: {}", e);
                     self.set_state(BlockState::fault(format!("Sub: {}", e)));
                 }
             }

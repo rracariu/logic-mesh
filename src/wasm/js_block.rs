@@ -128,9 +128,13 @@ impl JsBlock {
 
     /// Calls the JS function with the inputs as arguments — in the
     /// bindings' one encoding, so an input with no value is `null` —
-    /// and sets the outputs from the array it returns or resolves with. Anything
-    /// else leaves the outputs as they are. A throw or a rejection
-    /// faults the block, with the thrown value as the reason.
+    /// and sets the outputs from the array it returns or resolves with.
+    /// Anything else leaves the outputs as they are. A throw or a
+    /// rejection faults the block, with the thrown value as the reason.
+    ///
+    /// A fault is logged at debug only: it reaches JavaScript through
+    /// the block's state and fault reason, and a block that runs on
+    /// every cycle would log it on every cycle.
     async fn call_js_function(&mut self, values: JsValue) {
         let Some(ref func) = self.func else {
             return;
@@ -149,7 +153,7 @@ impl JsBlock {
             Ok(result) => result,
             Err(err) => {
                 let detail = js_detail(&err);
-                log::error!("JS function of block '{}' failed: {detail}", self.desc.name);
+                log::debug!("JS function of block '{}' failed: {detail}", self.desc.name);
                 self.set_state(BlockState::fault(format!("JS execute failed: {detail}")));
                 return;
             }
@@ -166,7 +170,7 @@ impl JsBlock {
                 }
             }),
             Err(err) => {
-                log::error!("Failed to process the return of the JS function: {err}");
+                log::debug!("Failed to process the return of the JS function: {err}");
                 self.set_state(BlockState::fault(format!(
                     "JS return processing failed: {err}"
                 )));
@@ -349,7 +353,7 @@ impl Block for JsBlock {
                 self.call_js_function(values).await;
             }
             Err(err) => {
-                log::error!("Failed to serialize input values: {err}");
+                log::debug!("Failed to serialize input values: {err}");
                 self.set_state(BlockState::fault(format!(
                     "JS input serialization failed: {err}"
                 )));
