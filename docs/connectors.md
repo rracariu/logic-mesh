@@ -692,10 +692,10 @@ await command.addConnector('sensors');
 ```
 
 The returned session also carries a dedicated `connectorCommand` handle for
-attach flows, `watch()` backed by pre-created handles (a watch permanently
-occupies one, and none can be created after start), and `reset()`/`stop()`
-routed through an internal control handle so they never collide with a
-caller's in-flight command.
+attach flows; `watch()` and `unwatch()`, which open and close any number of
+watches, before or after start; and `reset()`/`stop()`, which resolve once the
+engine applied them and run in the order they were called, a reset before a
+stop. Every handle takes overlapping calls, each answered with its own result.
 
 Finally, when the external system is just a set of request/response functions,
 `defineJsBlocks` skips the connector boilerplate entirely: it registers one
