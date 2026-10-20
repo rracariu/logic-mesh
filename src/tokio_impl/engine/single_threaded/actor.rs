@@ -311,8 +311,7 @@ mod test {
             let inspected = queue_inspect(&mailbox_tx);
             let state = local.run_until(timeout(Duration::from_secs(2), inspected));
             let state = state.await.expect("answered").expect("replied");
-            assert_eq!(state.state, "fault");
-            assert_eq!(state.fault_reason.as_deref(), Some(REASON));
+            assert_eq!(state.state, crate::base::block::BlockState::fault(REASON));
             local.run_until(sleep(Duration::from_millis(50))).await;
         }
         assert_matches!(downstream.try_take(), None, "downstream saw no Ok");

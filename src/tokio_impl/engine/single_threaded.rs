@@ -158,7 +158,7 @@ mod tests {
                 let res = client.inspect_block(add_uuid).await;
 
                 if let Ok(data) = &res {
-                    assert_eq!(data.id, add_uuid.to_string());
+                    assert_eq!(data.id, add_uuid);
                     assert_eq!(data.name, "Add");
                     assert_eq!(data.inputs.len(), 16);
                     assert_eq!(data.outputs.len(), 1);
@@ -781,7 +781,7 @@ mod tests {
                 assert_eq!(reply, Err(EngineError::DuplicateBlockId { id }.into()));
 
                 // The scheduled block is untouched and still answers.
-                assert_eq!(client.inspect(id).await.id, id.to_string());
+                assert_eq!(client.inspect(id).await.id, id);
                 assert_eq!(scheduled_ids(&client).await, vec![id.to_string()]);
             })
             .await;

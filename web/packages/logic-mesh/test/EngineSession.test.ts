@@ -197,6 +197,33 @@ describe('EngineCommand', () => {
     expect(inspected.map((block) => block.id)).toStrictEqual(ids);
   });
 
+  // Regression: an inspection named the fault reason `fault_reason`,
+  // in snake_case next to the camelCase `isConnected` of its pins.
+  it('inspects a faulted block with a camelCase faultReason', async () => {
+    const { command } = track(startEngine({ sleepDuration: 10 }));
+    const id = await command.addBlock('Add');
+    await command.writeBlockInput(id, 'in0', {
+      _kind: 'number',
+      val: 1,
+      unit: 'm',
+    });
+    await command.writeBlockInput(id, 'in1', {
+      _kind: 'number',
+      val: 1,
+      unit: 's',
+    });
+
+    const deadline = Date.now() + 3000;
+    let block = (await command.inspectBlock(id)) as Record<string, unknown>;
+    while (block.state !== 'fault' && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      block = (await command.inspectBlock(id)) as Record<string, unknown>;
+    }
+    expect(block.state).toBe('fault');
+    expect(typeof block.faultReason).toBe('string');
+    expect(block).not.toHaveProperty('fault_reason');
+  });
+
   // Regression: control commands resolved once enqueued, not once
   // done. The connector is checked before any other command: the
   // engine handles commands in order, so a later one would find the

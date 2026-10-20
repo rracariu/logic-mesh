@@ -77,6 +77,7 @@ impl BlockInputData {
 /// `#[non_exhaustive]`: engines produce it; build one with
 /// [`BlockOutputData::new`].
 #[derive(Default, Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
 #[non_exhaustive]
 pub struct BlockOutputData {
     /// Haystack type kind.
@@ -95,33 +96,49 @@ impl BlockOutputData {
     }
 }
 
-/// Block definition.
+/// A block's state and pin values, as
+/// [`EngineRequest::InspectBlock`] answers with them.
 ///
 /// `#[non_exhaustive]`: engines produce it; build one with
 /// [`BlockDefinition::new`] and the `with_*` methods.
+///
+/// Its fields are typed like a [`WatchMessage`]'s. Serialized, it is a
+/// flat object with camelCase names, like the pins it holds: `id` is
+/// the block UUID as a string, `state` the state's
+/// [label](BlockState::label), and `faultReason` — left out unless the
+/// block is in Fault — the fault's reason.
 ///
 /// # Examples
 ///
 /// ```
 /// use logic_mesh::{
-///     Value,
+///     Uuid, Value,
 ///     base::block::BlockState,
 ///     base::engine::messages::{BlockDefinition, BlockInputData},
 /// };
 ///
-/// let def = BlockDefinition::new("b1", "Add", "core")
+/// let id = Uuid::new_v4();
+/// let def = BlockDefinition::new(id, "Add", "core")
 ///     .with_input("in0", BlockInputData::new("number", Value::make_int(1), false))
-///     .with_state(&BlockState::fault("overflow"));
+///     .with_state(BlockState::fault("overflow"));
 ///
-/// assert_eq!(def.state, "fault");
-/// assert_eq!(def.fault_reason.as_deref(), Some("overflow"));
+/// assert_eq!(def.id, id);
+/// assert_eq!(def.state, BlockState::fault("overflow"));
 /// assert_eq!(def.inputs["in0"].val, Value::make_int(1));
+///
+/// let json = serde_json::to_value(&def)?;
+/// assert_eq!(json["id"], id.to_string());
+/// assert_eq!(json["state"], "fault");
+/// assert_eq!(json["faultReason"], "overflow");
+/// assert_eq!(json["inputs"]["in0"]["isConnected"], false);
+/// # Ok::<(), serde_json::Error>(())
 /// ```
 #[derive(Debug, Default, Serialize, Deserialize, Clone)]
+#[serde(into = "WireBlockDefinition", try_from = "WireBlockDefinition")]
 #[non_exhaustive]
 pub struct BlockDefinition {
     /// Block instance UUID.
-    pub id: String,
+    pub id: Uuid,
     /// Block type name.
     pub name: String,
     /// Library the block belongs to.
@@ -130,24 +147,19 @@ pub struct BlockDefinition {
     pub inputs: BTreeMap<String, BlockInputData>,
     /// Output pins keyed by name.
     pub outputs: BTreeMap<String, BlockOutputData>,
-    /// Short label for the block's operational state
-    /// (`running | fault | disabled | terminated`).
-    #[serde(default)]
-    pub state: String,
-    /// Fault reason when `state == "fault"`, else [`None`].
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub fault_reason: Option<String>,
+    /// The block's operational state, with the fault's reason when it
+    /// is in Fault.
+    pub state: BlockState,
 }
 
 impl BlockDefinition {
     /// The definition of block `id` of type `name` in `library`, with
     /// no pins, in the [`BlockState::Running`] state.
-    pub fn new(id: impl Into<String>, name: impl Into<String>, library: impl Into<String>) -> Self {
+    pub fn new(id: Uuid, name: impl Into<String>, library: impl Into<String>) -> Self {
         Self {
-            id: id.into(),
+            id,
             name: name.into(),
             library: library.into(),
-            state: BlockState::Running.label().to_string(),
             ..Self::default()
         }
     }
@@ -164,12 +176,91 @@ impl BlockDefinition {
         self
     }
 
-    /// Sets [`state`](Self::state) and [`fault_reason`](Self::fault_reason)
-    /// from `state`.
-    pub fn with_state(mut self, state: &BlockState) -> Self {
-        self.state = state.label().to_string();
-        self.fault_reason = state.fault_reason().map(str::to_string);
+    /// Sets [`state`](Self::state).
+    pub fn with_state(mut self, state: BlockState) -> Self {
+        self.state = state;
         self
+    }
+}
+
+/// The serialized form of a [`BlockDefinition`].
+#[derive(Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct WireBlockDefinition {
+    id: String,
+    name: String,
+    library: String,
+    #[serde(default)]
+    inputs: BTreeMap<String, BlockInputData>,
+    #[serde(default)]
+    outputs: BTreeMap<String, BlockOutputData>,
+    #[serde(default = "running_label")]
+    state: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    fault_reason: Option<String>,
+}
+
+/// The label of [`BlockState::Running`], the state of a serialized
+/// [`BlockDefinition`] that gives none.
+fn running_label() -> String {
+    BlockState::Running.label().to_string()
+}
+
+/// Why a serialized [`BlockDefinition`] could not be read.
+#[derive(Debug, thiserror::Error)]
+enum WireBlockDefinitionError {
+    /// Its `id` is not a UUID.
+    #[error("Invalid block uuid '{id}'")]
+    InvalidId {
+        /// The rejected id.
+        id: String,
+        /// The parse error.
+        #[source]
+        source: uuid::Error,
+    },
+    /// Its `state` is not the label of a [`BlockState`].
+    #[error("Unknown block state '{0}'")]
+    UnknownState(String),
+}
+
+impl From<BlockDefinition> for WireBlockDefinition {
+    fn from(def: BlockDefinition) -> Self {
+        Self {
+            id: def.id.to_string(),
+            name: def.name,
+            library: def.library,
+            inputs: def.inputs,
+            outputs: def.outputs,
+            state: def.state.label().to_string(),
+            fault_reason: def.state.fault_reason().map(str::to_string),
+        }
+    }
+}
+
+impl TryFrom<WireBlockDefinition> for BlockDefinition {
+    type Error = WireBlockDefinitionError;
+
+    fn try_from(wire: WireBlockDefinition) -> Result<Self, Self::Error> {
+        let id =
+            Uuid::try_parse(&wire.id).map_err(|source| WireBlockDefinitionError::InvalidId {
+                id: wire.id.clone(),
+                source,
+            })?;
+        let state = match wire.state.as_str() {
+            "running" => BlockState::Running,
+            "fault" => BlockState::fault(wire.fault_reason.unwrap_or_default()),
+            "disabled" => BlockState::Disabled,
+            "terminated" => BlockState::Terminated,
+            _ => return Err(WireBlockDefinitionError::UnknownState(wire.state)),
+        };
+        Ok(Self {
+            id,
+            name: wire.name,
+            library: wire.library,
+            inputs: wire.inputs,
+            outputs: wire.outputs,
+            state,
+        })
     }
 }
 
@@ -770,5 +861,90 @@ impl EngineResponse {
             | EngineResponse::Reset { result }
             | EngineResponse::Shutdown { result } => result.as_ref().err(),
         }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use libhaystack::val::Value;
+    use serde_json::json;
+    use uuid::Uuid;
+
+    use super::{BlockDefinition, BlockInputData, BlockOutputData};
+    use crate::base::block::BlockState;
+
+    /// Regression: a block definition held its id and state as strings,
+    /// with the fault reason beside them, and serialized `fault_reason`
+    /// in snake_case next to its pins' camelCase `isConnected`.
+    #[test]
+    fn a_block_definition_is_typed_and_serializes_in_camel_case() {
+        let id = Uuid::new_v4();
+        let def = BlockDefinition::new(id, "Add", "core")
+            .with_input(
+                "in0",
+                BlockInputData::new("number", Value::make_int(1), true),
+            )
+            .with_output("out", BlockOutputData::new("number", Value::make_int(2)))
+            .with_state(BlockState::fault("overflow"));
+
+        let written = serde_json::to_value(&def).expect("serializes");
+        assert_eq!(
+            written,
+            json!({
+                "id": id.to_string(),
+                "name": "Add",
+                "library": "core",
+                "inputs": {"in0": {"kind": "number", "val": 1, "isConnected": true}},
+                "outputs": {"out": {"kind": "number", "val": 2}},
+                "state": "fault",
+                "faultReason": "overflow",
+            })
+        );
+
+        let read: BlockDefinition = serde_json::from_value(written).expect("reads back");
+        assert_eq!(read.id, id);
+        assert_eq!(read.state, BlockState::fault("overflow"));
+        assert_eq!(read.inputs["in0"].val, Value::make_int(1));
+        assert_eq!(read.outputs["out"].val, Value::make_int(2));
+    }
+
+    /// Every state reads back as itself, and only a fault carries a
+    /// reason.
+    #[test]
+    fn every_block_state_round_trips() {
+        for state in [
+            BlockState::Running,
+            BlockState::fault("why"),
+            BlockState::Disabled,
+            BlockState::Terminated,
+        ] {
+            let def = BlockDefinition::new(Uuid::nil(), "Add", "core").with_state(state.clone());
+            let written = serde_json::to_value(&def).expect("serializes");
+            assert_eq!(written["state"], state.label());
+            assert_eq!(written.get("faultReason").is_some(), state.is_fault());
+            let read: BlockDefinition = serde_json::from_value(written).expect("reads back");
+            assert_eq!(read.state, state);
+        }
+    }
+
+    /// A definition whose id is not a UUID, or whose state no
+    /// `BlockState` has, is rejected rather than read as a default.
+    #[test]
+    fn a_malformed_block_definition_is_rejected() {
+        let def = |id: &str, state: &str| json!({"id": id, "name": "Add", "library": "core", "state": state});
+        let ok =
+            serde_json::from_value::<BlockDefinition>(def(&Uuid::nil().to_string(), "running"));
+        assert_eq!(ok.expect("reads").state, BlockState::Running);
+
+        let err = serde_json::from_value::<BlockDefinition>(def("b1", "running"))
+            .expect_err("not a uuid");
+        assert!(err.to_string().contains("Invalid block uuid 'b1'"), "{err}");
+        let err =
+            serde_json::from_value::<BlockDefinition>(def(&Uuid::nil().to_string(), "asleep"))
+                .expect_err("not a state");
+        assert!(
+            err.to_string().contains("Unknown block state 'asleep'"),
+            "{err}"
+        );
     }
 }

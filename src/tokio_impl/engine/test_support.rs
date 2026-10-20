@@ -153,7 +153,7 @@ impl Client {
     pub(crate) async fn wait_for_state(&self, block: Uuid, state: &str) -> BlockDefinition {
         for _ in 0..POLLS {
             let definition = self.inspect(block).await;
-            if definition.state == state {
+            if definition.state.label() == state {
                 return definition;
             }
             sleep(POLL_INTERVAL).await;
@@ -498,7 +498,7 @@ pub(crate) mod lifecycle {
                 .expect("the engine is receiving");
 
             // Handled in order, so the block exists by now.
-            assert_eq!(client.inspect(id).await.id, id.to_string());
+            assert_eq!(client.inspect(id).await.id, id);
         })
         .await;
     }
@@ -536,7 +536,7 @@ pub(crate) mod lifecycle {
 
             for (n, (id, definition)) in inspected.into_iter().enumerate() {
                 let definition = definition.expect("inspected");
-                assert_eq!(definition.id, id.to_string());
+                assert_eq!(definition.id, id);
                 assert_eq!(definition.outputs["out"].val, Value::make_int(n as i64));
             }
             assert_matches!(
@@ -1521,11 +1521,11 @@ pub(crate) mod connector_deadlines {
             let mut still_running = Vec::new();
             for block in running {
                 let definition = client.inspect(block).await;
-                if definition.state != "fault" {
+                if !definition.state.is_fault() {
                     still_running.push(block);
                     continue;
                 }
-                let reason = definition.fault_reason.unwrap_or_default();
+                let reason = definition.state.fault_reason().unwrap_or_default();
                 assert!(
                     reason.contains("timed out after 150ms"),
                     "{block} faulted by its timeout, got: {reason}"
@@ -1855,7 +1855,7 @@ pub(crate) mod panics {
             client.write_output(chain.source, "out", 1.into()).await;
 
             let panicked = client.wait_for_state(chain.panicker, "fault").await;
-            assert_eq!(panicked.fault_reason.as_deref(), Some(REASON));
+            assert_eq!(panicked.state.fault_reason(), Some(REASON));
             client
                 .wait_for_output(chain.probe, "fault", true.into())
                 .await;
@@ -1867,7 +1867,7 @@ pub(crate) mod panics {
             // `a_block_panicking_every_cycle_backs_off`.
             sleep(Duration::from_millis(200)).await;
             assert_eq!(chain.panics.load(Ordering::SeqCst), 1);
-            assert_eq!(client.inspect(chain.panicker).await.state, "fault");
+            assert!(client.inspect(chain.panicker).await.state.is_fault());
 
             assert_eq!(
                 client.remove_block(chain.panicker).await,
@@ -1928,7 +1928,7 @@ pub(crate) mod panics {
 
         drive(engine, move |client| async move {
             let held = client.wait_for_state(id, "fault").await;
-            assert_eq!(held.fault_reason.as_deref(), Some("block panicked: always"));
+            assert_eq!(held.state.fault_reason(), Some("block panicked: always"));
 
             sleep(PANIC_RETRY_INITIAL / 4).await;
             assert_eq!(
@@ -1946,7 +1946,7 @@ pub(crate) mod panics {
                 2,
                 "the second retry delay is doubled"
             );
-            assert_eq!(client.inspect(id).await.state, "fault");
+            assert!(client.inspect(id).await.state.is_fault());
         })
         .await;
     }
