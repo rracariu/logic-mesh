@@ -152,6 +152,37 @@ pub enum EngineError {
         source: uuid::Error,
     },
 
+    /// A program is in a newer format than this crate reads. Nothing of
+    /// it is loaded.
+    #[error("Program format version {found} is not supported; the newest supported is {supported}")]
+    UnsupportedProgramVersion {
+        /// The program's [`version`](crate::base::program::Program::version).
+        found: u32,
+        /// The newest version this crate reads,
+        /// [`Program::FORMAT_VERSION`](crate::base::program::Program::FORMAT_VERSION).
+        supported: u32,
+    },
+
+    /// A program's block was saved at a version of its block type that is
+    /// incompatible with the registered one: a different major version,
+    /// or below 1.0 a different minor version. Its saved pins and values
+    /// may not mean the same to the registered block, so the program is
+    /// not loaded.
+    #[error(
+        "Block '{block}' ({name}) was saved at version {saved}, incompatible with the registered version {registered}"
+    )]
+    BlockVersionMismatch {
+        /// The block's id in the program.
+        block: Uuid,
+        /// The block type name.
+        name: String,
+        /// The version the program saved,
+        /// [`ProgramBlock::ver`](crate::base::program::ProgramBlock::ver).
+        saved: String,
+        /// The registered block type's version.
+        registered: String,
+    },
+
     /// The block's actor task is no longer running, so the request could
     /// not be delivered.
     #[error("Block '{id}' actor task is gone")]

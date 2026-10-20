@@ -61,7 +61,7 @@ use super::connector::ConnectorHandle;
 use super::error::Result;
 use super::{
     block::Block,
-    program::{Position, Program},
+    program::{EditorMetadata, Position, Program},
 };
 
 pub mod messages;
@@ -247,10 +247,15 @@ pub trait Engine: sealed::Sealed + Sized {
     ///
     /// All or nothing: the program is checked whole before any of its
     /// blocks is scheduled, and a program failing a check schedules
-    /// nothing. The checks: every block id parses and is neither
+    /// nothing. The checks: the program's format is one this crate reads
+    /// ([`EngineError::UnsupportedProgramVersion`](crate::EngineError::UnsupportedProgramVersion));
+    /// every block id parses and is neither
     /// scheduled already nor named twice in `program`
     /// ([`EngineError::DuplicateBlockId`](crate::EngineError::DuplicateBlockId));
-    /// every block type resolves and the engine can host it; every pin
+    /// every block type resolves, at a version compatible with the one
+    /// it was saved at
+    /// ([`EngineError::BlockVersionMismatch`](crate::EngineError::BlockVersionMismatch)),
+    /// and the engine can host it; every pin
     /// a saved value names exists
     /// ([`EngineError::InputNotFound`](crate::EngineError::InputNotFound),
     /// [`EngineError::OutputNotFound`](crate::EngineError::OutputNotFound));
@@ -300,8 +305,10 @@ pub trait Engine: sealed::Sealed + Sized {
     /// Returns the handle of block `id`, if it is scheduled.
     fn block_handle(&self, id: &Uuid) -> Option<&BlockHandle>;
 
-    /// Updates the UI metadata block `id` is saved with: each of `label`
-    /// and `position` that is given replaces the stored one.
+    /// Updates the label and position block `id` is saved with: each of
+    /// `label` and `position` that is given replaces the stored one. Its
+    /// editor metadata is set with
+    /// [`set_block_editor`](Self::set_block_editor).
     ///
     /// # Errors
     ///
@@ -313,6 +320,16 @@ pub trait Engine: sealed::Sealed + Sized {
         label: Option<String>,
         position: Option<Position>,
     ) -> Result<()>;
+
+    /// Replaces the editor metadata block `id` is saved with
+    /// ([`ProgramBlock::editor`](crate::base::program::ProgramBlock::editor)),
+    /// or removes it if `editor` is `None`. The engine never reads it.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`EngineError::BlockInstanceNotFound`](crate::EngineError::BlockInstanceNotFound)
+    /// if no block `id` is scheduled.
+    fn set_block_editor(&mut self, id: &Uuid, editor: Option<EditorMetadata>) -> Result<()>;
 
     /// The engine's scan interval: the period at which its blocks that
     /// poll check their state — the timers, `Sequencer`, `Runtime`, an

@@ -21,9 +21,10 @@
   import { toast } from 'svelte-sonner';
   import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
   import { examplePrograms } from '$lib/Examples';
+  import type { EditorProgram } from '$lib/Program';
   import { useEngine } from '$lib/Engine';
   import { setUiPushPaused } from '$lib/UiConnector';
-  import type { BlockDesc, Program } from 'logic-mesh';
+  import type { BlockDesc } from 'logic-mesh';
 
   interface Props {
     blocks: BlockDesc[];
@@ -31,7 +32,7 @@
     onReset: () => Promise<void>;
     onCopy: () => void;
     onPaste: () => void;
-    onLoad: (program: Program) => void;
+    onLoad: (program: EditorProgram) => void;
   }
 
   let { blocks, onAddBlock, onReset, onCopy, onPaste, onLoad }: Props =

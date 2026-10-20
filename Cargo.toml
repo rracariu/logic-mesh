@@ -60,6 +60,9 @@ libhaystack = { version = "^4.0", default-features = false, features = [
 	"units-db",
 ] }
 uuid = { version = "^1.23", features = ["v4"] }
+# The type of a program's opaque editor metadata. libhaystack's `json`
+# feature already builds it.
+serde_json = "^1.0"
 futures = "^0.3"
 rand = "^0.9"
 thiserror = "^2.0"
@@ -98,7 +101,6 @@ assert_matches = "^1.5"
 anyhow = "^1.0"
 ratatui = "^0.30"
 crossterm = "^0.29"
-serde_json = "^1.0"
 
 # The tests drive engines from a multi-thread runtime on a thread of
 # their own, and the multi-threaded engine's doctest runs on one, as an

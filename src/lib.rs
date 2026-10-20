@@ -21,6 +21,14 @@ pub use uuid::Uuid;
 /// re-export keeps them the same version as the crate's own.
 pub use libhaystack;
 
+/// The [`serde_json`] this crate is built against.
+///
+/// A program's editor metadata
+/// ([`EditorMetadata`](base::program::EditorMetadata)) is a
+/// `serde_json` object, so building it through this re-export keeps it
+/// the same version as the crate's own.
+pub use serde_json;
+
 /// The tokio channel modules the engines' API is built on.
 ///
 /// An engine's [`Channel`](base::engine::Engine::Channel) is an

@@ -1,13 +1,16 @@
-import type { Program } from 'logic-mesh';
+import { PROGRAM_FORMAT_VERSION } from 'logic-mesh';
+import type { EditorProgram } from './Program';
 
 // Each demo uses a deterministic UUID prefix so the IDs stay stable
 // across reloads and don't collide between examples.
 //
 // UI widgets are ExternalIn/ExternalOut blocks bound to the 'ui'
 // connector, addressed by their own block UUID, with the widget
-// identity and configuration carried in the `widget` field.
+// identity and configuration carried in the `widget` entry of their
+// editor metadata. The programs are in the current save format.
 
 const datReset = {
+  version: PROGRAM_FORMAT_VERSION,
   name: 'DAT Temperature Reset',
   description:
     'Discharge-air-temperature reset (ASHRAE G36 style): as outdoor temp rises, the supply-air setpoint falls. PID drives the simulated SAT toward the SP. The PV bar scales to the live SP (config drive) and the tracking slider follows the auto SP until you drag it (value feedback).',
@@ -15,11 +18,13 @@ const datReset = {
     '11111111-1111-4111-8111-000000000001': {
       name: 'ExternalIn',
       lib: 'core',
-      positions: { x: 81, y: -72 },
+      position: { x: 81, y: -72 },
       label: 'OAT (°F)',
-      widget: {
-        kind: 'Slider',
-        config: { value: 60, min: 30, max: 90, step: 1 },
+      editor: {
+        widget: {
+          kind: 'Slider',
+          config: { value: 60, min: 30, max: 90, step: 1 },
+        },
       },
       inputs: {
         connector: { value: 'ui', isConnected: false },
@@ -28,12 +33,12 @@ const datReset = {
           isConnected: false,
         },
       },
-      outputs: { out: { value: 60 } },
+      outputs: { out: { value: 60, isConnected: false } },
     },
     '11111111-1111-4111-8111-000000000002': {
       name: 'Reset',
       lib: 'core',
-      positions: { x: 267, y: 25 },
+      position: { x: 267, y: 25 },
       label: 'OAT → SAT setpoint',
       inputs: {
         in: { value: 60, isConnected: false },
@@ -42,12 +47,12 @@ const datReset = {
         outMin: { value: 65, isConnected: false },
         outMax: { value: 55, isConnected: false },
       },
-      outputs: { out: { value: 60 } },
+      outputs: { out: { value: 60, isConnected: false } },
     },
     '11111111-1111-4111-8111-000000000003': {
       name: 'Pid',
       lib: 'core',
-      positions: { x: 561, y: 107 },
+      position: { x: 561, y: 107 },
       label: 'SAT loop',
       inputs: {
         sp: { value: 60, isConnected: false },
@@ -58,26 +63,28 @@ const datReset = {
         min: { value: 50, isConnected: false },
         max: { value: 70, isConnected: false },
       },
-      outputs: { out: { value: 58.93 } },
+      outputs: { out: { value: 58.93, isConnected: false } },
     },
     '11111111-1111-4111-8111-000000000004': {
       name: 'ExternalOut',
       lib: 'core',
-      positions: { x: 1200, y: -60 },
-      widget: {
-        kind: 'MultiChart',
-        config: {
-          series: [
-            { label: 'OAT' },
-            {
-              label: 'SAT SP',
-              address: '11111111-1111-4111-8111-000000000008',
-            },
-            {
-              label: 'SAT PV',
-              address: '11111111-1111-4111-8111-000000000009',
-            },
-          ],
+      position: { x: 1200, y: -60 },
+      editor: {
+        widget: {
+          kind: 'MultiChart',
+          config: {
+            series: [
+              { label: 'OAT' },
+              {
+                label: 'SAT SP',
+                address: '11111111-1111-4111-8111-000000000008',
+              },
+              {
+                label: 'SAT PV',
+                address: '11111111-1111-4111-8111-000000000009',
+              },
+            ],
+          },
         },
       },
       inputs: {
@@ -92,8 +99,10 @@ const datReset = {
     '11111111-1111-4111-8111-000000000005': {
       name: 'ExternalOut',
       lib: 'core',
-      positions: { x: 244, y: -153.63 },
-      widget: { kind: 'Display', config: { unit: '°F', label: 'OAT' } },
+      position: { x: 244, y: -153.63 },
+      editor: {
+        widget: { kind: 'Display', config: { unit: '°F', label: 'OAT' } },
+      },
       inputs: {
         in: { value: 60, isConnected: false },
         connector: { value: 'ui', isConnected: false },
@@ -106,8 +115,10 @@ const datReset = {
     '11111111-1111-4111-8111-000000000006': {
       name: 'ExternalOut',
       lib: 'core',
-      positions: { x: 344, y: 290 },
-      widget: { kind: 'Display', config: { unit: '°F', label: 'SAT SP' } },
+      position: { x: 344, y: 290 },
+      editor: {
+        widget: { kind: 'Display', config: { unit: '°F', label: 'SAT SP' } },
+      },
       inputs: {
         in: { value: 60, isConnected: false },
         connector: { value: 'ui', isConnected: false },
@@ -120,8 +131,10 @@ const datReset = {
     '11111111-1111-4111-8111-000000000007': {
       name: 'ExternalOut',
       lib: 'core',
-      positions: { x: 736, y: 289 },
-      widget: { kind: 'Display', config: { unit: '°F', label: 'SAT PV' } },
+      position: { x: 736, y: 289 },
+      editor: {
+        widget: { kind: 'Display', config: { unit: '°F', label: 'SAT PV' } },
+      },
       inputs: {
         in: { value: 58.93, isConnected: false },
         connector: { value: 'ui', isConnected: false },
@@ -136,7 +149,7 @@ const datReset = {
     '11111111-1111-4111-8111-000000000008': {
       name: 'ExternalOut',
       lib: 'core',
-      positions: { x: 960, y: -20 },
+      position: { x: 960, y: -20 },
       label: 'SAT SP series',
       inputs: {
         in: { value: 60, isConnected: false },
@@ -150,7 +163,7 @@ const datReset = {
     '11111111-1111-4111-8111-000000000009': {
       name: 'ExternalOut',
       lib: 'core',
-      positions: { x: 960, y: 150 },
+      position: { x: 960, y: 150 },
       label: 'SAT PV series',
       inputs: {
         in: { value: 58.93, isConnected: false },
@@ -166,11 +179,13 @@ const datReset = {
     '11111111-1111-4111-8111-00000000000a': {
       name: 'ExternalOut',
       lib: 'core',
-      positions: { x: 1200, y: 200 },
-      widget: {
-        kind: 'Bar',
-        config: { min: 50, max: 70, label: 'PV vs SP' },
-        configSources: { max: '11111111-1111-4111-8111-000000000008' },
+      position: { x: 1200, y: 200 },
+      editor: {
+        widget: {
+          kind: 'Bar',
+          config: { min: 50, max: 70, label: 'PV vs SP' },
+          configSources: { max: '11111111-1111-4111-8111-000000000008' },
+        },
       },
       inputs: {
         in: { value: 58.93, isConnected: false },
@@ -186,12 +201,14 @@ const datReset = {
     '11111111-1111-4111-8111-00000000000b': {
       name: 'ExternalIn',
       lib: 'core',
-      positions: { x: 81, y: 60 },
+      position: { x: 81, y: 60 },
       label: 'SAT SP (tracks auto)',
-      widget: {
-        kind: 'Slider',
-        config: { value: 60, min: 50, max: 70, step: 0.5 },
-        valueSource: '11111111-1111-4111-8111-000000000008',
+      editor: {
+        widget: {
+          kind: 'Slider',
+          config: { value: 60, min: 50, max: 70, step: 0.5 },
+          valueSource: '11111111-1111-4111-8111-000000000008',
+        },
       },
       inputs: {
         connector: { value: 'ui', isConnected: false },
@@ -200,7 +217,7 @@ const datReset = {
           isConnected: false,
         },
       },
-      outputs: { out: { value: 60 } },
+      outputs: { out: { value: 60, isConnected: false } },
     },
   },
   links: {
@@ -259,9 +276,10 @@ const datReset = {
       targetBlockUuid: '11111111-1111-4111-8111-00000000000a',
     },
   },
-} as Program;
+} satisfies EditorProgram;
 
 const coolingTower = {
+  version: PROGRAM_FORMAT_VERSION,
   name: 'Cooling Tower Stage + Lead/Lag',
   description:
     'Demand → Sequencer stages 0..2 with up/down delays → LeadLag rotates which fan is lead. Press the rotate button to swap the lead.',
@@ -269,11 +287,13 @@ const coolingTower = {
     '22222222-2222-4222-8222-000000000001': {
       name: 'ExternalIn',
       lib: 'core',
-      positions: { x: 10, y: 33 },
+      position: { x: 10, y: 33 },
       label: 'Cooling demand 0–1',
-      widget: {
-        kind: 'Slider',
-        config: { value: 0.3, min: 0, max: 1, step: 0.1 },
+      editor: {
+        widget: {
+          kind: 'Slider',
+          config: { value: 0.3, min: 0, max: 1, step: 0.1 },
+        },
       },
       inputs: {
         connector: { value: 'ui', isConnected: false },
@@ -282,12 +302,12 @@ const coolingTower = {
           isConnected: false,
         },
       },
-      outputs: { out: { value: 0.3 } },
+      outputs: { out: { value: 0.3, isConnected: false } },
     },
     '22222222-2222-4222-8222-000000000002': {
       name: 'Sequencer',
       lib: 'core',
-      positions: { x: 271, y: 15 },
+      position: { x: 271, y: 15 },
       label: '2-stage stager',
       inputs: {
         demand: { value: 0.3, isConnected: false },
@@ -295,14 +315,14 @@ const coolingTower = {
         upDelay: { value: 2000, isConnected: false },
         downDelay: { value: 5000, isConnected: false },
       },
-      outputs: { out: { value: 1 } },
+      outputs: { out: { value: 1, isConnected: false } },
     },
     '22222222-2222-4222-8222-000000000003': {
       name: 'ExternalIn',
       lib: 'core',
-      positions: { x: 13, y: 151 },
+      position: { x: 13, y: 151 },
       label: 'Rotate lead',
-      widget: { kind: 'Button' },
+      editor: { widget: { kind: 'Button' } },
       inputs: {
         connector: { value: 'ui', isConnected: false },
         address: {
@@ -310,25 +330,30 @@ const coolingTower = {
           isConnected: false,
         },
       },
-      outputs: { out: { value: false } },
+      outputs: { out: { value: false, isConnected: false } },
     },
     '22222222-2222-4222-8222-000000000004': {
       name: 'LeadLag',
       lib: 'core',
-      positions: { x: 522, y: 96 },
+      position: { x: 522, y: 96 },
       label: 'Fan A/B rotation',
       inputs: {
         enable: { value: true, isConnected: false },
         rotate: { value: false, isConnected: false },
         demand: { value: 1, isConnected: false },
       },
-      outputs: { a: { value: true }, b: { value: false } },
+      outputs: {
+        a: { value: true, isConnected: false },
+        b: { value: false, isConnected: false },
+      },
     },
     '22222222-2222-4222-8222-000000000005': {
       name: 'ExternalOut',
       lib: 'core',
-      positions: { x: 740, y: 60 },
-      widget: { kind: 'Led', config: { label: 'Fan A', color: '#3ecf6b' } },
+      position: { x: 740, y: 60 },
+      editor: {
+        widget: { kind: 'Led', config: { label: 'Fan A', color: '#3ecf6b' } },
+      },
       inputs: {
         in: { value: true, isConnected: false },
         connector: { value: 'ui', isConnected: false },
@@ -341,8 +366,10 @@ const coolingTower = {
     '22222222-2222-4222-8222-000000000006': {
       name: 'ExternalOut',
       lib: 'core',
-      positions: { x: 740, y: 170 },
-      widget: { kind: 'Led', config: { label: 'Fan B', color: '#3ecf6b' } },
+      position: { x: 740, y: 170 },
+      editor: {
+        widget: { kind: 'Led', config: { label: 'Fan B', color: '#3ecf6b' } },
+      },
       inputs: {
         in: { value: false, isConnected: false },
         connector: { value: 'ui', isConnected: false },
@@ -355,10 +382,12 @@ const coolingTower = {
     '22222222-2222-4222-8222-000000000007': {
       name: 'ExternalOut',
       lib: 'core',
-      positions: { x: 510, y: -88 },
-      widget: {
-        kind: 'Display',
-        config: { unit: 'stages', label: 'Active' },
+      position: { x: 510, y: -88 },
+      editor: {
+        widget: {
+          kind: 'Display',
+          config: { unit: 'stages', label: 'Active' },
+        },
       },
       inputs: {
         in: { value: 1, isConnected: false },
@@ -408,9 +437,10 @@ const coolingTower = {
       targetBlockUuid: '22222222-2222-4222-8222-000000000007',
     },
   },
-} as Program;
+} satisfies EditorProgram;
 
 const economizer = {
+  version: PROGRAM_FORMAT_VERSION,
   name: 'Air-Side Economizer (Enthalpy)',
   description:
     'Compares outdoor and return air enthalpy. Free cooling is available whenever h_OA < h_RA. Drag the OAT/RH/RAT sliders to see the decision flip.',
@@ -418,11 +448,13 @@ const economizer = {
     '33333333-3333-4333-8333-000000000001': {
       name: 'ExternalIn',
       lib: 'core',
-      positions: { x: 40, y: 40 },
+      position: { x: 40, y: 40 },
       label: 'OAT (°C)',
-      widget: {
-        kind: 'Slider',
-        config: { value: 18, min: -10, max: 40, step: 0.5 },
+      editor: {
+        widget: {
+          kind: 'Slider',
+          config: { value: 18, min: -10, max: 40, step: 0.5 },
+        },
       },
       inputs: {
         connector: { value: 'ui', isConnected: false },
@@ -431,16 +463,18 @@ const economizer = {
           isConnected: false,
         },
       },
-      outputs: { out: { value: 18 } },
+      outputs: { out: { value: 18, isConnected: false } },
     },
     '33333333-3333-4333-8333-000000000002': {
       name: 'ExternalIn',
       lib: 'core',
-      positions: { x: 40, y: 130 },
+      position: { x: 40, y: 130 },
       label: 'OA RH (%)',
-      widget: {
-        kind: 'Slider',
-        config: { value: 50, min: 0, max: 100, step: 1 },
+      editor: {
+        widget: {
+          kind: 'Slider',
+          config: { value: 50, min: 0, max: 100, step: 1 },
+        },
       },
       inputs: {
         connector: { value: 'ui', isConnected: false },
@@ -449,16 +483,18 @@ const economizer = {
           isConnected: false,
         },
       },
-      outputs: { out: { value: 50 } },
+      outputs: { out: { value: 50, isConnected: false } },
     },
     '33333333-3333-4333-8333-000000000003': {
       name: 'ExternalIn',
       lib: 'core',
-      positions: { x: 40, y: 230 },
+      position: { x: 40, y: 230 },
       label: 'RAT (°C)',
-      widget: {
-        kind: 'Slider',
-        config: { value: 24, min: 18, max: 30, step: 0.5 },
+      editor: {
+        widget: {
+          kind: 'Slider',
+          config: { value: 24, min: 18, max: 30, step: 0.5 },
+        },
       },
       inputs: {
         connector: { value: 'ui', isConnected: false },
@@ -467,16 +503,18 @@ const economizer = {
           isConnected: false,
         },
       },
-      outputs: { out: { value: 24 } },
+      outputs: { out: { value: 24, isConnected: false } },
     },
     '33333333-3333-4333-8333-000000000004': {
       name: 'ExternalIn',
       lib: 'core',
-      positions: { x: 40, y: 320 },
+      position: { x: 40, y: 320 },
       label: 'RA RH (%)',
-      widget: {
-        kind: 'Slider',
-        config: { value: 50, min: 20, max: 80, step: 1 },
+      editor: {
+        widget: {
+          kind: 'Slider',
+          config: { value: 50, min: 20, max: 80, step: 1 },
+        },
       },
       inputs: {
         connector: { value: 'ui', isConnected: false },
@@ -485,48 +523,50 @@ const economizer = {
           isConnected: false,
         },
       },
-      outputs: { out: { value: 50 } },
+      outputs: { out: { value: 50, isConnected: false } },
     },
     '33333333-3333-4333-8333-000000000005': {
       name: 'Enthalpy',
       lib: 'core',
-      positions: { x: 272, y: 33 },
+      position: { x: 272, y: 33 },
       label: 'Outdoor air',
       inputs: {
         t: { value: 18, isConnected: false },
         rh: { value: 50, isConnected: false },
       },
-      outputs: { out: { value: {} } },
+      outputs: { out: { value: {}, isConnected: false } },
     },
     '33333333-3333-4333-8333-000000000006': {
       name: 'Enthalpy',
       lib: 'core',
-      positions: { x: 275, y: 236 },
+      position: { x: 275, y: 236 },
       label: 'Return air',
       inputs: {
         t: { value: 24, isConnected: false },
         rh: { value: 50, isConnected: false },
       },
-      outputs: { out: { value: {} } },
+      outputs: { out: { value: {}, isConnected: false } },
     },
     '33333333-3333-4333-8333-000000000007': {
       name: 'LessThan',
       lib: 'core',
-      positions: { x: 673, y: 283 },
+      position: { x: 673, y: 283 },
       label: 'h_OA < h_RA?',
       inputs: {
         in1: { value: {}, isConnected: false },
         in2: { value: {}, isConnected: false },
       },
-      outputs: { out: { value: true } },
+      outputs: { out: { value: true, isConnected: false } },
     },
     '33333333-3333-4333-8333-000000000008': {
       name: 'ExternalOut',
       lib: 'core',
-      positions: { x: 935, y: 276 },
-      widget: {
-        kind: 'Led',
-        config: { label: 'Free Cooling', color: '#3ecf6b' },
+      position: { x: 935, y: 276 },
+      editor: {
+        widget: {
+          kind: 'Led',
+          config: { label: 'Free Cooling', color: '#3ecf6b' },
+        },
       },
       inputs: {
         in: { value: true, isConnected: false },
@@ -540,17 +580,19 @@ const economizer = {
     '33333333-3333-4333-8333-000000000009': {
       name: 'ExternalOut',
       lib: 'core',
-      positions: { x: 737, y: 28.63 },
-      widget: {
-        kind: 'MultiChart',
-        config: {
-          series: [
-            { label: 'h_OA' },
-            {
-              label: 'h_RA',
-              address: '33333333-3333-4333-8333-00000000000c',
-            },
-          ],
+      position: { x: 737, y: 28.63 },
+      editor: {
+        widget: {
+          kind: 'MultiChart',
+          config: {
+            series: [
+              { label: 'h_OA' },
+              {
+                label: 'h_RA',
+                address: '33333333-3333-4333-8333-00000000000c',
+              },
+            ],
+          },
         },
       },
       inputs: {
@@ -565,8 +607,10 @@ const economizer = {
     '33333333-3333-4333-8333-00000000000a': {
       name: 'ExternalOut',
       lib: 'core',
-      positions: { x: 480, y: -79.25 },
-      widget: { kind: 'Display', config: { unit: 'kJ/kg', label: 'h OA' } },
+      position: { x: 480, y: -79.25 },
+      editor: {
+        widget: { kind: 'Display', config: { unit: 'kJ/kg', label: 'h OA' } },
+      },
       inputs: {
         in: { value: {}, isConnected: false },
         connector: { value: 'ui', isConnected: false },
@@ -579,8 +623,10 @@ const economizer = {
     '33333333-3333-4333-8333-00000000000b': {
       name: 'ExternalOut',
       lib: 'core',
-      positions: { x: 484, y: 454 },
-      widget: { kind: 'Display', config: { unit: 'kJ/kg', label: 'h RA' } },
+      position: { x: 484, y: 454 },
+      editor: {
+        widget: { kind: 'Display', config: { unit: 'kJ/kg', label: 'h RA' } },
+      },
       inputs: {
         in: { value: {}, isConnected: false },
         connector: { value: 'ui', isConnected: false },
@@ -595,7 +641,7 @@ const economizer = {
     '33333333-3333-4333-8333-00000000000c': {
       name: 'ExternalOut',
       lib: 'core',
-      positions: { x: 480, y: 140 },
+      position: { x: 480, y: 140 },
       label: 'h_RA series',
       inputs: {
         in: { value: {}, isConnected: false },
@@ -675,9 +721,10 @@ const economizer = {
       targetBlockUuid: '33333333-3333-4333-8333-00000000000c',
     },
   },
-} as Program;
+} satisfies EditorProgram;
 
 const antiShortCycle = {
+  version: PROGRAM_FORMAT_VERSION,
   name: 'Anti-Short-Cycle Compressor',
   description:
     'Toggle the call: OnDelay holds the compressor off until the call has been steady for 3 s; OffDelay keeps the cool-down lockout active for 10 s after the call drops.',
@@ -685,9 +732,9 @@ const antiShortCycle = {
     '44444444-4444-4444-8444-000000000001': {
       name: 'ExternalIn',
       lib: 'core',
-      positions: { x: 18, y: 32 },
+      position: { x: 18, y: 32 },
       label: 'Cooling call',
-      widget: { kind: 'Checkbox', config: { value: false } },
+      editor: { widget: { kind: 'Checkbox', config: { value: false } } },
       inputs: {
         connector: { value: 'ui', isConnected: false },
         address: {
@@ -699,32 +746,34 @@ const antiShortCycle = {
     '44444444-4444-4444-8444-000000000002': {
       name: 'OnDelay',
       lib: 'core',
-      positions: { x: 266, y: 12 },
+      position: { x: 266, y: 12 },
       label: '3 s warmup',
       inputs: {
         in: { value: false, isConnected: false },
         delay: { value: 3000, isConnected: false },
       },
-      outputs: { out: { value: false } },
+      outputs: { out: { value: false, isConnected: false } },
     },
     '44444444-4444-4444-8444-000000000003': {
       name: 'OffDelay',
       lib: 'core',
-      positions: { x: 268, y: 145 },
+      position: { x: 268, y: 145 },
       label: '10 s cool-down',
       inputs: {
         in: { value: false, isConnected: false },
         delay: { value: 10000, isConnected: false },
       },
-      outputs: { out: { value: true } },
+      outputs: { out: { value: true, isConnected: false } },
     },
     '44444444-4444-4444-8444-000000000004': {
       name: 'ExternalOut',
       lib: 'core',
-      positions: { x: 505, y: 6 },
-      widget: {
-        kind: 'Led',
-        config: { label: 'Compressor (3s warmup)', color: '#3ecf6b' },
+      position: { x: 505, y: 6 },
+      editor: {
+        widget: {
+          kind: 'Led',
+          config: { label: 'Compressor (3s warmup)', color: '#3ecf6b' },
+        },
       },
       inputs: {
         in: { value: false, isConnected: false },
@@ -738,10 +787,12 @@ const antiShortCycle = {
     '44444444-4444-4444-8444-000000000005': {
       name: 'ExternalOut',
       lib: 'core',
-      positions: { x: 505, y: 139 },
-      widget: {
-        kind: 'Led',
-        config: { label: 'Cool-down (10s)', color: '#f59e0b' },
+      position: { x: 505, y: 139 },
+      editor: {
+        widget: {
+          kind: 'Led',
+          config: { label: 'Cool-down (10s)', color: '#f59e0b' },
+        },
       },
       inputs: {
         in: { value: true, isConnected: false },
@@ -755,8 +806,8 @@ const antiShortCycle = {
     '44444444-4444-4444-8444-000000000006': {
       name: 'ExternalOut',
       lib: 'core',
-      positions: { x: 265, y: -118 },
-      widget: { kind: 'Display', config: { label: 'Call' } },
+      position: { x: 265, y: -118 },
+      editor: { widget: { kind: 'Display', config: { label: 'Call' } } },
       inputs: {
         in: { value: 0, isConnected: false },
         connector: { value: 'ui', isConnected: false },
@@ -799,9 +850,10 @@ const antiShortCycle = {
       targetBlockUuid: '44444444-4444-4444-8444-000000000006',
     },
   },
-} as Program;
+} satisfies EditorProgram;
 
 const outdoorLighting = {
+  version: PROGRAM_FORMAT_VERSION,
   name: 'Outdoor Lighting (dusk-to-cutoff)',
   description:
     "Streetlight-style lighting: turns on at sunset (Sun.isDay = false) AND while a Schedule says we're in the active window (16:00–23:30 daily). Edit the lat/lon, tzOffset, and schedule to relocate.",
@@ -809,7 +861,7 @@ const outdoorLighting = {
     '55555555-5555-4555-8555-000000000001': {
       name: 'Sun',
       lib: 'core',
-      positions: { x: 36, y: 94 },
+      position: { x: 36, y: 94 },
       label: 'NYC sun position',
       inputs: {
         lat: { value: 40.71, isConnected: false },
@@ -817,15 +869,15 @@ const outdoorLighting = {
         tzOffset: { value: -300, isConnected: false },
       },
       outputs: {
-        sunrise: { value: 441.12 },
-        sunset: { value: 999.61 },
-        isDay: { value: false },
+        sunrise: { value: 441.12, isConnected: false },
+        sunset: { value: 999.61, isConnected: false },
+        isDay: { value: false, isConnected: false },
       },
     },
     '55555555-5555-4555-8555-000000000002': {
       name: 'Schedule',
       lib: 'core',
-      positions: { x: 312, y: 343 },
+      position: { x: 312, y: 343 },
       label: 'Active hours',
       inputs: {
         start: { value: '16:00', isConnected: false },
@@ -833,34 +885,36 @@ const outdoorLighting = {
         days: { value: 'MTWRFSU', isConnected: false },
         tzOffset: { value: -300, isConnected: false },
       },
-      outputs: { occupied: { value: true } },
+      outputs: { occupied: { value: true, isConnected: false } },
     },
     '55555555-5555-4555-8555-000000000003': {
       name: 'Not',
       lib: 'core',
-      positions: { x: 308, y: 85 },
+      position: { x: 308, y: 85 },
       label: 'isNight',
       inputs: { in: { value: false, isConnected: false } },
-      outputs: { out: { value: true } },
+      outputs: { out: { value: true, isConnected: false } },
     },
     '55555555-5555-4555-8555-000000000004': {
       name: 'And',
       lib: 'core',
-      positions: { x: 516, y: 115 },
+      position: { x: 516, y: 115 },
       label: 'Lights enable',
       inputs: {
         in1: { value: true, isConnected: false },
         in2: { value: true, isConnected: false },
       },
-      outputs: { out: { value: true } },
+      outputs: { out: { value: true, isConnected: false } },
     },
     '55555555-5555-4555-8555-000000000005': {
       name: 'ExternalOut',
       lib: 'core',
-      positions: { x: 729, y: 110 },
-      widget: {
-        kind: 'Led',
-        config: { label: 'Streetlight', color: '#f59e0b' },
+      position: { x: 729, y: 110 },
+      editor: {
+        widget: {
+          kind: 'Led',
+          config: { label: 'Streetlight', color: '#f59e0b' },
+        },
       },
       inputs: {
         in: { value: true, isConnected: false },
@@ -874,8 +928,10 @@ const outdoorLighting = {
     '55555555-5555-4555-8555-000000000006': {
       name: 'ExternalOut',
       lib: 'core',
-      positions: { x: 37, y: -83 },
-      widget: { kind: 'Display', config: { unit: 'min', label: 'Sunrise' } },
+      position: { x: 37, y: -83 },
+      editor: {
+        widget: { kind: 'Display', config: { unit: 'min', label: 'Sunrise' } },
+      },
       inputs: {
         in: { value: 441.12, isConnected: false },
         connector: { value: 'ui', isConnected: false },
@@ -888,8 +944,10 @@ const outdoorLighting = {
     '55555555-5555-4555-8555-000000000007': {
       name: 'ExternalOut',
       lib: 'core',
-      positions: { x: 263, y: -87 },
-      widget: { kind: 'Display', config: { unit: 'min', label: 'Sunset' } },
+      position: { x: 263, y: -87 },
+      editor: {
+        widget: { kind: 'Display', config: { unit: 'min', label: 'Sunset' } },
+      },
       inputs: {
         in: { value: 999.61, isConnected: false },
         connector: { value: 'ui', isConnected: false },
@@ -902,10 +960,12 @@ const outdoorLighting = {
     '55555555-5555-4555-8555-000000000008': {
       name: 'ExternalOut',
       lib: 'core',
-      positions: { x: 307, y: 203 },
-      widget: {
-        kind: 'Led',
-        config: { label: 'Daytime', color: '#6b9eff' },
+      position: { x: 307, y: 203 },
+      editor: {
+        widget: {
+          kind: 'Led',
+          config: { label: 'Daytime', color: '#6b9eff' },
+        },
       },
       inputs: {
         in: { value: false, isConnected: false },
@@ -919,10 +979,12 @@ const outdoorLighting = {
     '55555555-5555-4555-8555-000000000009': {
       name: 'ExternalOut',
       lib: 'core',
-      positions: { x: 604, y: 338 },
-      widget: {
-        kind: 'Led',
-        config: { label: 'Schedule active', color: '#3ecf6b' },
+      position: { x: 604, y: 338 },
+      editor: {
+        widget: {
+          kind: 'Led',
+          config: { label: 'Schedule active', color: '#3ecf6b' },
+        },
       },
       inputs: {
         in: { value: true, isConnected: false },
@@ -984,7 +1046,7 @@ const outdoorLighting = {
       targetBlockUuid: '55555555-5555-4555-8555-000000000009',
     },
   },
-} as Program;
+} satisfies EditorProgram;
 
 export const examplePrograms = [
   datReset,

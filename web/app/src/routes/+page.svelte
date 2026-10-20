@@ -11,16 +11,11 @@
   } from '@xyflow/svelte';
 
   import { toast } from 'svelte-sonner';
-  import type {
-    BlockDesc,
-    BlockNotification,
-    BlockPin,
-    Program,
-  } from 'logic-mesh';
+  import type { BlockDesc, BlockNotification, BlockPin } from 'logic-mesh';
 
   // Shape of the `node.data` slot produced by `prepare()` from a saved
-  // `Program`. Mirrors `data: { name, lib, label?, inputs?, outputs? }`
-  // in `lib/Program.ts`. Typed here so the loader can stop reaching
+  // `Program`. Mirrors `data: { name, lib, label?, widget?, inputs?,
+  // outputs? }` in `lib/Program.ts`. Typed here so the loader can stop reaching
   // through `any`.
   type ProgramNodeData = {
     name: string;
@@ -44,7 +39,12 @@
   import { attachUiConnector, forgetBlockAddress } from '$lib/UiConnector';
   import { useEngine } from '$lib/Engine';
   import { model, blockInstances } from '$lib/model.svelte';
-  import { prepare, pushToEngine, save } from '$lib/Program';
+  import {
+    prepare,
+    pushToEngine,
+    save,
+    type EditorProgram,
+  } from '$lib/Program';
   import {
     clipboardHasContent,
     clipboardRead,
@@ -290,7 +290,7 @@
     }).catch((err) => toast.error(`Paste failed: ${err}`));
   }
 
-  function onLoad(program: Program) {
+  function onLoad(program: EditorProgram) {
     enqueueProgramOp(async () => {
       await doReset();
       await loadProgram(program);
@@ -414,8 +414,14 @@
     // change-of-value notifications — fired while the engine is still
     // processing the load — get dropped by the watcher callback
     // (`blockInstances.get(id)` returns undefined).
-    const prog = program as Program;
-    let { nodes: newNodes, edges: newEdges, migration } = prepare(prog);
+    // `prepare` also brings an older save to the current format, and
+    // throws on one from a newer format before anything is built.
+    let {
+      program: prog,
+      nodes: newNodes,
+      edges: newEdges,
+      migration,
+    } = prepare(program);
 
     // Surface what the legacy migration did. Anything dropped is data
     // loss and gets its own warning; conversions are folded into one

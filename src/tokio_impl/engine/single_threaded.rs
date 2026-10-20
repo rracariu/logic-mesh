@@ -242,6 +242,20 @@ mod tests {
             )
             .await;
         }
+
+        #[tokio::test(flavor = "current_thread")]
+        async fn a_1_0_program_loads_and_saves_in_the_current_format() {
+            round_trip::a_1_0_program_loads_and_saves_in_the_current_format(
+                SingleThreadedEngine::new(),
+            )
+            .await;
+        }
+
+        #[tokio::test(flavor = "current_thread")]
+        async fn a_block_saved_at_a_compatible_version_loads() {
+            round_trip::a_block_saved_at_a_compatible_version_loads(SingleThreadedEngine::new())
+                .await;
+        }
     }
 
     /// Regression: a load that failed on a block type, a link or a pin
@@ -474,6 +488,12 @@ mod tests {
         #[tokio::test(flavor = "current_thread")]
         async fn an_engine_is_configured_through_the_trait() {
             configuration::an_engine_is_configured_through_the_trait(SingleThreadedEngine::new())
+                .await;
+        }
+
+        #[tokio::test(flavor = "current_thread")]
+        async fn editor_metadata_is_set_through_the_trait() {
+            configuration::editor_metadata_is_set_through_the_trait(SingleThreadedEngine::new())
                 .await;
         }
     }
@@ -1016,24 +1036,13 @@ mod tests {
             );
 
             let mut blocks = std::collections::BTreeMap::new();
-            blocks.insert(
-                ext_uuid.to_string(),
-                ProgramBlock {
-                    name: "ExternalOut".to_string(),
-                    lib: "core".to_string(),
-                    label: None,
-                    positions: None,
-                    inputs,
-                    outputs: Default::default(),
-                },
-            );
+            let mut block = ProgramBlock::new("ExternalOut", "core");
+            block.inputs = inputs;
+            blocks.insert(ext_uuid.to_string(), block);
 
-            let program = Program {
-                name: Some("saved-external-out".to_string()),
-                description: None,
-                blocks,
-                links: Default::default(),
-            };
+            let mut program = Program::new();
+            program.name = Some("saved-external-out".to_string());
+            program.blocks = blocks;
 
             let mut eng = SingleThreadedEngine::new();
             eng.add_connector(&name, mock.clone()).expect("added");
