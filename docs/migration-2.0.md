@@ -984,10 +984,12 @@ you add them, and is the shorter way to build a program in code.
 ### Loads are all or nothing
 
 **What changed.** `schedule_program_blocks` and `load_program` check the
-whole program before they schedule any block, and a load that still fails
-while wiring removes the program's blocks again. 1.x scheduled block by
-block and left a failed load half applied. Programs that 1.x loaded may now
-be rejected:
+whole program before they schedule any block. A `load_program` that still
+fails while wiring removes the program's blocks again. The links and pin
+values of a `schedule_program_blocks` program are applied when `run()`
+starts, and one that still fails then is dropped with a warning, leaving the
+blocks scheduled. 1.x scheduled block by block and left a failed load half
+applied. Programs that 1.x loaded may now be rejected:
 
 | Rejected with | When |
 |---|---|
