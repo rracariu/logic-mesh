@@ -44,13 +44,16 @@ async function until<T>(
   }
 }
 
-/** The latest value a notification reported for the block's `out` pin. */
+/** The latest value a notification reported for the block's `out` pin,
+ * or `undefined` while it is Null. */
 function lastOut(notes: BlockNotification[], id: string): unknown {
-  return notes
-    .filter((n) => n.id === id)
-    .flatMap((n) => n.changes)
-    .filter((c) => c.name === 'out')
-    .at(-1)?.value;
+  return (
+    notes
+      .filter((n) => n.id === id)
+      .flatMap((n) => n.changes)
+      .filter((c) => c.name === 'out')
+      .at(-1)?.value ?? undefined
+  );
 }
 
 /** The latest fault notification for the block, if any. */
@@ -121,8 +124,7 @@ describe('defineJsBlocks', () => {
     const jsBlocks = defineJsBlocks(
       {
         // The multi-input idiom: one object argument carries the named
-        // inputs. The bridge encodes dicts as Maps; the façade hands
-        // the function a plain object.
+        // inputs, which the bridge hands over as a plain object.
         stats: (value) => {
           received = value;
           const { a, b } = value as { a: number; b: number };
@@ -149,13 +151,12 @@ describe('defineJsBlocks', () => {
       tag: 'sum',
       inner: { deep: 'yes' },
     });
-    // On the way out the bridge encodes the dict as a Map again.
-    expect(out).toBeInstanceOf(Map);
-    const dict = out as Map<string, unknown>;
-    expect(dict.get('sum')).toBe(42);
-    expect(dict.get('args')).toEqual([20, 22]);
-    expect(dict.get('nested')).toBeInstanceOf(Map);
-    expect((dict.get('nested') as Map<string, unknown>).get('ok')).toBe(true);
+    // On the way out the dict is a plain object again.
+    expect(out).toStrictEqual({
+      sum: 42,
+      args: [20, 22],
+      nested: { ok: true },
+    });
   });
 
   it('coerces an undefined return to null instead of faulting', async () => {
@@ -354,7 +355,8 @@ describe('defineJsBlocks', () => {
     expect(await s.command.listConnectors()).toContain('jsb-race');
   });
 
-  it('turns nulls into undefined across the bridge — a measured limit', async () => {
+  // Regression: the bridge handed nulls to JS as undefined.
+  it('round-trips nulls across the bridge', async () => {
     const { session: s } = session();
     let received: unknown;
     const jsBlocks = defineJsBlocks(
@@ -369,14 +371,15 @@ describe('defineJsBlocks', () => {
     await jsBlocks.attach(s.command);
 
     const id = await jsBlocks.addBlock(s.command, 'probe');
-    await s.command.writeBlockInput(id, 'in', { x: null, z: [null] });
+    await s.command.writeBlockInput(id, 'in', {
+      x: null,
+      y: undefined,
+      z: [null],
+    });
 
     await until(() => received, 'the probed value');
-    // Keys and array slots survive, but the nulls arrive as undefined.
-    // Pinned here so a bridge change that starts round-tripping nulls
-    // shows up as a failing expectation.
-    expect(Object.keys(received as object)).toEqual(['x', 'z']);
-    expect(received).toEqual({ x: undefined, z: [undefined] });
+    // Keys and array slots survive, and an undefined arrives as null.
+    expect(received).toStrictEqual({ x: null, y: null, z: [null] });
   });
 
   it('coerces safe BigInts to numbers and faults on unsafe ones', async () => {
@@ -427,13 +430,9 @@ describe('defineJsBlocks', () => {
     await s.command.writeBlockInput(id, 'in', [{ a: 1 }, { b: 2 }]);
 
     const out = await until(() => lastOut(notes, id), 'the list result');
-    // In: dict elements became plain objects. Out: they are Maps again.
-    expect(received).toEqual([{ a: 1 }, { b: 2 }]);
-    const list = out as Map<string, unknown>[];
-    expect(Array.isArray(list)).toBe(true);
-    expect(list[0]).toBeInstanceOf(Map);
-    expect(list[0].get('b')).toBe(2);
-    expect(list[1].get('a')).toBe(1);
+    // Dict elements are plain objects, both ways.
+    expect(received).toStrictEqual([{ a: 1 }, { b: 2 }]);
+    expect(out).toStrictEqual([{ b: 2 }, { a: 1 }]);
   });
 
   it('serves an ExternalOut sink through publish', async () => {

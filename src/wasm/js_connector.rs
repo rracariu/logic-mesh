@@ -140,6 +140,7 @@ use crate::base::connector::{
 };
 use crate::base::error::{ConnectorError, ExternalError, RequestError};
 use crate::wasm::error::{js_detail, js_error};
+use crate::wasm::types::to_js_value;
 
 /// The value callback handed to the JS `subscribe` method.
 ///
@@ -237,8 +238,7 @@ impl Connector for JsConnector {
         Box::pin(async move {
             let error = |detail: String| ConnectorError::publish(address.clone(), detail);
 
-            let value =
-                serde_wasm_bindgen::to_value(&value).map_err(|err| error(err.to_string()))?;
+            let value = to_js_value(&value).map_err(|err| error(err.to_string()))?;
             let ret = func
                 .call2(&this, &JsValue::from_str(&address), &value)
                 .map_err(|err| error(js_detail(&err)))?;
@@ -259,8 +259,7 @@ impl Connector for JsConnector {
         Box::pin(async move {
             let error = |detail: String| ConnectorError::request(address.clone(), detail);
 
-            let value =
-                serde_wasm_bindgen::to_value(&value).map_err(|err| error(err.to_string()))?;
+            let value = to_js_value(&value).map_err(|err| error(err.to_string()))?;
             let ret = func
                 .call2(&this, &JsValue::from_str(&address), &value)
                 .map_err(|err| error(js_detail(&err)))?;

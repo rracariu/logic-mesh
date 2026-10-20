@@ -48,13 +48,16 @@ async function until<T>(
   }
 }
 
-/** The latest value notifications reported for pin `pin` of block `id`. */
+/** The latest value notifications reported for pin `pin` of block `id`,
+ * or `undefined` while it is Null. */
 function last(notes: BlockNotification[], id: string, pin = 'out'): unknown {
-  return notes
-    .filter((n) => n.id === id)
-    .flatMap((n) => n.changes)
-    .filter((c) => c.name === pin)
-    .at(-1)?.value;
+  return (
+    notes
+      .filter((n) => n.id === id)
+      .flatMap((n) => n.changes)
+      .filter((c) => c.name === pin)
+      .at(-1)?.value ?? undefined
+  );
 }
 
 /** Awaits `promise`, expecting it to reject with a `LogicMeshError`. */
@@ -199,6 +202,78 @@ describe('EngineCommand', () => {
     await command.removeBlock(id);
     await until(() => (unsubscribed ? true : undefined), 'the unsubscribe');
     await command.removeConnector(name);
+  });
+});
+
+describe('the value encoding', () => {
+  // Regression: watch notifications, evalBlock, writeBlock* and JS block
+  // and connector calls handed a Dict to JS as a Map and Null as
+  // undefined, where inspectBlock and getProgram gave a plain object and
+  // null.
+  it('is the same from every method and callback', async () => {
+    const session = track(createEngineSession({ scanInterval: 10 }));
+    const echo: BlockDesc = {
+      ...jsDesc('Echo'),
+      lib: `encoding-${crypto.randomUUID()}`,
+      inputs: [
+        { name: 'in', kind: 'dict' },
+        { name: 'unset', kind: 'number' },
+      ],
+      outputs: [{ name: 'out', kind: 'dict' }],
+    };
+    const calls: unknown[][] = [];
+    session.engine.registerBlock(echo, () => (inputs) => {
+      calls.push(inputs);
+      return [inputs[0]];
+    });
+    session.start();
+    const notes: BlockNotification[] = [];
+    await session.watch((n) => notes.push(n));
+    const { command } = session;
+    const dict = { a: 1, nested: { b: 'x' }, list: [{ c: true }] };
+
+    expect(await command.evalBlock('Dict', [['a'], [1]])).toStrictEqual([
+      { a: 1 },
+    ]);
+
+    const id = await command.addBlock('Dict');
+    await command.writeBlockInput(id, 'keys', ['a']);
+    await command.writeBlockInput(id, 'values', [1]);
+    expect(await until(() => last(notes, id), 'the Dict output')).toEqual({
+      a: 1,
+    });
+    expect((await command.inspectBlock(id)).outputs.out.val).toStrictEqual({
+      a: 1,
+    });
+    const program = await command.getProgram();
+    expect(program.blocks[id].outputs?.out.value).toStrictEqual({ a: 1 });
+
+    // Written twice, so the value resolved is the same whether it is
+    // the one written or the one it replaced.
+    await command.writeBlockOutput(id, 'out', dict);
+    expect(await command.writeBlockOutput(id, 'out', dict)).toStrictEqual(dict);
+    await command.writeBlockOutput(id, 'out', null);
+    expect(await command.writeBlockOutput(id, 'out', null)).toBeNull();
+    const cleared = await until(
+      () =>
+        notes
+          .filter((n) => n.id === id)
+          .flatMap((n) => n.changes)
+          .find((c) => c.name === 'out' && c.value === null),
+      'the Null output change',
+    );
+    expect(cleared.value).toBeNull();
+    expect(await command.writeBlockInput(id, 'keys', null)).toStrictEqual([
+      'a',
+    ]);
+    expect(await command.writeBlockInput(id, 'keys', ['b'])).toBeNull();
+
+    const echoId = await command.addBlock(echo.name, undefined, echo.lib);
+    await command.writeBlockInput(echoId, 'in', dict);
+    expect(
+      await until(() => last(notes, echoId), 'the echoed Dict'),
+    ).toStrictEqual(dict);
+    expect(calls.at(-1)).toStrictEqual([dict, null]);
   });
 });
 
@@ -392,9 +467,9 @@ describe('registerBlock', () => {
       const id = await command.addBlock(desc.name, undefined, desc.lib);
       await command.writeBlockInput(id, 'in', 1);
       expect((await command.inspectBlock(id)).state).toBe('running');
-      const outputs = await command.evalBlock(desc.name, [1], desc.lib);
-      expect(outputs).toHaveLength(1);
-      expect(outputs[0] ?? null).toBeNull();
+      expect(await command.evalBlock(desc.name, [1], desc.lib)).toStrictEqual([
+        null,
+      ]);
     }
   });
 

@@ -18,9 +18,9 @@ export type WithElementRef<T, U extends HTMLElement = HTMLElement> = T & {
 
 /**
  * Haystack-encoded number, e.g. `{ _kind: "number", val: 47.4, unit: "kJ/kg" }`.
- * libhaystack serializes a unit-bearing `Number` via `serialize_map`, which
- * `serde-wasm-bindgen` lowers to a JS `Map`; plain JSON paths give an object.
- * Unit-less numbers cross the wasm boundary as primitives.
+ * The engine hands a unit-bearing `Number` to JS as a plain object; a JS
+ * `Map` of the same entries is read too. Unit-less numbers cross the wasm
+ * boundary as primitives.
  */
 export type HaystackNumberRecord = {
   _kind: 'number';

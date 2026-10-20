@@ -11,6 +11,7 @@ use std::collections::BTreeMap;
 
 use libhaystack::val::Value;
 use serde::{Deserialize, Serialize};
+use wasm_bindgen::JsValue;
 use wasm_bindgen::prelude::wasm_bindgen;
 
 use crate::base::{
@@ -47,6 +48,17 @@ import type {
 } from './index.js';
 "#;
 
+/// Converts `value` for JavaScript, in the one encoding every binding
+/// hands values to JavaScript in: JSON-compatible values, so that a
+/// Haystack value has the same shape from every method and callback. A
+/// map, such as a Haystack Dict, is a plain object, not a `Map`, and a
+/// missing value, or `Null`, is `null`, not `undefined`.
+pub(crate) fn to_js_value<T: Serialize + ?Sized>(
+    value: &T,
+) -> Result<JsValue, serde_wasm_bindgen::Error> {
+    value.serialize(&serde_wasm_bindgen::Serializer::json_compatible())
+}
+
 /// Block field properties, inputs or output
 #[derive(Default, Clone, Serialize, Deserialize)]
 pub(crate) struct JsBlockPin {
@@ -78,7 +90,9 @@ pub(crate) struct JsBlockDesc {
     pub(crate) inputs: Vec<JsBlockPin>,
     /// Output pin descriptors.
     pub(crate) outputs: Vec<JsBlockPin>,
-    /// Optional run condition expression.
+    /// Optional run condition expression; left out of the JavaScript
+    /// object when the block has none.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) run_condition: Option<String>,
 }
 

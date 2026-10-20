@@ -7,7 +7,7 @@ use crate::single_threaded::SingleThreadedEngine;
 use crate::wasm::engine_command::EngineCommand;
 use crate::wasm::error::{js_error, js_error_from, js_type_name};
 use crate::wasm::js_block::JS_FNS;
-use crate::wasm::types::JsBlockDesc;
+use crate::wasm::types::{JsBlockDesc, to_js_value};
 use js_sys::Array;
 
 use wasm_bindgen::prelude::wasm_bindgen;
@@ -52,7 +52,7 @@ impl BlocksEngine {
         let arr = Array::new();
 
         list_registered_blocks().into_iter().for_each(|block| {
-            if let Ok(desc) = serde_wasm_bindgen::to_value(&JsBlockDesc::from(block)) {
+            if let Ok(desc) = to_js_value(&JsBlockDesc::from(block)) {
                 arr.push(&desc);
             }
         });

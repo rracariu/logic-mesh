@@ -44,13 +44,16 @@ async function until<T>(
   }
 }
 
-/** The latest value a notification reported for the block's `out` pin. */
+/** The latest value a notification reported for the block's `out` pin,
+ * or `undefined` while it is Null. */
 function lastOut(notes: BlockNotification[], id: string): unknown {
-  return notes
-    .filter((n) => n.id === id)
-    .flatMap((n) => n.changes)
-    .filter((c) => c.name === 'out')
-    .at(-1)?.value;
+  return (
+    notes
+      .filter((n) => n.id === id)
+      .flatMap((n) => n.changes)
+      .filter((c) => c.name === 'out')
+      .at(-1)?.value ?? undefined
+  );
 }
 
 /** A promise plus its externally-callable resolver. */

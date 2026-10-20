@@ -17,7 +17,7 @@ use crate::base::error::{EngineError, ErrorCode, RequestError, parse_block_uuid,
 use crate::base::program::{EditorMetadata, LinkData, Position, Program};
 use crate::wasm::MAX_SAFE_INTEGER;
 use crate::wasm::error::{js_error, js_error_from};
-use crate::wasm::types::{JsBlockInspection, JsWatchNotification};
+use crate::wasm::types::{JsBlockInspection, JsWatchNotification, to_js_value};
 
 /// Commands a running instance of a Block Engine.
 ///
@@ -30,6 +30,12 @@ use crate::wasm::types::{JsBlockInspection, JsWatchNotification};
 /// `Error` whose `code` property is the stable name of the failure —
 /// `BlockInstanceNotFound`, `UnsupportedProgramVersion`, … — and whose
 /// `message` describes it.
+///
+/// Haystack values reach JavaScript in one encoding, from every method
+/// and in every watch notification, JS block call and connector call
+/// alike: the Haystack JSON encoding as JSON-compatible values. A Dict
+/// is a plain object, never a `Map`, and `Null`, or a missing value, is
+/// `null`, never `undefined`.
 #[wasm_bindgen]
 pub struct EngineCommand {
     client: EngineClient,
@@ -40,18 +46,10 @@ fn block_id(uuid: &str) -> Result<Uuid, JsValue> {
     parse_block_uuid(uuid).map_err(|err| js_error(err.into()))
 }
 
-/// Converts a response for JavaScript.
+/// Converts a response for JavaScript, in the bindings' one encoding
+/// (see [`to_js_value`]).
 fn to_js<T: Serialize>(value: &T) -> Result<JsValue, JsValue> {
-    serde_wasm_bindgen::to_value(value)
-        .map_err(|err| js_error_from(ErrorCode::Serialization, err.to_string()))
-}
-
-/// Converts a response for JavaScript as plain JSON-compatible values:
-/// maps are objects, not `Map`s, and a missing value is `null`.
-fn to_json_js<T: Serialize>(value: &T) -> Result<JsValue, JsValue> {
-    value
-        .serialize(&serde_wasm_bindgen::Serializer::json_compatible())
-        .map_err(|err| js_error_from(ErrorCode::Serialization, err.to_string()))
+    to_js_value(value).map_err(|err| js_error_from(ErrorCode::Serialization, err.to_string()))
 }
 
 /// Reads a value written from JavaScript, for `target`. `null` and
@@ -234,7 +232,8 @@ impl EngineCommand {
     /// previous value.
     ///
     /// `value` is a Haystack value in its JSON encoding, made of plain
-    /// objects, arrays and `Map`s; `null` and `undefined` write `Null`.
+    /// objects and arrays — `Map`s are read as Dicts too; `null` and
+    /// `undefined` write `Null`.
     /// Anything else, such as a `Date` or a function, rejects with the
     /// `InvalidValue` code.
     #[wasm_bindgen(js_name = "writeBlockOutput", unchecked_return_type = "unknown")]
@@ -255,10 +254,11 @@ impl EngineCommand {
     }
 
     /// Writes a value to a block's input pin, resolving with the input's
-    /// previous value, or `undefined` if it had none.
+    /// previous value, or `null` if it had none.
     ///
     /// `value` is a Haystack value in its JSON encoding, made of plain
-    /// objects, arrays and `Map`s; `null` and `undefined` write `Null`.
+    /// objects and arrays — `Map`s are read as Dicts too; `null` and
+    /// `undefined` write `Null`.
     /// Anything else, such as a `Date` or a function, rejects with the
     /// `InvalidValue` code.
     #[wasm_bindgen(js_name = "writeBlockInput", unchecked_return_type = "unknown")]
@@ -309,7 +309,7 @@ impl EngineCommand {
     #[wasm_bindgen(js_name = "getProgram", unchecked_return_type = "Program")]
     pub async fn get_program(&self) -> Result<JsValue, JsValue> {
         let program = self.client.save_program().await.map_err(js_error)?;
-        to_json_js(&program)
+        to_js(&program)
     }
 
     /// Resolves with a block's state and pin values, as plain
@@ -321,7 +321,7 @@ impl EngineCommand {
             .inspect_block(block_id(&block_uuid)?)
             .await
             .map_err(js_error)?;
-        to_json_js(&JsBlockInspection::from(block))
+        to_js(&JsBlockInspection::from(block))
     }
 
     /// Evaluates a block by name, returning its output values.
@@ -407,7 +407,7 @@ impl EngineCommand {
         // `removeWatch`, or with the engine.
         wasm_bindgen_futures::spawn_local(async move {
             while let Some(msg) = notifications.recv().await {
-                let delivered = serde_wasm_bindgen::to_value::<JsWatchNotification>(&msg.into())
+                let delivered = to_js_value(&JsWatchNotification::from(msg))
                     .map_err(|err| format!("Failed to serialize watch message: {err:?}"))
                     .and_then(|notification| {
                         callback

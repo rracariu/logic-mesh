@@ -270,6 +270,33 @@ describe('TypedBlock.executeImpl', () => {
     expect(executeSpy).not.toHaveBeenCalled();
   });
 
+  // The engine hands a pin with no value to JS as `null`, as every
+  // binding does; the block reads it as unset, not as a value.
+  it('reads a null input as unset', async () => {
+    const b = new TestBlock();
+    const executeSpy = vi.spyOn(b, 'execute');
+    await expect(b.runImpl([null, 'hello'])).resolves.toBeUndefined();
+    expect(executeSpy).not.toHaveBeenCalled();
+
+    const seen: unknown[][] = [];
+    const OptionalBase = defineBlock({
+      desc,
+      inputs: [['x', z.number().optional()]] as const,
+      outputs: [['out', z.boolean()]] as const,
+      execute([x]) {
+        seen.push([x]);
+        return Promise.resolve([x === undefined]);
+      },
+    });
+    class OptionalBlock extends OptionalBase {
+      runImpl(inputs: unknown[]) {
+        return this.executeImpl(inputs as any);
+      }
+    }
+    await expect(new OptionalBlock().runImpl([null])).resolves.toEqual([true]);
+    expect(seen).toEqual([[undefined]]);
+  });
+
   it('materializes a .default(...) for an unset input and executes', async () => {
     const seen: unknown[][] = [];
     const DefaultBase = defineBlock({
@@ -351,13 +378,14 @@ async function until<T>(
 }
 
 /** All values notifications reported for the block's `out` pin, in
- * order. Valueless changes are dropped: the block-added notification
- * reports every output pin as a change with no value. */
+ * order. Null changes are dropped: the block-added notification
+ * reports every output pin as a change, with the Null of a pin that
+ * has no value yet. */
 function outValues(notes: BlockNotification[], id: string): unknown[] {
   return notes
     .filter((n) => n.id === id)
     .flatMap((n) => n.changes)
-    .filter((c) => c.name === 'out' && c.value !== undefined)
+    .filter((c) => c.name === 'out' && c.value !== null)
     .map((c) => c.value);
 }
 

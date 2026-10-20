@@ -24,6 +24,7 @@ use crate::blocks::registry::{BlockSink, eval_block_impl};
 use crate::tokio_impl::block::drain_ready_inputs;
 use crate::tokio_impl::scan::scan_interval_millis;
 use crate::wasm::error::{js_detail, js_type_name};
+use crate::wasm::types::to_js_value;
 use crate::{
     base::{
         block::{BlockDesc, BlockProps},
@@ -125,8 +126,9 @@ impl JsBlock {
         }
     }
 
-    /// Calls the JS function with the inputs as arguments, and sets the
-    /// outputs from the array it returns or resolves with. Anything
+    /// Calls the JS function with the inputs as arguments — in the
+    /// bindings' one encoding, so an input with no value is `null` —
+    /// and sets the outputs from the array it returns or resolves with. Anything
     /// else leaves the outputs as they are. A throw or a rejection
     /// faults the block, with the thrown value as the reason.
     async fn call_js_function(&mut self, values: JsValue) {
@@ -342,7 +344,7 @@ impl Block for JsBlock {
             .map(|input| input.value())
             .collect::<Vec<_>>();
 
-        match serde_wasm_bindgen::to_value(&values) {
+        match to_js_value(&values) {
             Ok(values) => {
                 self.call_js_function(values).await;
             }

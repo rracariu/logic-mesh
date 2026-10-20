@@ -18,19 +18,16 @@ import {
  * timeout to configure here.
  *
  * Values cross the wasm boundary in the Haystack JSON encoding:
- * numbers, strings, booleans, arrays, and plain objects round-trip,
- * with measured exceptions. A `null` (or `undefined`) inside a dict or
- * array keeps its key or slot but arrives as `undefined` on the JS
- * side, in both directions — `{x: null, z: [null]}` becomes
- * `{x: undefined, z: [undefined]}`. A `BigInt` in the safe integer
- * range silently coerces to `Number`; one outside it faults the block
- * ("can't be represented as a JavaScript number") before the function
- * is called. Engine-side dicts arrive as JS `Map`s from the bridge;
- * the façade converts them (recursively) to plain objects before the
- * function sees them, so a multi-input block is simply a function
- * taking an object: feed the `in` pin a dict value and read named
- * fields off the argument. A returned `undefined` is coerced to
- * `null` rather than faulting the block.
+ * numbers, strings, booleans, `null`, arrays and plain objects
+ * round-trip, with measured exceptions. An `undefined` inside a dict
+ * or array keeps its key or slot but arrives as `null`. A `BigInt` in
+ * the safe integer range silently coerces to `Number`; one outside it
+ * faults the block ("can't be represented as a JavaScript number")
+ * before the function is called. Engine-side dicts arrive as plain
+ * objects, so a multi-input block is simply a function taking an
+ * object: feed the `in` pin a dict value and read named fields off the
+ * argument. A returned `undefined` is coerced to `null` rather than
+ * faulting the block.
  */
 export type JsBlockFn = (value: unknown) => unknown | Promise<unknown>;
 
@@ -42,25 +39,6 @@ export interface JsBlocksOptions {
    * unique per registry (i.e. per process). Defaults to `'js'`.
    */
   name?: string;
-}
-
-/**
- * Recursively converts the wasm bridge's value encoding into plain JS:
- * dicts arrive as `Map`s (nested ones too) and become objects; array
- * elements are converted in place; everything else passes through.
- */
-function fromEngineValue(value: unknown): unknown {
-  if (value instanceof Map) {
-    const obj: Record<string, unknown> = {};
-    for (const [key, entry] of value) {
-      obj[String(key)] = fromEngineValue(entry);
-    }
-    return obj;
-  }
-  if (Array.isArray(value)) {
-    return value.map(fromEngineValue);
-  }
-  return value;
 }
 
 /** The attach-time error for a connector name owned by someone else. */
@@ -158,12 +136,12 @@ export class JsBlocks<T extends Record<string, JsBlockFn>> {
       // the addressed function and discards its result. Exceptions and
       // rejections fault the ExternalOut block as publish failures.
       publish: async (address: string, value: unknown) => {
-        await lookup(address)(fromEngineValue(value));
+        await lookup(address)(value);
       },
       // Request direction: the addressed function's result becomes the
       // Request block's `out` value.
       request: async (address: string, value: unknown) => {
-        const result = await lookup(address)(fromEngineValue(value));
+        const result = await lookup(address)(value);
         // `undefined` has no Haystack encoding and would fault the
         // block on the way back; a function that returns nothing means
         // "no result", which Null carries.

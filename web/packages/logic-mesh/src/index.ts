@@ -130,7 +130,10 @@ export type LogLevel = 'off' | 'error' | 'warn' | 'info' | 'debug' | 'trace';
  *
  * It is called with the block's input values, in the order of the
  * inputs in the block description, and returns the output values in
- * the order of the outputs — directly or through a Promise. Returning
+ * the order of the outputs — directly or through a Promise. The values
+ * are Haystack values in their JSON encoding, as every binding hands
+ * them out: a Dict is a plain object, and an input with no value, or a
+ * `Null` one, is `null`. Returning
  * anything but an array leaves the outputs as they are. A throw or a
  * rejection faults the block, with the error's message as the fault
  * reason.
@@ -275,8 +278,10 @@ export interface BlockNotification {
     source: string;
     /**
      * The value that was changed on this pin. The shape is
-     * Haystack-encoded JSON; consumers narrow as needed (e.g.
-     * `typeof value === 'number'` for a numeric pin).
+     * Haystack-encoded JSON, as `inspectBlock` and `getProgram` give
+     * it: a Dict is a plain object, and `Null` is `null`. Consumers
+     * narrow as needed (e.g. `typeof value === 'number'` for a numeric
+     * pin).
      */
     value: unknown;
   }[];
