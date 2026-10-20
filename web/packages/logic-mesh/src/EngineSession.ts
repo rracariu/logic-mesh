@@ -23,6 +23,41 @@ export interface EngineSessionOptions {
 }
 
 /**
+ * A watch {@link EngineSession.watch} opened. Close it with
+ * {@link close}, or let `await using` close it.
+ */
+export interface WatchSubscription extends AsyncDisposable {
+  /** The watch's id, as `EngineCommand.createWatch` resolved with it. */
+  readonly id: number;
+
+  /**
+   * Closes the watch, resolving with whether the engine still had it
+   * open. The callback is not called from the moment this is called.
+   * Idempotent: later calls share the first call's promise.
+   */
+  close(): Promise<boolean>;
+}
+
+/** The {@link WatchSubscription} {@link EngineSession.watch} returns. */
+class Subscription implements WatchSubscription {
+  private closing: Promise<boolean> | undefined;
+
+  constructor(
+    readonly id: number,
+    private readonly closeWatch: () => Promise<boolean>,
+  ) {}
+
+  close(): Promise<boolean> {
+    this.closing ??= this.closeWatch();
+    return this.closing;
+  }
+
+  async [Symbol.asyncDispose](): Promise<void> {
+    await this.close();
+  }
+}
+
+/**
  * Owns the engine start sequence, so the ordering rules cannot be
  * gotten wrong.
  *
@@ -55,7 +90,7 @@ export interface EngineSessionOptions {
  * {@link createEngineSession} (handles now, {@link start} later — for
  * hosts that create the engine at module load but start it on mount).
  */
-export class EngineSession {
+export class EngineSession implements AsyncDisposable {
   /**
    * The engine object. Valid for pre-start setup only —
    * `registerBlock`, `listBlocks`, `run` — and off limits from the
@@ -143,17 +178,34 @@ export class EngineSession {
 
   /**
    * Registers `callback` for block change notifications, resolving with
-   * the watch's id once the engine opened it — before or after
-   * {@link start}: before, the watch opens as the engine starts. Pass
-   * the id to {@link unwatch} to stop the notifications.
+   * the watch once the engine opened it — before or after
+   * {@link start}: before, the watch opens as the engine starts. Close
+   * the watch to stop the notifications:
+   *
+   * ```ts
+   * await using watch = await session.watch((n) => console.log(n));
+   * // ...
+   * // Closed when the scope ends, or earlier with `watch.close()`.
+   * ```
    */
-  watch(callback: (notification: BlockNotification) => void): Promise<number> {
-    return this.command.createWatch(callback);
+  async watch(
+    callback: (notification: BlockNotification) => void,
+  ): Promise<WatchSubscription> {
+    // Closing turns delivery off at once, before the engine answers.
+    let open = true;
+    const id = await this.command.createWatch((notification) => {
+      if (open) callback(notification);
+    });
+    return new Subscription(id, () => {
+      open = false;
+      return this.command.removeWatch(id);
+    });
   }
 
   /**
-   * Closes the watch {@link watch} resolved with `watchId`, resolving
-   * with whether it was open.
+   * Closes the watch with id `watchId` — one `EngineCommand.createWatch`
+   * opened, or a {@link WatchSubscription.id} — resolving with whether
+   * it was open.
    */
   unwatch(watchId: number): Promise<boolean> {
     return this.command.removeWatch(watchId);
@@ -197,6 +249,18 @@ export class EngineSession {
       await runDone;
     });
     return this.stopDone;
+  }
+
+  /**
+   * {@link stop}s the session, so that `await using` stops it when the
+   * scope ends:
+   *
+   * ```ts
+   * await using session = startEngine();
+   * ```
+   */
+  async [Symbol.asyncDispose](): Promise<void> {
+    await this.stop();
   }
 
   private enqueueControl<T>(op: () => Promise<T>): Promise<T> {

@@ -14,6 +14,7 @@ export {
   startEngine,
   EngineSession,
   type EngineSessionOptions,
+  type WatchSubscription,
 } from './EngineSession.js';
 export {
   isLogicMeshError,

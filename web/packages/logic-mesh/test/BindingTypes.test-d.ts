@@ -12,7 +12,9 @@ import type {
   LinkData,
   LogLevel,
   Program,
+  WatchSubscription,
 } from '../src/index';
+import type { EngineSession } from '../src/index';
 
 // Regression: the generated declarations took and returned `any` for
 // every structured value.
@@ -72,6 +74,14 @@ describe('the binding declarations', () => {
     expectTypeOf<LogLevel>().toEqualTypeOf<
       'off' | 'error' | 'warn' | 'info' | 'debug' | 'trace'
     >();
+  });
+
+  it('resolve a session watch with a disposable subscription', () => {
+    expectTypeOf<ReturnType<EngineSession['watch']>>().toEqualTypeOf<
+      Promise<WatchSubscription>
+    >();
+    expectTypeOf<WatchSubscription>().toExtend<AsyncDisposable>();
+    expectTypeOf<EngineSession>().toExtend<AsyncDisposable>();
   });
 
   // Regression: an `interface` LinkData could not be stored as a graph
