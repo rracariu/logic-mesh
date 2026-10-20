@@ -3,6 +3,7 @@
 //! Helpers shared by the single- and multi-threaded engine tests.
 
 use std::future::Future;
+use std::ops::Deref;
 use std::panic::{AssertUnwindSafe, resume_unwind};
 use std::thread;
 use std::time::Duration;
@@ -11,19 +12,15 @@ use futures::FutureExt;
 use libhaystack::val::Value;
 use tokio::{
     runtime::Runtime,
-    sync::mpsc::{self, Receiver, Sender},
     time::{sleep, timeout},
 };
 use uuid::Uuid;
 
 use crate::base::block::{BlockProps, connect_output};
-use crate::base::engine::{
-    Engine,
-    messages::{BlockDefinition, EngineMessage},
-};
+use crate::base::engine::{Engine, EngineClient, messages::BlockDefinition};
+use crate::base::error::RequestError;
 use crate::base::program::{LinkData, Program, ProgramBlock};
 use crate::blocks::math::Add;
-use crate::tokio_impl::engine::Messages;
 use crate::tokio_impl::{ReaderImpl, WriterImpl};
 
 /// How long a test waits for a reply before declaring the engine stuck.
@@ -34,66 +31,63 @@ const REPLY_TIMEOUT: Duration = Duration::from_secs(5);
 const POLL_INTERVAL: Duration = Duration::from_millis(20);
 const POLLS: usize = 250;
 
-/// A test's end of an engine message channel.
-pub(crate) struct Client {
-    /// The channel id the engine addresses replies to.
-    pub(crate) id: Uuid,
-    sender: Sender<Messages>,
-    receiver: Receiver<Messages>,
+/// A test's [`EngineClient`], with helpers that fail the test instead
+/// of returning what it does not expect. Every [`EngineClient`] method
+/// is reachable through it too.
+#[derive(Clone)]
+pub(crate) struct Client(EngineClient);
+
+impl Deref for Client {
+    type Target = EngineClient;
+
+    fn deref(&self) -> &EngineClient {
+        &self.0
+    }
+}
+
+/// Awaits `request`, failing the test if the engine does not answer
+/// within [`REPLY_TIMEOUT`].
+pub(crate) async fn answer<T>(request: impl Future<Output = T>) -> T {
+    timeout(REPLY_TIMEOUT, request)
+        .await
+        .expect("the engine answers the request")
 }
 
 impl Client {
-    /// Sends `request` and returns its reply, failing the test if the
-    /// engine does not answer within [`REPLY_TIMEOUT`].
-    pub(crate) async fn request(&mut self, request: Messages) -> Messages {
-        self.send(request).await;
-        timeout(REPLY_TIMEOUT, self.receiver.recv())
-            .await
-            .expect("the engine answers the request")
-            .expect("the reply channel is open")
-    }
-
-    /// Sends a message that has no reply.
-    pub(crate) async fn send(&self, message: Messages) {
-        self.sender
-            .send(message)
-            .await
-            .expect("the engine is receiving");
-    }
-
     /// Inspects `block`, failing the test if the engine reports an error.
-    pub(crate) async fn inspect(&mut self, block: Uuid) -> BlockDefinition {
-        match self
-            .request(EngineMessage::InspectBlockReq(self.id, block))
+    pub(crate) async fn inspect(&self, block: Uuid) -> BlockDefinition {
+        answer(self.0.inspect_block(block))
             .await
-        {
-            EngineMessage::InspectBlockRes(Ok(definition)) => definition,
-            other => panic!("Expected InspectBlockRes(Ok), got {:?}", other),
-        }
+            .expect("the block is inspected")
     }
 
     /// The current value of `block`'s output `pin`.
-    pub(crate) async fn output(&mut self, block: Uuid, pin: &str) -> Value {
+    pub(crate) async fn output(&self, block: Uuid, pin: &str) -> Value {
         self.inspect(block).await.outputs[pin].val.clone()
     }
 
     /// Writes `value` to `block`'s output `pin`.
-    pub(crate) async fn write_output(&mut self, block: Uuid, pin: &str, value: Value) {
-        let request = EngineMessage::WriteBlockOutputReq(self.id, block, pin.to_string(), value);
-        match self.request(request).await {
-            EngineMessage::WriteBlockOutputRes(Ok(_)) => {}
-            other => panic!("Expected WriteBlockOutputRes(Ok), got {:?}", other),
-        }
+    pub(crate) async fn write_output(&self, block: Uuid, pin: &str, value: Value) {
+        answer(self.0.write_output(block, pin, value))
+            .await
+            .expect("the output is written");
+    }
+
+    /// Writes `value` to `block`'s input `pin`.
+    pub(crate) async fn write_input(&self, block: Uuid, pin: &str, value: Value) {
+        answer(self.0.write_input(block, pin, value))
+            .await
+            .expect("the input is written");
     }
 
     /// Links `source`'s `source_pin` to `target`'s `target_pin`, under
     /// `id` if given, returning the engine's answer.
     pub(crate) async fn connect(
-        &mut self,
+        &self,
         id: Option<&str>,
         (source, source_pin): (Uuid, &str),
         (target, target_pin): (Uuid, &str),
-    ) -> Result<LinkData, String> {
+    ) -> Result<LinkData, RequestError> {
         let link = LinkData {
             id: id.map(str::to_string),
             source_block_uuid: source.to_string(),
@@ -101,72 +95,50 @@ impl Client {
             source_block_pin_name: source_pin.to_string(),
             target_block_pin_name: target_pin.to_string(),
         };
-        match self
-            .request(EngineMessage::ConnectBlocksReq(self.id, link))
-            .await
-        {
-            EngineMessage::ConnectBlocksRes(res) => res,
-            other => panic!("Expected ConnectBlocksRes, got {:?}", other),
-        }
+        answer(self.0.connect(link)).await
     }
 
     /// Removes link `id`, returning the engine's answer.
-    pub(crate) async fn remove_link(&mut self, id: Uuid) -> Result<bool, String> {
-        match self
-            .request(EngineMessage::RemoveLinkReq(self.id, id))
-            .await
-        {
-            EngineMessage::RemoveLinkRes(res) => res,
-            other => panic!("Expected RemoveLinkRes, got {:?}", other),
-        }
+    pub(crate) async fn remove_link(&self, id: Uuid) -> Result<bool, RequestError> {
+        answer(self.0.disconnect(id)).await
     }
 
     /// Removes block `id`, returning the engine's answer.
-    pub(crate) async fn remove_block(&mut self, id: Uuid) -> Result<Uuid, String> {
-        match self
-            .request(EngineMessage::RemoveBlockReq(self.id, id))
-            .await
-        {
-            EngineMessage::RemoveBlockRes(res) => res,
-            other => panic!("Expected RemoveBlockRes, got {:?}", other),
-        }
+    pub(crate) async fn remove_block(&self, id: Uuid) -> Result<Uuid, RequestError> {
+        answer(self.0.remove_block(id)).await
     }
 
     /// Loads `program`, returning the engine's answer.
-    pub(crate) async fn load(&mut self, program: Program) -> Result<(), String> {
-        match self
-            .request(EngineMessage::LoadProgramReq(self.id, program))
-            .await
-        {
-            EngineMessage::LoadProgramRes(res) => res,
-            other => panic!("Expected LoadProgramRes, got {:?}", other),
-        }
+    pub(crate) async fn load(&self, program: Program) -> Result<(), RequestError> {
+        answer(self.0.load_program(program)).await
     }
 
     /// Saves the running program, failing the test if the engine
     /// reports an error.
-    pub(crate) async fn save(&mut self) -> Program {
-        match self
-            .request(EngineMessage::GetCurrentProgramReq(self.id))
+    pub(crate) async fn save(&self) -> Program {
+        answer(self.0.save_program())
             .await
-        {
-            EngineMessage::GetCurrentProgramRes(Ok(program)) => program,
-            other => panic!("Expected GetCurrentProgramRes(Ok), got {:?}", other),
-        }
+            .expect("the program is saved")
     }
 
-    /// Writes `value` to `block`'s input `pin`.
-    pub(crate) async fn write_input(&mut self, block: Uuid, pin: &str, value: Value) {
-        let request = EngineMessage::WriteBlockInputReq(self.id, block, pin.to_string(), value);
-        match self.request(request).await {
-            EngineMessage::WriteBlockInputRes(Ok(_)) => {}
-            other => panic!("Expected WriteBlockInputRes(Ok), got {:?}", other),
-        }
+    /// Pauses the engine, failing the test unless it acknowledges.
+    pub(crate) async fn pause(&self) {
+        answer(self.0.pause()).await.expect("paused");
+    }
+
+    /// Resumes the engine, failing the test unless it acknowledges.
+    pub(crate) async fn resume(&self) {
+        answer(self.0.resume()).await.expect("resumed");
+    }
+
+    /// Resets the engine, failing the test unless it acknowledges.
+    pub(crate) async fn reset(&self) {
+        answer(self.0.reset()).await.expect("reset");
     }
 
     /// Polls `block` until its output `pin` holds `expected`, failing the
     /// test after a few seconds.
-    pub(crate) async fn wait_for_output(&mut self, block: Uuid, pin: &str, expected: Value) {
+    pub(crate) async fn wait_for_output(&self, block: Uuid, pin: &str, expected: Value) {
         for _ in 0..POLLS {
             if self.output(block, pin).await == expected {
                 return;
@@ -178,7 +150,7 @@ impl Client {
 
     /// Polls `block` until its state label reads `state`, failing the
     /// test after a few seconds, and returns that inspection.
-    pub(crate) async fn wait_for_state(&mut self, block: Uuid, state: &str) -> BlockDefinition {
+    pub(crate) async fn wait_for_state(&self, block: Uuid, state: &str) -> BlockDefinition {
         for _ in 0..POLLS {
             let definition = self.inspect(block).await;
             if definition.state == state {
@@ -190,39 +162,33 @@ impl Client {
     }
 }
 
-/// Opens a message channel on `engine`.
-pub(crate) fn connect<E: Engine<Channel = Sender<Messages>>>(engine: &mut E) -> Client {
-    let (sender, receiver) = mpsc::channel(32);
-    let id = Uuid::new_v4();
-    let sender = engine.create_message_channel(id, sender);
-    Client {
-        id,
-        sender,
-        receiver,
-    }
+/// Creates a client of `engine`.
+pub(crate) fn connect<E: Engine>(engine: &mut E) -> Client {
+    Client(engine.client())
 }
 
 /// Runs `engine` while `driver` talks to it from a runtime on its own
 /// thread, then shuts the engine down and hands it back, idle.
 ///
-/// The [`Shutdown`](EngineMessage::Shutdown) is sent here, after the
-/// driver finishes — drivers never send it themselves, or it would stay
-/// queued and end the next `run()`. A panicking driver still shuts the
-/// engine down, and the panic is re-raised once `run()` returns, so a
-/// failed assertion fails the test instead of hanging it.
+/// The [`Shutdown`](crate::base::engine::messages::EngineRequest::Shutdown)
+/// is sent here, after the driver finishes — drivers never send it
+/// themselves, or it would stay queued and end the next `run()`. A
+/// panicking driver still shuts the engine down, and the panic is
+/// re-raised once `run()` returns, so a failed assertion fails the test
+/// instead of hanging it.
 pub(crate) async fn drive<E, F, Fut>(mut engine: E, driver: F) -> E
 where
-    E: Engine<Channel = Sender<Messages>>,
+    E: Engine,
     F: FnOnce(Client) -> Fut + Send + 'static,
     Fut: Future<Output = ()> + Send + 'static,
 {
     let client = connect(&mut engine);
-    let shutdown = client.sender.clone();
+    let shutdown = client.clone();
     let thread = thread::spawn(move || {
         let runtime = Runtime::new().expect("driver runtime");
         runtime.block_on(async move {
             let outcome = AssertUnwindSafe(driver(client)).catch_unwind().await;
-            let _ = shutdown.send(EngineMessage::Shutdown).await;
+            let _ = shutdown.shutdown().await;
             outcome
         })
     });
@@ -292,38 +258,33 @@ pub(crate) mod faults {
     }
 }
 
-/// The [lifecycle contract](crate::base::engine#lifecycle-messages),
+/// The [lifecycle contract](crate::base::engine#lifecycle-requests),
 /// written once against the [`Engine`] trait and run by each engine's
 /// tests.
 pub(crate) mod lifecycle {
     use assert_matches::assert_matches;
 
+    use tokio::sync::mpsc;
+
     use super::*;
-    use crate::base::engine::messages::EngineMessage::{
-        AddBlockReq, AddBlockRes, InspectBlockReq, InspectBlockRes, Pause, Reset, Resume,
-    };
+    use crate::base::engine::messages::{ClientId, EngineRequest, Envelope, RequestId};
+    use crate::base::error::ErrorCode;
 
     /// An engine the lifecycle tests can drive.
-    pub(crate) trait TestEngine:
-        Engine<Channel = Sender<Messages>, Writer = WriterImpl, Reader = ReaderImpl>
-    {
-    }
-    impl<E> TestEngine for E where
-        E: Engine<Channel = Sender<Messages>, Writer = WriterImpl, Reader = ReaderImpl>
-    {
-    }
+    pub(crate) trait TestEngine: Engine<Writer = WriterImpl, Reader = ReaderImpl> {}
+    impl<E> TestEngine for E where E: Engine<Writer = WriterImpl, Reader = ReaderImpl> {}
 
     /// Blocks survive a shutdown, and values flow again on the next run.
     pub(crate) async fn blocks_survive_shutdown<E: TestEngine>(mut engine: E) {
         let (source, target) = schedule_linked_adds(&mut engine);
 
-        let engine = drive(engine, move |mut client| async move {
+        let engine = drive(engine, move |client| async move {
             client.write_output(source, "out", 1.into()).await;
             client.wait_for_output(target, "out", 1.into()).await;
         })
         .await;
 
-        drive(engine, move |mut client| async move {
+        drive(engine, move |client| async move {
             assert_eq!(
                 client.output(target, "out").await,
                 1.into(),
@@ -340,11 +301,11 @@ pub(crate) mod lifecycle {
     pub(crate) async fn pause_holds_blocks_and_answers_requests<E: TestEngine>(mut engine: E) {
         let (source, target) = schedule_linked_adds(&mut engine);
 
-        drive(engine, move |mut client| async move {
+        drive(engine, move |client| async move {
             client.write_output(source, "out", 1.into()).await;
             client.wait_for_output(target, "out", 1.into()).await;
 
-            client.send(Pause).await;
+            client.pause().await;
             // Answered while paused, and lands on the source directly.
             client.write_output(source, "out", 2.into()).await;
             assert_eq!(client.output(source, "out").await, 2.into());
@@ -359,7 +320,7 @@ pub(crate) mod lifecycle {
                 );
             }
 
-            client.send(Resume).await;
+            client.resume().await;
             client.wait_for_output(target, "out", 2.into()).await;
         })
         .await;
@@ -370,24 +331,149 @@ pub(crate) mod lifecycle {
     pub(crate) async fn reset_while_paused<E: TestEngine>(mut engine: E) {
         let (source, _) = schedule_linked_adds(&mut engine);
 
-        drive(engine, move |mut client| async move {
-            client.send(Pause).await;
-            client.send(Reset).await;
+        drive(engine, move |client| async move {
+            client.pause().await;
+            client.reset().await;
 
-            let reply = client.request(InspectBlockReq(client.id, source)).await;
-            assert_matches!(reply, InspectBlockRes(Err(_)), "reset removed the block");
+            let reply = answer(client.inspect_block(source)).await;
+            assert_matches!(
+                reply,
+                Err(err) if err.code == ErrorCode::BlockInstanceNotFound,
+                "reset removed the block"
+            );
 
-            let reply = client
-                .request(AddBlockReq(client.id, "Add".to_string(), None, None))
-                .await;
-            let added = match reply {
-                AddBlockRes(Ok(id)) => id,
-                other => panic!("Expected AddBlockRes(Ok), got {:?}", other),
-            };
+            let added = answer(client.add_block("Add", None, None))
+                .await
+                .expect("added");
 
-            client.send(Resume).await;
+            client.resume().await;
             client.write_output(added, "out", 3.into()).await;
             assert_eq!(client.output(added, "out").await, 3.into());
+        })
+        .await;
+    }
+
+    /// Each control request is answered once it took effect, so the
+    /// acknowledgement is all a caller needs to wait on — on another
+    /// client too, which shares no request queue position with it.
+    pub(crate) async fn control_requests_are_acknowledged_once_applied<E: TestEngine>(
+        mut engine: E,
+    ) {
+        let (source, target) = schedule_linked_adds(&mut engine);
+        let observer = connect(&mut engine);
+
+        let engine = drive(engine, move |client| async move {
+            client.write_output(source, "out", 1.into()).await;
+            client.wait_for_output(target, "out", 1.into()).await;
+
+            // Paused once acknowledged: the target never follows a write
+            // made right after.
+            client.pause().await;
+            observer.write_output(source, "out", 2.into()).await;
+            sleep(Duration::from_millis(200)).await;
+            assert_eq!(observer.output(target, "out").await, 1.into());
+
+            // Resumed once acknowledged.
+            client.resume().await;
+            observer.wait_for_output(target, "out", 2.into()).await;
+
+            // Reset once acknowledged: the blocks are gone.
+            client.reset().await;
+            let reply = answer(observer.inspect_block(target)).await;
+            assert_matches!(reply, Err(err) if err.code == ErrorCode::BlockInstanceNotFound);
+            assert!(observer.save().await.blocks.is_empty());
+        })
+        .await;
+
+        // The driver's shutdown was acknowledged, and `run` returned.
+        assert!(engine.block_handles().is_empty());
+    }
+
+    /// A shutdown is acknowledged before `run` returns the idle engine.
+    pub(crate) async fn shutdown_is_acknowledged<E: TestEngine>(mut engine: E) {
+        let client = connect(&mut engine);
+
+        let (engine, acknowledged) =
+            answer(async { tokio::join!(engine.run(), client.0.shutdown()) }).await;
+        assert_eq!(acknowledged, Ok(()));
+        drop(engine);
+
+        // The engine is gone with it, and says so.
+        let err = answer(client.list_connectors())
+            .await
+            .expect_err("nothing answers");
+        assert_eq!(err.code, ErrorCode::EngineGone);
+    }
+
+    /// A request stamped with a client id the engine never assigned is
+    /// carried out, its response dropped, and the engine goes on
+    /// answering.
+    pub(crate) async fn a_request_from_an_unknown_client_is_carried_out<E: TestEngine>(
+        mut engine: E,
+    ) {
+        let (_, requests) = engine.create_message_channel(mpsc::unbounded_channel().0);
+        let id = Uuid::new_v4();
+
+        drive(engine, move |client| async move {
+            let request = EngineRequest::AddBlock {
+                name: "Add".to_string(),
+                block_id: Some(id),
+                library: None,
+            };
+            let stranger = ClientId::new(u64::MAX);
+            requests
+                .send(Envelope::new(stranger, RequestId(0), request))
+                .await
+                .expect("the engine is receiving");
+
+            // Handled in order, so the block exists by now.
+            assert_eq!(client.inspect(id).await.id, id.to_string());
+        })
+        .await;
+    }
+
+    /// Several requests in flight on one client — and its clones — are
+    /// each answered with their own response.
+    pub(crate) async fn requests_in_flight_get_their_own_responses<E: TestEngine>(mut engine: E) {
+        let ids: Vec<Uuid> = (0..8).map(|_| Uuid::new_v4()).collect();
+        for id in &ids {
+            engine.schedule(Add::new_uuid(*id)).expect("scheduled");
+        }
+
+        drive(engine, move |client| async move {
+            // Give each block its own output value, then read them all
+            // at once.
+            for (n, id) in ids.iter().enumerate() {
+                client
+                    .write_output(*id, "out", Value::make_int(n as i64))
+                    .await;
+            }
+            let inspections = ids.iter().map(|id| {
+                let client = client.clone();
+                let id = *id;
+                async move { (id, client.inspect_block(id).await) }
+            });
+            let unknown = Uuid::new_v4();
+            let (inspected, failed, connectors) = answer(async {
+                futures::join!(
+                    futures::future::join_all(inspections),
+                    client.inspect_block(unknown),
+                    client.list_connectors()
+                )
+            })
+            .await;
+
+            for (n, (id, definition)) in inspected.into_iter().enumerate() {
+                let definition = definition.expect("inspected");
+                assert_eq!(definition.id, id.to_string());
+                assert_eq!(definition.outputs["out"].val, Value::make_int(n as i64));
+            }
+            assert_matches!(
+                failed,
+                Err(err) if err.code == ErrorCode::BlockInstanceNotFound
+                    && err.message.contains(&unknown.to_string())
+            );
+            assert_eq!(connectors, Ok(Vec::<String>::new()));
         })
         .await;
     }
@@ -412,7 +498,7 @@ pub(crate) mod pin_writes {
         let id = *add.id();
         engine.schedule(add).expect("scheduled");
 
-        drive(engine, move |mut client| async move {
+        drive(engine, move |client| async move {
             client.write_input(id, "in0", 5.into()).await;
             client.wait_for_output(id, "out", 5.into()).await;
             client.write_input(id, "in1", 2.into()).await;
@@ -428,7 +514,7 @@ pub(crate) mod pin_writes {
     ) {
         let (source, target) = schedule_linked_adds(&mut engine);
 
-        drive(engine, move |mut client| async move {
+        drive(engine, move |client| async move {
             client.write_output(source, "out", 1.into()).await;
             client.wait_for_output(target, "out", 1.into()).await;
 
@@ -448,7 +534,7 @@ pub(crate) mod pin_writes {
         let id = *add.id();
         engine.schedule(add).expect("scheduled");
 
-        drive(engine, move |mut client| async move {
+        drive(engine, move |client| async move {
             client.write_input(id, "in0", with_unit(1.0, "m")).await;
             client.write_input(id, "in1", with_unit(1.0, "s")).await;
             client.wait_for_state(id, "fault").await;
@@ -486,7 +572,7 @@ pub(crate) mod link_ids {
 
     use super::lifecycle::TestEngine;
     use super::*;
-    use crate::base::error::EngineError;
+    use crate::base::error::{EngineError, ErrorCode};
 
     /// Two unlinked `Add` blocks, scheduled.
     fn schedule_adds<E: TestEngine>(engine: &mut E) -> (Uuid, Uuid) {
@@ -503,7 +589,7 @@ pub(crate) mod link_ids {
         let (source, target) = schedule_adds(&mut engine);
         let id = Uuid::new_v4();
 
-        drive(engine, move |mut client| async move {
+        drive(engine, move |client| async move {
             let named = id.to_string();
             let link = client
                 .connect(Some(&named), (source, "out"), (target, "in0"))
@@ -529,16 +615,16 @@ pub(crate) mod link_ids {
         let (linked_source, linked_target) = schedule_linked_adds(&mut engine);
         let (source, target) = schedule_adds(&mut engine);
 
-        drive(engine, move |mut client| async move {
+        drive(engine, move |client| async move {
             let prewired = client.save().await.links.into_keys().next();
             let prewired = prewired.expect("the pre-wired link is saved");
             let reply = client
                 .connect(Some(&prewired), (source, "out"), (target, "in0"))
                 .await;
             let taken = Uuid::parse_str(&prewired).expect("a uuid");
-            assert_matches!(
+            assert_eq!(
                 reply,
-                Err(msg) if msg == EngineError::DuplicateLinkId { id: taken }.to_string()
+                Err(EngineError::DuplicateLinkId { id: taken }.into())
             );
 
             let id = Uuid::new_v4().to_string();
@@ -549,12 +635,16 @@ pub(crate) mod link_ids {
             let reply = client
                 .connect(Some(&id), (linked_source, "out"), (linked_target, "in1"))
                 .await;
-            assert_matches!(reply, Err(msg) if msg.contains("already exists"));
+            assert_matches!(reply, Err(err) if err.code == ErrorCode::DuplicateLinkId);
 
             let reply = client
                 .connect(Some("link-1"), (source, "out"), (target, "in1"))
                 .await;
-            assert_matches!(reply, Err(msg) if msg.starts_with("Invalid link uuid 'link-1'"));
+            assert_matches!(
+                reply,
+                Err(err) if err.code == ErrorCode::InvalidLinkUuid
+                    && err.message.starts_with("Invalid link uuid 'link-1'")
+            );
 
             // None of the rejected links was wired.
             assert_eq!(client.save().await.links.len(), 2);
@@ -577,7 +667,7 @@ pub(crate) mod link_ids {
             program_link(source, target, "in1", Some(named)),
         );
 
-        drive(engine, move |mut client| async move {
+        drive(engine, move |client| async move {
             client.load(program).await.expect("loaded");
             let saved = client.save().await;
             let mut ids: Vec<_> = saved.links.keys().cloned().collect();
@@ -612,11 +702,11 @@ pub(crate) mod link_ids {
         let twice = program_with(&["in0", "in1"]);
         let reused = program_with(&["in0"]);
 
-        drive(engine, move |mut client| async move {
+        drive(engine, move |client| async move {
             let reply = client.load(twice).await;
             assert_eq!(
                 reply,
-                Err(EngineError::DuplicateLinkId { id: taken }.to_string())
+                Err(EngineError::DuplicateLinkId { id: taken }.into())
             );
 
             client
@@ -630,7 +720,7 @@ pub(crate) mod link_ids {
             let reply = client.load(reused).await;
             assert_eq!(
                 reply,
-                Err(EngineError::DuplicateLinkId { id: taken }.to_string())
+                Err(EngineError::DuplicateLinkId { id: taken }.into())
             );
         })
         .await;
@@ -644,7 +734,6 @@ pub(crate) mod round_trip {
     use super::lifecycle::TestEngine;
     use super::*;
     use crate::base::block::BlockDesc;
-    use crate::base::engine::messages::EngineMessage::Reset;
     use crate::base::program::data::PROGRAM_1_0_JSON;
     use crate::base::program::{EditorMetadata, PinValue, Position};
 
@@ -723,7 +812,7 @@ pub(crate) mod round_trip {
 
     /// Polls the running program until it saves as `expected`, failing
     /// the test after a few seconds.
-    pub(crate) async fn wait_for_save(client: &mut Client, expected: &Program) {
+    pub(crate) async fn wait_for_save(client: &Client, expected: &Program) {
         let expected = json(expected);
         let mut saved = serde_json::Value::Null;
         for _ in 0..POLLS {
@@ -777,15 +866,15 @@ pub(crate) mod round_trip {
     pub(crate) async fn a_saved_program_reloads_unchanged<E: TestEngine>(engine: E) {
         let (program, ids) = sample();
 
-        drive(engine, move |mut client| async move {
+        drive(engine, move |client| async move {
             client.load(program.clone()).await.expect("loaded");
             client.wait_for_output(ids.second, "out", 90.into()).await;
             let saved = client.save().await;
             assert_keeps_the_sample(&saved, &program, ids);
 
-            client.send(Reset).await;
+            client.reset().await;
             client.load(saved.clone()).await.expect("reloaded");
-            wait_for_save(&mut client, &saved).await;
+            wait_for_save(&client, &saved).await;
 
             assert_eq!(client.remove_link(ids.keyed).await, Ok(true));
             assert!(!client.inspect(ids.second).await.inputs["in0"].is_connected);
@@ -804,7 +893,7 @@ pub(crate) mod round_trip {
         let second = Uuid::parse_str("00000000-0000-4000-8000-000000000002").expect("uuid");
         let link = "00000000-0000-4000-8000-0000000000aa";
 
-        drive(engine, move |mut client| async move {
+        drive(engine, move |client| async move {
             client.load(program).await.expect("a 1.0 program loads");
             client.wait_for_output(second, "out", 20.into()).await;
 
@@ -837,7 +926,7 @@ pub(crate) mod round_trip {
             block.ver = Some("1.7.3".to_string());
         }
 
-        drive(engine, move |mut client| async move {
+        drive(engine, move |client| async move {
             client
                 .load(program)
                 .await
@@ -855,11 +944,11 @@ pub(crate) mod round_trip {
     pub(crate) async fn reset_forgets_the_program_identity<E: TestEngine>(engine: E) {
         let (program, _) = sample();
 
-        drive(engine, move |mut client| async move {
+        drive(engine, move |client| async move {
             client.load(program).await.expect("loaded");
             assert!(client.save().await.name.is_some());
 
-            client.send(Reset).await;
+            client.reset().await;
             let saved = client.save().await;
             assert_eq!((saved.name, saved.description), (None, None));
             assert!(saved.blocks.is_empty() && saved.links.is_empty());
@@ -875,7 +964,7 @@ pub(crate) mod round_trip {
         let (program, ids) = sample();
         engine.schedule_program_blocks(&program).expect("scheduled");
 
-        drive(engine, move |mut client| async move {
+        drive(engine, move |client| async move {
             let saved = client.save().await;
             assert_eq!(saved.name, program.name);
             assert_eq!(saved.description, program.description);
@@ -920,7 +1009,7 @@ pub(crate) mod atomic_loads {
     /// Programs failing each check a load makes before scheduling a
     /// block, with the error each fails with. `outside` is a block
     /// already on the engine.
-    fn failing_programs(outside: Uuid) -> Vec<(&'static str, Program, String)> {
+    fn failing_programs(outside: Uuid) -> Vec<(&'static str, Program, RequestError)> {
         let mut cases = Vec::new();
 
         let (mut program, _, _) = two_adds();
@@ -929,7 +1018,7 @@ pub(crate) mod atomic_loads {
             found: Program::FORMAT_VERSION + 1,
             supported: Program::FORMAT_VERSION,
         };
-        cases.push(("a newer format version", program, err.to_string()));
+        cases.push(("a newer format version", program, err.into()));
 
         for saved in ["2.0.0", "0.9.0"] {
             let (mut program, _, second) = two_adds();
@@ -941,7 +1030,7 @@ pub(crate) mod atomic_loads {
                 saved: saved.to_string(),
                 registered: BlockDesc::DEFAULT_VER.to_string(),
             };
-            cases.push(("an incompatible block version", program, err.to_string()));
+            cases.push(("an incompatible block version", program, err.into()));
         }
 
         let (mut program, _, second) = two_adds();
@@ -951,7 +1040,7 @@ pub(crate) mod atomic_loads {
             library: "core".to_string(),
             name: "NoSuchBlock".to_string(),
         };
-        cases.push(("an unknown block type", program, err.to_string()));
+        cases.push(("an unknown block type", program, err.into()));
 
         let (mut program, first, second) = two_adds();
         let id = Uuid::new_v4();
@@ -962,7 +1051,7 @@ pub(crate) mod atomic_loads {
             block: second,
             pin: "nope".to_string(),
         };
-        cases.push(("a link to an unknown pin", program, err.to_string()));
+        cases.push(("a link to an unknown pin", program, err.into()));
 
         let (mut program, first, _) = two_adds();
         let id = Uuid::new_v4();
@@ -973,7 +1062,7 @@ pub(crate) mod atomic_loads {
             end: LinkEnd::Target,
             block: outside,
         };
-        cases.push(("a link out of the program", program, err.to_string()));
+        cases.push(("a link out of the program", program, err.into()));
 
         for output in [false, true] {
             let (mut program, _, second) = two_adds();
@@ -994,7 +1083,7 @@ pub(crate) mod atomic_loads {
             } else {
                 EngineError::InputNotFound { block, pin }
             };
-            cases.push(("a value for an unknown pin", program, err.to_string()));
+            cases.push(("a value for an unknown pin", program, err.into()));
         }
 
         let (mut program, first, second) = two_adds();
@@ -1007,7 +1096,7 @@ pub(crate) mod atomic_loads {
             link: repeated,
             existing,
         };
-        cases.push(("two links joining the same pins", program, err.to_string()));
+        cases.push(("two links joining the same pins", program, err.into()));
 
         cases
     }
@@ -1017,7 +1106,7 @@ pub(crate) mod atomic_loads {
     pub(crate) async fn a_program_failing_its_checks_loads_nothing<E: TestEngine>(mut engine: E) {
         let (_, outside) = schedule_linked_adds(&mut engine);
 
-        drive(engine, move |mut client| async move {
+        drive(engine, move |client| async move {
             let before = json(&client.save().await);
             for (case, program, expected) in failing_programs(outside) {
                 let reply = client.load(program).await;
@@ -1041,10 +1130,11 @@ pub(crate) mod atomic_loads {
             let err = engine
                 .schedule_program_blocks(&program)
                 .expect_err("rejected");
-            assert_eq!(err.to_string(), expected, "{case}");
+            assert_eq!(err.to_string(), expected.message, "{case}");
+            assert_eq!(err.code(), expected.code, "{case}");
         }
 
-        drive(engine, move |mut client| async move {
+        drive(engine, move |client| async move {
             assert_eq!(client.save().await.blocks.len(), 2, "nothing was scheduled");
         })
         .await;
@@ -1071,7 +1161,7 @@ pub(crate) mod atomic_loads {
     pub(crate) async fn a_program_failing_to_wire_is_removed_again<E: TestEngine>(engine: E) {
         let (mut program, first, second, wired, rejected) = failing_to_wire();
 
-        drive(engine, move |mut client| async move {
+        drive(engine, move |client| async move {
             let before = json(&client.save().await);
             let reply = client.load(program.clone()).await;
             let err = EngineError::from(ConnectError::SelfLink {
@@ -1079,7 +1169,7 @@ pub(crate) mod atomic_loads {
                 source_input: "in0".to_string(),
                 target_input: "in1".to_string(),
             });
-            assert_eq!(reply, Err(err.to_string()));
+            assert_eq!(reply, Err(err.into()));
             assert_eq!(json(&client.save().await), before, "the load was undone");
 
             program.links.remove(&rejected.to_string());
@@ -1101,7 +1191,7 @@ pub(crate) mod atomic_loads {
         let (program, _, second, wired, rejected) = failing_to_wire();
         engine.schedule_program_blocks(&program).expect("scheduled");
 
-        drive(engine, move |mut client| async move {
+        drive(engine, move |client| async move {
             let saved = client.save().await;
             assert_eq!(saved.blocks.len(), 2);
             assert_eq!(
@@ -1130,7 +1220,7 @@ pub(crate) mod atomic_loads {
         program.links.insert(Uuid::new_v4().to_string(), link);
         engine.schedule_program_blocks(&program).expect("scheduled");
 
-        drive(engine, move |mut client| async move {
+        drive(engine, move |client| async move {
             assert_eq!(client.inspect(first).await.inputs["in0"].val, 4.into());
             client.wait_for_output(second, "out", 4.into()).await;
         })
@@ -1147,8 +1237,7 @@ pub(crate) mod dead_actors {
     use super::lifecycle::TestEngine;
     use super::*;
     use crate::base::block::{Block, BlockState};
-    use crate::base::engine::messages::EngineMessage::{InspectBlockReq, InspectBlockRes};
-    use crate::base::error::EngineError;
+    use crate::base::error::{EngineError, ErrorCode};
     use crate::base::input::InputReader;
     use crate::blocks::{InputImpl, OutputImpl};
 
@@ -1204,17 +1293,20 @@ pub(crate) mod dead_actors {
     }
 
     /// Ends the chain's middle actor, and waits until it is gone.
-    async fn kill(client: &mut Client, chain: &Chain) {
+    ///
+    /// On the multi-thread runtime an inspection can still reach the
+    /// mailbox of an actor that is exiting, which then drops the reply
+    /// instead: either error means the actor is gone.
+    async fn kill(client: &Client, chain: &Chain) {
         client.write_output(chain.source, "out", 1.into()).await;
         for _ in 0..POLLS {
-            let reply = client
-                .request(InspectBlockReq(client.id, chain.quits))
-                .await;
-            if let InspectBlockRes(Err(msg)) = reply {
-                assert_eq!(
-                    msg,
-                    EngineError::BlockTaskGone { id: chain.quits }.to_string()
+            if let Err(err) = answer(client.inspect_block(chain.quits)).await {
+                assert_matches!(
+                    err.code,
+                    ErrorCode::BlockTaskGone | ErrorCode::BlockDroppedReply,
+                    "{err}"
                 );
+                assert!(err.message.contains(&chain.quits.to_string()), "{err}");
                 return;
             }
             sleep(POLL_INTERVAL).await;
@@ -1229,8 +1321,8 @@ pub(crate) mod dead_actors {
     ) {
         let chain = schedule_chain(&mut engine);
 
-        drive(engine, move |mut client| async move {
-            kill(&mut client, &chain).await;
+        drive(engine, move |client| async move {
+            kill(&client, &chain).await;
 
             let saved = client.save().await;
             let quits = &saved.blocks[&chain.quits.to_string()];
@@ -1250,8 +1342,8 @@ pub(crate) mod dead_actors {
     pub(crate) async fn a_link_out_of_a_gone_actor_is_removed<E: TestEngine>(mut engine: E) {
         let chain = schedule_chain(&mut engine);
 
-        drive(engine, move |mut client| async move {
-            kill(&mut client, &chain).await;
+        drive(engine, move |client| async move {
+            kill(&client, &chain).await;
             assert!(client.inspect(chain.target).await.inputs["in0"].is_connected);
 
             assert_eq!(client.remove_link(chain.out_of_quits).await, Ok(true));
@@ -1266,15 +1358,15 @@ pub(crate) mod dead_actors {
     pub(crate) async fn a_block_whose_actor_is_gone_is_removed<E: TestEngine>(mut engine: E) {
         let chain = schedule_chain(&mut engine);
 
-        drive(engine, move |mut client| async move {
-            kill(&mut client, &chain).await;
+        drive(engine, move |client| async move {
+            kill(&client, &chain).await;
 
             assert_eq!(client.remove_block(chain.quits).await, Ok(chain.quits));
-            let reply = client
-                .request(InspectBlockReq(client.id, chain.quits))
-                .await;
-            assert_matches!(reply, InspectBlockRes(Err(msg))
-                if msg == EngineError::BlockInstanceNotFound { id: chain.quits }.to_string());
+            let reply = answer(client.inspect_block(chain.quits)).await;
+            assert_eq!(
+                reply.map(|_| ()),
+                Err(EngineError::BlockInstanceNotFound { id: chain.quits }.into())
+            );
             assert!(!client.inspect(chain.target).await.inputs["in0"].is_connected);
             let saved = client.save().await;
             assert_eq!(saved.blocks.len(), 2);
@@ -1319,7 +1411,7 @@ pub(crate) mod connector_deadlines {
     /// cancelling a block's cycle — until all of them faulted, and
     /// checks each faulted by timing out after [`TIMEOUT_MILLIS`], on
     /// time: within [`SLACK`] of that deadline, counted from `started`.
-    async fn wait_for_timeouts(client: &mut Client, blocks: &[Uuid], started: Instant) {
+    async fn wait_for_timeouts(client: &Client, blocks: &[Uuid], started: Instant) {
         let deadline = Duration::from_millis(TIMEOUT_MILLIS as u64) + SLACK;
         let mut running = blocks.to_vec();
         while !running.is_empty() {
@@ -1347,7 +1439,7 @@ pub(crate) mod connector_deadlines {
 
     /// Writes `pins` to `block`, then checks its operation times out on
     /// time under steady requests.
-    async fn times_out_under_requests(client: &mut Client, block: Uuid, pins: Vec<(&str, Value)>) {
+    async fn times_out_under_requests(client: &Client, block: Uuid, pins: Vec<(&str, Value)>) {
         for (pin, value) in pins {
             client.write_input(block, pin, value).await;
         }
@@ -1358,11 +1450,7 @@ pub(crate) mod connector_deadlines {
     /// default deadline, then — with the operation in flight — writes
     /// `timeout`, the way a program load does, and checks the operation
     /// times out by the timeout written last.
-    async fn times_out_by_a_late_timeout(
-        client: &mut Client,
-        block: Uuid,
-        pins: Vec<(&str, Value)>,
-    ) {
+    async fn times_out_by_a_late_timeout(client: &Client, block: Uuid, pins: Vec<(&str, Value)>) {
         let started = Instant::now();
         for (pin, value) in pins {
             client.write_input(block, pin, value).await;
@@ -1405,8 +1493,8 @@ pub(crate) mod connector_deadlines {
 
         let mut pins = binding(&name, "topic");
         pins.push(("in", 42.into()));
-        drive(engine, move |mut client| async move {
-            times_out_under_requests(&mut client, id, pins).await;
+        drive(engine, move |client| async move {
+            times_out_under_requests(&client, id, pins).await;
         })
         .await;
         unregister_connector(&name);
@@ -1423,8 +1511,8 @@ pub(crate) mod connector_deadlines {
 
         let mut pins = binding(&name, "route");
         pins.push(("in", 42.into()));
-        drive(engine, move |mut client| async move {
-            times_out_under_requests(&mut client, id, pins).await;
+        drive(engine, move |client| async move {
+            times_out_under_requests(&client, id, pins).await;
         })
         .await;
         unregister_connector(&name);
@@ -1440,8 +1528,8 @@ pub(crate) mod connector_deadlines {
         engine.schedule(block).expect("scheduled");
 
         let pins = binding(&name, "sensor");
-        drive(engine, move |mut client| async move {
-            times_out_under_requests(&mut client, id, pins).await;
+        drive(engine, move |client| async move {
+            times_out_under_requests(&client, id, pins).await;
         })
         .await;
         unregister_connector(&name);
@@ -1466,8 +1554,8 @@ pub(crate) mod connector_deadlines {
 
         let mut pins = unbounded_binding(&name, "topic");
         pins.push(("in", 42.into()));
-        drive(engine, move |mut client| async move {
-            times_out_by_a_late_timeout(&mut client, id, pins).await;
+        drive(engine, move |client| async move {
+            times_out_by_a_late_timeout(&client, id, pins).await;
         })
         .await;
         unregister_connector(&name);
@@ -1484,8 +1572,8 @@ pub(crate) mod connector_deadlines {
 
         let mut pins = unbounded_binding(&name, "route");
         pins.push(("in", 42.into()));
-        drive(engine, move |mut client| async move {
-            times_out_by_a_late_timeout(&mut client, id, pins).await;
+        drive(engine, move |client| async move {
+            times_out_by_a_late_timeout(&client, id, pins).await;
         })
         .await;
         unregister_connector(&name);
@@ -1501,8 +1589,8 @@ pub(crate) mod connector_deadlines {
         engine.schedule(block).expect("scheduled");
 
         let pins = unbounded_binding(&name, "sensor");
-        drive(engine, move |mut client| async move {
-            times_out_by_a_late_timeout(&mut client, id, pins).await;
+        drive(engine, move |client| async move {
+            times_out_by_a_late_timeout(&client, id, pins).await;
         })
         .await;
         unregister_connector(&name);
@@ -1553,10 +1641,10 @@ pub(crate) mod connector_deadlines {
             ids.push(id);
         }
 
-        drive(engine, move |mut client| async move {
+        drive(engine, move |client| async move {
             let started = Instant::now();
             client.load(program).await.expect("loaded");
-            wait_for_timeouts(&mut client, &ids, started).await;
+            wait_for_timeouts(&client, &ids, started).await;
         })
         .await;
         for name in [out, req, sub] {
@@ -1573,16 +1661,10 @@ pub(crate) mod panics {
         atomic::{AtomicUsize, Ordering},
     };
 
-    use assert_matches::assert_matches;
-
     use super::lifecycle::TestEngine;
     use super::*;
     use crate::base::Status;
     use crate::base::block::Block;
-    use crate::base::engine::messages::EngineMessage::{
-        GetCurrentProgramReq, GetCurrentProgramRes, InspectBlockReq, InspectBlockRes,
-        RemoveBlockReq, RemoveBlockRes,
-    };
     use crate::base::input::InputReader;
     use crate::base::output::Output;
     use crate::blocks::{InputImpl, OutputImpl};
@@ -1670,7 +1752,7 @@ pub(crate) mod panics {
     pub(crate) async fn panic_faults_the_block_and_downstream<E: TestEngine>(mut engine: E) {
         let chain = schedule_chain(&mut engine);
 
-        drive(engine, move |mut client| async move {
+        drive(engine, move |client| async move {
             client.write_output(chain.source, "out", 1.into()).await;
 
             let panicked = client.wait_for_state(chain.panicker, "fault").await;
@@ -1679,10 +1761,7 @@ pub(crate) mod panics {
                 .wait_for_output(chain.probe, "fault", true.into())
                 .await;
 
-            match client.request(GetCurrentProgramReq(client.id)).await {
-                GetCurrentProgramRes(Ok(program)) => assert_eq!(program.blocks.len(), 3),
-                other => panic!("Expected GetCurrentProgramRes(Ok), got {:?}", other),
-            }
+            assert_eq!(client.save().await.blocks.len(), 3);
 
             // Not repeated, since no new trigger value arrives; the hold
             // for a block that panics on every cycle is covered by
@@ -1691,14 +1770,12 @@ pub(crate) mod panics {
             assert_eq!(chain.panics.load(Ordering::SeqCst), 1);
             assert_eq!(client.inspect(chain.panicker).await.state, "fault");
 
-            let reply = client
-                .request(RemoveBlockReq(client.id, chain.panicker))
-                .await;
-            assert_matches!(reply, RemoveBlockRes(Ok(id)) if id == chain.panicker);
-            let reply = client
-                .request(InspectBlockReq(client.id, chain.panicker))
-                .await;
-            assert_matches!(reply, InspectBlockRes(Err(_)), "the block was removed");
+            assert_eq!(
+                client.remove_block(chain.panicker).await,
+                Ok(chain.panicker)
+            );
+            let reply = answer(client.inspect_block(chain.panicker)).await;
+            assert!(reply.is_err(), "the block was removed");
         })
         .await;
     }
@@ -1708,7 +1785,7 @@ pub(crate) mod panics {
     pub(crate) async fn panicked_block_recovers_after_a_clean_cycle<E: TestEngine>(mut engine: E) {
         let chain = schedule_chain(&mut engine);
 
-        drive(engine, move |mut client| async move {
+        drive(engine, move |client| async move {
             client.write_output(chain.source, "out", 1.into()).await;
             client.wait_for_state(chain.panicker, "fault").await;
             client
@@ -1750,7 +1827,7 @@ pub(crate) mod panics {
         let (id, panics) = (*block.id(), block.panics.clone());
         engine.schedule(block).expect("scheduled");
 
-        drive(engine, move |mut client| async move {
+        drive(engine, move |client| async move {
             let held = client.wait_for_state(id, "fault").await;
             assert_eq!(held.fault_reason.as_deref(), Some("block panicked: always"));
 
@@ -1881,7 +1958,6 @@ pub(crate) mod runtime_descs {
     use super::lifecycle::TestEngine;
     use super::*;
     use crate::base::block::{Block, BlockConnect, BlockDesc, BlockInput, BlockOutput, BlockState};
-    use crate::base::engine::messages::EngineMessage::Reset;
     use crate::base::input::{InputProps, input_reader::InputReader};
     use crate::base::link::Link;
     use crate::base::output::{Output, OutputProps};
@@ -2024,7 +2100,7 @@ pub(crate) mod runtime_descs {
         engine.schedule(second).expect("scheduled");
         engine.schedule(third).expect("scheduled");
 
-        drive(engine, move |mut client| async move {
+        drive(engine, move |client| async move {
             let (first, second, third) = ids;
             let link = client
                 .connect(None, (second, "out"), (third, "in"))
@@ -2053,31 +2129,16 @@ pub(crate) mod runtime_descs {
     /// library could not be added or evaluated by its name alone, while
     /// `schedule_block` with no library searched every library.
     pub(crate) async fn a_registered_block_is_found_by_its_name_alone<E: TestEngine>(engine: E) {
-        use crate::base::engine::messages::EngineMessage::{
-            AddBlockReq, AddBlockRes, EvaluateBlockReq, EvaluateBlockRes,
-        };
-
         let _ = registry::register::<Registered>();
-        drive(engine, move |mut client| async move {
-            let added = client
-                .request(AddBlockReq(client.id, "Registered".to_string(), None, None))
-                .await;
-            let AddBlockRes(Ok(id)) = added else {
-                panic!("not added: {added:?}");
-            };
+        drive(engine, move |client| async move {
+            let id = answer(client.add_block("Registered", None, None))
+                .await
+                .expect("added");
             assert_eq!(client.inspect(id).await.name, "Registered");
 
-            let evaluated = client
-                .request(EvaluateBlockReq(
-                    client.id,
-                    "Registered".to_string(),
-                    vec![5.into()],
-                    None,
-                ))
-                .await;
-            let EvaluateBlockRes(Ok(outputs)) = evaluated else {
-                panic!("not evaluated: {evaluated:?}");
-            };
+            let outputs = answer(client.eval_block("Registered", vec![5.into()], None))
+                .await
+                .expect("evaluated");
             assert_eq!(outputs, vec![Value::from(5)]);
         })
         .await;
@@ -2100,7 +2161,7 @@ pub(crate) mod runtime_descs {
             program_link(first, second, "in", Some(link)),
         );
 
-        drive(engine, move |mut client| async move {
+        drive(engine, move |client| async move {
             client.load(program).await.expect("loaded");
             client.write_input(first, "in", 3.into()).await;
             client.wait_for_output(second, "out", 3.into()).await;
@@ -2109,9 +2170,9 @@ pub(crate) mod runtime_descs {
             assert_eq!(saved.blocks[&second.to_string()].name, "Registered");
             assert!(saved.links.contains_key(&link.to_string()));
 
-            client.send(Reset).await;
+            client.reset().await;
             client.load(saved.clone()).await.expect("reloaded");
-            super::round_trip::wait_for_save(&mut client, &saved).await;
+            super::round_trip::wait_for_save(&client, &saved).await;
         })
         .await;
     }
@@ -2154,7 +2215,7 @@ pub(crate) mod scan_intervals {
         let probe = ScanProbe::new();
         let id = *probe.id();
         engine.schedule(probe).expect("scheduled");
-        drive(engine, move |mut client| async move {
+        drive(engine, move |client| async move {
             client.wait_for_output(id, "out", expected.into()).await;
         })
         .await;
@@ -2182,7 +2243,7 @@ pub(crate) mod scan_intervals {
         engine.schedule(probe).expect("scheduled");
         engine.set_scan_interval(Duration::from_millis(30));
 
-        drive(engine, move |mut client| async move {
+        drive(engine, move |client| async move {
             client.wait_for_output(id, "out", 30.0.into()).await;
         })
         .await;
@@ -2235,7 +2296,7 @@ pub(crate) mod configuration {
             Err(Error::Engine(EngineError::BlockInstanceNotFound { id })) if id == unknown
         );
 
-        drive(engine, move |mut client| async move {
+        drive(engine, move |client| async move {
             let saved = client.save().await;
             let block = &saved.blocks[&source.to_string()];
             assert_eq!(block.label.as_deref(), Some("source"));
@@ -2275,7 +2336,7 @@ pub(crate) mod configuration {
             Err(Error::Engine(EngineError::BlockInstanceNotFound { id })) if id == unknown
         );
 
-        drive(engine, move |mut client| async move {
+        drive(engine, move |client| async move {
             let saved = client.save().await;
             assert_eq!(saved.blocks[&source.to_string()].editor, Some(editor));
             assert_eq!(saved.blocks[&target.to_string()].editor, None);
@@ -2289,7 +2350,6 @@ pub(crate) mod configuration {
 /// run by each engine's tests: a block that rejects a request reports
 /// what it rejected as a typed error, not a bare message.
 pub(crate) mod rejections {
-    use assert_matches::assert_matches;
 
     use super::lifecycle::TestEngine;
     use super::*;
@@ -2302,28 +2362,20 @@ pub(crate) mod rejections {
         let id = *add.id();
         engine.schedule(add).expect("scheduled");
 
-        drive(engine, move |mut client| async move {
-            let request =
-                EngineMessage::WriteBlockInputReq(client.id, id, "nope".to_string(), 1.into());
+        drive(engine, move |client| async move {
             let expected = EngineError::InputNotFound {
                 block: id,
                 pin: "nope".to_string(),
             };
-            assert_matches!(
-                client.request(request).await,
-                EngineMessage::WriteBlockInputRes(Err(msg)) if msg == expected.to_string()
-            );
+            let reply = answer(client.0.write_input(id, "nope", 1.into())).await;
+            assert_eq!(reply, Err(expected.into()));
 
-            let request =
-                EngineMessage::WriteBlockOutputReq(client.id, id, "nope".to_string(), 1.into());
             let expected = EngineError::OutputNotFound {
                 block: id,
                 pin: "nope".to_string(),
             };
-            assert_matches!(
-                client.request(request).await,
-                EngineMessage::WriteBlockOutputRes(Err(msg)) if msg == expected.to_string()
-            );
+            let reply = answer(client.0.write_output(id, "nope", 1.into())).await;
+            assert_eq!(reply, Err(expected.into()));
         })
         .await;
     }
@@ -2336,7 +2388,7 @@ pub(crate) mod rejections {
     ) {
         let (source, target) = schedule_linked_adds(&mut engine);
 
-        drive(engine, move |mut client| async move {
+        drive(engine, move |client| async move {
             let reply = client.connect(None, (source, "out"), (target, "in0")).await;
             let expected = EngineError::Connect(ConnectError::AlreadyConnected {
                 source_block: source,
@@ -2344,7 +2396,7 @@ pub(crate) mod rejections {
                 target_block: target,
                 target_input: "in0".to_string(),
             });
-            assert_matches!(reply, Err(msg) if msg == expected.to_string());
+            assert_eq!(reply, Err(expected.into()));
             assert_eq!(client.save().await.links.len(), 1);
         })
         .await;
