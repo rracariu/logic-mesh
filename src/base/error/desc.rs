@@ -16,8 +16,9 @@ use thiserror::Error;
 /// names the field and carries what is wrong with it as its
 /// [`source`](std::error::Error::source), and a bad pin kind as
 /// [`UnknownPinKind`](Self::UnknownPinKind), which names the pin. Only
-/// `wasm32` builds, where a JavaScript host registers blocks, produce
-/// those two and [`NotExternal`](Self::NotExternal).
+/// `wasm32` builds with the `js` feature, where a JavaScript host
+/// registers blocks, produce those two and
+/// [`NotExternal`](Self::NotExternal).
 ///
 /// # Examples
 ///
