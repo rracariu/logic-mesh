@@ -67,9 +67,15 @@ export type LogicMeshErrorCode =
   | 'ConnectorRequestFailed'
   | 'ConnectorTimeout'
   | 'ConnectorTransport'
+  // Block descriptions (registerBlock)
+  | 'UnknownImplementation'
+  | 'UnknownRunCondition'
+  | 'UnknownPinKind'
+  | 'BlockNotExternal'
   // Command arguments and results
   | 'InvalidProgram'
   | 'InvalidArgument'
+  | 'InvalidValue'
   | 'Serialization';
 
 /**
