@@ -15,6 +15,11 @@ export {
   type EngineSessionOptions,
 } from './EngineSession.js';
 export {
+  isLogicMeshError,
+  type LogicMeshError,
+  type LogicMeshErrorCode,
+} from './LogicMeshError.js';
+export {
   defineJsBlocks,
   type JsBlocks,
   type JsBlockFn,

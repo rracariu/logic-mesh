@@ -142,8 +142,24 @@ describe('program save and load', () => {
         version: newer,
         blocks: { [FIRST]: { type: 'a shape this engine does not know' } },
       }),
-    ).rejects.toMatch(`version ${newer} is not supported`);
+    ).rejects.toMatchObject({
+      name: 'LogicMeshError',
+      code: 'UnsupportedProgramVersion',
+      message: expect.stringContaining(`version ${newer} is not supported`),
+    });
     const saved = (await command.getProgram()) as Program;
     expect(saved.blocks).toStrictEqual({});
+  });
+
+  it('rejects a payload that is not a program as InvalidProgram', async () => {
+    const { command } = session();
+
+    await expect(
+      command.loadProgram({ version: PROGRAM_FORMAT_VERSION, blocks: 42 }),
+    ).rejects.toMatchObject({
+      name: 'LogicMeshError',
+      code: 'InvalidProgram',
+      message: expect.stringMatching(/^Invalid program payload: /),
+    });
   });
 });
