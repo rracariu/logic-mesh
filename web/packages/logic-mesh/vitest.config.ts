@@ -19,5 +19,12 @@ export default defineConfig({
   },
   test: {
     include: ['test/**/*.test.ts'],
+    // Type-level tests (`*.test-d.ts`) are checked by `tsc`, never run,
+    // against a tsconfig that adds the tests to the package sources.
+    typecheck: {
+      enabled: true,
+      include: ['test/**/*.test-d.ts'],
+      tsconfig: './test/tsconfig.json',
+    },
   },
 });
