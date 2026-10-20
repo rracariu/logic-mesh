@@ -12,8 +12,10 @@
 //! versions are described on [`crate::base::program`].
 
 use std::collections::BTreeMap;
+use std::fmt;
 
 use libhaystack::val::Value;
+use serde::de::{self, DeserializeOwned, Deserializer, MapAccess, Visitor};
 use serde::{Deserialize, Serialize};
 
 use crate::base::error::EngineError;
@@ -32,9 +34,7 @@ use crate::base::error::EngineError;
 pub type EditorMetadata = serde_json::Map<String, serde_json::Value>;
 
 /// The version a save from before format versions reads as.
-const fn legacy_format_version() -> u32 {
-    0
-}
+const LEGACY_FORMAT_VERSION: u32 = 0;
 
 /// Link between two pins.
 ///
@@ -237,6 +237,15 @@ impl ProgramBlock {
 /// See the [module docs](crate::base::program#format-versions) for the
 /// format versions a program is read in.
 ///
+/// # Reading a save
+///
+/// Deserializing a program reads its `version` before its blocks and
+/// links, and fails on a program from a newer format with the message
+/// of [`EngineError::UnsupportedProgramVersion`], whatever the rest of
+/// its shape: a newer format may have changed it so that it no longer
+/// parses as this one. An engine's load checks a program built in code
+/// the same way, and reports the typed error.
+///
 /// # Examples
 ///
 /// ```
@@ -254,25 +263,24 @@ impl ProgramBlock {
 /// assert_eq!(loaded, program);
 /// assert_eq!(loaded.version, Program::FORMAT_VERSION);
 /// ```
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+// Deserialized by hand, by `ProgramVisitor`, so that the version is
+// checked first. Its JSON keys are the field names serialized here.
+#[derive(Debug, Clone, PartialEq, Serialize)]
 #[non_exhaustive]
 pub struct Program {
     /// The format version the program is in. A new program is in
     /// [`FORMAT_VERSION`](Self::FORMAT_VERSION); a save from before
     /// format versions, which has none, reads as 0.
-    #[serde(default = "legacy_format_version")]
     pub version: u32,
     /// Program name.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
     /// Human-readable description.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
-    /// Blocks keyed by their UUID string.
-    #[serde(default)]
+    /// Blocks keyed by their UUID string. Missing reads as empty.
     pub blocks: BTreeMap<String, ProgramBlock>,
-    /// Links keyed by their UUID string.
-    #[serde(default)]
+    /// Links keyed by their UUID string. Missing reads as empty.
     pub links: BTreeMap<String, LinkData>,
 }
 
@@ -316,7 +324,7 @@ impl Default for Program {
 pub(crate) const PROGRAM_1_0_JSON: &str = include_str!("testdata/program-1.0.json");
 
 /// [`Program::check_version`] for a version read on its own.
-pub(crate) fn check_format_version(found: u32) -> Result<(), EngineError> {
+fn check_format_version(found: u32) -> Result<(), EngineError> {
     if found > Program::FORMAT_VERSION {
         Err(EngineError::UnsupportedProgramVersion {
             found,
@@ -324,6 +332,132 @@ pub(crate) fn check_format_version(found: u32) -> Result<(), EngineError> {
         })
     } else {
         Ok(())
+    }
+}
+
+/// The keys of a [`Program`], `version` first: a deserializer that
+/// visits a struct's fields by name, as serde-wasm-bindgen does, reads
+/// them in this order.
+const PROGRAM_FIELDS: &[&str] = &["version", "name", "description", "blocks", "links"];
+
+/// A key of a [`Program`]. Any other key is ignored, as a derived
+/// `Deserialize` would.
+#[derive(Deserialize)]
+#[serde(field_identifier, rename_all = "lowercase")]
+enum ProgramField {
+    Version,
+    Name,
+    Description,
+    Blocks,
+    Links,
+    #[serde(other)]
+    Other,
+}
+
+impl<'de> Deserialize<'de> for Program {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        deserializer.deserialize_struct("Program", PROGRAM_FIELDS, ProgramVisitor)
+    }
+}
+
+/// Reads a [`Program`], checking its version before its blocks and
+/// links are read.
+///
+/// The keys of a JSON object can come in any order. Blocks or links
+/// that come before the version are held as JSON, and read only once
+/// the version is known: the whole program has been seen, or the
+/// version came and passed the check.
+struct ProgramVisitor;
+
+impl<'de> Visitor<'de> for ProgramVisitor {
+    type Value = Program;
+
+    fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("a logic-mesh program")
+    }
+
+    fn visit_map<A: MapAccess<'de>>(self, mut map: A) -> Result<Program, A::Error> {
+        let mut version = None;
+        let mut name = None;
+        let mut description = None;
+        let mut blocks = None;
+        let mut links = None;
+        while let Some(field) = map.next_key()? {
+            match field {
+                ProgramField::Version => {
+                    if version.is_some() {
+                        return Err(de::Error::duplicate_field("version"));
+                    }
+                    let found = map.next_value()?;
+                    check_format_version(found).map_err(de::Error::custom)?;
+                    version = Some(found);
+                }
+                ProgramField::Name => {
+                    if name.is_some() {
+                        return Err(de::Error::duplicate_field("name"));
+                    }
+                    name = Some(map.next_value::<Option<String>>()?);
+                }
+                ProgramField::Description => {
+                    if description.is_some() {
+                        return Err(de::Error::duplicate_field("description"));
+                    }
+                    description = Some(map.next_value::<Option<String>>()?);
+                }
+                ProgramField::Blocks => {
+                    if blocks.is_some() {
+                        return Err(de::Error::duplicate_field("blocks"));
+                    }
+                    blocks = Some(Entries::next(&mut map, version.is_some())?);
+                }
+                ProgramField::Links => {
+                    if links.is_some() {
+                        return Err(de::Error::duplicate_field("links"));
+                    }
+                    links = Some(Entries::next(&mut map, version.is_some())?);
+                }
+                ProgramField::Other => {
+                    map.next_value::<de::IgnoredAny>()?;
+                }
+            }
+        }
+
+        Ok(Program {
+            version: version.unwrap_or(LEGACY_FORMAT_VERSION),
+            name: name.flatten(),
+            description: description.flatten(),
+            blocks: Entries::finish(blocks)?,
+            links: Entries::finish(links)?,
+        })
+    }
+}
+
+/// A program's blocks or links, as [`ProgramVisitor`] read them.
+enum Entries<T> {
+    /// Read after the version was checked.
+    Read(BTreeMap<String, T>),
+    /// Held as JSON, to be read once the version is known.
+    Held(serde_json::Value),
+}
+
+impl<T: DeserializeOwned> Entries<T> {
+    /// Reads the map's next value: as entries once the program's
+    /// version is `checked`, as JSON otherwise.
+    fn next<'de, A: MapAccess<'de>>(map: &mut A, checked: bool) -> Result<Self, A::Error> {
+        if checked {
+            map.next_value().map(Self::Read)
+        } else {
+            map.next_value().map(Self::Held)
+        }
+    }
+
+    /// The entries read, empty if the program had none.
+    fn finish<E: de::Error>(entries: Option<Self>) -> Result<BTreeMap<String, T>, E> {
+        match entries {
+            None => Ok(BTreeMap::new()),
+            Some(Self::Read(entries)) => Ok(entries),
+            Some(Self::Held(json)) => serde_json::from_value(json).map_err(E::custom),
+        }
     }
 }
 
@@ -404,18 +538,106 @@ mod test {
     }
 
     #[test]
-    fn a_program_from_a_newer_format_is_rejected() {
-        let program: Program = serde_json::from_value(json!({
-            "version": Program::FORMAT_VERSION + 1,
-            "blocks": {},
-        }))
-        .expect("parses");
+    fn a_program_from_a_newer_format_fails_the_version_check() {
+        let mut program = Program::new();
+        program.version = Program::FORMAT_VERSION + 1;
 
         assert_matches!(
             program.check_version(),
             Err(EngineError::UnsupportedProgramVersion { found, supported })
                 if found == Program::FORMAT_VERSION + 1 && supported == Program::FORMAT_VERSION
         );
+    }
+
+    /// Regression: a program from a newer format whose blocks no longer
+    /// parse as this format's failed to deserialize with an error about
+    /// a block field (``missing field `name` ``) instead of its version,
+    /// so a caller reading a save could not tell why.
+    #[test]
+    fn a_newer_format_is_rejected_before_its_shape_is_read() {
+        let newer = Program::FORMAT_VERSION + 1;
+        let expected = EngineError::UnsupportedProgramVersion {
+            found: newer,
+            supported: Program::FORMAT_VERSION,
+        }
+        .to_string();
+        let blocks = r#"{"b": {"type": "Add", "pins": [1, 2]}}"#;
+        let links = r#"{"l": {"from": "b.out", "to": "b.in1"}}"#;
+
+        for json in [
+            format!(r#"{{"version": {newer}, "blocks": {blocks}, "links": {links}}}"#),
+            format!(r#"{{"blocks": {blocks}, "links": {links}, "version": {newer}}}"#),
+            format!(r#"{{"blocks": {blocks}, "version": {newer}, "links": {links}}}"#),
+        ] {
+            let err = serde_json::from_str::<Program>(&json).expect_err("a newer format");
+            assert!(
+                err.to_string().starts_with(&expected),
+                "{json}: got `{err}`"
+            );
+        }
+    }
+
+    /// A program reads the same whether its version comes before or
+    /// after its blocks and links, and with no version at all.
+    #[test]
+    fn a_program_reads_the_same_whatever_its_key_order() {
+        let mut editor = EditorMetadata::new();
+        editor.insert("widget".to_string(), json!({"kind": "Slider", "step": 0.1}));
+        let mut block = ProgramBlock::new("Add", "core");
+        block.ver = Some("1.0.0".to_string());
+        block.position = Some(Position::new(1.0, 2.0));
+        block.editor = Some(editor);
+        block
+            .inputs
+            .insert("in0".to_string(), PinValue::new(2.5, false));
+        let mut program = Program::new();
+        program.name = Some("p".to_string());
+        program.blocks.insert("b".to_string(), block);
+        program
+            .links
+            .insert("l".to_string(), LinkData::new("b", "out", "b", "in1"));
+        let blocks = serde_json::to_string(&program.blocks).expect("serializes");
+        let links = serde_json::to_string(&program.links).expect("serializes");
+
+        for json in [
+            format!(r#"{{"version": 1, "name": "p", "blocks": {blocks}, "links": {links}}}"#),
+            format!(r#"{{"name": "p", "blocks": {blocks}, "links": {links}, "version": 1}}"#),
+            format!(r#"{{"links": {links}, "version": 1, "blocks": {blocks}, "name": "p"}}"#),
+        ] {
+            let read: Program = serde_json::from_str(&json).expect("reads");
+            assert_eq!(read, program, "{json}");
+        }
+
+        let legacy = format!(r#"{{"name": "p", "blocks": {blocks}, "links": {links}}}"#);
+        let read: Program = serde_json::from_str(&legacy).expect("reads");
+        assert_eq!(read.version, 0);
+        assert_eq!((read.blocks, read.links), (program.blocks, program.links));
+    }
+
+    /// The keys a program reads as a derived `Deserialize` would: a
+    /// repeated key is an error, an unknown one is ignored, a null name
+    /// or description is none, and missing blocks or links are empty.
+    #[test]
+    fn program_keys_read_as_a_derived_deserialize_would() {
+        for key in PROGRAM_FIELDS {
+            let value = if *key == "version" { "1" } else { "null" };
+            let json = format!(r#"{{"{key}": {value}, "{key}": {value}}}"#);
+            let err = serde_json::from_str::<Program>(&json).expect_err("a repeated key");
+            assert!(
+                err.to_string()
+                    .contains(&format!("duplicate field `{key}`")),
+                "{json}: got `{err}`"
+            );
+        }
+
+        let read: Program =
+            serde_json::from_str(r#"{"version": 1, "name": null, "description": null, "x": [1]}"#)
+                .expect("reads");
+        assert_eq!(read, Program::new());
+
+        assert!(serde_json::from_str::<Program>(r#"{"version": 1, "blocks": null}"#).is_err());
+        assert!(serde_json::from_str::<Program>(r#"{"version": -1}"#).is_err());
+        assert!(serde_json::from_str::<Program>("[]").is_err());
     }
 
     /// Editor metadata comes back exactly as it was written: nested
