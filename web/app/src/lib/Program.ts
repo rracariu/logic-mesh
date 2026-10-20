@@ -1,27 +1,17 @@
 import type { Edge, Node } from '@xyflow/svelte';
-import {
-  PROGRAM_FORMAT_VERSION,
-  type PinValue,
-  type Position,
-  type Program,
-  type ProgramBlock,
-} from 'logic-mesh';
-import { cloneWidget, type Block, type Widget } from './Block';
+import { PROGRAM_FORMAT_VERSION } from 'logic-mesh';
+import { cloneWidget, type Block } from './Block';
 import { useEngine } from './Engine';
+import {
+  upgradeFormat,
+  type EditorBlock,
+  type EditorProgram,
+} from './ProgramFormat';
 import { widgetBlockDescs } from './Widgets';
 
+export type { BlockEditor, EditorProgram } from './ProgramFormat';
+
 const { command } = useEngine();
-
-/** The editor metadata this editor saves with a block. */
-export type BlockEditor = {
-  /** Widget identity, for ExternalIn/ExternalOut blocks placed as widgets. */
-  widget?: Widget;
-};
-
-/** A program as this editor saves and loads it. */
-export type EditorProgram = Program<BlockEditor>;
-
-type EditorBlock = ProgramBlock<BlockEditor>;
 
 export function save(ops: {
   name: string;
@@ -91,70 +81,6 @@ export function save(ops: {
   });
 
   return program;
-}
-
-/**
- * A block as a save from before format versions wrote it: the position
- * keyed `positions`, the widget beside the block's fields rather than in
- * its editor metadata, and pins whose value or connected flag may be
- * missing.
- */
-type LegacyBlock = Omit<EditorBlock, 'inputs' | 'outputs'> & {
-  positions?: Position;
-  widget?: Widget;
-  inputs?: Record<string, Partial<PinValue>>;
-  outputs?: Record<string, Partial<PinValue>>;
-};
-
-/** A save from before format versions, see {@link LegacyBlock}. */
-type LegacyProgram = Omit<EditorProgram, 'version' | 'blocks' | 'links'> & {
-  version?: undefined;
-  blocks?: Record<string, LegacyBlock>;
-  links?: EditorProgram['links'];
-};
-
-/**
- * Bring a saved program to the current format, in place, so the same
- * object is valid for both node building and `pushToEngine`.
- *
- * A save from before format versions — one without `version`, written
- * by logic-mesh 1.x or an earlier build of this editor — moves its
- * `positions` to `position` and a block's `widget` into its editor
- * metadata, and gets the pin fields it left out. A program from a newer
- * format is rejected before anything is built from it.
- */
-function upgradeFormat(saved: unknown): EditorProgram {
-  const program = saved as EditorProgram | LegacyProgram;
-  if (program.version !== undefined) {
-    if (program.version > PROGRAM_FORMAT_VERSION) {
-      throw new Error(
-        `Program format version ${program.version} is newer than this editor reads (${PROGRAM_FORMAT_VERSION})`,
-      );
-    }
-    return program;
-  }
-
-  const blocks = (program.blocks ??= {});
-  for (const block of Object.values(blocks)) {
-    if (block.positions) {
-      block.position ??= block.positions;
-      delete block.positions;
-    }
-    if (block.widget) {
-      block.editor = { ...block.editor, widget: block.widget };
-      delete block.widget;
-    }
-    for (const pins of [block.inputs, block.outputs]) {
-      for (const pin of Object.values(pins ?? {})) {
-        pin.value ??= null;
-        pin.isConnected ??= false;
-      }
-    }
-  }
-  program.links ??= {};
-  return Object.assign(program, {
-    version: PROGRAM_FORMAT_VERSION,
-  }) as EditorProgram;
 }
 
 // Widget names from the legacy JS-block UI library (lib 'ui'), split by
