@@ -951,6 +951,11 @@ mod test {
             configuration::editor_metadata_is_set_through_the_trait(MultiThreadedEngine::new())
                 .await;
         }
+
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn block_metadata_is_set_through_requests() {
+            configuration::block_metadata_is_set_through_requests(MultiThreadedEngine::new()).await;
+        }
     }
 
     /// Regression: scheduling outside a tokio runtime panicked inside
