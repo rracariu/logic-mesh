@@ -246,25 +246,28 @@ impl From<WatchMessage> for JsWatchNotification {
 /// A block's state and pin values, as `inspectBlock` resolves with them
 /// — the JavaScript form of a [`BlockDefinition`], with the field names
 /// of the other JavaScript types.
+///
+/// Crate-private: the binding is its only user, so the JavaScript shape
+/// can grow a field without breaking the Rust API.
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct JsBlockInspection {
+pub(crate) struct JsBlockInspection {
     /// Block UUID as a string.
-    pub id: String,
+    id: String,
     /// Block type name.
-    pub name: String,
+    name: String,
     /// Library of the block type.
-    pub lib: String,
+    lib: String,
     /// Input pins by name.
-    pub inputs: BTreeMap<String, BlockInputData>,
+    inputs: BTreeMap<String, BlockInputData>,
     /// Output pins by name.
-    pub outputs: BTreeMap<String, BlockOutputData>,
+    outputs: BTreeMap<String, BlockOutputData>,
     /// The block's operational state
     /// (`running | fault | disabled | terminated`).
-    pub state: String,
+    state: String,
     /// Fault reason when `state == "fault"`, else [`None`].
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub fault_reason: Option<String>,
+    fault_reason: Option<String>,
 }
 
 impl From<BlockDefinition> for JsBlockInspection {
