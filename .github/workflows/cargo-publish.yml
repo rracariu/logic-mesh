@@ -7,14 +7,15 @@ on:
 permissions:
   contents: read
 
-# Every job must succeed for the next one to run: logic-mesh is only
+# Every job must succeed for the next one to run: nothing is uploaded
+# until preflight has checked both crates, and logic-mesh is only
 # published once the exact logic_mesh_block_macro it requires is on
 # crates.io. Each publish is skipped when its version is already
 # there, so re-running a release after a failure picks up where it
 # stopped.
 jobs:
   preflight:
-    name: Check release versions
+    name: Check the release
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.versions.outputs.version }}
@@ -32,6 +33,16 @@ jobs:
         run: |
           version=$(.github/scripts/check-versions.sh "$TAG")
           echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      # main.yml's package job runs the same check, but nothing makes a
+      # release wait for it, and a published version can never be
+      # changed. Both crates are checked here, before either is
+      # uploaded. `--no-verify`, as `cargo publish` compiles each crate
+      # from its archive anyway.
+      - name: Check that the packaged crates carry the license
+        run: |
+          cargo package --locked --no-verify -p logic_mesh_block_macro -p logic-mesh
+          .github/scripts/check-crate-license.sh logic_mesh_block_macro logic-mesh
 
   publishMacro:
     name: Publish block macro lib
