@@ -343,8 +343,10 @@ pub type WatchSender = mpsc::UnboundedSender<WatchMessage>;
 
 /// A request an engine answers.
 ///
-/// Each is answered with the [`EngineResponse`] variant of the same
-/// name. A running engine handles requests one at a time, in the order
+/// Rust callers usually send these through the matching methods of an
+/// [`EngineClient`](crate::base::engine::EngineClient), which build the
+/// request and unwrap its response. Each is answered with the
+/// [`EngineResponse`] variant of the same name. A running engine handles requests one at a time, in the order
 /// it receives them, and answers each before it handles the next — but a
 /// client matches responses to requests by [`RequestId`], not by order.
 /// An idle engine queues the requests sent to it, and handles them once
