@@ -4,11 +4,12 @@
 
 use std::fmt;
 
+use js_sys::{Array, Function, Map, Object, Reflect};
 use libhaystack::val::Value;
 use serde::Serialize;
 use uuid::Uuid;
-use wasm_bindgen::JsValue;
 use wasm_bindgen::prelude::wasm_bindgen;
+use wasm_bindgen::{JsCast, JsValue};
 
 use crate::base::engine::EngineClient;
 use crate::base::engine::messages::WatchId;
@@ -61,12 +62,83 @@ fn from_js_value(value: JsValue, target: impl fmt::Display) -> Result<Value, JsV
     if value.is_null() || value.is_undefined() {
         return Ok(Value::Null);
     }
-    serde_wasm_bindgen::from_value(value).map_err(|err| {
+    let invalid = |detail: &dyn fmt::Display| {
         js_error_from(
             ErrorCode::InvalidValue,
-            format!("Invalid value for {target}: {err}"),
+            format!("Invalid value for {target}: {detail}"),
         )
-    })
+    };
+    if let Some(detail) = unencodable_object(&value, 0) {
+        return Err(invalid(&detail));
+    }
+    serde_wasm_bindgen::from_value(value).map_err(|err| invalid(&err))
+}
+
+/// How deep a value written from JavaScript may nest. Haystack values
+/// nest a few levels; the limit keeps a cyclic value from overflowing
+/// the stack.
+const MAX_VALUE_DEPTH: usize = 64;
+
+/// Says why `value` cannot be a Haystack value in its JSON encoding if
+/// it holds an object the encoding has no use for, or nests deeper than
+/// [`MAX_VALUE_DEPTH`].
+///
+/// serde-wasm-bindgen reads any object that is not iterable through its
+/// own enumerable properties, so it would read a `Date`, a class
+/// instance or a boxed primitive as a Dict of whatever fields it
+/// happens to have. Arrays, `Map`s and plain objects — whose prototype
+/// is `null` or the `Object.prototype` of any realm — are looked into;
+/// any other value is left for the deserializer to judge.
+fn unencodable_object(value: &JsValue, depth: usize) -> Option<String> {
+    if !value.is_object() {
+        return None;
+    }
+    if depth == MAX_VALUE_DEPTH {
+        return Some(format!(
+            "it nests more than {MAX_VALUE_DEPTH} levels deep, or holds itself"
+        ));
+    }
+    let nested = |item: JsValue| unencodable_object(&item, depth + 1);
+
+    if Array::is_array(value) {
+        return value.unchecked_ref::<Array>().iter().find_map(nested);
+    }
+    if let Some(map) = value.dyn_ref::<Map>() {
+        let mut found = None;
+        map.for_each(&mut |item, _key| {
+            if found.is_none() {
+                found = nested(item);
+            }
+        });
+        return found;
+    }
+
+    let plain = match Reflect::get_prototype_of(value) {
+        Ok(prototype) => {
+            prototype.is_null()
+                || Reflect::get_prototype_of(&prototype).is_ok_and(|parent| parent.is_null())
+        }
+        Err(_) => false,
+    };
+    if !plain {
+        return Some(match constructor_name(value) {
+            Some(name) => format!("{name} objects are not Haystack values"),
+            None => "only plain objects and Maps are Haystack values".to_string(),
+        });
+    }
+    Object::values(value.unchecked_ref::<Object>())
+        .iter()
+        .find_map(nested)
+}
+
+/// The name of the class `object` is an instance of, if it has one.
+fn constructor_name(object: &JsValue) -> Option<String> {
+    Reflect::get(object, &"constructor".into())
+        .ok()?
+        .dyn_into::<Function>()
+        .ok()
+        .map(|constructor| String::from(constructor.name()))
+        .filter(|name| !name.is_empty())
 }
 
 /// Rejects a program whose `version` is newer than this crate reads
@@ -161,8 +233,9 @@ impl EngineCommand {
     /// Writes a value to a block's output pin, resolving with the output's
     /// previous value.
     ///
-    /// `value` is a Haystack value in its JSON encoding; `null` and
-    /// `undefined` write `Null`. Anything else rejects with the
+    /// `value` is a Haystack value in its JSON encoding, made of plain
+    /// objects, arrays and `Map`s; `null` and `undefined` write `Null`.
+    /// Anything else, such as a `Date` or a function, rejects with the
     /// `InvalidValue` code.
     #[wasm_bindgen(js_name = "writeBlockOutput", unchecked_return_type = "unknown")]
     pub async fn write_block_output(
@@ -184,8 +257,9 @@ impl EngineCommand {
     /// Writes a value to a block's input pin, resolving with the input's
     /// previous value, or `undefined` if it had none.
     ///
-    /// `value` is a Haystack value in its JSON encoding; `null` and
-    /// `undefined` write `Null`. Anything else rejects with the
+    /// `value` is a Haystack value in its JSON encoding, made of plain
+    /// objects, arrays and `Map`s; `null` and `undefined` write `Null`.
+    /// Anything else, such as a `Date` or a function, rejects with the
     /// `InvalidValue` code.
     #[wasm_bindgen(js_name = "writeBlockInput", unchecked_return_type = "unknown")]
     pub async fn write_block_input(
