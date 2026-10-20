@@ -360,7 +360,7 @@ impl EngineCommand {
     /// A paused engine still answers this request, like every other.
     #[wasm_bindgen(js_name = "listConnectors")]
     pub async fn list_connectors(&self) -> Result<Vec<String>, JsValue> {
-        self.client.list_connectors().await.map_err(js_error)
+        self.client.managed_connectors().await.map_err(js_error)
     }
 
     /// Pauses block execution: no block executes until

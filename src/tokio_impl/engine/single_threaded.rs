@@ -523,6 +523,14 @@ mod tests {
         }
 
         #[tokio::test(flavor = "current_thread")]
+        async fn managed_connectors_read_alike_idle_and_running() {
+            configuration::managed_connectors_read_alike_idle_and_running(
+                SingleThreadedEngine::new(),
+            )
+            .await;
+        }
+
+        #[tokio::test(flavor = "current_thread")]
         async fn editor_metadata_is_set_through_the_trait() {
             configuration::editor_metadata_is_set_through_the_trait(SingleThreadedEngine::new())
                 .await;
@@ -1253,11 +1261,11 @@ mod tests {
                         "attach awaits the connector's start"
                     );
 
-                    match client.list_connectors().await {
+                    match client.managed_connectors().await {
                         Ok(names) => {
                             assert!(names.contains(&driver_name), "attached name is listed")
                         }
-                        other => panic!("Expected ListConnectors to answer Ok, got {:?}", other),
+                        other => panic!("Expected ManagedConnectors to answer Ok, got {:?}", other),
                     }
 
                     match client.remove_connector(&driver_name).await {
@@ -1273,11 +1281,11 @@ mod tests {
                         "detach unregisters the connector"
                     );
 
-                    match client.list_connectors().await {
+                    match client.managed_connectors().await {
                         Ok(names) => {
                             assert!(!names.contains(&driver_name), "detached name is not listed")
                         }
-                        other => panic!("Expected ListConnectors to answer Ok, got {:?}", other),
+                        other => panic!("Expected ManagedConnectors to answer Ok, got {:?}", other),
                     }
 
                     let _ = client.shutdown().await;
@@ -1331,14 +1339,14 @@ mod tests {
                         "failed attach keeps the connector registered for a retry"
                     );
 
-                    match client.list_connectors().await {
+                    match client.managed_connectors().await {
                         Ok(names) => {
                             assert!(
                                 !names.contains(&driver_name),
                                 "failed attach is not tracked"
                             )
                         }
-                        other => panic!("Expected ListConnectors to answer Ok, got {:?}", other),
+                        other => panic!("Expected ManagedConnectors to answer Ok, got {:?}", other),
                     }
 
                     let _ = client.shutdown().await;

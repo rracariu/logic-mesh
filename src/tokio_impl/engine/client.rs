@@ -393,12 +393,13 @@ impl EngineClient {
         expect_response!(self.request(request).await?, RemoveConnector)
     }
 
-    /// Returns the names of the engine-managed connectors. See
-    /// [`EngineRequest::ListConnectors`].
-    pub async fn list_connectors(&self) -> Result<Vec<String>, RequestError> {
+    /// Returns the names of the connectors the engine manages, as
+    /// [`Engine::managed_connectors`](crate::base::engine::Engine::managed_connectors)
+    /// does on an idle engine. See [`EngineRequest::ManagedConnectors`].
+    pub async fn managed_connectors(&self) -> Result<Vec<String>, RequestError> {
         expect_response!(
-            self.request(EngineRequest::ListConnectors).await?,
-            ListConnectors
+            self.request(EngineRequest::ManagedConnectors).await?,
+            ManagedConnectors
         )
     }
 
@@ -516,14 +517,14 @@ mod test {
     async fn an_abandoned_request_does_not_desynchronize_the_client() {
         let (client, mut received, respond) = fake_engine();
 
-        let abandoned = timeout(Duration::from_millis(50), client.list_connectors()).await;
+        let abandoned = timeout(Duration::from_millis(50), client.managed_connectors()).await;
         assert!(abandoned.is_err(), "nothing answered it");
         let stale = received.recv().await.expect("the request was sent");
         respond
             .send(Envelope::new(
                 stale.client,
                 stale.id,
-                EngineResponse::ListConnectors {
+                EngineResponse::ManagedConnectors {
                     result: Ok(vec!["stale".to_string()]),
                 },
             ))
@@ -531,14 +532,14 @@ mod test {
 
         let call = {
             let client = client.clone();
-            tokio::spawn(async move { client.list_connectors().await })
+            tokio::spawn(async move { client.managed_connectors().await })
         };
         let fresh = received.recv().await.expect("the request was sent");
         respond
             .send(Envelope::new(
                 fresh.client,
                 fresh.id,
-                EngineResponse::ListConnectors {
+                EngineResponse::ManagedConnectors {
                     result: Ok(vec!["fresh".to_string()]),
                 },
             ))

@@ -160,7 +160,7 @@ impl Engine for SingleThreadedEngine<Idle> {
         Ok(())
     }
 
-    fn connector_names(&self) -> Vec<String> {
+    fn managed_connectors(&self) -> Vec<String> {
         self.connectors.to_vec()
     }
 

@@ -302,8 +302,12 @@ pub trait Engine: sealed::Sealed + Sized {
     /// if a connector with this name is already registered.
     fn add_connector(&mut self, name: &str, handle: impl Into<ConnectorHandle>) -> Result<()>;
 
-    /// The names of the connectors this engine manages.
-    fn connector_names(&self) -> Vec<String>;
+    /// The names of the connectors this engine manages, as
+    /// [`EngineClient::managed_connectors`] returns them from a running
+    /// engine — not every connector in the process-wide registry, which
+    /// [`list_connectors`](crate::base::connector::list_connectors)
+    /// returns.
+    fn managed_connectors(&self) -> Vec<String>;
 
     /// Returns the handle of every scheduled block. A handle carries a
     /// block's static identity and UI metadata; the engine's messages

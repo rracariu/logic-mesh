@@ -180,7 +180,7 @@ same free functions, so their semantics are identical by construction.
 | `Reset` | **unregister first**, then `stop()`; managed list cleared |
 | `AddConnector { name }` while running | resolve name → `start()` → add to list; on failure `stop()` is awaited and the name stays registered so a retry is possible |
 | `RemoveConnector { name }` while running | remove from list → unregister → `stop()` |
-| `ListConnectors` | returns the managed names |
+| `ManagedConnectors` | returns the managed names (`Engine::managed_connectors()` on an idle engine) |
 | engine dropped | unregister without awaiting `stop`, since `Drop` cannot await |
 
 Every `start`/`stop` await is bounded by `CONNECTOR_LIFECYCLE_TIMEOUT_MILLIS` (5000 ms); a connector
@@ -193,10 +193,12 @@ block can `get_connector` a connector that is mid-shutdown.
 
 Connector handles never travel in engine requests — they are not `Send` on every target — so the
 running-engine path is *register the handle, then attach it by name*. Three requests cover it:
-`EngineRequest::AddConnector`, `RemoveConnector` and `ListConnectors`, each answered by the
+`EngineRequest::AddConnector`, `RemoveConnector` and `ManagedConnectors`, each answered by the
 `EngineResponse` of the same name. `EngineClient` sends them as `add_connector`,
-`remove_connector` and `list_connectors`, and the wasm `EngineCommand` as `addConnector`,
-`removeConnector`, and `listConnectors`. A failed attach or detach answers with a typed error:
+`remove_connector` and `managed_connectors`, and the wasm `EngineCommand` as `addConnector`,
+`removeConnector`, and `listConnectors`. `managed_connectors` names only the connectors the engine
+manages, as `Engine::managed_connectors()` does on an idle engine; the registry's
+`list_connectors()` names every registered connector, managed or not. A failed attach or detach answers with a typed error:
 `ConnectorNotFound`, `ConnectorAlreadyManaged`, `ConnectorStartFailed`, `ConnectorStartTimeout`
 or `ConnectorNotManaged` (the `ErrorCode`, and the JS error's `code`).
 

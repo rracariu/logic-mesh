@@ -633,8 +633,11 @@ pub enum EngineRequest {
         name: String,
     },
 
-    /// Answered with the names of the engine-managed connectors.
-    ListConnectors,
+    /// Answered with the names of the connectors the engine manages —
+    /// not every connector in the process-wide registry, which
+    /// [`list_connectors`](crate::base::connector::list_connectors)
+    /// returns.
+    ManagedConnectors,
 
     /// Pauses block execution. Answered once no block starts executing
     /// any more. See the
@@ -681,7 +684,7 @@ impl EngineRequest {
             EngineRequest::Unwatch { .. } => "Unwatch",
             EngineRequest::AddConnector { .. } => "AddConnector",
             EngineRequest::RemoveConnector { .. } => "RemoveConnector",
-            EngineRequest::ListConnectors => "ListConnectors",
+            EngineRequest::ManagedConnectors => "ManagedConnectors",
             EngineRequest::Pause => "Pause",
             EngineRequest::Resume => "Resume",
             EngineRequest::Reset => "Reset",
@@ -777,8 +780,8 @@ pub enum EngineResponse {
         /// The detached connector's name.
         result: Result<String, RequestError>,
     },
-    /// Answers [`EngineRequest::ListConnectors`].
-    ListConnectors {
+    /// Answers [`EngineRequest::ManagedConnectors`].
+    ManagedConnectors {
         /// The names of the engine-managed connectors.
         result: Result<Vec<String>, RequestError>,
     },
@@ -826,7 +829,7 @@ impl EngineResponse {
             EngineResponse::Unwatch { .. } => "Unwatch",
             EngineResponse::AddConnector { .. } => "AddConnector",
             EngineResponse::RemoveConnector { .. } => "RemoveConnector",
-            EngineResponse::ListConnectors { .. } => "ListConnectors",
+            EngineResponse::ManagedConnectors { .. } => "ManagedConnectors",
             EngineResponse::Pause { .. } => "Pause",
             EngineResponse::Resume { .. } => "Resume",
             EngineResponse::Reset { .. } => "Reset",
@@ -852,7 +855,7 @@ impl EngineResponse {
             EngineResponse::Watch { result } => result.as_ref().err(),
             EngineResponse::AddConnector { result }
             | EngineResponse::RemoveConnector { result } => result.as_ref().err(),
-            EngineResponse::ListConnectors { result } => result.as_ref().err(),
+            EngineResponse::ManagedConnectors { result } => result.as_ref().err(),
             EngineResponse::LoadProgram { result }
             | EngineResponse::SetBlockMetadata { result }
             | EngineResponse::SetBlockEditor { result }

@@ -188,7 +188,7 @@ impl Engine for MultiThreadedEngine<Idle> {
         Ok(())
     }
 
-    fn connector_names(&self) -> Vec<String> {
+    fn managed_connectors(&self) -> Vec<String> {
         self.connectors.to_vec()
     }
 
@@ -952,6 +952,14 @@ mod test {
         }
 
         #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn managed_connectors_read_alike_idle_and_running() {
+            configuration::managed_connectors_read_alike_idle_and_running(
+                MultiThreadedEngine::new(),
+            )
+            .await;
+        }
+
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
         async fn editor_metadata_is_set_through_the_trait() {
             configuration::editor_metadata_is_set_through_the_trait(MultiThreadedEngine::new())
                 .await;
@@ -1311,7 +1319,10 @@ mod test {
             eng.add_connector(&name, dup)
                 .expect_err("duplicate connector name is rejected");
             assert_eq!(
-                eng.connector_names().iter().filter(|n| *n == &name).count(),
+                eng.managed_connectors()
+                    .iter()
+                    .filter(|n| *n == &name)
+                    .count(),
                 1,
                 "rejected add does not double-track the name"
             );
@@ -1413,11 +1424,11 @@ mod test {
                     "attach awaits the connector's start"
                 );
 
-                match client.list_connectors().await {
+                match client.managed_connectors().await {
                     Ok(names) => {
                         assert!(names.contains(&driver_name), "attached name is listed")
                     }
-                    other => panic!("Expected ListConnectors to answer Ok, got {:?}", other),
+                    other => panic!("Expected ManagedConnectors to answer Ok, got {:?}", other),
                 }
 
                 match client.remove_connector(&driver_name).await {
@@ -1433,11 +1444,11 @@ mod test {
                     "detach unregisters the connector"
                 );
 
-                match client.list_connectors().await {
+                match client.managed_connectors().await {
                     Ok(names) => {
                         assert!(!names.contains(&driver_name), "detached name is not listed")
                     }
-                    other => panic!("Expected ListConnectors to answer Ok, got {:?}", other),
+                    other => panic!("Expected ManagedConnectors to answer Ok, got {:?}", other),
                 }
 
                 let _ = client.shutdown().await;
@@ -1487,14 +1498,14 @@ mod test {
                     "failed attach keeps the connector registered for a retry"
                 );
 
-                match client.list_connectors().await {
+                match client.managed_connectors().await {
                     Ok(names) => {
                         assert!(
                             !names.contains(&driver_name),
                             "failed attach is not tracked"
                         )
                     }
-                    other => panic!("Expected ListConnectors to answer Ok, got {:?}", other),
+                    other => panic!("Expected ManagedConnectors to answer Ok, got {:?}", other),
                 }
 
                 let _ = client.shutdown().await;

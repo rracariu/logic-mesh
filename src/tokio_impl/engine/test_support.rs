@@ -470,7 +470,7 @@ pub(crate) mod lifecycle {
         drop(engine);
 
         // The engine is gone with it, and says so.
-        let err = answer(client.list_connectors())
+        let err = answer(client.managed_connectors())
             .await
             .expect_err("nothing answers");
         assert_eq!(err.code, ErrorCode::EngineGone);
@@ -529,7 +529,7 @@ pub(crate) mod lifecycle {
                 futures::join!(
                     futures::future::join_all(inspections),
                     client.inspect_block(unknown),
-                    client.list_connectors()
+                    client.managed_connectors()
                 )
             })
             .await;
@@ -2365,7 +2365,7 @@ pub(crate) mod configuration {
     use crate::blocks::external::support::mock::MockConnector;
     use crate::{EngineError, Error};
 
-    /// Regression: `add_connector`, `connector_names`, `block_handles`
+    /// Regression: `add_connector`, `managed_connectors`, `block_handles`
     /// and `block_handle` were inherent methods of each engine, and
     /// `set_block_metadata` existed on the single-threaded engine only,
     /// so code generic over [`Engine`] could not configure an engine.
@@ -2374,7 +2374,7 @@ pub(crate) mod configuration {
         engine
             .add_connector(&name, Arc::new(MockConnector::default()))
             .expect("added");
-        assert_eq!(engine.connector_names(), [name]);
+        assert_eq!(engine.managed_connectors(), [name]);
 
         let (source, target) = schedule_linked_adds(&mut engine);
         let mut scheduled: Vec<_> = engine.block_handles().iter().map(|h| *h.id()).collect();
@@ -2405,6 +2405,37 @@ pub(crate) mod configuration {
             assert_eq!(block.position, Some(position));
         })
         .await;
+    }
+
+    /// Regression: an idle engine named its managed connectors
+    /// `connector_names` and a running one `list_connectors`, the name
+    /// of the registry listing, which also holds connectors no engine
+    /// manages. Both phases now say `managed_connectors`, and answer
+    /// alike.
+    pub(crate) async fn managed_connectors_read_alike_idle_and_running<E: TestEngine>(
+        mut engine: E,
+    ) {
+        use crate::base::connector::{list_connectors, register_connector, unregister_connector};
+
+        let managed = format!("managed-{}", Uuid::new_v4());
+        let unmanaged = format!("unmanaged-{}", Uuid::new_v4());
+        engine
+            .add_connector(&managed, Arc::new(MockConnector::default()))
+            .expect("added");
+        register_connector(&unmanaged, Arc::new(MockConnector::default())).expect("registered");
+        assert_eq!(engine.managed_connectors(), std::slice::from_ref(&managed));
+
+        let expected = managed.clone();
+        let engine = drive(engine, move |client| async move {
+            let running = answer(client.managed_connectors()).await;
+            assert_eq!(running, Ok(vec![expected]));
+        })
+        .await;
+
+        let registry = list_connectors();
+        assert!(registry.contains(&managed) && registry.contains(&unmanaged));
+        assert_eq!(engine.managed_connectors(), [managed]);
+        unregister_connector(&unmanaged);
     }
 
     /// Regression: editor metadata reached an engine only with a loaded
@@ -2677,7 +2708,7 @@ pub(crate) mod evaluation {
             // Let the evaluation reach the dispatcher first.
             sleep(Duration::from_millis(100)).await;
             let queuing = client.clone();
-            let queued = tokio::spawn(async move { queuing.list_connectors().await });
+            let queued = tokio::spawn(async move { queuing.managed_connectors().await });
 
             let (eval, queued) = timeout(bound, async { (eval.await, queued.await) })
                 .await

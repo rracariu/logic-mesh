@@ -238,7 +238,7 @@ pub(super) async fn dispatch<E: RunningHost>(engine: &mut E, message: RequestMes
                 .map_err(Into::into),
         },
 
-        EngineRequest::ListConnectors => EngineResponse::ListConnectors {
+        EngineRequest::ManagedConnectors => EngineResponse::ManagedConnectors {
             result: Ok(engine.connectors().to_vec()),
         },
 
