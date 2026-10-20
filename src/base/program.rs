@@ -26,9 +26,12 @@
 //!   which [`ProgramBlock::position`] still reads, so it loads
 //!   unchanged. A save of the loaded program writes version 1.
 //!
-//! An engine rejects a program from a newer format with
-//! [`EngineError::UnsupportedProgramVersion`](crate::EngineError::UnsupportedProgramVersion)
-//! before it schedules any of its blocks.
+//! A program from a newer format fails to deserialize, with the message
+//! of
+//! [`EngineError::UnsupportedProgramVersion`](crate::EngineError::UnsupportedProgramVersion),
+//! before its blocks and links are read, so a format that changed their
+//! shape is still reported by its version. An engine rejects one built
+//! in code with that error before it schedules any of its blocks.
 
 pub(crate) mod builder;
 pub(crate) mod data;

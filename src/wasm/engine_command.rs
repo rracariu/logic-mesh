@@ -6,7 +6,6 @@ use std::str::FromStr;
 
 use crate::base::program::LinkData;
 use crate::base::program::Program;
-use crate::base::program::data::check_format_version;
 use crate::wasm::types::JsWatchNotification;
 
 use serde::Serialize;
@@ -233,18 +232,10 @@ impl EngineCommand {
     ///
     /// A program with no `version` is a save from before format
     /// versions, and loads as one. A program from a newer format is
-    /// rejected before its shape is read, so the error names its
-    /// version rather than a field this crate does not know.
+    /// rejected before its shape is read (see [`Program`]), so the error
+    /// names its version rather than a field this crate does not know.
     #[wasm_bindgen(js_name = "loadProgram")]
     pub async fn load_program(&mut self, program: JsValue) -> Result<(), String> {
-        if let Some(version) = js_sys::Reflect::get(&program, &JsValue::from_str("version"))
-            .ok()
-            .and_then(|version| version.as_f64())
-            .filter(|version| *version > f64::from(Program::FORMAT_VERSION))
-        {
-            // Saturates: a version beyond u32 still reads as newer.
-            check_format_version(version as u32).map_err(|err| err.to_string())?;
-        }
         let program: Program = serde_wasm_bindgen::from_value(program)
             .map_err(|err| format!("Invalid program payload: {err}"))?;
         match self
