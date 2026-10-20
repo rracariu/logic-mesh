@@ -139,6 +139,7 @@ use crate::base::connector::{
     unregister_connector,
 };
 use crate::base::error::{ConnectorError, ExternalError};
+use crate::wasm::error::js_detail;
 
 /// The value callback handed to the JS `subscribe` method.
 ///
@@ -581,18 +582,6 @@ fn as_unsubscribe_fn(address: &str, value: JsValue) -> Option<js_sys::Function> 
 /// path reports.
 fn subscribe_error(address: &str, detail: String) -> ConnectorError {
     ConnectorError::subscribe(address, detail)
-}
-
-/// Renders a JS exception or rejection reason as a detail message: an
-/// `Error` via its own `toString()` (preserving the error name, e.g.
-/// `"TypeError: ..."`), a plain string as-is, anything else via its
-/// debug representation.
-fn js_detail(err: &JsValue) -> String {
-    if let Some(error) = err.dyn_ref::<js_sys::Error>() {
-        return String::from(js_sys::Error::to_string(error));
-    }
-
-    err.as_string().unwrap_or_else(|| format!("{err:?}"))
 }
 
 /// Reads property `name` from `connector`, requiring it to be a
