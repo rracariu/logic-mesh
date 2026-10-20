@@ -245,8 +245,10 @@ with before and after code, for Rust and for JavaScript and TypeScript.
   `read_inputs_until_ready` and `wait_on_inputs` drain every input that has
   a value ([#23]).
 - Program loads are all or nothing. `schedule_program_blocks` and
-  `LoadProgram` check the whole program before scheduling any block, and a
-  wiring failure removes the program's blocks again. A program's links must
+  `LoadProgram` check the whole program before scheduling any block. A
+  wiring failure in `LoadProgram` removes the program's blocks again; a link
+  or pin value of a `schedule_program_blocks` program that still fails when
+  `run()` starts is dropped with a warning. A program's links must
   join its own blocks (`LinkBlockNotInProgram`), its saved values must name
   existing pins (`InputNotFound`, `OutputNotFound`), its link ids must be
   free UUIDs (`InvalidLinkUuid`, `DuplicateLinkId`), and no two links may
