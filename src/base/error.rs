@@ -11,6 +11,10 @@
 //! that the crate's entry points return; it forwards `Display` to the
 //! subsystem error it wraps.
 //!
+//! Every variant has a stable [`ErrorCode`]. An engine answers a failed
+//! request with a [`RequestError`], which carries the code, the message
+//! and — within the process — the typed error.
+//!
 //! ```no_run
 //! use logic_mesh::{Error, RegistryError};
 //! # fn handle(err: Error) {
@@ -24,20 +28,24 @@
 //! ```
 //!
 
+mod code;
 mod connect;
 mod connector;
 mod desc;
 mod engine;
 mod external;
 mod registry;
+mod request;
 mod value;
 
+pub use code::ErrorCode;
 pub use connect::ConnectError;
 pub use connector::{ConnectorError, ConnectorErrorSource};
 pub use desc::BlockDescError;
 pub use engine::{EngineError, LinkEnd};
 pub use external::ExternalError;
 pub use registry::RegistryError;
+pub use request::RequestError;
 pub use value::ValueError;
 
 pub(crate) use engine::{parse_block_uuid, parse_link_uuid};
