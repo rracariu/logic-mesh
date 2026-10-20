@@ -74,14 +74,10 @@ mod tests {
     };
     use crate::blocks::{math::Add, misc::SineWave};
     use base::block::{BlockConnect, BlockProps};
-    use base::engine::messages::EngineMessage::{
-        GetCurrentProgramReq, GetCurrentProgramRes, InspectBlockReq, InspectBlockRes,
-        LoadProgramReq, LoadProgramRes, Shutdown,
-    };
 
     use super::SingleThreadedEngine;
     use base::engine::Engine;
-    use tokio::{runtime::Runtime, sync::mpsc, time::sleep};
+    use tokio::{runtime::Runtime, time::sleep};
     use uuid::Uuid;
 
     /// Link validation reports which half of the link was wrong, as a
@@ -151,9 +147,7 @@ mod tests {
 
         let mut eng = SingleThreadedEngine::new();
 
-        let (sender, mut receiver) = mpsc::channel(32);
-        let channel_id = Uuid::new_v4();
-        let engine_sender = eng.create_message_channel(channel_id, sender.clone());
+        let client = eng.client();
 
         thread::spawn(move || {
             let rt = Runtime::new().expect("RT");
@@ -161,13 +155,9 @@ mod tests {
             let handle = rt.spawn(async move {
                 sleep(Duration::from_millis(300)).await;
 
-                let _ = engine_sender
-                    .send(InspectBlockReq(channel_id, add_uuid))
-                    .await;
+                let res = client.inspect_block(add_uuid).await;
 
-                let res = receiver.recv().await;
-
-                if let Some(InspectBlockRes(Ok(data))) = res {
+                if let Ok(data) = &res {
                     assert_eq!(data.id, add_uuid.to_string());
                     assert_eq!(data.name, "Add");
                     assert_eq!(data.inputs.len(), 16);
@@ -176,7 +166,7 @@ mod tests {
                     panic!("Failed to find block: {:?}", res)
                 }
 
-                let _ = engine_sender.send(Shutdown).await;
+                let _ = client.shutdown().await;
             });
 
             rt.block_on(handle)
@@ -424,6 +414,41 @@ mod tests {
         async fn reset_while_paused() {
             lifecycle::reset_while_paused(SingleThreadedEngine::new()).await;
         }
+
+        /// Regression: Pause, Resume, Reset and Shutdown had no reply, so
+        /// a caller could not tell when one had taken effect.
+        #[tokio::test(flavor = "current_thread")]
+        async fn control_requests_are_acknowledged_once_applied() {
+            lifecycle::control_requests_are_acknowledged_once_applied(SingleThreadedEngine::new())
+                .await;
+        }
+
+        #[tokio::test(flavor = "current_thread")]
+        async fn shutdown_is_acknowledged() {
+            lifecycle::shutdown_is_acknowledged(SingleThreadedEngine::new()).await;
+        }
+
+        #[tokio::test(flavor = "current_thread")]
+        async fn reset_is_acknowledged_once_connectors_stopped() {
+            lifecycle::reset_is_acknowledged_once_connectors_stopped(SingleThreadedEngine::new())
+                .await;
+        }
+
+        #[tokio::test(flavor = "current_thread")]
+        async fn shutdown_is_acknowledged_once_connectors_stopped() {
+            lifecycle::shutdown_is_acknowledged_once_connectors_stopped(
+                SingleThreadedEngine::new(),
+            )
+            .await;
+        }
+
+        /// Regression: replies carried no request id, so a channel could
+        /// have one request in flight at a time.
+        #[tokio::test(flavor = "current_thread")]
+        async fn requests_in_flight_get_their_own_responses() {
+            lifecycle::requests_in_flight_get_their_own_responses(SingleThreadedEngine::new())
+                .await;
+        }
     }
 
     /// Regression: a pin write landed in the input's cache only, and an
@@ -495,6 +520,24 @@ mod tests {
         async fn editor_metadata_is_set_through_the_trait() {
             configuration::editor_metadata_is_set_through_the_trait(SingleThreadedEngine::new())
                 .await;
+        }
+
+        #[tokio::test(flavor = "current_thread")]
+        async fn block_metadata_is_set_through_requests() {
+            configuration::block_metadata_is_set_through_requests(SingleThreadedEngine::new())
+                .await;
+        }
+    }
+
+    /// Watches opened and closed through requests. See
+    /// `test_support::watches`.
+    mod watches {
+        use super::*;
+        use crate::tokio_impl::engine::test_support::watches;
+
+        #[tokio::test(flavor = "current_thread")]
+        async fn a_watch_is_closed_by_its_id_from_any_client() {
+            watches::a_watch_is_closed_by_its_id_from_any_client(SingleThreadedEngine::new()).await;
         }
     }
 
@@ -606,25 +649,15 @@ mod tests {
     }
 
     /// Regression: a reply variant sent to the engine hit an
-    /// `unreachable!` and panicked the event loop. It is now ignored,
-    /// and the engine keeps answering.
+    /// `unreachable!` and panicked the event loop. Responses cannot
+    /// reach the request channel any more; what can is a request from a
+    /// client the engine does not know, which is carried out all the
+    /// same, its response dropped.
     #[tokio::test(flavor = "current_thread")]
-    async fn stray_reply_is_ignored() {
-        use crate::base::engine::messages::EngineMessage::{
-            AddBlockRes, ListConnectorsReq, ListConnectorsRes,
-        };
-        use crate::tokio_impl::engine::test_support::drive;
-
-        drive(SingleThreadedEngine::new(), |mut client| async move {
-            client.send(AddBlockRes(Ok(Uuid::new_v4()))).await;
-
-            let reply = client.request(ListConnectorsReq(client.id)).await;
-            assert!(
-                matches!(reply, ListConnectorsRes(Ok(_))),
-                "Expected ListConnectorsRes(Ok), got {:?}",
-                reply
-            );
-        })
+    async fn a_request_from_an_unknown_client_is_carried_out() {
+        crate::tokio_impl::engine::test_support::lifecycle::a_request_from_an_unknown_client_is_carried_out(
+            SingleThreadedEngine::new(),
+        )
         .await;
     }
 
@@ -634,9 +667,8 @@ mod tests {
         use assert_matches::assert_matches;
 
         use super::*;
-        use crate::base::engine::messages::EngineMessage::{AddBlockReq, AddBlockRes};
         use crate::base::error::{EngineError, Error};
-        use crate::tokio_impl::engine::test_support::{Client, add_program, drive};
+        use crate::tokio_impl::engine::test_support::{Client, add_program, answer, drive};
 
         #[tokio::test(flavor = "current_thread")]
         async fn schedule_rejects_a_scheduled_id() {
@@ -716,25 +748,13 @@ mod tests {
             let mut eng = SingleThreadedEngine::new();
             eng.schedule(Add::new_uuid(id)).expect("scheduled");
 
-            drive(eng, move |mut client| async move {
-                let reply = client
-                    .request(AddBlockReq(
-                        client.id,
-                        "Add".to_string(),
-                        Some(id.to_string()),
-                        None,
-                    ))
-                    .await;
-                assert_matches!(
-                    reply,
-                    AddBlockRes(Err(msg))
-                        if msg == EngineError::DuplicateBlockId { id }.to_string()
-                );
+            drive(eng, move |client| async move {
+                let reply = answer(client.add_block("Add", Some(id), None)).await;
+                assert_eq!(reply, Err(EngineError::DuplicateBlockId { id }.into()));
 
                 // The scheduled block is untouched and still answers.
-                let reply = client.request(InspectBlockReq(client.id, id)).await;
-                assert_matches!(reply, InspectBlockRes(Ok(def)) if def.id == id.to_string());
-                assert_eq!(scheduled_ids(&mut client).await, vec![id.to_string()]);
+                assert_eq!(client.inspect(id).await.id, id.to_string());
+                assert_eq!(scheduled_ids(&client).await, vec![id.to_string()]);
             })
             .await;
         }
@@ -747,15 +767,11 @@ mod tests {
             eng.schedule(Add::new_uuid(id)).expect("scheduled");
 
             let program = add_program([id.to_string().as_str(), fresh.to_string().as_str()]);
-            drive(eng, move |mut client| async move {
-                let reply = client.request(LoadProgramReq(client.id, program)).await;
-                assert_matches!(
-                    reply,
-                    LoadProgramRes(Err(msg))
-                        if msg == EngineError::DuplicateBlockId { id }.to_string()
-                );
+            drive(eng, move |client| async move {
+                let reply = client.load(program).await;
+                assert_eq!(reply, Err(EngineError::DuplicateBlockId { id }.into()));
                 assert_eq!(
-                    scheduled_ids(&mut client).await,
+                    scheduled_ids(&client).await,
                     vec![id.to_string()],
                     "nothing was scheduled"
                 );
@@ -764,11 +780,8 @@ mod tests {
         }
 
         /// The ids of the running engine's blocks, from its saved program.
-        async fn scheduled_ids(client: &mut Client) -> Vec<String> {
-            match client.request(GetCurrentProgramReq(client.id)).await {
-                GetCurrentProgramRes(Ok(program)) => program.blocks.into_keys().collect(),
-                other => panic!("Expected GetCurrentProgramRes(Ok), got {:?}", other),
-            }
+        async fn scheduled_ids(client: &Client) -> Vec<String> {
+            client.save().await.blocks.into_keys().collect()
         }
     }
 
@@ -777,9 +790,6 @@ mod tests {
 
         use super::*;
         use crate::base::connector::unregister_connector;
-        use crate::base::engine::messages::EngineMessage::{
-            WriteBlockInputReq, WriteBlockInputRes,
-        };
         use crate::blocks::external::support::mock::MockConnector;
         use crate::blocks::external::{ExternalIn, ExternalOut, Request};
         use libhaystack::val::Value;
@@ -805,9 +815,7 @@ mod tests {
             let mut eng = SingleThreadedEngine::new();
             eng.add_connector(&name, mock.clone()).expect("added");
 
-            let (sender, mut receiver) = mpsc::channel(32);
-            let channel_id = Uuid::new_v4();
-            let engine_sender = eng.create_message_channel(channel_id, sender);
+            let client = eng.client();
 
             let driver_mock = mock.clone();
             let driver = thread::spawn(move || {
@@ -827,23 +835,20 @@ mod tests {
                     // pin graph into the Add block's output.
                     let mut tries = 0;
                     loop {
-                        let _ = engine_sender
-                            .send(InspectBlockReq(channel_id, add_uuid))
-                            .await;
-                        match receiver.recv().await {
-                            Some(InspectBlockRes(Ok(data))) => {
+                        match client.inspect_block(add_uuid).await {
+                            Ok(data) => {
                                 if data.outputs["out"].val == 21.into() {
                                     break;
                                 }
                             }
-                            other => panic!("Expected InspectBlockRes(Ok), got {:?}", other),
+                            other => panic!("Expected InspectBlock to answer Ok, got {:?}", other),
                         }
                         tries += 1;
                         assert!(tries < 100, "value never reached the Add output");
                         sleep(Duration::from_millis(50)).await;
                     }
 
-                    let _ = engine_sender.send(Shutdown).await;
+                    let _ = client.shutdown().await;
                 });
                 rt.block_on(handle)
             });
@@ -860,7 +865,7 @@ mod tests {
         }
 
         /// Regression: a value written to `in` over the engine's
-        /// `WriteBlockInputReq` path lands in the input cache directly
+        /// `WriteInput` request path lands in the input cache directly
         /// (see `BlockMailboxCmd::WriteInput`), and the command's own
         /// arrival cancels the block's in-flight `execute` — so
         /// [`ExternalOut`]'s freshness detection must not depend on a
@@ -876,9 +881,7 @@ mod tests {
             let mut eng = SingleThreadedEngine::new();
             eng.add_connector(&name, mock.clone()).expect("added");
 
-            let (sender, mut receiver) = mpsc::channel(32);
-            let channel_id = Uuid::new_v4();
-            let engine_sender = eng.create_message_channel(channel_id, sender);
+            let client = eng.client();
 
             let driver_mock = mock.clone();
             let driver_name = name.clone();
@@ -890,17 +893,11 @@ mod tests {
                         ("address", Value::make_str("topic")),
                         ("in", 42.into()),
                     ] {
-                        let _ = engine_sender
-                            .send(WriteBlockInputReq(
-                                channel_id,
-                                ext_uuid,
-                                pin.to_string(),
-                                value,
-                            ))
-                            .await;
-                        match receiver.recv().await {
-                            Some(WriteBlockInputRes(Ok(_))) => {}
-                            other => panic!("Expected WriteBlockInputRes(Ok), got {:?}", other),
+                        match client.write_input(ext_uuid, pin, value).await {
+                            Ok(_) => {}
+                            other => {
+                                panic!("Expected WriteBlockInput to answer Ok, got {:?}", other)
+                            }
                         }
                     }
 
@@ -916,7 +913,7 @@ mod tests {
                         sleep(Duration::from_millis(50)).await;
                     }
 
-                    let _ = engine_sender.send(Shutdown).await;
+                    let _ = client.shutdown().await;
                 });
                 rt.block_on(handle)
             });
@@ -928,7 +925,7 @@ mod tests {
             assert_eq!(
                 mock.published.lock().unwrap().clone(),
                 vec![("topic".to_string(), 42.into())],
-                "an `in` value delivered over WriteBlockInputReq is published"
+                "an `in` value delivered over a WriteInput request is published"
             );
 
             unregister_connector(&name);
@@ -947,9 +944,7 @@ mod tests {
             let mut eng = SingleThreadedEngine::new();
             eng.add_connector(&name, mock.clone()).expect("added");
 
-            let (sender, mut receiver) = mpsc::channel(32);
-            let channel_id = Uuid::new_v4();
-            let engine_sender = eng.create_message_channel(channel_id, sender);
+            let client = eng.client();
 
             let driver_mock = mock.clone();
             let driver_name = name.clone();
@@ -961,17 +956,11 @@ mod tests {
                         ("address", Value::make_str("route")),
                         ("in", 42.into()),
                     ] {
-                        let _ = engine_sender
-                            .send(WriteBlockInputReq(
-                                channel_id,
-                                req_uuid,
-                                pin.to_string(),
-                                value,
-                            ))
-                            .await;
-                        match receiver.recv().await {
-                            Some(WriteBlockInputRes(Ok(_))) => {}
-                            other => panic!("Expected WriteBlockInputRes(Ok), got {:?}", other),
+                        match client.write_input(req_uuid, pin, value).await {
+                            Ok(_) => {}
+                            other => {
+                                panic!("Expected WriteBlockInput to answer Ok, got {:?}", other)
+                            }
                         }
                     }
 
@@ -984,7 +973,7 @@ mod tests {
                         sleep(Duration::from_millis(50)).await;
                     }
 
-                    let _ = engine_sender.send(Shutdown).await;
+                    let _ = client.shutdown().await;
                 });
                 rt.block_on(handle)
             });
@@ -996,7 +985,7 @@ mod tests {
             assert_eq!(
                 mock.requests.lock().unwrap().clone(),
                 vec![("route".to_string(), 42.into())],
-                "an `in` value delivered over WriteBlockInputReq is sent"
+                "an `in` value delivered over a WriteInput request is sent"
             );
 
             unregister_connector(&name);
@@ -1047,20 +1036,15 @@ mod tests {
             let mut eng = SingleThreadedEngine::new();
             eng.add_connector(&name, mock.clone()).expect("added");
 
-            let (sender, mut receiver) = mpsc::channel(32);
-            let channel_id = Uuid::new_v4();
-            let engine_sender = eng.create_message_channel(channel_id, sender);
+            let client = eng.client();
 
             let driver_mock = mock.clone();
             let driver = thread::spawn(move || {
                 let rt = Runtime::new().expect("RT");
                 let handle = rt.spawn(async move {
-                    let _ = engine_sender
-                        .send(LoadProgramReq(channel_id, program.clone()))
-                        .await;
-                    match receiver.recv().await {
-                        Some(LoadProgramRes(Ok(()))) => {}
-                        other => panic!("Expected LoadProgramRes(Ok), got {:?}", other),
+                    match client.load_program(program.clone()).await {
+                        Ok(()) => {}
+                        other => panic!("Expected LoadProgram to answer Ok, got {:?}", other),
                     }
 
                     // See `write_block_input_fires_external_out` for
@@ -1072,7 +1056,7 @@ mod tests {
                         sleep(Duration::from_millis(50)).await;
                     }
 
-                    let _ = engine_sender.send(Shutdown).await;
+                    let _ = client.shutdown().await;
                 });
                 rt.block_on(handle)
             });
@@ -1098,10 +1082,7 @@ mod tests {
 
         use super::*;
         use crate::base::connector::{get_connector, register_connector, unregister_connector};
-        use crate::base::engine::messages::EngineMessage::{
-            AddConnectorReq, AddConnectorRes, ListConnectorsReq, ListConnectorsRes,
-            RemoveConnectorReq, RemoveConnectorRes, Reset,
-        };
+        use crate::base::error::ErrorCode;
         use crate::tokio_impl::engine::connectors::test_support::{
             FailingStartConnector, FlagConnector, start_failure_reply,
         };
@@ -1149,14 +1130,13 @@ mod tests {
         async fn started_on_run_and_stopped_on_shutdown() {
             let (name, started, stopped, mut eng) = setup("shutdown");
 
-            let (sender, _receiver) = mpsc::channel(32);
-            let engine_sender = eng.create_message_channel(Uuid::new_v4(), sender);
+            let client = eng.client();
 
             let driver = thread::spawn(move || {
                 let rt = Runtime::new().expect("RT");
                 let handle = rt.spawn(async move {
                     sleep(Duration::from_millis(100)).await;
-                    let _ = engine_sender.send(Shutdown).await;
+                    let _ = client.shutdown().await;
                 });
                 rt.block_on(handle)
             });
@@ -1181,15 +1161,14 @@ mod tests {
         async fn reset_stops_and_unregisters() {
             let (name, started, stopped, mut eng) = setup("reset");
 
-            let (sender, _receiver) = mpsc::channel(32);
-            let engine_sender = eng.create_message_channel(Uuid::new_v4(), sender);
+            let client = eng.client();
 
             let driver = thread::spawn(move || {
                 let rt = Runtime::new().expect("RT");
                 let handle = rt.spawn(async move {
                     sleep(Duration::from_millis(100)).await;
-                    let _ = engine_sender.send(Reset).await;
-                    let _ = engine_sender.send(Shutdown).await;
+                    let _ = client.reset().await;
+                    let _ = client.shutdown().await;
                 });
                 rt.block_on(handle)
             });
@@ -1227,9 +1206,7 @@ mod tests {
             .expect("registered");
 
             let mut eng = SingleThreadedEngine::new();
-            let (sender, mut receiver) = mpsc::channel(32);
-            let channel_id = Uuid::new_v4();
-            let engine_sender = eng.create_message_channel(channel_id, sender);
+            let client = eng.client();
 
             let driver_name = name.clone();
             let driver_started = started.clone();
@@ -1239,32 +1216,25 @@ mod tests {
                 let handle = rt.spawn(async move {
                     sleep(Duration::from_millis(100)).await;
 
-                    let _ = engine_sender
-                        .send(AddConnectorReq(channel_id, driver_name.clone()))
-                        .await;
-                    match receiver.recv().await {
-                        Some(AddConnectorRes(Ok(added))) => assert_eq!(added, driver_name),
-                        other => panic!("Expected AddConnectorRes(Ok), got {:?}", other),
+                    match client.add_connector(&driver_name).await {
+                        Ok(added) => assert_eq!(added, driver_name),
+                        other => panic!("Expected AddConnector to answer Ok, got {:?}", other),
                     }
                     assert!(
                         driver_started.load(Ordering::SeqCst),
                         "attach awaits the connector's start"
                     );
 
-                    let _ = engine_sender.send(ListConnectorsReq(channel_id)).await;
-                    match receiver.recv().await {
-                        Some(ListConnectorsRes(Ok(names))) => {
+                    match client.list_connectors().await {
+                        Ok(names) => {
                             assert!(names.contains(&driver_name), "attached name is listed")
                         }
-                        other => panic!("Expected ListConnectorsRes(Ok), got {:?}", other),
+                        other => panic!("Expected ListConnectors to answer Ok, got {:?}", other),
                     }
 
-                    let _ = engine_sender
-                        .send(RemoveConnectorReq(channel_id, driver_name.clone()))
-                        .await;
-                    match receiver.recv().await {
-                        Some(RemoveConnectorRes(Ok(removed))) => assert_eq!(removed, driver_name),
-                        other => panic!("Expected RemoveConnectorRes(Ok), got {:?}", other),
+                    match client.remove_connector(&driver_name).await {
+                        Ok(removed) => assert_eq!(removed, driver_name),
+                        other => panic!("Expected RemoveConnector to answer Ok, got {:?}", other),
                     }
                     assert!(
                         driver_stopped.load(Ordering::SeqCst),
@@ -1275,15 +1245,14 @@ mod tests {
                         "detach unregisters the connector"
                     );
 
-                    let _ = engine_sender.send(ListConnectorsReq(channel_id)).await;
-                    match receiver.recv().await {
-                        Some(ListConnectorsRes(Ok(names))) => {
+                    match client.list_connectors().await {
+                        Ok(names) => {
                             assert!(!names.contains(&driver_name), "detached name is not listed")
                         }
-                        other => panic!("Expected ListConnectorsRes(Ok), got {:?}", other),
+                        other => panic!("Expected ListConnectors to answer Ok, got {:?}", other),
                     }
 
-                    let _ = engine_sender.send(Shutdown).await;
+                    let _ = client.shutdown().await;
                 });
                 rt.block_on(handle)
             });
@@ -1309,9 +1278,7 @@ mod tests {
             .expect("registered");
 
             let mut eng = SingleThreadedEngine::new();
-            let (sender, mut receiver) = mpsc::channel(32);
-            let channel_id = Uuid::new_v4();
-            let engine_sender = eng.create_message_channel(channel_id, sender);
+            let client = eng.client();
 
             let driver_name = name.clone();
             let driver_stopped = stopped.clone();
@@ -1320,13 +1287,10 @@ mod tests {
                 let handle = rt.spawn(async move {
                     sleep(Duration::from_millis(100)).await;
 
-                    let _ = engine_sender
-                        .send(AddConnectorReq(channel_id, driver_name.clone()))
-                        .await;
-                    let reply = match receiver.recv().await {
-                        Some(AddConnectorRes(Err(reply))) => reply,
+                    let reply = match client.add_connector(&driver_name).await {
+                        Err(reply) => reply,
                         other => panic!(
-                            "Expected AddConnectorRes(Err) on start failure, got {:?}",
+                            "Expected AddConnector to answer Err on start failure, got {:?}",
                             other
                         ),
                     };
@@ -1339,18 +1303,17 @@ mod tests {
                         "failed attach keeps the connector registered for a retry"
                     );
 
-                    let _ = engine_sender.send(ListConnectorsReq(channel_id)).await;
-                    match receiver.recv().await {
-                        Some(ListConnectorsRes(Ok(names))) => {
+                    match client.list_connectors().await {
+                        Ok(names) => {
                             assert!(
                                 !names.contains(&driver_name),
                                 "failed attach is not tracked"
                             )
                         }
-                        other => panic!("Expected ListConnectorsRes(Ok), got {:?}", other),
+                        other => panic!("Expected ListConnectors to answer Ok, got {:?}", other),
                     }
 
-                    let _ = engine_sender.send(Shutdown).await;
+                    let _ = client.shutdown().await;
                     reply
                 });
                 rt.block_on(handle)
@@ -1362,7 +1325,8 @@ mod tests {
 
             // The reply carries the start error's source too
             // (regression: it printed only the error's own message).
-            assert_eq!(reply, start_failure_reply(&name));
+            assert_eq!(reply.code, ErrorCode::ConnectorStartFailed);
+            assert_eq!(reply.message, start_failure_reply(&name));
         }
 
         /// Attach/detach error cases: an unregistered name, a name the
@@ -1371,9 +1335,7 @@ mod tests {
         async fn dynamic_add_remove_error_cases() {
             let (name, _, _, mut eng) = setup("dynamic-errors");
 
-            let (sender, mut receiver) = mpsc::channel(32);
-            let channel_id = Uuid::new_v4();
-            let engine_sender = eng.create_message_channel(channel_id, sender);
+            let client = eng.client();
 
             let driver_name = name.clone();
             let driver = thread::spawn(move || {
@@ -1382,40 +1344,31 @@ mod tests {
                     sleep(Duration::from_millis(100)).await;
 
                     let missing = format!("missing-{}", Uuid::new_v4());
-                    let _ = engine_sender
-                        .send(AddConnectorReq(channel_id, missing.clone()))
-                        .await;
-                    match receiver.recv().await {
-                        Some(AddConnectorRes(Err(_))) => {}
+                    match client.add_connector(&missing).await {
+                        Err(_) => {}
                         other => panic!(
-                            "Expected AddConnectorRes(Err) for an unregistered name, got {:?}",
+                            "Expected AddConnector to answer Err for an unregistered name, got {:?}",
                             other
                         ),
                     }
 
-                    let _ = engine_sender
-                        .send(AddConnectorReq(channel_id, driver_name.clone()))
-                        .await;
-                    match receiver.recv().await {
-                        Some(AddConnectorRes(Err(_))) => {}
+                    match client.add_connector(&driver_name).await {
+                        Err(_) => {}
                         other => panic!(
-                            "Expected AddConnectorRes(Err) for an already-managed name, got {:?}",
+                            "Expected AddConnector to answer Err for an already-managed name, got {:?}",
                             other
                         ),
                     }
 
-                    let _ = engine_sender
-                        .send(RemoveConnectorReq(channel_id, missing))
-                        .await;
-                    match receiver.recv().await {
-                        Some(RemoveConnectorRes(Err(_))) => {}
+                    match client.remove_connector(&missing).await {
+                        Err(_) => {}
                         other => panic!(
-                            "Expected RemoveConnectorRes(Err) for an unmanaged name, got {:?}",
+                            "Expected RemoveConnector to answer Err for an unmanaged name, got {:?}",
                             other
                         ),
                     }
 
-                    let _ = engine_sender.send(Shutdown).await;
+                    let _ = client.shutdown().await;
                 });
                 rt.block_on(handle)
             });

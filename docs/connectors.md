@@ -24,7 +24,7 @@ Left unaddressed, that produces three problems:
    agent through the same pin, the precedence between the two is implicit and racy.
 
 The design below addresses these with a single trait, three generic blocks, engine-managed
-lifecycle, and runtime management messages.
+lifecycle, and runtime management requests.
 
 ## 2. Goals and non-goals
 
@@ -178,26 +178,30 @@ same free functions, so their semantics are identical by construction.
 | `run()` | `start()` awaited on each **before any block executes** |
 | `Shutdown` | `stop()` awaited; connectors **stay registered and managed** by the idle engine `run()` hands back, so a re-run restarts them |
 | `Reset` | **unregister first**, then `stop()`; managed list cleared |
-| `AddConnectorReq(name)` while running | resolve name → `start()` → add to list; on failure `stop()` is awaited and the name stays registered so a retry is possible |
-| `RemoveConnectorReq(name)` while running | remove from list → unregister → `stop()` |
-| `ListConnectorsReq` | returns the managed names |
+| `AddConnector { name }` while running | resolve name → `start()` → add to list; on failure `stop()` is awaited and the name stays registered so a retry is possible |
+| `RemoveConnector { name }` while running | remove from list → unregister → `stop()` |
+| `ListConnectors` | returns the managed names |
 | engine dropped | unregister without awaiting `stop`, since `Drop` cannot await |
 
 Every `start`/`stop` await is bounded by `CONNECTOR_LIFECYCLE_TIMEOUT_MILLIS` (5000 ms); a connector
 that exceeds it is logged and skipped rather than treated as fatal.
 
-Unregistering before stopping on `Reset` and `RemoveConnectorReq` is deliberate: it guarantees no
+Unregistering before stopping on `Reset` and `RemoveConnector` is deliberate: it guarantees no
 block can `get_connector` a connector that is mid-shutdown.
 
 ### 4.6 Runtime management
 
-Connector handles never travel in engine messages — they are not `Send` on every target — so the
-running-engine path is *register the handle, then attach it by name*. Three message pairs cover it:
-`AddConnectorReq`/`Res`, `RemoveConnectorReq`/`Res`, and `ListConnectorsReq`/`Res`. The wasm
-`EngineCommand` mirrors them as `addConnector`, `removeConnector`, and `listConnectors`.
+Connector handles never travel in engine requests — they are not `Send` on every target — so the
+running-engine path is *register the handle, then attach it by name*. Three requests cover it:
+`EngineRequest::AddConnector`, `RemoveConnector` and `ListConnectors`, each answered by the
+`EngineResponse` of the same name. `EngineClient` sends them as `add_connector`,
+`remove_connector` and `list_connectors`, and the wasm `EngineCommand` as `addConnector`,
+`removeConnector`, and `listConnectors`. A failed attach or detach answers with a typed error:
+`ConnectorNotFound`, `ConnectorAlreadyManaged`, `ConnectorStartFailed`, `ConnectorStartTimeout`
+or `ConnectorNotManaged` (the `ErrorCode`, and the JS error's `code`).
 
-Route and subscription management needs no dedicated messages: re-pointing an external block is a
-write to its `connector` / `address` pins over the existing `WriteBlockInputReq` path, and
+Route and subscription management needs no dedicated requests: re-pointing an external block is a
+write to its `connector` / `address` pins over the existing `WriteInput` path, and
 `ExternalIn` observes the change and re-subscribes.
 
 ### 4.7 JavaScript connectors on wasm — `src/wasm/js_connector.rs`
@@ -235,10 +239,10 @@ stateDiagram-v2
   [*] --> Registered: register_connector(name, handle)
   Registered --> Managed: engine.add_connector before run
   Managed --> Started: engine.run() awaits start()
-  Registered --> Started: AddConnectorReq on a running engine awaits start()
+  Registered --> Started: AddConnector on a running engine awaits start()
   Started --> Retained: Shutdown awaits stop()
   Retained --> Started: engine.run() again awaits start()
-  Started --> [*]: Reset / RemoveConnectorReq — unregister, then stop()
+  Started --> [*]: Reset / RemoveConnector — unregister, then stop()
 ```
 
 A connector is retained on `Shutdown` so that `run()` can be called again with the same bindings —
@@ -259,7 +263,7 @@ sequenceDiagram
 
   App->>Reg: register_connector("mqtt", handle)
   App->>Cmd: addConnector("mqtt")
-  Cmd->>Eng: AddConnectorReq(uuid, "mqtt")
+  Cmd->>Eng: AddConnector { name: "mqtt" }, request id n
   Eng->>Eng: reject if already in the managed list
   Eng->>Reg: get_connector("mqtt")
   Reg-->>Eng: handle (or Err not registered)
@@ -267,10 +271,10 @@ sequenceDiagram
   alt start Ok
     Con-->>Eng: Ok
     Eng->>Eng: push "mqtt" onto the managed list
-    Eng-->>Cmd: AddConnectorRes(Ok("mqtt"))
+    Eng-->>Cmd: AddConnector { result: Ok("mqtt") }, request id n
   else start Err or timeout
     Eng->>Con: stop()  — cleanup, 5 s cap
-    Eng-->>Cmd: AddConnectorRes(Err) — name stays registered, retry possible
+    Eng-->>Cmd: AddConnector { result: Err(ConnectorStartFailed) } — name stays registered, retry possible
   end
   Cmd-->>App: result
 ```
@@ -502,15 +506,15 @@ sequenceDiagram
   Page->>UI: registerUiConnector() — registry only
   Page->>Eng: connectorCommand = engineCommand(), then run()
   Page->>UI: attachUiConnector(connectorCommand)
-  UI->>Eng: listConnectors() — request/reply barrier
+  UI->>Eng: listConnectors()
   Eng-->>UI: []
   UI->>Eng: addConnector("ui") — start(), now managed
 
   Note over Page,Eng: Reset
-  Page->>Eng: resetEngine() — terminates blocks, unregisters + stops "ui"
+  Page->>Eng: resetEngine() — terminates blocks, unregisters + stops "ui", then resolves
   Page->>UI: attachUiConnector(connectorCommand)
   UI->>UI: re-register "ui" — module-level registry exports
-  UI->>Eng: listConnectors() barrier, then addConnector("ui")
+  UI->>Eng: listConnectors(), then addConnector("ui")
 ```
 
 Every command handle used after startup is created **before** `engine.run()`: wasm-bindgen guards
@@ -520,11 +524,11 @@ for as long as the engine lives, so any `engine.*` call from a promise continuat
 `unregisterConnector` and `connectorRegistered` are module-level exports against the process-wide
 registry, not engine methods, so re-registering after a reset never touches the engine object.
 
-`listConnectors()` doubles as an ordering barrier: engine messages are FIFO into a single queue
-shared by every command handle, so its reply proves the engine has processed everything queued before
-it, including a pending `Reset` sent through another handle. Attach attempts are serialized through a
-promise chain so a mount-time attach and a reset-time attach cannot interleave their
-check-then-attach sequences.
+`resetEngine()` resolves once the reset is done, and the engine handles requests in the order they
+arrive on its single queue, shared by every command handle — so the `listConnectors()` answer reflects
+every request made before it, a reset sent through another handle included. Attach attempts are
+serialized through a promise chain so a mount-time attach and a reset-time attach cannot interleave
+their check-then-attach sequences.
 
 Because a paused engine executes no block, nothing drains the connector while paused. The editor
 therefore gates UI pushes for the duration, updating only the latest-value cache and flushing one
@@ -645,8 +649,9 @@ registerConnector('sensors', {
   // optional: start() / stop() — stop must end every stream with callback()
 });
 
-// Obtain the command handle *before* run(): `engine_command` takes `&mut self`, and the
-// future returned by `run()` holds that borrow for as long as the engine is running.
+// Obtain the command handle *before* run(): `engineCommand` takes `&mut self`, and the
+// future returned by `run()` holds that borrow for as long as the engine is running. The
+// handle itself takes overlapping calls: each is answered on its own.
 const command = engine.engineCommand();
 
 // Commands are only serviced from inside the engine's message loop, so start it first.
@@ -681,10 +686,10 @@ await command.addConnector('sensors');
 ```
 
 The returned session also carries a dedicated `connectorCommand` handle for
-attach flows, `watch()` backed by pre-created handles (a watch permanently
-occupies one, and none can be created after start), and `reset()`/`stop()`
-routed through an internal control handle so they never collide with a
-caller's in-flight command.
+attach flows; `watch()` and `unwatch()`, which open and close any number of
+watches, before or after start; and `reset()`/`stop()`, which resolve once the
+engine applied them and run in the order they were called, a reset before a
+stop. Every handle takes overlapping calls, each answered with its own result.
 
 Finally, when the external system is just a set of request/response functions,
 `defineJsBlocks` skips the connector boilerplate entirely: it registers one

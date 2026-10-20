@@ -9,8 +9,6 @@ use crate::wasm::js_block::JS_FNS;
 use crate::wasm::types::{JsBlockDesc, JsBlockPin};
 use js_sys::Array;
 
-use tokio::sync::mpsc;
-use uuid::Uuid;
 use wasm_bindgen::JsValue;
 use wasm_bindgen::prelude::wasm_bindgen;
 
@@ -160,12 +158,7 @@ impl BlocksEngine {
     /// Returns a new [`EngineCommand`] handle for sending commands.
     #[wasm_bindgen(js_name = "engineCommand")]
     pub fn engine_command(&mut self) -> EngineCommand {
-        let (sender, receiver) = mpsc::channel(32);
-
-        let uuid = Uuid::new_v4();
-        let engine_sender = self.engine.create_message_channel(uuid, sender);
-
-        EngineCommand::new(uuid, engine_sender, receiver)
+        EngineCommand::new(self.engine.client())
     }
 
     /// Runs the engine asynchronously.

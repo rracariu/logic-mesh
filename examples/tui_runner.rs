@@ -16,7 +16,7 @@
 //!
 //! The point of this example is to show that the same engine drives
 //! both the browser editor and a terminal UI. The watcher
-//! subscription (`WatchBlockSubReq`) is the single primitive both
+//! subscription (`EngineClient::watch`) is the single primitive both
 //! UIs build on — every change-of-value (pin value, fault state)
 //! arrives as a `WatchMessage` over an unbounded mpsc.
 
@@ -37,11 +37,10 @@ use ratatui::{
     text::{Line, Span},
     widgets::{Block as TuiBlock, Borders, Cell, Paragraph, Row, Table},
 };
-use tokio::task::yield_now;
 use uuid::Uuid;
 
 use logic_mesh::Value;
-use logic_mesh::base::engine::messages::{ChangeSource, EngineMessage, WatchMessage};
+use logic_mesh::base::engine::messages::{ChangeSource, WatchMessage};
 use logic_mesh::base::program::{Program, ProgramBuilder};
 use logic_mesh::multi_threaded::MultiThreadedEngine;
 use logic_mesh::prelude::*;
@@ -68,32 +67,21 @@ async fn main() -> anyhow::Result<()> {
 
     // ----- 2. Spin up the engine -----
     let mut eng = MultiThreadedEngine::new();
-    let (reply_tx, mut reply_rx) = mpsc::channel(32);
-    let channel_id = Uuid::new_v4();
-    let engine_sender = eng.create_message_channel(channel_id, reply_tx);
+    // A typed handle to the engine, usable from any task once it runs.
+    let client = eng.client();
 
-    // The engine task owns the engine; `run()` only returns on
-    // `EngineMessage::Shutdown`.
+    // The engine task owns the engine; `run()` only returns on a
+    // shutdown request.
     let engine_handle = tokio::spawn(async move {
         eng.run().await;
     });
 
-    // Wait a few ticks for the engine task to start receiving.
-    yield_now().await;
-
     // ----- 3. Subscribe to watch events BEFORE loading the program
     //         so we don't miss the first round of COV notifications -----
-    let (watch_tx, mut watch_rx) = mpsc::unbounded_channel::<WatchMessage>();
-    engine_sender
-        .send(EngineMessage::WatchBlockSubReq(channel_id, watch_tx))
-        .await?;
-    expect_reply(&mut reply_rx, "WatchBlockSubRes").await;
+    let mut watch = client.watch().await?;
 
     // ----- 4. Load the program -----
-    engine_sender
-        .send(EngineMessage::LoadProgramReq(channel_id, program.clone()))
-        .await?;
-    expect_reply(&mut reply_rx, "LoadProgramRes").await;
+    client.load_program(program.clone()).await?;
 
     // Seed the table with every block name from the program.
     let mut rows: BTreeMap<Uuid, BlockRow> = BTreeMap::new();
@@ -112,11 +100,11 @@ async fn main() -> anyhow::Result<()> {
 
     // ----- 5. Drive the terminal -----
     let mut terminal = init_terminal()?;
-    let result = run_ui(&mut terminal, &mut rows, &mut watch_rx).await;
+    let result = run_ui(&mut terminal, &mut rows, &mut watch.notifications).await;
     restore_terminal(&mut terminal)?;
 
     // ----- 6. Shutdown -----
-    let _ = engine_sender.send(EngineMessage::Shutdown).await;
+    client.shutdown().await?;
     let _ = engine_handle.await;
 
     result
@@ -247,17 +235,6 @@ fn fmt_value(v: &Value) -> String {
         format!("{n:.2}")
     } else {
         format!("{v:?}")
-    }
-}
-
-async fn expect_reply<R: std::fmt::Debug>(rx: &mut mpsc::Receiver<R>, what: &str) {
-    if let Some(msg) = rx.recv().await {
-        // We don't actually need to match on the response variant here
-        // — the engine replies once per request and we drain to keep
-        // the reply channel from filling.
-        let _ = msg;
-    } else {
-        eprintln!("Engine reply channel closed waiting for {what}");
     }
 }
 
