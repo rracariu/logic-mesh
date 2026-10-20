@@ -28,7 +28,11 @@ macro_rules! error_codes {
         /// or the block reports it.
         ///
         /// `#[non_exhaustive]`: new failures get new codes in minor
-        /// releases, so a `match` on it needs a wildcard arm.
+        /// releases, so a `match` on it needs a wildcard arm. A peer on
+        /// an older release reads a code it does not know as
+        /// [`Unknown`](Self::Unknown), so a
+        /// [`RequestError`](super::RequestError) from a newer engine
+        /// still arrives, with its message.
         ///
         /// # Examples
         ///
@@ -38,21 +42,32 @@ macro_rules! error_codes {
         /// let err = EngineError::BlockInstanceNotFound { id: Uuid::nil() };
         /// assert_eq!(err.code(), ErrorCode::BlockInstanceNotFound);
         /// assert_eq!(err.code().as_str(), "BlockInstanceNotFound");
+        ///
+        /// let newer: ErrorCode = serde_json::from_str(r#""CodeFromANewerRelease""#)?;
+        /// assert_eq!(newer, ErrorCode::Unknown);
+        /// # Ok::<(), serde_json::Error>(())
         /// ```
         #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
         #[non_exhaustive]
         pub enum ErrorCode {
             $($(#[$doc])* $code,)*
+            /// A code this release does not know, read from a peer on a
+            /// newer one. The crate never reports it itself, so it is
+            /// not in [`ALL`](Self::ALL).
+            #[serde(other)]
+            Unknown,
         }
 
         impl ErrorCode {
-            /// Every code, in declaration order.
+            /// Every code the crate reports, in declaration order: all
+            /// but [`Unknown`](Self::Unknown).
             pub const ALL: &'static [ErrorCode] = &[$(ErrorCode::$code,)*];
 
             /// The code's name, as it is written on the wire.
             pub const fn as_str(self) -> &'static str {
                 match self {
                     $(ErrorCode::$code => stringify!($code),)*
+                    ErrorCode::Unknown => "Unknown",
                 }
             }
         }
@@ -320,19 +335,30 @@ mod test {
 
     use super::ErrorCode;
 
-    /// A code is written as its variant name, and no two codes share a
-    /// name.
+    /// A code is written as its variant name, read back from it, and no
+    /// two codes share a name.
     #[test]
     fn codes_are_written_as_their_unique_names() {
         let mut names = BTreeSet::new();
-        for code in ErrorCode::ALL {
+        for code in ErrorCode::ALL.iter().chain([&ErrorCode::Unknown]) {
+            let written = serde_json::Value::String(code.as_str().to_string());
             assert_eq!(code.to_string(), code.as_str());
+            assert_eq!(serde_json::to_value(code).ok(), Some(written.clone()));
             assert_eq!(
-                serde_json::to_value(code).ok(),
-                Some(serde_json::Value::String(code.as_str().to_string()))
+                serde_json::from_value::<ErrorCode>(written).ok(),
+                Some(*code)
             );
             assert!(names.insert(code.as_str()), "{code} is listed twice");
         }
+        assert!(!ErrorCode::ALL.contains(&ErrorCode::Unknown));
+    }
+
+    /// Regression: a code added in a later release failed to
+    /// deserialize, losing the whole response it came in.
+    #[test]
+    fn a_code_from_a_newer_release_reads_as_unknown() {
+        let code: ErrorCode = serde_json::from_str(r#""SomeCodeAddedIn2_1""#).expect("read");
+        assert_eq!(code, ErrorCode::Unknown);
     }
 
     /// The TypeScript wrapper types an error's code as a union of the

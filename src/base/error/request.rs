@@ -168,6 +168,19 @@ mod test {
         assert_eq!(err.to_string(), err.message);
     }
 
+    /// Regression: a request error from a newer engine, carrying a code
+    /// added after this release, failed to deserialize. It now arrives
+    /// with its message and the `Unknown` code.
+    #[test]
+    fn a_request_error_with_a_newer_code_keeps_its_message() {
+        let read: RequestError =
+            serde_json::from_str(r#"{"code":"SomeCodeAddedIn2_1","message":"boom"}"#)
+                .expect("read");
+
+        assert_eq!(read, RequestError::new(ErrorCode::Unknown, "boom"));
+        assert!(read.error().is_none());
+    }
+
     /// A clone shares the typed error.
     #[test]
     fn a_clone_keeps_the_typed_error() {
