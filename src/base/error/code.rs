@@ -9,7 +9,8 @@ use std::fmt;
 use serde::{Deserialize, Serialize};
 
 use super::{
-    ConnectError, ConnectorError, EngineError, Error, ExternalError, RegistryError, ValueError,
+    BlockDescError, ConnectError, ConnectorError, EngineError, Error, ExternalError, RegistryError,
+    ValueError,
 };
 
 /// Declares [`ErrorCode`] with its variants, and the name each one is
@@ -193,6 +194,16 @@ error_codes! {
     /// [`ConnectorError::Transport`].
     ConnectorTransport,
 
+    // --- Block description ----------------------------------------------
+    /// [`BlockDescError::UnknownImplementation`].
+    UnknownImplementation,
+    /// [`BlockDescError::UnknownRunCondition`].
+    UnknownRunCondition,
+    /// [`BlockDescError::UnknownPinKind`].
+    UnknownPinKind,
+    /// [`BlockDescError::NotExternal`].
+    BlockNotExternal,
+
     // --- Requests -------------------------------------------------------
     /// A program handed to an engine through a transport — such as a
     /// JavaScript object — is not a program: it does not deserialize.
@@ -220,6 +231,7 @@ impl Error {
             Error::Value(err) => err.code(),
             Error::External(err) => err.code(),
             Error::Connector(err) => err.code(),
+            Error::BlockDesc(err) => err.code(),
         }
     }
 }
@@ -335,11 +347,25 @@ impl ConnectorError {
     }
 }
 
+impl BlockDescError {
+    /// This error's [`ErrorCode`]. A [`Field`](Self::Field) error has
+    /// the code of what is wrong with the field.
+    pub fn code(&self) -> ErrorCode {
+        match self {
+            BlockDescError::UnknownImplementation { .. } => ErrorCode::UnknownImplementation,
+            BlockDescError::UnknownRunCondition { .. } => ErrorCode::UnknownRunCondition,
+            BlockDescError::UnknownPinKind { .. } => ErrorCode::UnknownPinKind,
+            BlockDescError::Field { error, .. } => error.code(),
+            BlockDescError::NotExternal { .. } => ErrorCode::BlockNotExternal,
+        }
+    }
+}
+
 #[cfg(test)]
 mod test {
     use std::collections::BTreeSet;
 
-    use super::ErrorCode;
+    use super::{BlockDescError, ErrorCode};
 
     /// A code is written as its variant name, read back from it, and no
     /// two codes share a name.
@@ -365,6 +391,28 @@ mod test {
     fn a_code_from_a_newer_release_reads_as_unknown() {
         let code: ErrorCode = serde_json::from_str(r#""SomeCodeAddedIn2_1""#).expect("read");
         assert_eq!(code, ErrorCode::Unknown);
+    }
+
+    /// A bad field of a block description reports the code of what is
+    /// wrong with it, so JavaScript can tell a bad run condition from a
+    /// bad implementation.
+    #[test]
+    fn a_block_desc_field_error_has_the_code_of_its_cause() {
+        let err = BlockDescError::Field {
+            field: "runCondition",
+            error: Box::new(BlockDescError::UnknownRunCondition {
+                value: "sometimes".to_string(),
+            }),
+        };
+        assert_eq!(err.code(), ErrorCode::UnknownRunCondition);
+
+        let err = BlockDescError::Field {
+            field: "implementation",
+            error: Box::new(BlockDescError::NotExternal {
+                implementation: "native".to_string(),
+            }),
+        };
+        assert_eq!(err.code(), ErrorCode::BlockNotExternal);
     }
 
     /// The TypeScript wrapper types an error's code as a union of the

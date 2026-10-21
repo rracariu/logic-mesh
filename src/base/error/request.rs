@@ -10,8 +10,8 @@ use std::sync::Arc;
 use serde::{Deserialize, Serialize};
 
 use super::{
-    ConnectError, ConnectorError, EngineError, Error, ErrorChain, ErrorCode, ExternalError,
-    RegistryError, ValueError,
+    BlockDescError, ConnectError, ConnectorError, EngineError, Error, ErrorChain, ErrorCode,
+    ExternalError, RegistryError, ValueError,
 };
 
 /// Why an engine request failed, as an
@@ -141,13 +141,14 @@ from_subsystem_error!(
     ConnectError,
     ValueError,
     ExternalError,
-    ConnectorError
+    ConnectorError,
+    BlockDescError
 );
 
 #[cfg(test)]
 mod test {
     use super::RequestError;
-    use crate::base::error::{ConnectorError, EngineError, Error, ErrorCode};
+    use crate::base::error::{BlockDescError, ConnectorError, EngineError, Error, ErrorCode};
     use assert_matches::assert_matches;
 
     /// The message walks the source chain, so a wrapped cause reaches a
@@ -166,6 +167,28 @@ mod test {
             "Connector 'mqtt' failed to start: Transport error: refused: port in use"
         );
         assert_eq!(err.to_string(), err.message);
+    }
+
+    /// A block description failure converts like every other subsystem
+    /// error, keeping its code, its message chain and the typed error.
+    #[test]
+    fn a_block_desc_error_converts_with_its_code() {
+        let err = RequestError::from(BlockDescError::Field {
+            field: "runCondition",
+            error: Box::new(BlockDescError::UnknownRunCondition {
+                value: "sometimes".to_string(),
+            }),
+        });
+
+        assert_eq!(err.code, ErrorCode::UnknownRunCondition);
+        assert_eq!(
+            err.message,
+            "field 'runCondition': Invalid run condition: sometimes"
+        );
+        assert_matches!(
+            err.error(),
+            Some(Error::BlockDesc(BlockDescError::Field { .. }))
+        );
     }
 
     /// Regression: a request error from a newer engine, carrying a code
