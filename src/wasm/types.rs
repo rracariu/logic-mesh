@@ -289,13 +289,13 @@ pub(crate) struct JsBlockInspection {
 impl From<BlockDefinition> for JsBlockInspection {
     fn from(block: BlockDefinition) -> Self {
         Self {
-            id: block.id,
+            id: block.id.to_string(),
             name: block.name,
             lib: block.library,
             inputs: block.inputs,
             outputs: block.outputs,
-            state: block.state,
-            fault_reason: block.fault_reason,
+            state: block.state.label().to_string(),
+            fault_reason: block.state.fault_reason().map(str::to_string),
         }
     }
 }
