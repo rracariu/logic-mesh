@@ -61,9 +61,9 @@ describe('engine pin writes', () => {
     const id = await command.addBlock('Add');
     // Held, the block cannot recompute `out` between the writes.
     await command.pauseExecution();
-    expect(await command.writeBlockOutput(id, 'out', 5)).toBeUndefined();
+    expect(await command.writeBlockOutput(id, 'out', 5)).toBeNull();
     expect(await command.writeBlockOutput(id, 'out', 7)).toBe(5);
-    expect(await command.writeBlockInput(id, 'in0', 1)).toBeUndefined();
+    expect(await command.writeBlockInput(id, 'in0', 1)).toBeNull();
     expect(await command.writeBlockInput(id, 'in0', 2)).toBe(1);
     await command.resumeExecution();
   });
