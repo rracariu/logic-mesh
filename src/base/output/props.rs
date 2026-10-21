@@ -42,7 +42,7 @@ impl OutDesc {
 ///
 /// ```compile_fail,E0277
 /// use logic_mesh::base::link::Link;
-/// use logic_mesh::base::output::{OutputProps, props::OutDesc};
+/// use logic_mesh::base::output::{OutDesc, OutputProps};
 /// use logic_mesh::{Uuid, Value};
 ///
 /// struct MyOutput {
