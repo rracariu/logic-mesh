@@ -20,7 +20,7 @@
 //! impl Block for Double {
 //!     async fn execute(&mut self) {
 //!         self.read_inputs_until_ready().await;
-//!         if let Some(Ok(num)) = self.input.get_value().map(f64::try_from) {
+//!         if let Some(Ok(num)) = self.input.value().map(f64::try_from) {
 //!             self.out.set((num * 2.0).into());
 //!         }
 //!     }

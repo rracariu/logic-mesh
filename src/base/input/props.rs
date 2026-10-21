@@ -58,7 +58,7 @@ use crate::base::sealed::Sealed;
 ///     fn writer(&mut self) -> &mut () {
 ///         &mut self.writer
 ///     }
-///     fn get_value(&self) -> Option<&Value> {
+///     fn value(&self) -> Option<&Value> {
 ///         None
 ///     }
 ///     fn increment_conn(&mut self) -> usize {
