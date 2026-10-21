@@ -1,0 +1,5 @@
+error: expected a string value: `#[ver = "..."]`
+ --> tests/ui/non_string_attribute.rs:7:9
+  |
+7 | #[ver = 2]
+  |         ^

@@ -10,6 +10,7 @@ pub mod input;
 pub mod link;
 pub mod output;
 pub mod program;
+pub(crate) mod sealed;
 pub mod status;
 
 pub use error::{

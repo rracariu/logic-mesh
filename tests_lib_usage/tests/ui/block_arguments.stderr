@@ -1,0 +1,5 @@
+error: `#[block]` takes no arguments; name a renamed `logic-mesh` crate with `#[logic_mesh(crate = "path")]`
+ --> tests/ui/block_arguments.rs:4:9
+  |
+4 | #[block(crate = "logic_mesh")]
+  |         ^^^^^^^^^^^^^^^^^^^^

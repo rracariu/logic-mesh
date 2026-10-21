@@ -186,14 +186,6 @@ impl BlockProps for RegisteredBlock {
     }
 }
 
-impl BlockStaticDesc for RegisteredBlock {
-    fn desc() -> &'static BlockDesc {
-        // Same as `JsBlock`: the desc lives in the instance, there is no
-        // static one. Nothing on the scheduling or eval path calls this.
-        unimplemented!()
-    }
-}
-
 impl Block for RegisteredBlock {
     async fn execute(&mut self) {
         self.0.execute_boxed().await
@@ -437,14 +429,24 @@ pub fn register_block_desc(desc: &BlockDesc) -> Result<(), RegistryError> {
 /// Bounds a block type must meet to be registered at runtime. All
 /// macro-generated blocks satisfy this. [`Send`] + [`Sync`] (native only) lets
 /// registered blocks be scheduled on the multi-threaded engine.
+///
+/// Registration is what needs a [`BlockStaticDesc`]: the registry files
+/// the type under its description before any instance exists.
 #[cfg(not(target_arch = "wasm32"))]
 pub trait RegisterableBlock:
-    Block<Reader = ReaderImpl, Writer = WriterImpl> + BlockConstruct + Default + Send + Sync + 'static
+    Block<Reader = ReaderImpl, Writer = WriterImpl>
+    + BlockStaticDesc
+    + BlockConstruct
+    + Default
+    + Send
+    + Sync
+    + 'static
 {
 }
 #[cfg(not(target_arch = "wasm32"))]
 impl<
     T: Block<Reader = ReaderImpl, Writer = WriterImpl>
+        + BlockStaticDesc
         + BlockConstruct
         + Default
         + Send
@@ -457,12 +459,21 @@ impl<
 /// Marker trait for blocks that can be registered with the block registry (WASM variant).
 #[cfg(target_arch = "wasm32")]
 pub trait RegisterableBlock:
-    Block<Reader = ReaderImpl, Writer = WriterImpl> + BlockConstruct + Default + 'static
+    Block<Reader = ReaderImpl, Writer = WriterImpl>
+    + BlockStaticDesc
+    + BlockConstruct
+    + Default
+    + 'static
 {
 }
 #[cfg(target_arch = "wasm32")]
-impl<T: Block<Reader = ReaderImpl, Writer = WriterImpl> + BlockConstruct + Default + 'static>
-    RegisterableBlock for T
+impl<
+    T: Block<Reader = ReaderImpl, Writer = WriterImpl>
+        + BlockStaticDesc
+        + BlockConstruct
+        + Default
+        + 'static,
+> RegisterableBlock for T
 {
 }
 
@@ -616,7 +627,7 @@ pub async fn eval_block_impl<B: Block<Reader = ReaderImpl, Writer = WriterImpl>>
 }
 
 fn register_impl<B: RegisterableBlock>(reg: &mut MapType) -> Result<(), RegistryError> {
-    let desc = <B as BlockStaticDesc>::desc();
+    let desc = <B as BlockStaticDesc>::static_desc();
     let lib = desc.library.clone();
 
     let lib_reg = reg.entry(lib).or_default();
@@ -801,7 +812,8 @@ mod test {
         /// carries no factory, so it cannot be built by the registry.
         #[test]
         fn description_only_entry_has_no_factory() {
-            let mut desc = <Increment as crate::base::block::BlockStaticDesc>::desc().clone();
+            let mut desc =
+                <Increment as crate::base::block::BlockStaticDesc>::static_desc().clone();
             desc.library = "desc_only_test".to_string();
             register_block_desc(&desc).expect("registered");
 
@@ -944,7 +956,7 @@ mod test {
         fn duplicate_registration_errors_with_context() {
             let _ = register::<Increment>();
 
-            let desc = <Increment as crate::base::block::BlockStaticDesc>::desc();
+            let desc = <Increment as crate::base::block::BlockStaticDesc>::static_desc();
             let err = register_block_desc(desc).expect_err("duplicate should be rejected");
             assert_eq!(
                 err.to_string(),

@@ -1,0 +1,5 @@
+error: expected integer literal
+ --> tests/ui/string_count.rs:7:34
+  |
+7 | #[input(kind = "Number", count = "2")]
+  |                                  ^^^

@@ -21,8 +21,14 @@ pub use tokio_impl::engine::*;
 /// The per-subsystem errors this crate reports, the [`Error`] aggregate
 /// that wraps them, and the matching `Result` alias.
 pub use base::error::{
-    ConnectorError, EngineError, Error, ExternalError, LinkEnd, RegistryError, Result, ValueError,
+    ConnectError, ConnectorError, EngineError, Error, ExternalError, LinkEnd, RegistryError,
+    Result, ValueError,
 };
 
 #[cfg(target_arch = "wasm32")]
 pub mod wasm;
+
+/// Not public API: what the block macros' generated code calls.
+#[doc(hidden)]
+#[path = "macro_support.rs"]
+pub mod __private;

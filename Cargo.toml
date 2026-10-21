@@ -40,7 +40,9 @@ multi-threaded = []
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-logic_mesh_block_macro = { path = "block_macro", version = "2.0.0" }
+# Pinned exactly: the macro generates calls into `logic_mesh::__private`,
+# which only this exact version of the crate provides.
+logic_mesh_block_macro = { path = "block_macro", version = "=2.0.0" }
 serde = { version = "^1.0", features = ["derive"] }
 libhaystack = { version = "^4.0", default-features = false, features = [
 	"value",

@@ -7,6 +7,7 @@ use uuid::Uuid;
 
 use crate::base::Status;
 use crate::base::link::Link;
+use crate::base::sealed::Sealed;
 
 use super::{OutputProps, props::OutDesc};
 
@@ -28,6 +29,8 @@ pub struct BaseOutput<L: Link> {
     /// recovery.
     pub effective_status: Status,
 }
+
+impl<L: Link> Sealed for BaseOutput<L> {}
 
 /// The implementation of the OutputProps trait.
 ///
@@ -75,10 +78,7 @@ impl<L: Link> BaseOutput<L> {
     /// Creates a new output pin with the given `name` and `kind`.
     pub fn new_named(name: &str, kind: HaystackKind, block_id: Uuid) -> Self {
         Self {
-            desc: OutDesc {
-                name: name.to_string(),
-                kind,
-            },
+            desc: OutDesc::new(name, kind),
             value: Value::default(),
             links: Vec::new(),
             block_id,

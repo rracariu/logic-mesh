@@ -103,6 +103,10 @@ impl BlockState {
 /// requirement so `JsBlock` — whose `func: js_sys::Function` is
 /// `!Send` — can still implement the trait.
 ///
+/// A block is wired to others through [`BlockConnect`], which every
+/// [`BlockProps`] type implements. Neither needs the block's
+/// [`BlockStaticDesc`]: only registering a block type by name does.
+///
 /// # Panics
 ///
 /// On native targets the engines catch a panic in `execute` and isolate
@@ -154,7 +158,7 @@ impl BlockState {
 /// assert_eq!(block.name(), "Double");
 /// ```
 #[cfg(not(target_arch = "wasm32"))]
-pub trait Block: BlockConnect {
+pub trait Block: BlockProps {
     /// Runs one cycle of this block's dataflow logic.
     fn execute(&mut self) -> impl std::future::Future<Output = ()> + Send;
 }
@@ -166,7 +170,7 @@ pub trait Block: BlockConnect {
 /// A panic in `execute` aborts the whole wasm instance: unlike on native
 /// targets, the engine cannot isolate it to the block.
 #[cfg(target_arch = "wasm32")]
-pub trait Block: BlockConnect {
+pub trait Block: BlockProps {
     /// Runs one cycle of this block's dataflow logic.
     #[allow(async_fn_in_trait)]
     async fn execute(&mut self);
