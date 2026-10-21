@@ -14,7 +14,7 @@ use wasm_bindgen::prelude::wasm_bindgen;
 use wasm_bindgen::{JsCast, JsValue};
 
 use crate::base::engine::Engine;
-use crate::base::error::{BlockDescError, ErrorChain, ErrorCode, RequestError};
+use crate::base::error::{BlockDescError, ErrorCode, RequestError};
 
 /// Controls the execution of blocks.
 ///
@@ -90,12 +90,11 @@ impl BlocksEngine {
         let name = desc.name.clone();
         let lib = desc.lib.clone();
 
-        // A bad field carries what is wrong with it as its source, so
-        // render the chain to name both.
-        let desc: crate::base::block::BlockDesc =
-            desc.try_into().map_err(|err: BlockDescError| {
-                js_error(RequestError::new(err.code(), ErrorChain(&err).to_string()))
-            })?;
+        // A bad field carries what is wrong with it as its source, and
+        // the request error's message renders the chain to name both.
+        let desc: crate::base::block::BlockDesc = desc
+            .try_into()
+            .map_err(|err: BlockDescError| js_error(RequestError::from(err)))?;
         // wasm-bindgen checks no argument against its declared type, so
         // read the factory before registering anything: a bad one would
         // only show when the block is added, with its name already taken.
