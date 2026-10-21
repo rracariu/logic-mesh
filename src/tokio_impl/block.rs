@@ -8,6 +8,7 @@ use libhaystack::val::{Value, kind::HaystackKind};
 use super::sleep::sleep_millis;
 use crate::base::Status;
 use crate::base::block::{Block, BlockState, convert_value_kind};
+use crate::base::error::ErrorChain;
 use crate::base::input::{Input, InputProps, input_reader::InputReader};
 use crate::blocks::InputImpl;
 use crate::blocks::utils::get_sleep_dur;
@@ -178,12 +179,14 @@ pub(crate) fn drain_ready_inputs<B: Block>(block: &mut B) -> Option<usize> {
                 match convert_value_kind(value, expected, actual) {
                     Ok(v) => v,
                     Err(err) => {
-                        log::error!("Error converting value: {}", err);
+                        // The decoder's own error is the source, so
+                        // render the chain to keep its detail.
+                        let err = ErrorChain(&err);
+                        log::error!("Error converting value: {err}");
                         if conversion_fault.is_none() {
                             conversion_fault = Some(format!(
-                                "type conversion failed on input {}: {}",
+                                "type conversion failed on input {}: {err}",
                                 input.name(),
-                                err
                             ));
                         }
                         continue;
@@ -213,4 +216,35 @@ pub(crate) fn drain_ready_inputs<B: Block>(block: &mut B) -> Option<usize> {
         block.set_state(BlockState::fault(reason));
     }
     last_idx
+}
+
+#[cfg(test)]
+mod test {
+    use libhaystack::val::Value;
+
+    use super::drain_ready_inputs;
+    use crate::base::block::{BlockProps, test_utils::write_block_inputs};
+    use crate::blocks::bitwise::BitwiseNot;
+
+    /// Regression: a Zinc decoding failure keeps the decoder's error
+    /// only as its source, and the fault reason printed the error alone,
+    /// so it lost the part saying what was wrong with the string.
+    #[tokio::test]
+    async fn conversion_fault_reason_keeps_the_decoder_detail() {
+        let mut block = BitwiseNot::new();
+        write_block_inputs([(&mut block.input, Value::make_str("not zinc ("))]).await;
+
+        drain_ready_inputs(&mut block);
+
+        let detail = libhaystack::encoding::zinc::decode::from_str("not zinc (")
+            .expect_err("not zinc")
+            .to_string();
+        assert_eq!(
+            block.state().fault_reason(),
+            Some(
+                format!("type conversion failed on input in: Zinc decoding failed: {detail}")
+                    .as_str()
+            )
+        );
+    }
 }

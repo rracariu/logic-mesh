@@ -254,12 +254,25 @@ pub struct ConnectorHandle(HandleRepr);
 
 impl ConnectorHandle {
     /// Wraps `connector` in a new shared handle.
+    #[must_use = "the connector is dropped unless the handle is registered or kept"]
     pub fn new(connector: impl Connector + 'static) -> Self {
         #[cfg(not(target_arch = "wasm32"))]
         return Self(std::sync::Arc::new(connector));
 
         #[cfg(target_arch = "wasm32")]
         Self(std::rc::Rc::new(connector))
+    }
+}
+
+/// Shows which connector the handle shares, by address: the connector
+/// itself need not implement `Debug`. Clones of a handle show the same
+/// address.
+impl std::fmt::Debug for ConnectorHandle {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let connector: *const dyn Connector = &*self.0;
+        f.debug_tuple("ConnectorHandle")
+            .field(&connector.cast::<()>())
+            .finish()
     }
 }
 
@@ -440,5 +453,18 @@ mod test {
         let connector = NoopConnector;
         connector.start().await.expect("default start is Ok");
         connector.stop().await.expect("default stop is Ok");
+    }
+
+    /// A handle shows the connector it shares, so clones look alike and
+    /// handles to different connectors do not.
+    #[test]
+    fn debug_tells_shared_connectors_apart() {
+        let first = handle();
+        let second = handle();
+
+        let shown = format!("{first:?}");
+        assert!(shown.starts_with("ConnectorHandle(0x"), "{shown}");
+        assert_eq!(shown, format!("{:?}", first.clone()));
+        assert_ne!(shown, format!("{second:?}"));
     }
 }

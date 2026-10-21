@@ -13,7 +13,7 @@ use crate::base::{
     output::Output,
 };
 use crate::blocks::external::support::{
-    ActiveSubscription, Deadline, input_as_str, input_as_timeout_millis,
+    ActiveSubscription, Deadline, connector_fault, input_as_str, input_as_timeout_millis,
 };
 use crate::blocks::utils::get_sleep_dur;
 use crate::tokio_impl::block::drain_ready_inputs;
@@ -130,7 +130,7 @@ impl Block for ExternalIn {
             if deadline.has_passed() {
                 self.binding = None;
                 let err = deadline.timeout_error(address);
-                self.set_state(BlockState::fault(format!("ExternalIn: {err}")));
+                self.set_state(connector_fault("ExternalIn", &err));
                 return;
             }
             self.binding = Some(PendingBinding {
@@ -156,7 +156,7 @@ impl Block for ExternalIn {
                     });
                 }
                 Err(err) => {
-                    self.set_state(BlockState::fault(format!("ExternalIn: {err}")));
+                    self.set_state(connector_fault("ExternalIn", &err));
                     return;
                 }
             }
@@ -176,7 +176,7 @@ impl Block for ExternalIn {
             item = sub.stream.next() => match item {
                 Some(Ok(value)) => self.out.set(value),
                 Some(Err(err)) => {
-                    self.set_state(BlockState::fault(format!("ExternalIn: {err}")));
+                    self.set_state(connector_fault("ExternalIn", &err));
                 }
                 None => {
                     // Stream ended — fault for visibility and drop the
@@ -204,7 +204,7 @@ mod test {
     use crate::base::connector::{register_connector, unregister_connector};
     use crate::base::error::ConnectorError;
     use crate::blocks::external::ExternalIn;
-    use crate::blocks::external::support::mock::MockConnector;
+    use crate::blocks::external::support::mock::{MOCK_CAUSE, MockConnector};
 
     fn unique_name(prefix: &str) -> String {
         format!("{prefix}-{}", uuid::Uuid::new_v4())
@@ -304,6 +304,8 @@ mod test {
         unregister_connector(&name);
     }
 
+    /// The fault reason carries the connector's underlying error too
+    /// (regression: it printed only the error's own message).
     #[tokio::test]
     async fn subscribe_error_faults() {
         let name = unique_name("in-sub-err");
@@ -315,7 +317,15 @@ mod test {
 
         let mut block = ExternalIn::new();
         bind(&mut block, &name, "topic").await;
-        assert!(block.state().is_fault());
+        assert_eq!(
+            block.state().fault_reason(),
+            Some(
+                format!(
+                    "ExternalIn: Subscribe to 'topic' failed: mock subscribe failure: {MOCK_CAUSE}"
+                )
+                .as_str()
+            )
+        );
 
         unregister_connector(&name);
     }
@@ -329,9 +339,16 @@ mod test {
         let mut block = ExternalIn::new();
         bind(&mut block, &name, "topic").await;
 
-        mock.feed("topic", Err(ConnectorError::Transport("boom".to_string())));
+        mock.feed(
+            "topic",
+            Err(ConnectorError::transport("boom")
+                .with_source(std::io::Error::other("connection reset"))),
+        );
         block.execute().await;
-        assert!(block.state().is_fault());
+        assert_eq!(
+            block.state().fault_reason(),
+            Some("ExternalIn: Transport error: boom: connection reset")
+        );
 
         unregister_connector(&name);
     }

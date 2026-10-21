@@ -39,7 +39,11 @@ use uuid::Uuid;
 ///
 /// assert_eq!(BlockState::Running.label(), "running");
 /// ```
+///
+/// `#[non_exhaustive]`: [`BlockState::Disabled`] is reserved, and
+/// further states may follow, so a `match` on it needs a wildcard arm.
 #[derive(Default, Debug, Clone, PartialEq)]
+#[non_exhaustive]
 pub enum BlockState {
     /// Block is executing normally.
     #[default]
@@ -129,7 +133,7 @@ impl BlockState {
 /// use logic_mesh::{
 ///     BlockProps, block,
 ///     base::block::{Block, BlockProps as _},
-///     base::input::input_reader::InputReader,
+///     base::input::{InputProps, input_reader::InputReader},
 ///     base::output::Output,
 ///     blocks::{InputImpl, OutputImpl},
 /// };
@@ -148,7 +152,7 @@ impl BlockState {
 ///     async fn execute(&mut self) {
 ///         self.read_inputs_until_ready().await;
 ///
-///         if let Some(logic_mesh::Value::Number(n)) = &self.input.val {
+///         if let Some(logic_mesh::Value::Number(n)) = self.input.get_value() {
 ///             self.out.set((n.value * 2.0).into());
 ///         }
 ///     }
@@ -251,7 +255,7 @@ pub fn convert_value_kind(
                 return Ok(val.parse::<bool>()?.into());
             }
 
-            let num = zinc::decode::from_str(&val)?;
+            let num = zinc::decode::from_str(&val).map_err(ValueError::ZincDecode)?;
             match num {
                 Value::Number(Number { value, unit: _ }) => Ok((value != 0.0).into()),
                 Value::Bool(Bool { value }) => Ok(value.into()),
@@ -271,7 +275,7 @@ pub fn convert_value_kind(
         (HaystackKind::Number, HaystackKind::Str) => {
             let val = Str::try_from(&val).map_err(ValueError::Conversion)?;
 
-            let num = zinc::decode::from_str(&val)?;
+            let num = zinc::decode::from_str(&val).map_err(ValueError::ZincDecode)?;
             if num.is_number() {
                 Ok(num)
             } else {

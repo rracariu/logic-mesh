@@ -42,6 +42,27 @@ impl InputImpl {
             links: Default::default(),
         }
     }
+
+    /// Sets this input's value, with [`Status::Ok`], and forwards it to
+    /// the inputs this one links to — [`Input::set_value`] with an `Ok`
+    /// status.
+    ///
+    /// Use it to give an unconnected input a constant before the block
+    /// is scheduled. A connected input takes the next value its link
+    /// delivers instead.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use logic_mesh::{base::input::InputProps, blocks::misc::SineWave};
+    ///
+    /// let mut sine = SineWave::new();
+    /// sine.amplitude.set(3);
+    /// assert_eq!(sine.amplitude.get_value(), Some(&3.into()));
+    /// ```
+    pub fn set(&mut self, value: impl Into<Value>) {
+        Input::set_value(self, value.into(), Status::Ok);
+    }
 }
 
 impl Input for InputImpl {
@@ -120,6 +141,11 @@ mod test {
     use uuid::Uuid;
 
     use super::InputImpl;
+    use crate::base::{
+        Status,
+        block::connect::connect_input,
+        input::{Input, InputProps},
+    };
 
     #[test]
     fn test_input_init() {
@@ -127,5 +153,21 @@ mod test {
 
         assert_eq!(input.name, "test");
         assert_eq!(input.kind, HaystackKind::Bool);
+    }
+
+    /// `set` gives the input its value and forwards it like a value
+    /// that arrived on a link.
+    #[test]
+    fn set_stores_and_forwards_the_value() {
+        let mut source = InputImpl::new("in", HaystackKind::Number, Uuid::new_v4());
+        let mut target = InputImpl::new("in", HaystackKind::Number, Uuid::new_v4());
+        connect_input(&mut source, &mut target).expect("not linked yet");
+        assert_eq!(target.connection_count(), 1);
+
+        source.set(3);
+
+        assert_eq!(source.get_value(), Some(&3.into()));
+        assert_eq!(source.status(), Status::Ok);
+        assert_eq!(target.try_take(), Some((3.into(), Status::Ok)));
     }
 }

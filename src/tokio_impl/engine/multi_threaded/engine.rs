@@ -51,7 +51,7 @@ use crate::base::{
     program::{Program, data::LinkData},
 };
 use crate::blocks::registry::{BlockSink, CORE_LIB, get_block};
-use crate::tokio_impl::engine::{ensure_schedulable_mt, schedule_block_on_engine_mt};
+use crate::tokio_impl::engine::{ensure_schedulable_mt, phase_name, schedule_block_on_engine_mt};
 use crate::tokio_impl::{MtBlock, ReaderImpl, WriterImpl};
 
 /// Concrete engine-message type.
@@ -116,6 +116,22 @@ pub struct MultiThreadedEngine<S: EngineState = Idle> {
 impl Default for MultiThreadedEngine {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+/// Shows the engine's phase, whether its blocks may execute, how many
+/// blocks, links and staged programs it holds and the connectors it
+/// manages — not the blocks or channels themselves.
+impl<S: EngineState> std::fmt::Debug for MultiThreadedEngine<S> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("MultiThreadedEngine")
+            .field("phase", &phase_name::<S>())
+            .field("executing", &*self.execution.borrow())
+            .field("blocks", &self.graph.block_count())
+            .field("links", &self.graph.link_count())
+            .field("pending_programs", &self.pending.len())
+            .field("connectors", &self.connectors.as_slice())
+            .finish_non_exhaustive()
     }
 }
 
@@ -636,6 +652,35 @@ mod test {
     use tokio::time::sleep;
     use uuid::Uuid;
 
+    /// The engine and its block handles summarise themselves without
+    /// dumping blocks, descriptors or channels.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn debug_summarises_the_engine_and_its_blocks() {
+        let mut source = Add::new();
+        let mut target = Add::new();
+        let target_id = *target.id();
+        source
+            .connect_output("out", target.inputs_mut()[0])
+            .expect("not linked yet");
+
+        let mut eng = MultiThreadedEngine::new();
+        eng.schedule(source).expect("scheduled");
+        eng.schedule(target).expect("scheduled");
+
+        assert_eq!(
+            format!("{eng:?}"),
+            "MultiThreadedEngine { phase: \"Idle\", executing: false, blocks: 2, links: 1, \
+             pending_programs: 0, connectors: [], .. }"
+        );
+        assert_eq!(
+            format!("{:?}", eng.block_handle(&target_id).expect("scheduled")),
+            format!(
+                "BlockHandle {{ id: {target_id}, name: \"Add\", library: \"core\", \
+                 label: None, position: None, .. }}"
+            )
+        );
+    }
+
     #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
     async fn multi_threaded_engine_test() {
         use crate::base::block::connect::connect_output;
@@ -644,13 +689,13 @@ mod test {
         let add_uuid = *add1.id();
 
         let mut sine1 = SineWave::new();
-        sine1.amplitude.val = Some(3.into());
-        sine1.freq.val = Some(200.into());
+        sine1.amplitude.set(3);
+        sine1.freq.set(200);
         connect_output(&mut sine1.out, add1.inputs_mut()[0]).expect("Connected");
 
         let mut sine2 = SineWave::new();
-        sine2.amplitude.val = Some(7.into());
-        sine2.freq.val = Some(400.into());
+        sine2.amplitude.set(7);
+        sine2.freq.set(400);
         sine2
             .connect_output("out", add1.inputs_mut()[1])
             .expect("Connected");
@@ -1298,7 +1343,7 @@ mod test {
             RemoveConnectorReq, RemoveConnectorRes, Reset,
         };
         use crate::tokio_impl::engine::connectors::test_support::{
-            FailingStartConnector, FlagConnector,
+            FailingStartConnector, FlagConnector, start_failure_reply,
         };
 
         /// The connector registry is process-global and tests run in
@@ -1515,13 +1560,13 @@ mod test {
                 let _ = engine_sender
                     .send(AddConnectorReq(channel_id, driver_name.clone()))
                     .await;
-                match receiver.recv().await {
-                    Some(AddConnectorRes(Err(_))) => {}
+                let reply = match receiver.recv().await {
+                    Some(AddConnectorRes(Err(reply))) => reply,
                     other => panic!(
                         "Expected AddConnectorRes(Err) on start failure, got {:?}",
                         other
                     ),
-                }
+                };
                 assert!(
                     driver_stopped.load(Ordering::SeqCst),
                     "failed attach stops the connector before replying"
@@ -1543,12 +1588,16 @@ mod test {
                 }
 
                 let _ = engine_sender.send(Shutdown).await;
+                reply
             });
 
             eng.run().await;
-            driver.await.unwrap();
-
+            let reply = driver.await.unwrap();
             unregister_connector(&name);
+
+            // The reply carries the start error's source too
+            // (regression: it printed only the error's own message).
+            assert_eq!(reply, start_failure_reply(&name));
         }
 
         /// Attach/detach error cases: an unregistered name, a name the

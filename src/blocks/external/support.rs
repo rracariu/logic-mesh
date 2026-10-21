@@ -4,8 +4,9 @@
 
 use libhaystack::val::Value;
 
+use crate::base::block::BlockState;
 use crate::base::connector::ValueStream;
-use crate::base::error::ConnectorError;
+use crate::base::error::{ConnectorError, ErrorChain};
 use crate::base::input::InputProps;
 use crate::blocks::InputImpl;
 use crate::tokio_impl::sleep::{monotonic_millis, sleep_millis};
@@ -56,6 +57,13 @@ pub(crate) fn input_as_timeout_millis(input: &InputImpl) -> u64 {
         }
         _ => DEFAULT_TIMEOUT_MILLIS,
     }
+}
+
+/// The fault an external block enters when a connector operation fails:
+/// the block's name, then the error and its whole source chain, so the
+/// underlying error a connector attached is part of the reason.
+pub(crate) fn connector_fault(block: &str, err: &ConnectorError) -> BlockState {
+    BlockState::fault(format!("{block}: {}", ErrorChain(err)))
 }
 
 /// The point in time a connector operation must settle by: the time it
@@ -153,6 +161,10 @@ pub(crate) mod mock {
     use crate::base::connector::{Connector, ConnectorFuture, ValueStream};
     use crate::base::error::ConnectorError;
 
+    /// The message of the underlying error every failure of
+    /// [`MockConnector`] carries as its source.
+    pub(crate) const MOCK_CAUSE: &str = "mock cause";
+
     /// A scriptable [`Connector`] for tests: subscriptions are backed by
     /// channels the test feeds, publishes are recorded, and each
     /// operation can be made to fail.
@@ -212,10 +224,8 @@ pub(crate) mod mock {
                     tokio::time::sleep(std::time::Duration::from_millis(millis)).await;
                 }
                 if self.fail_subscribe {
-                    return Err(ConnectorError::Subscribe {
-                        address,
-                        detail: "mock subscribe failure".to_string(),
-                    });
+                    return Err(ConnectorError::subscribe(address, "mock subscribe failure")
+                        .with_source(std::io::Error::other(MOCK_CAUSE)));
                 }
                 let (tx, rx) = mpsc::unbounded();
                 self.senders.lock().unwrap().insert(address, tx);
@@ -230,10 +240,8 @@ pub(crate) mod mock {
                     tokio::time::sleep(std::time::Duration::from_millis(millis)).await;
                 }
                 if self.fail_publish {
-                    return Err(ConnectorError::Publish {
-                        address,
-                        detail: "mock publish failure".to_string(),
-                    });
+                    return Err(ConnectorError::publish(address, "mock publish failure")
+                        .with_source(std::io::Error::other(MOCK_CAUSE)));
                 }
                 self.published.lock().unwrap().push((address, value));
                 Ok(())
@@ -251,10 +259,8 @@ pub(crate) mod mock {
                     tokio::time::sleep(std::time::Duration::from_millis(millis)).await;
                 }
                 if self.fail_request {
-                    return Err(ConnectorError::Request {
-                        address,
-                        detail: "mock request failure".to_string(),
-                    });
+                    return Err(ConnectorError::request(address, "mock request failure")
+                        .with_source(std::io::Error::other(MOCK_CAUSE)));
                 }
                 Ok(value)
             })

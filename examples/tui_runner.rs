@@ -166,6 +166,9 @@ fn apply_watch_message(rows: &mut BTreeMap<Uuid, BlockRow>, msg: WatchMessage) {
             ChangeSource::Output(name, value) => {
                 entry.outputs.insert(name, value);
             }
+            // `ChangeSource` is non-exhaustive: skip sources this
+            // runner does not know.
+            _ => {}
         }
         let _ = pin; // pin == change name; kept by source enum
     }

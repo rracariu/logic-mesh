@@ -20,7 +20,7 @@ use crate::base::{
     },
     engine::messages::{BlockDefinition, BlockInputData, BlockOutputData},
     error::{ConnectError, EngineError},
-    link::{BaseLink, LinkState},
+    link::BaseLink,
     program::data::{BlockData, LinkData},
 };
 use crate::tokio_impl::block::write_input_value;
@@ -354,41 +354,29 @@ where
 }
 
 fn snapshot_block_definition<B: BlockProps + ?Sized>(block: &B) -> BlockDefinition {
-    let state = block.state();
-    BlockDefinition {
-        id: block.id().to_string(),
-        name: block.name().to_string(),
-        library: block.desc().library.clone(),
-        inputs: block
-            .inputs()
-            .iter()
-            .map(|input| {
-                (
-                    input.name().to_string(),
-                    BlockInputData {
-                        kind: input.kind().to_string(),
-                        val: input.get_value().cloned().unwrap_or_default(),
-                        is_connected: input.is_connected(),
-                    },
-                )
-            })
-            .collect(),
-        outputs: block
-            .outputs()
-            .iter()
-            .map(|output| {
-                (
-                    output.desc().name.to_string(),
-                    BlockOutputData {
-                        kind: output.desc().kind.to_string(),
-                        val: output.value().clone(),
-                    },
-                )
-            })
-            .collect(),
-        fault_reason: state.fault_reason().map(|s| s.to_string()),
-        state: state.label().to_string(),
+    let mut definition = BlockDefinition::new(
+        block.id().to_string(),
+        block.name(),
+        block.desc().library.clone(),
+    )
+    .with_state(&block.state());
+    for input in block.inputs() {
+        definition = definition.with_input(
+            input.name(),
+            BlockInputData::new(
+                input.kind().to_string(),
+                input.get_value().cloned().unwrap_or_default(),
+                input.is_connected(),
+            ),
+        );
     }
+    for output in block.outputs() {
+        definition = definition.with_output(
+            output.desc().name.clone(),
+            BlockOutputData::new(output.desc().kind.to_string(), output.value().clone()),
+        );
+    }
+    definition
 }
 
 fn snapshot_block_data<B: BlockProps + ?Sized>(block: &B) -> (BlockData, Vec<LinkData>) {
@@ -453,22 +441,6 @@ fn collect_all_targets<B: BlockProps + ?Sized>(block: &mut B) -> Vec<(Uuid, Stri
     targets
 }
 
-/// A connected link `id` to the target input `target_writer` feeds.
-fn connected_link(
-    id: Uuid,
-    target_block_id: Uuid,
-    target_input_name: String,
-    target_writer: WriterImpl,
-) -> BaseLink<WriterImpl> {
-    BaseLink {
-        id,
-        target_block_id,
-        target_input: target_input_name,
-        tx: Some(target_writer),
-        state: LinkState::Connected,
-    }
-}
-
 fn add_output_link_inner<B: Block<Writer = WriterImpl, Reader = ReaderImpl> + ?Sized>(
     block: &mut B,
     link_id: Uuid,
@@ -490,7 +462,7 @@ fn add_output_link_inner<B: Block<Writer = WriterImpl, Reader = ReaderImpl> + ?S
         (&target_block_id, &target_input_name),
     )?;
 
-    output.add_link(connected_link(
+    output.add_link(BaseLink::connected(
         link_id,
         target_block_id,
         target_input_name,
@@ -520,7 +492,7 @@ fn add_input_link_inner<B: Block<Writer = WriterImpl, Reader = ReaderImpl> + ?Si
 
     ensure_not_linked(&input.links(), source, target)?;
 
-    input.add_link(connected_link(
+    input.add_link(BaseLink::connected(
         link_id,
         target_block_id,
         target_input_name,

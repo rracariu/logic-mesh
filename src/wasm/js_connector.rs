@@ -138,7 +138,7 @@ use crate::base::connector::{
     Connector, ConnectorFuture, ConnectorHandle, ValueStream, get_connector, register_connector,
     unregister_connector,
 };
-use crate::base::error::ConnectorError;
+use crate::base::error::{ConnectorError, ExternalError};
 
 /// The value callback handed to the JS `subscribe` method.
 ///
@@ -170,11 +170,14 @@ impl JsConnector {
     ///
     /// # Errors
     ///
-    /// Returns a message describing the failure if `connector` is not
-    /// an object, if a required property (`subscribe`, `publish`,
-    /// `request`) is missing or not a function, or if an optional
-    /// property (`start`, `stop`) is present but not a function.
-    pub fn from_js(connector: &JsValue) -> Result<Self, String> {
+    /// Returns [`ExternalError::ConnectorMethodMissing`] if a required
+    /// property (`subscribe`, `publish`, `request`) is missing or not a
+    /// function, [`ExternalError::ConnectorMethodNotFunction`] if an
+    /// optional property (`start`, `stop`) is present but not a
+    /// function, and [`ExternalError::ConnectorPropertyUnreadable`] if
+    /// reading a property throws — as it does when `connector` is not
+    /// an object.
+    pub fn from_js(connector: &JsValue) -> Result<Self, ExternalError> {
         Ok(Self {
             this: connector.clone(),
             subscribe_fn: required_fn(connector, "subscribe")?,
@@ -231,10 +234,7 @@ impl Connector for JsConnector {
         let address = address.to_string();
 
         Box::pin(async move {
-            let error = |detail: String| ConnectorError::Publish {
-                address: address.clone(),
-                detail,
-            };
+            let error = |detail: String| ConnectorError::publish(address.clone(), detail);
 
             let value =
                 serde_wasm_bindgen::to_value(&value).map_err(|err| error(err.to_string()))?;
@@ -256,10 +256,7 @@ impl Connector for JsConnector {
         let address = address.to_string();
 
         Box::pin(async move {
-            let error = |detail: String| ConnectorError::Request {
-                address: address.clone(),
-                detail,
-            };
+            let error = |detail: String| ConnectorError::request(address.clone(), detail);
 
             let value =
                 serde_wasm_bindgen::to_value(&value).map_err(|err| error(err.to_string()))?;
@@ -294,7 +291,7 @@ impl Connector for JsConnector {
 /// connector named `name` is already registered.
 #[wasm_bindgen(js_name = "registerConnector")]
 pub fn register_js_connector(name: String, connector: JsValue) -> Result<(), String> {
-    let js_connector = JsConnector::from_js(&connector)?;
+    let js_connector = JsConnector::from_js(&connector).map_err(|err| err.to_string())?;
     register_connector(&name, ConnectorHandle::new(js_connector)).map_err(|err| err.to_string())?;
     // Record the raw object only once the registration is in — the
     // identity table must never claim a name the registry rejected.
@@ -549,7 +546,7 @@ fn call_lifecycle_fn(
         };
 
         let error = |detail: String| {
-            ConnectorError::Transport(format!("connector {name} failed: {detail}"))
+            ConnectorError::transport(format!("connector {name} failed: {detail}"))
         };
 
         let ret = func.call0(&this).map_err(|err| error(js_detail(&err)))?;
@@ -583,10 +580,7 @@ fn as_unsubscribe_fn(address: &str, value: JsValue) -> Option<js_sys::Function> 
 /// Builds the [`ConnectorError::Subscribe`] every subscription failure
 /// path reports.
 fn subscribe_error(address: &str, detail: String) -> ConnectorError {
-    ConnectorError::Subscribe {
-        address: address.to_string(),
-        detail,
-    }
+    ConnectorError::subscribe(address, detail)
 }
 
 /// Renders a JS exception or rejection reason as a detail message: an
@@ -603,33 +597,37 @@ fn js_detail(err: &JsValue) -> String {
 
 /// Reads property `name` from `connector`, requiring it to be a
 /// function.
-fn required_fn(connector: &JsValue, name: &str) -> Result<js_sys::Function, String> {
-    let prop = js_sys::Reflect::get(connector, &JsValue::from_str(name)).map_err(|err| {
-        format!(
-            "Failed to read connector property '{name}': {}",
-            js_detail(&err)
-        )
-    })?;
+fn required_fn(connector: &JsValue, name: &str) -> Result<js_sys::Function, ExternalError> {
+    let prop = read_property(connector, name)?;
 
     prop.dyn_into::<js_sys::Function>()
-        .map_err(|_| format!("Connector property '{name}' is required and must be a function"))
+        .map_err(|_| ExternalError::ConnectorMethodMissing {
+            property: name.to_string(),
+        })
 }
 
 /// Reads property `name` from `connector`; absent (or `null`) is
 /// [`None`], anything else must be a function.
-fn optional_fn(connector: &JsValue, name: &str) -> Result<Option<js_sys::Function>, String> {
-    let prop = js_sys::Reflect::get(connector, &JsValue::from_str(name)).map_err(|err| {
-        format!(
-            "Failed to read connector property '{name}': {}",
-            js_detail(&err)
-        )
-    })?;
+fn optional_fn(connector: &JsValue, name: &str) -> Result<Option<js_sys::Function>, ExternalError> {
+    let prop = read_property(connector, name)?;
 
     if prop.is_undefined() || prop.is_null() {
         return Ok(None);
     }
 
-    prop.dyn_into::<js_sys::Function>()
-        .map(Some)
-        .map_err(|_| format!("Connector property '{name}', when present, must be a function"))
+    prop.dyn_into::<js_sys::Function>().map(Some).map_err(|_| {
+        ExternalError::ConnectorMethodNotFunction {
+            property: name.to_string(),
+        }
+    })
+}
+
+/// Reads property `name` from `connector`.
+fn read_property(connector: &JsValue, name: &str) -> Result<JsValue, ExternalError> {
+    js_sys::Reflect::get(connector, &JsValue::from_str(name)).map_err(|err| {
+        ExternalError::ConnectorPropertyUnreadable {
+            property: name.to_string(),
+            detail: js_detail(&err),
+        }
+    })
 }

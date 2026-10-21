@@ -22,6 +22,7 @@
 //! drains them on its next cycle.
 
 use logic_mesh::base::block::{Block, BlockProps, connect::connect_output};
+use logic_mesh::base::output::OutputProps;
 use logic_mesh::blocks::{math::Add, misc::SineWave};
 
 #[tokio::main(flavor = "current_thread")]
@@ -29,12 +30,12 @@ async fn main() {
     // Two sine sources with different amplitudes + periods. Period is
     // in milliseconds (`freq` is "ms per sample" in this block).
     let mut sine_fast = SineWave::new();
-    sine_fast.amplitude.val = Some(3.into());
-    sine_fast.freq.val = Some(50.into());
+    sine_fast.amplitude.set(3);
+    sine_fast.freq.set(50);
 
     let mut sine_slow = SineWave::new();
-    sine_slow.amplitude.val = Some(7.into());
-    sine_slow.freq.val = Some(50.into());
+    sine_slow.amplitude.set(7);
+    sine_slow.freq.set(50);
 
     let mut adder = Add::new();
 
@@ -52,9 +53,9 @@ async fn main() {
         sine_slow.execute().await;
         adder.execute().await;
 
-        let a = pin_to_f64(&sine_fast.out.value);
-        let b = pin_to_f64(&sine_slow.out.value);
-        let sum = pin_to_f64(&adder.out.value);
+        let a = pin_to_f64(sine_fast.out.value());
+        let b = pin_to_f64(sine_slow.out.value());
+        let sum = pin_to_f64(adder.out.value());
         println!("{cycle:5} | {a:9.3} | {b:10.3} | {sum:8.3}");
     }
 }

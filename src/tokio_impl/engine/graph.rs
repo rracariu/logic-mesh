@@ -24,6 +24,7 @@
 //! or removes.
 
 use std::collections::{BTreeMap, BTreeSet};
+use std::fmt;
 
 use libhaystack::val::Value;
 use tokio::sync::{mpsc, oneshot};
@@ -100,6 +101,20 @@ impl BlockHandle {
     }
 }
 
+/// Shows the block's identity and UI metadata, not its descriptor or
+/// mailbox.
+impl fmt::Debug for BlockHandle {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("BlockHandle")
+            .field("id", &self.id)
+            .field("name", &self.name)
+            .field("library", &self.library)
+            .field("label", &self.label)
+            .field("position", &self.position)
+            .finish_non_exhaustive()
+    }
+}
+
 /// One link, by its two ends.
 #[derive(Debug, Clone)]
 pub(super) struct LinkRecord {
@@ -151,6 +166,16 @@ pub(super) struct BlockGraph {
 }
 
 impl BlockGraph {
+    /// The number of scheduled blocks.
+    pub(super) fn block_count(&self) -> usize {
+        self.handles.len()
+    }
+
+    /// The number of links between scheduled blocks.
+    pub(super) fn link_count(&self) -> usize {
+        self.links.len()
+    }
+
     /// Every scheduled block's handle.
     pub(super) fn handles(&self) -> Vec<&BlockHandle> {
         self.handles.values().collect()
