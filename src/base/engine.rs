@@ -11,46 +11,57 @@
 //! ```
 //!
 //! - [`Idle`] — configuration. Blocks are scheduled, connectors added and
-//!   message channels created; the [`Engine`] trait is implemented for
-//!   this phase only.
+//!   clients created; the [`Engine`] trait is implemented for this phase
+//!   only.
 //! - [`Running`] — the event loop. It exists only inside
 //!   [`run`](Engine::run), which owns the engine for its whole duration,
-//!   so the running-phase operations — the ones the engine's messages
+//!   so the running-phase operations — the ones the engine's requests
 //!   are routed to — cannot be reached from configuration code, and
 //!   configuration cannot be applied to a running engine.
 //!
-//! [`run`](Engine::run) hands the idle engine back after
-//! [`Shutdown`](messages::EngineMessage::Shutdown), so it can be
+//! [`run`](Engine::run) hands the idle engine back after a
+//! [`Shutdown`](messages::EngineRequest::Shutdown), so it can be
 //! reconfigured and run again.
 //!
-//! ## Lifecycle messages
+//! ## Driving a running engine
+//!
+//! A running engine answers [`EngineRequest`](messages::EngineRequest)s:
+//! create an [`EngineClient`] with [`Engine::client`] while the engine is
+//! idle, and call its async methods once it runs — from the task that
+//! runs it, or, on native targets, any other task or thread. The
+//! [`messages`] module describes the protocol underneath, for custom
+//! transports.
+//!
+//! ## Lifecycle requests
 //!
 //! Every engine follows one contract for the lifecycle
-//! [`EngineMessage`](messages::EngineMessage)s. Blocks execute only
-//! while the engine runs and is not paused: an idle engine — before its
-//! first `run()` and after a `Shutdown` — holds every block, and a run
-//! lets blocks execute only once it has started the managed connectors
-//! and wired the links queued while idle.
+//! [`EngineRequest`](messages::EngineRequest)s, and answers each once it
+//! took effect. Blocks execute only while the engine runs and is not
+//! paused: an idle engine — before its first `run()` and after a
+//! `Shutdown` — holds every block, and a run lets blocks execute only
+//! once it has started the managed connectors and wired the links
+//! queued while idle.
 //!
-//! - [`Shutdown`](messages::EngineMessage::Shutdown) stops block
-//!   execution and the managed connectors, then ends `run()`, which
-//!   hands back the idle engine with every block, link and pin value
-//!   intact and its connectors still registered. Running it again
+//! - [`Shutdown`](messages::EngineRequest::Shutdown) stops block
+//!   execution and the managed connectors, answers, then ends `run()`,
+//!   which hands back the idle engine with every block, link and pin
+//!   value intact and its connectors still registered. Running it again
 //!   resumes the blocks where they stopped.
-//! - [`Pause`](messages::EngineMessage::Pause) stops block execution:
+//! - [`Pause`](messages::EngineRequest::Pause) stops block execution:
 //!   no block executes, so no output changes on its own, yet every
 //!   request is still processed and answered as usual — pin writes and
 //!   block, link and connector changes included. A value written while
 //!   paused reaches the inputs linked to it, and their blocks react once
 //!   execution resumes. Pausing a paused engine does nothing; connector
-//!   IO tasks are not paused.
-//! - [`Resume`](messages::EngineMessage::Resume) restarts block
+//!   IO tasks are not paused. A block in the middle of its `execute`
+//!   when the pause is answered stops at its next await.
+//! - [`Resume`](messages::EngineRequest::Resume) restarts block
 //!   execution; resuming an engine that is not paused does nothing.
 //!   Every `run()` starts unpaused.
-//! - [`Reset`](messages::EngineMessage::Reset) terminates and removes
+//! - [`Reset`](messages::EngineRequest::Reset) terminates and removes
 //!   every block and link, forgets the loaded program's name and
-//!   description, and unregisters the managed connectors, whether or
-//!   not the engine is paused. A paused engine stays paused.
+//!   description, and unregisters and stops the managed connectors,
+//!   whether or not the engine is paused. A paused engine stays paused.
 
 use std::future::Future;
 use std::time::Duration;
@@ -66,7 +77,7 @@ use super::{
 
 pub mod messages;
 
-pub use crate::tokio_impl::engine::{BlockHandle, Messages};
+pub use crate::tokio_impl::engine::{BlockHandle, EngineClient, Watch};
 
 mod sealed {
     pub trait Sealed {}
@@ -154,9 +165,6 @@ pub trait Engine: sealed::Sealed + Sized {
     /// The reception type of the blocks.
     type Reader;
 
-    /// The type used to send messages to/from this engine.
-    type Channel: Send + Sync + Clone;
-
     /// The future [`run`](Self::run) returns.
     ///
     /// A named type rather than an `async fn`, so generic code can
@@ -236,7 +244,7 @@ pub trait Engine: sealed::Sealed + Sized {
     /// description. Its links are wired, and its saved pin values pushed,
     /// once [`run`](Self::run) starts and before any block executes; a
     /// running engine loads a program with a
-    /// [`LoadProgramReq`](messages::EngineMessage::LoadProgramReq)
+    /// [`LoadProgram`](messages::EngineRequest::LoadProgram) request
     /// instead.
     ///
     /// Every link keeps the id it was saved under — its
@@ -294,8 +302,12 @@ pub trait Engine: sealed::Sealed + Sized {
     /// if a connector with this name is already registered.
     fn add_connector(&mut self, name: &str, handle: impl Into<ConnectorHandle>) -> Result<()>;
 
-    /// The names of the connectors this engine manages.
-    fn connector_names(&self) -> Vec<String>;
+    /// The names of the connectors this engine manages, as
+    /// [`EngineClient::managed_connectors`] returns them from a running
+    /// engine — not every connector in the process-wide registry, which
+    /// [`list_connectors`](crate::base::connector::list_connectors)
+    /// returns.
+    fn managed_connectors(&self) -> Vec<String>;
 
     /// Returns the handle of every scheduled block. A handle carries a
     /// block's static identity and UI metadata; the engine's messages
@@ -361,13 +373,13 @@ pub trait Engine: sealed::Sealed + Sized {
     /// Runs the event loop of this engine and executes the scheduled blocks.
     ///
     /// Consumes the idle engine and drives it in the [`Running`] phase
-    /// until a [`Shutdown`](messages::EngineMessage::Shutdown) message
+    /// until a [`Shutdown`](messages::EngineRequest::Shutdown) request
     /// arrives, then returns it to the [`Idle`] phase so it can be
     /// reconfigured and run again. Blocks and the connectors the engine
     /// manages survive a shutdown, and the blocks resume executing on
     /// the next run; dropping the returned engine ends their actor tasks
     /// and unregisters the connectors. See the
-    /// [lifecycle contract](self#lifecycle-messages).
+    /// [lifecycle contract](self#lifecycle-requests).
     ///
     /// The returned future must be driven to completion — it is not a
     /// cancellation point. Dropping it mid-flight can leave a
@@ -375,21 +387,32 @@ pub trait Engine: sealed::Sealed + Sized {
     /// and drops the engine with it.
     fn run(self) -> Self::RunFuture;
 
-    /// Returns a handle to this engine's messaging system so external
-    /// systems can communicate with this engine once it is running.
+    /// Opens a message channel to this engine for a custom transport:
+    /// the engine answers the requests stamped with the returned
+    /// [`ClientId`](messages::ClientId) on `responses`, and the returned
+    /// sender is where to send them, wrapped in an
+    /// [`Envelope`](messages::Envelope). Each response carries the
+    /// [`RequestId`](messages::RequestId) of the request it answers, so
+    /// any number of requests can be in flight. See the
+    /// [`messages`] module for the protocol.
     ///
-    /// Replies sent back on `sender_channel` carry no correlation id,
-    /// so each channel supports one outstanding request at a time: send
-    /// a request, then receive its reply before sending the next. A
-    /// caller that abandons a receive after a completed send leaves
-    /// that reply queued and desynchronizes every later reply on the
-    /// channel. Replies are also delivered with a non-blocking send —
-    /// a full channel (the capacity is whatever the caller created
-    /// `sender_channel` with) drops the reply rather than stall
-    /// the engine — so keep the channel drained.
+    /// The response channel is unbounded, so the engine never waits on
+    /// a slow client and never drops a response; a client that stops
+    /// reading leaves its responses queued until it drops the receiver.
+    ///
+    /// Most callers want [`client`](Self::client), which speaks the
+    /// protocol for them.
     fn create_message_channel(
         &mut self,
-        sender_id: Uuid,
-        sender_channel: Self::Channel,
-    ) -> Self::Channel;
+        responses: messages::ResponseSender,
+    ) -> (messages::ClientId, messages::RequestSender);
+
+    /// Creates an [`EngineClient`]: a typed, cloneable handle to drive
+    /// this engine once it runs. See the
+    /// [module docs](self#driving-a-running-engine).
+    fn client(&mut self) -> EngineClient {
+        let (responses, receiver) = tokio::sync::mpsc::unbounded_channel();
+        let (client, requests) = self.create_message_channel(responses);
+        EngineClient::new(client, requests, receiver)
+    }
 }

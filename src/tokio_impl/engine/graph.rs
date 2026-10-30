@@ -908,10 +908,11 @@ pub(super) trait ProgramHost {
     /// `desc` describes.
     fn ensure_schedulable(&self, desc: &BlockDesc) -> Result<()>;
 
-    /// Constructs the block `desc` describes under `id` and schedules
+    /// Constructs the block `desc` describes under `id` — a fresh id if
+    /// `None` — and schedules
     /// it, as the engine's [`schedule`](crate::base::engine::Engine::schedule)
     /// does.
-    fn schedule_desc(&mut self, desc: &BlockDesc, id: Uuid) -> Result<Uuid>;
+    fn schedule_desc(&mut self, desc: &BlockDesc, id: Option<Uuid>) -> Result<Uuid>;
 }
 
 /// One saved pin value of a program, to push once its block is wired.
@@ -990,7 +991,7 @@ pub(super) fn stage_program<H: ProgramHost>(
 
     let mut scheduled = Vec::with_capacity(checked.blocks.len());
     for (id, block, desc) in &checked.blocks {
-        if let Err(err) = host.schedule_desc(desc, *id) {
+        if let Err(err) = host.schedule_desc(desc, Some(*id)) {
             host.graph_mut().discard(&scheduled);
             return Err(err);
         }

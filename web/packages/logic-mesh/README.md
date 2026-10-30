@@ -110,8 +110,8 @@ const sineWaveId = await command.addBlock('SineWave');
 const strLenId = await command.addBlock('StrLen');
 
 // Connect the blocks, sineWave -> strLen (sineWave's out port to strLen's in port).
-// Await each command before issuing the next one on the same handle:
-// a handle supports one in-flight command at a time.
+// A handle takes overlapping calls too: each promise settles with the
+// engine's answer to its own call.
 await command.createLink(sineWaveId, strLenId, 'out', 'in');
 ```
 
@@ -135,9 +135,9 @@ engine.run();
 ```
 
 `startEngine` returns an `EngineSession`, which also carries a second
-handle for connector attachment (`connectorCommand`), a `watch()`
-method backed by pre-created handles, and `reset()`/`stop()` that are
-safe to call at any point after start. Hosts that need to create the
+handle for connector attachment (`connectorCommand`), `watch()` /
+`unwatch()`, and `reset()`/`stop()` that are safe to call at any point
+after start and resolve once the engine has reset or stopped. Hosts that need to create the
 handles early but start the engine later (say, at component mount) can
 use `createEngineSession()` and call `session.start()` when ready.
 
@@ -148,14 +148,40 @@ import { startEngine } from 'logic-mesh';
 
 const session = startEngine();
 
-// Register a callback that will be called when a block changes. Each
-// watch permanently occupies one command handle; the session
-// pre-creates them (one by default — see the `watchSlots` option).
-session.watch((notification) => {
+// Register a callback that will be called when a block changes. The
+// promise resolves with the watch's id once the engine opened it.
+const watchId = await session.watch((notification) => {
   console.log('Block changed', JSON.stringify(notification));
 });
 
 const sineWave = await session.command.addBlock('SineWave');
+
+// Stop the notifications.
+await session.unwatch(watchId);
+```
+
+### Handle errors
+
+A command that fails rejects with a `LogicMeshError`: an `Error` whose
+`code` names the failure — `'BlockInstanceNotFound'`,
+`'UnsupportedProgramVersion'`, … (the `LogicMeshErrorCode` union) — and
+whose `message` describes it. The codes are stable; the messages are
+for people.
+
+```ts
+import { isLogicMeshError, startEngine } from 'logic-mesh';
+
+const { command } = startEngine();
+
+try {
+  await command.loadProgram(saved);
+} catch (err) {
+  if (isLogicMeshError(err) && err.code === 'UnsupportedProgramVersion') {
+    console.warn('Saved by a newer version:', err.message);
+  } else {
+    throw err;
+  }
+}
 ```
 
 ### Expose JavaScript functions as blocks

@@ -10,7 +10,7 @@ use std::fmt;
 use thiserror::Error;
 use uuid::Uuid;
 
-use super::ConnectError;
+use super::{ConnectError, ConnectorError};
 
 /// Which end of a link a failure refers to.
 ///
@@ -196,6 +196,91 @@ pub enum EngineError {
     BlockDroppedReply {
         /// The id of the block that dropped the reply.
         id: Uuid,
+    },
+
+    /// A running engine was asked to attach a connector it manages
+    /// already.
+    #[error("Connector '{name}' is already managed by the engine")]
+    ConnectorAlreadyManaged {
+        /// The connector name.
+        name: String,
+    },
+
+    /// A running engine was asked to detach a connector it does not
+    /// manage.
+    #[error("Connector '{name}' is not managed by the engine")]
+    ConnectorNotManaged {
+        /// The connector name.
+        name: String,
+    },
+
+    /// A connector a running engine was asked to attach failed to
+    /// start. It stays registered, so the attach can be retried.
+    #[error("Connector '{name}' failed to start")]
+    ConnectorStartFailed {
+        /// The connector name.
+        name: String,
+        /// The connector's start failure.
+        #[source]
+        source: ConnectorError,
+    },
+
+    /// A connector a running engine was asked to attach did not start
+    /// in time. It stays registered, so the attach can be retried.
+    #[error("Connector '{name}' did not start within {millis} ms")]
+    ConnectorStartTimeout {
+        /// The connector name.
+        name: String,
+        /// The deadline that elapsed, in milliseconds.
+        millis: u64,
+    },
+
+    /// The engine is gone: a request to it could not be sent, or it
+    /// dropped the request's response channel before answering. An
+    /// [`EngineClient`](crate::base::engine::EngineClient) reports it
+    /// once the engine has been dropped.
+    #[error("The engine is gone")]
+    EngineGone,
+
+    /// An engine answered a request with the response to another kind
+    /// of request: the transport between them mixed responses up.
+    #[error("A {request} request was answered with a {response} response")]
+    UnexpectedResponse {
+        /// The name of the request's kind,
+        /// [`EngineRequest::name`](crate::base::engine::messages::EngineRequest::name).
+        request: &'static str,
+        /// The name of the response's kind,
+        /// [`EngineResponse::name`](crate::base::engine::messages::EngineResponse::name).
+        response: &'static str,
+    },
+
+    /// A block type evaluated with
+    /// [`EngineRequest::EvalBlock`](crate::base::engine::messages::EngineRequest::EvalBlock)
+    /// panicked. The panic is caught, as a scheduled block's is, so the
+    /// engine goes on answering requests.
+    #[error("Evaluating block '{name}' of library '{library}' panicked: {message}")]
+    EvalPanicked {
+        /// The library of the block type.
+        library: String,
+        /// The block type name.
+        name: String,
+        /// The message the block panicked with.
+        message: String,
+    },
+
+    /// A block type evaluated with
+    /// [`EngineRequest::EvalBlock`](crate::base::engine::messages::EngineRequest::EvalBlock)
+    /// did not finish in time — typically one that waits for an input
+    /// the evaluation did not supply. The evaluation is dropped, so the
+    /// engine goes on answering requests.
+    #[error("Evaluating block '{name}' of library '{library}' did not finish within {millis} ms")]
+    EvalTimeout {
+        /// The library of the block type.
+        library: String,
+        /// The block type name.
+        name: String,
+        /// The deadline that elapsed, in milliseconds.
+        millis: u64,
     },
 
     /// A block rejected a link while the engine wired it, after the

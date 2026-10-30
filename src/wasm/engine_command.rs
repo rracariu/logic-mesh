@@ -2,226 +2,175 @@
 
 //! Commands sent from JavaScript to the engine.
 
-use std::str::FromStr;
-
-use crate::base::program::LinkData;
-use crate::base::program::Program;
-use crate::wasm::types::JsWatchNotification;
-
 use serde::Serialize;
-use tokio::sync::mpsc::{Receiver, Sender, unbounded_channel};
 use uuid::Uuid;
 use wasm_bindgen::JsValue;
 use wasm_bindgen::prelude::wasm_bindgen;
 
-use crate::base::engine::messages::EngineMessage;
-use crate::tokio_impl::engine::Messages;
+use crate::base::engine::EngineClient;
+use crate::base::engine::messages::WatchId;
+use crate::base::error::{EngineError, ErrorCode, RequestError, parse_block_uuid, parse_link_uuid};
+use crate::base::program::{EditorMetadata, LinkData, Position, Program};
+use crate::wasm::error::{js_error, js_error_from};
+use crate::wasm::types::JsWatchNotification;
+
+/// The largest integer a JavaScript number holds exactly: the range a
+/// watch id crosses the boundary in.
+const MAX_SAFE_INTEGER: f64 = 9_007_199_254_740_991.0;
 
 /// Commands a running instance of a Block Engine.
 ///
-/// Each handle owns a private reply channel whose replies carry no
-/// correlation id: they are matched to requests purely by order, so at
-/// most one request may be outstanding per handle at a time. The
-/// methods uphold this discipline themselves — each awaits its reply
-/// before returning, and the `&mut self` borrow serializes calls on a
-/// handle — so JS callers only need to await each returned promise; a
-/// send-without-receive that desynchronizes every later reply on the
-/// handle cannot be expressed through this API. The engine also
-/// delivers replies with a non-blocking send: a full channel (capacity
-/// 32) drops the reply rather than stall the engine.
+/// A handle wraps an [`EngineClient`]: every method sends one request
+/// and resolves with the engine's response to it, matched by request
+/// id. Calls on one handle may overlap freely — each method borrows the
+/// handle shared — and every handle feeds the same engine, which
+/// handles requests in the order they arrive.
+///
+/// A failed request rejects its promise with an `Error` named
+/// `LogicMeshError`, whose `code` property is the stable
+/// [`ErrorCode`] name of the failure — `BlockInstanceNotFound`,
+/// `UnsupportedProgramVersion`, … — and whose `message` describes it.
 #[wasm_bindgen]
 pub struct EngineCommand {
-    uuid: Uuid,
-    sender: Sender<Messages>,
-    receiver: Receiver<Messages>,
+    client: EngineClient,
+}
+
+/// Parses a block id from JavaScript.
+fn block_id(uuid: &str) -> Result<Uuid, JsValue> {
+    parse_block_uuid(uuid).map_err(|err| js_error(err.into()))
+}
+
+/// Converts a response for JavaScript.
+fn to_js<T: Serialize>(value: &T) -> Result<JsValue, JsValue> {
+    serde_wasm_bindgen::to_value(value)
+        .map_err(|err| js_error_from(ErrorCode::Serialization, err.to_string()))
+}
+
+/// Reads a value written from JavaScript. A value that is not a
+/// Haystack value — `undefined` among them — writes `Null`.
+fn from_js_value(value: JsValue) -> libhaystack::val::Value {
+    serde_wasm_bindgen::from_value(value).unwrap_or_default()
+}
+
+/// Rejects a program whose `version` is newer than this crate reads
+/// before its shape is read, so the rejection carries the
+/// `UnsupportedProgramVersion` code rather than whatever field of the
+/// newer format fails to deserialize.
+fn check_program_version(program: &JsValue) -> Result<(), RequestError> {
+    let version = js_sys::Reflect::get(program, &"version".into())
+        .ok()
+        .and_then(|version| version.as_f64());
+    match version {
+        Some(found)
+            if found.fract() == 0.0
+                && found > f64::from(Program::FORMAT_VERSION)
+                && found <= f64::from(u32::MAX) =>
+        {
+            Err(EngineError::UnsupportedProgramVersion {
+                found: found as u32,
+                supported: Program::FORMAT_VERSION,
+            }
+            .into())
+        }
+        _ => Ok(()),
+    }
 }
 
 #[wasm_bindgen]
 impl EngineCommand {
     /// Creates a new engine command handle.
-    pub(super) fn new(uuid: Uuid, sender: Sender<Messages>, receiver: Receiver<Messages>) -> Self {
-        Self {
-            uuid,
-            sender,
-            receiver,
-        }
+    pub(super) fn new(client: EngineClient) -> Self {
+        Self { client }
     }
 
     /// Adds a block instance to the engine, immediately scheduling it
-    /// for execution. Without `lib`, the block is looked up in every
-    /// library, and a name more than one library holds is rejected.
+    /// for execution, and resolves with its id. Without `lib`, the block
+    /// is looked up in every library, and a name more than one library
+    /// holds is rejected.
     #[wasm_bindgen(js_name = "addBlock")]
     pub async fn add_block(
-        &mut self,
+        &self,
         block_name: String,
         block_uuid: Option<String>,
         lib: Option<String>,
-    ) -> Result<String, String> {
-        match self
-            .sender
-            .send(EngineMessage::AddBlockReq(
-                self.uuid, block_name, block_uuid, lib,
-            ))
+    ) -> Result<String, JsValue> {
+        let block_id = block_uuid.as_deref().map(block_id).transpose()?;
+        self.client
+            .add_block(&block_name, block_id, lib.as_deref())
             .await
-        {
-            Ok(_) => match self.receiver.recv().await {
-                Some(res) => match res {
-                    EngineMessage::AddBlockRes(data) => data.map(|ok| ok.to_string()),
-                    _ => Err("Invalid response".to_string()),
-                },
-                None => Err("Failed to receive message".to_string()),
-            },
-
-            Err(_) => Err("Failed to send message".to_string()),
-        }
+            .map(|id| id.to_string())
+            .map_err(js_error)
     }
 
     /// Removes a block instance and all its links from the engine,
     /// returning the UUID of the removed block.
     #[wasm_bindgen(js_name = "removeBlock")]
-    pub async fn remove_block(&mut self, block_uuid: String) -> Result<String, String> {
-        match self
-            .sender
-            .send(EngineMessage::RemoveBlockReq(
-                self.uuid,
-                Uuid::from_str(&block_uuid).unwrap_or_default(),
-            ))
+    pub async fn remove_block(&self, block_uuid: String) -> Result<String, JsValue> {
+        self.client
+            .remove_block(block_id(&block_uuid)?)
             .await
-        {
-            Ok(_) => match self.receiver.recv().await {
-                Some(res) => match res {
-                    EngineMessage::RemoveBlockRes(data) => data.map(|ok| ok.to_string()),
-                    _ => Err("Invalid response".to_string()),
-                },
-                None => Err("Failed to receive message".to_string()),
-            },
-
-            Err(_) => Err("Failed to send message".to_string()),
-        }
+            .map(|id| id.to_string())
+            .map_err(js_error)
     }
 
     /// Creates a link between two blocks and returns the resulting
     /// [`LinkData`].
     #[wasm_bindgen(js_name = "createLink")]
     pub async fn create_link(
-        &mut self,
+        &self,
         source_block_uuid: String,
         target_block_uuid: String,
         source_block_pin_name: String,
         target_block_pin_name: String,
-    ) -> Result<JsValue, String> {
-        match self
-            .sender
-            .send(EngineMessage::ConnectBlocksReq(
-                self.uuid,
-                LinkData {
-                    id: None,
-                    source_block_uuid,
-                    target_block_uuid,
-                    source_block_pin_name,
-                    target_block_pin_name,
-                },
-            ))
-            .await
-        {
-            Ok(_) => match self.receiver.recv().await {
-                Some(res) => match res {
-                    EngineMessage::ConnectBlocksRes(data) => data
-                        .map(|ok| serde_wasm_bindgen::to_value(&ok))?
-                        .map_err(|err| err.to_string()),
-                    _ => Err("Invalid response".to_string()),
-                },
-                None => Err("Failed to receive message".to_string()),
-            },
-
-            Err(_) => Err("Failed to send message".to_string()),
-        }
+    ) -> Result<JsValue, JsValue> {
+        let link = LinkData {
+            id: None,
+            source_block_uuid,
+            target_block_uuid,
+            source_block_pin_name,
+            target_block_pin_name,
+        };
+        let link = self.client.connect(link).await.map_err(js_error)?;
+        to_js(&link)
     }
 
     /// Removes a link by UUID, returning `true` if it was found and removed.
     #[wasm_bindgen(js_name = "removeLink")]
-    pub async fn remove_link(&mut self, link_uuid: String) -> Result<bool, String> {
-        match self
-            .sender
-            .send(EngineMessage::RemoveLinkReq(
-                self.uuid,
-                Uuid::from_str(&link_uuid).unwrap_or_default(),
-            ))
-            .await
-        {
-            Ok(_) => match self.receiver.recv().await {
-                Some(res) => match res {
-                    EngineMessage::RemoveLinkRes(data) => data,
-                    _ => Err("Invalid response".to_string()),
-                },
-                None => Err("Failed to receive message".to_string()),
-            },
-            Err(_) => Err("Failed to send message".to_string()),
-        }
+    pub async fn remove_link(&self, link_uuid: String) -> Result<bool, JsValue> {
+        let link = parse_link_uuid(&link_uuid).map_err(|err| js_error(err.into()))?;
+        self.client.disconnect(link).await.map_err(js_error)
     }
 
-    /// Writes a value to a block's output pin.
+    /// Writes a value to a block's output pin, returning the previous value.
     #[wasm_bindgen(js_name = "writeBlockOutput")]
     pub async fn write_block_output(
-        &mut self,
+        &self,
         block_uuid: String,
         output_name: String,
         value: JsValue,
-    ) -> Result<JsValue, String> {
-        match self
-            .sender
-            .send(EngineMessage::WriteBlockOutputReq(
-                self.uuid,
-                Uuid::from_str(&block_uuid).unwrap_or_default(),
-                output_name,
-                serde_wasm_bindgen::from_value(value).unwrap_or_default(),
-            ))
+    ) -> Result<JsValue, JsValue> {
+        let written = self
+            .client
+            .write_output(block_id(&block_uuid)?, &output_name, from_js_value(value))
             .await
-        {
-            Ok(_) => match self.receiver.recv().await {
-                Some(res) => match res {
-                    EngineMessage::WriteBlockOutputRes(data) => data
-                        .map(|ok| serde_wasm_bindgen::to_value(&ok))?
-                        .map_err(|err| err.to_string()),
-                    _ => Err("Invalid response".to_string()),
-                },
-                None => Err("Failed to receive message".to_string()),
-            },
-
-            Err(_) => Err("Failed to send message".to_string()),
-        }
+            .map_err(js_error)?;
+        to_js(&written)
     }
 
     /// Writes a value to a block's input pin, returning the previous value.
     #[wasm_bindgen(js_name = "writeBlockInput")]
     pub async fn write_block_input(
-        &mut self,
+        &self,
         block_uuid: String,
         input_name: String,
         value: JsValue,
-    ) -> Result<JsValue, String> {
-        match self
-            .sender
-            .send(EngineMessage::WriteBlockInputReq(
-                self.uuid,
-                Uuid::from_str(&block_uuid).unwrap_or_default(),
-                input_name,
-                serde_wasm_bindgen::from_value(value).unwrap_or_default(),
-            ))
+    ) -> Result<JsValue, JsValue> {
+        let previous = self
+            .client
+            .write_input(block_id(&block_uuid)?, &input_name, from_js_value(value))
             .await
-        {
-            Ok(_) => match self.receiver.recv().await {
-                Some(res) => match res {
-                    EngineMessage::WriteBlockInputRes(data) => data
-                        .map(|ok| serde_wasm_bindgen::to_value(&ok))?
-                        .map_err(|err| err.to_string()),
-                    _ => Err("Invalid response".to_string()),
-                },
-                None => Err("Failed to receive message".to_string()),
-            },
-
-            Err(_) => Err("Failed to send message".to_string()),
-        }
+            .map_err(js_error)?;
+        to_js(&previous)
     }
 
     /// Atomically load a full program (blocks + links + pin values +
@@ -232,24 +181,19 @@ impl EngineCommand {
     ///
     /// A program with no `version` is a save from before format
     /// versions, and loads as one. A program from a newer format is
-    /// rejected before its shape is read (see [`Program`]), so the error
-    /// names its version rather than a field this crate does not know.
+    /// rejected with the `UnsupportedProgramVersion` code before its
+    /// shape is read (see [`Program`]); one that is not a program at
+    /// all with `InvalidProgram`.
     #[wasm_bindgen(js_name = "loadProgram")]
-    pub async fn load_program(&mut self, program: JsValue) -> Result<(), String> {
-        let program: Program = serde_wasm_bindgen::from_value(program)
-            .map_err(|err| format!("Invalid program payload: {err}"))?;
-        match self
-            .sender
-            .send(EngineMessage::LoadProgramReq(self.uuid, program))
-            .await
-        {
-            Ok(_) => match self.receiver.recv().await {
-                Some(EngineMessage::LoadProgramRes(res)) => res,
-                Some(_) => Err("Invalid response".to_string()),
-                None => Err("Failed to receive message".to_string()),
-            },
-            Err(_) => Err("Failed to send message".to_string()),
-        }
+    pub async fn load_program(&self, program: JsValue) -> Result<(), JsValue> {
+        check_program_version(&program).map_err(js_error)?;
+        let program: Program = serde_wasm_bindgen::from_value(program).map_err(|err| {
+            js_error_from(
+                ErrorCode::InvalidProgram,
+                format!("Invalid program payload: {err}"),
+            )
+        })?;
+        self.client.load_program(program).await.map_err(js_error)
     }
 
     /// Returns the current running engine program in the canonical save
@@ -258,47 +202,22 @@ impl EngineCommand {
     /// through `loadProgram` without re-assembly, editor metadata
     /// included.
     #[wasm_bindgen(js_name = "getProgram")]
-    pub async fn get_program(&mut self) -> Result<JsValue, String> {
-        match self
-            .sender
-            .send(EngineMessage::GetCurrentProgramReq(self.uuid))
-            .await
-        {
-            Ok(_) => match self.receiver.recv().await {
-                Some(res) => match res {
-                    EngineMessage::GetCurrentProgramRes(data) => data?
-                        .serialize(&serde_wasm_bindgen::Serializer::json_compatible())
-                        .map_err(|err| err.to_string()),
-                    _ => Err("Invalid response".to_string()),
-                },
-                None => Err("Failed to receive message".to_string()),
-            },
-            Err(_) => Err("Failed to send message".to_string()),
-        }
+    pub async fn get_program(&self) -> Result<JsValue, JsValue> {
+        let program = self.client.save_program().await.map_err(js_error)?;
+        program
+            .serialize(&serde_wasm_bindgen::Serializer::json_compatible())
+            .map_err(|err| js_error_from(ErrorCode::Serialization, err.to_string()))
     }
 
     /// Inspects the current state of a block.
     #[wasm_bindgen(js_name = "inspectBlock")]
-    pub async fn inspect_block(&mut self, block_uuid: String) -> Result<JsValue, String> {
-        match self
-            .sender
-            .send(EngineMessage::InspectBlockReq(
-                self.uuid,
-                Uuid::from_str(&block_uuid).unwrap_or_default(),
-            ))
+    pub async fn inspect_block(&self, block_uuid: String) -> Result<JsValue, JsValue> {
+        let block = self
+            .client
+            .inspect_block(block_id(&block_uuid)?)
             .await
-        {
-            Ok(_) => match self.receiver.recv().await {
-                Some(res) => match res {
-                    EngineMessage::InspectBlockRes(data) => data
-                        .map(|ok| serde_wasm_bindgen::to_value(&ok))?
-                        .map_err(|err| err.to_string()),
-                    _ => Err("Invalid response".to_string()),
-                },
-                None => Err("Failed to receive message".to_string()),
-            },
-            Err(_) => Err("Failed to send message".to_string()),
-        }
+            .map_err(js_error)?;
+        to_js(&block)
     }
 
     /// Evaluates a block by name, returning its output values.
@@ -306,40 +225,63 @@ impl EngineCommand {
     /// Creates a temporary block instance, feeds it the given `inputs`,
     /// executes it, and returns the outputs. Without `lib`, the block is
     /// looked up in every library, as for [`add_block`](Self::add_block).
+    /// An evaluation still running after 5 s — a block waiting for an
+    /// input `inputs` does not supply, say — rejects with
+    /// `EvalTimeout`, and the engine goes on answering commands.
     #[wasm_bindgen(js_name = "evalBlock")]
     pub async fn eval_block(
-        &mut self,
+        &self,
         block_name: String,
         inputs: Vec<JsValue>,
         lib: Option<String>,
-    ) -> Result<JsValue, String> {
-        match self
-            .sender
-            .send(EngineMessage::EvaluateBlockReq(
-                self.uuid,
-                block_name,
-                inputs
-                    .into_iter()
-                    .map(|v| serde_wasm_bindgen::from_value(v).unwrap_or_default())
-                    .collect(),
-                lib,
-            ))
+    ) -> Result<JsValue, JsValue> {
+        let inputs = inputs.into_iter().map(from_js_value).collect();
+        let outputs = self
+            .client
+            .eval_block(&block_name, inputs, lib.as_deref())
             .await
-        {
-            Ok(_) => match self.receiver.recv().await {
-                Some(res) => match res {
-                    EngineMessage::EvaluateBlockRes(data) => data
-                        .map(|ok| serde_wasm_bindgen::to_value(&ok))?
-                        .map_err(|err| err.to_string()),
-                    _ => Err("Invalid response".to_string()),
-                },
-                None => Err("Failed to receive message".to_string()),
-            },
-            Err(_) => Err("Failed to send message".to_string()),
-        }
+            .map_err(js_error)?;
+        to_js(&outputs)
     }
 
-    /// Creates a watch on block changes.
+    /// Updates the label and position a block is saved with: each of
+    /// `label` and `position` (`{ x, y }`) that is given replaces the
+    /// stored one.
+    #[wasm_bindgen(js_name = "setBlockMetadata")]
+    pub async fn set_block_metadata(
+        &self,
+        block_uuid: String,
+        label: Option<String>,
+        position: JsValue,
+    ) -> Result<(), JsValue> {
+        let position: Option<Position> = serde_wasm_bindgen::from_value(position)
+            .map_err(|err| js_error_from(ErrorCode::InvalidArgument, err.to_string()))?;
+        self.client
+            .set_block_metadata(block_id(&block_uuid)?, label, position)
+            .await
+            .map_err(js_error)
+    }
+
+    /// Replaces the editor metadata a block is saved with — any JSON
+    /// object — or removes it if `editor` is `null` or `undefined`.
+    #[wasm_bindgen(js_name = "setBlockEditor")]
+    pub async fn set_block_editor(
+        &self,
+        block_uuid: String,
+        editor: JsValue,
+    ) -> Result<(), JsValue> {
+        let editor: Option<EditorMetadata> = serde_wasm_bindgen::from_value(editor)
+            .map_err(|err| js_error_from(ErrorCode::InvalidArgument, err.to_string()))?;
+        self.client
+            .set_block_editor(block_id(&block_uuid)?, editor)
+            .await
+            .map_err(js_error)
+    }
+
+    /// Opens a watch on block changes: from now on `callback` is called
+    /// with a notification for every block change, until `removeWatch`
+    /// closes the watch. Resolves with the watch's id once the engine
+    /// opened it.
     ///
     /// The engine→UI watch channel is **unbounded**. The producer rate is
     /// capped by per-block execution cadence and the payload is tiny
@@ -350,53 +292,57 @@ impl EngineCommand {
     /// dropped fault notifications, which the UI is now load-bearing on
     /// (red ring/edge rendering).
     #[wasm_bindgen(js_name = "createWatch")]
-    pub async fn create_watch(&mut self, callback: &js_sys::Function) -> Result<(), String> {
-        let (sender, mut receiver) = unbounded_channel();
-
-        match self
-            .sender
-            .send(EngineMessage::WatchBlockSubReq(self.uuid, sender.clone()))
-            .await
-        {
-            Ok(_) => loop {
-                if let Some(msg) = receiver.recv().await {
-                    match serde_wasm_bindgen::to_value::<JsWatchNotification>(&msg.into())
-                        .map_err(|err| format!("Failed to deserialize watch message: {:?}", err))
-                        .and_then(|js_res| {
-                            callback
-                                .call1(&JsValue::NULL, &js_res)
-                                .map_err(|err| format!("Failed to call watch callback: {:?}", err))
-                        }) {
-                        Ok(_) => (),
-                        Err(err) => log::debug!(target: "create_watch", "{err}"),
-                    }
+    pub async fn create_watch(&self, callback: js_sys::Function) -> Result<f64, JsValue> {
+        let watch = self.client.watch().await.map_err(js_error)?;
+        let id = watch.id;
+        let mut notifications = watch.notifications;
+        // Ends once the engine drops the watch's sender: on
+        // `removeWatch`, or with the engine.
+        wasm_bindgen_futures::spawn_local(async move {
+            while let Some(msg) = notifications.recv().await {
+                let delivered = serde_wasm_bindgen::to_value::<JsWatchNotification>(&msg.into())
+                    .map_err(|err| format!("Failed to serialize watch message: {err:?}"))
+                    .and_then(|notification| {
+                        callback
+                            .call1(&JsValue::NULL, &notification)
+                            .map_err(|err| format!("Failed to call watch callback: {err:?}"))
+                    });
+                if let Err(err) = delivered {
+                    log::debug!(target: "create_watch", "{err}");
                 }
-            },
-            Err(_) => Err("Failed to send message".to_string()),
+            }
+        });
+        // Watch ids count up from 0, far below the range a JavaScript
+        // number holds exactly.
+        Ok(id.get() as f64)
+    }
+
+    /// Closes the watch `createWatch` resolved with `watch_id`, resolving
+    /// with whether it was open. Its callback is not called again.
+    #[wasm_bindgen(js_name = "removeWatch")]
+    pub async fn remove_watch(&self, watch_id: f64) -> Result<bool, JsValue> {
+        if !(watch_id.fract() == 0.0 && (0.0..=MAX_SAFE_INTEGER).contains(&watch_id)) {
+            return Err(js_error_from(
+                ErrorCode::InvalidArgument,
+                format!("Invalid watch id {watch_id}"),
+            ));
         }
+        self.client
+            .unwatch(WatchId::new(watch_id as u64))
+            .await
+            .map_err(js_error)
     }
 
     /// Attaches an already-registered connector, by name, to the
     /// running engine: the engine resolves the name in the process-wide
     /// connector registry, starts the connector, and manages its
     /// lifecycle from then on. Register the connector handle first —
-    /// handles never ride in engine messages.
+    /// handles never ride in engine requests.
     ///
     /// A paused engine still answers this request, like every other.
     #[wasm_bindgen(js_name = "addConnector")]
-    pub async fn add_connector(&mut self, name: String) -> Result<String, String> {
-        match self
-            .sender
-            .send(EngineMessage::AddConnectorReq(self.uuid, name))
-            .await
-        {
-            Ok(_) => match self.receiver.recv().await {
-                Some(EngineMessage::AddConnectorRes(data)) => data,
-                Some(_) => Err("Invalid response".to_string()),
-                None => Err("Failed to receive message".to_string()),
-            },
-            Err(_) => Err("Failed to send message".to_string()),
-        }
+    pub async fn add_connector(&self, name: String) -> Result<String, JsValue> {
+        self.client.add_connector(&name).await.map_err(js_error)
     }
 
     /// Detaches an engine-managed connector by name: the engine stops
@@ -405,77 +351,48 @@ impl EngineCommand {
     ///
     /// A paused engine still answers this request, like every other.
     #[wasm_bindgen(js_name = "removeConnector")]
-    pub async fn remove_connector(&mut self, name: String) -> Result<String, String> {
-        match self
-            .sender
-            .send(EngineMessage::RemoveConnectorReq(self.uuid, name))
-            .await
-        {
-            Ok(_) => match self.receiver.recv().await {
-                Some(EngineMessage::RemoveConnectorRes(data)) => data,
-                Some(_) => Err("Invalid response".to_string()),
-                None => Err("Failed to receive message".to_string()),
-            },
-            Err(_) => Err("Failed to send message".to_string()),
-        }
+    pub async fn remove_connector(&self, name: String) -> Result<String, JsValue> {
+        self.client.remove_connector(&name).await.map_err(js_error)
     }
 
     /// Lists the names of the engine-managed connectors.
     ///
     /// A paused engine still answers this request, like every other.
     #[wasm_bindgen(js_name = "listConnectors")]
-    pub async fn list_connectors(&mut self) -> Result<Vec<String>, String> {
-        match self
-            .sender
-            .send(EngineMessage::ListConnectorsReq(self.uuid))
-            .await
-        {
-            Ok(_) => match self.receiver.recv().await {
-                Some(EngineMessage::ListConnectorsRes(data)) => data,
-                Some(_) => Err("Invalid response".to_string()),
-                None => Err("Failed to receive message".to_string()),
-            },
-            Err(_) => Err("Failed to send message".to_string()),
-        }
+    pub async fn list_connectors(&self) -> Result<Vec<String>, JsValue> {
+        self.client.managed_connectors().await.map_err(js_error)
     }
 
     /// Pauses block execution: no block executes until
     /// `resumeExecution`, while every other request is still answered.
     /// Connector IO tasks keep running. Does nothing if already paused.
+    /// Resolves once the engine paused.
     #[wasm_bindgen(js_name = "pauseExecution")]
-    pub async fn pause_execution(&mut self) -> Result<(), String> {
-        self.sender
-            .send(EngineMessage::Pause)
-            .await
-            .map_err(|err| err.to_string())
+    pub async fn pause_execution(&self) -> Result<(), JsValue> {
+        self.client.pause().await.map_err(js_error)
     }
 
-    /// Resumes block execution. Does nothing if not paused.
+    /// Resumes block execution. Does nothing if not paused. Resolves
+    /// once the engine resumed.
     #[wasm_bindgen(js_name = "resumeExecution")]
-    pub async fn resume_execution(&mut self) -> Result<(), String> {
-        self.sender
-            .send(EngineMessage::Resume)
-            .await
-            .map_err(|err| err.to_string())
+    pub async fn resume_execution(&self) -> Result<(), JsValue> {
+        self.client.resume().await.map_err(js_error)
     }
 
-    /// Resets the engine state, clearing all blocks and links — also
-    /// while paused, and the engine stays paused.
+    /// Resets the engine state, clearing all blocks and links, and
+    /// unregistering and stopping the engine-managed connectors — also
+    /// while paused, and the engine stays paused. Resolves once the
+    /// reset is done.
     #[wasm_bindgen(js_name = "resetEngine")]
-    pub async fn reset_engine(&mut self) -> Result<(), String> {
-        self.sender
-            .send(EngineMessage::Reset)
-            .await
-            .map_err(|err| err.to_string())
+    pub async fn reset_engine(&self) -> Result<(), JsValue> {
+        self.client.reset().await.map_err(js_error)
     }
 
     /// Stops the engine: `run` resolves, keeping the blocks so a later
-    /// `run` resumes them.
+    /// `run` resumes them. Resolves once block execution and the
+    /// managed connectors stopped.
     #[wasm_bindgen(js_name = "stopEngine")]
-    pub async fn stop_engine(&mut self) -> Result<(), String> {
-        self.sender
-            .send(EngineMessage::Shutdown)
-            .await
-            .map_err(|err| err.to_string())
+    pub async fn stop_engine(&self) -> Result<(), JsValue> {
+        self.client.shutdown().await.map_err(js_error)
     }
 }

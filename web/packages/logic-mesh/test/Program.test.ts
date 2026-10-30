@@ -142,8 +142,77 @@ describe('program save and load', () => {
         version: newer,
         blocks: { [FIRST]: { type: 'a shape this engine does not know' } },
       }),
-    ).rejects.toMatch(`version ${newer} is not supported`);
+    ).rejects.toMatchObject({
+      name: 'LogicMeshError',
+      code: 'UnsupportedProgramVersion',
+      message: expect.stringContaining(`version ${newer} is not supported`),
+    });
     const saved = (await command.getProgram()) as Program;
     expect(saved.blocks).toStrictEqual({});
+  });
+
+  it('rejects a payload that is not a program as InvalidProgram', async () => {
+    const { command } = session();
+
+    await expect(
+      command.loadProgram({ version: PROGRAM_FORMAT_VERSION, blocks: 42 }),
+    ).rejects.toMatchObject({
+      name: 'LogicMeshError',
+      code: 'InvalidProgram',
+      message: expect.stringMatching(/^Invalid program payload: /),
+    });
+  });
+});
+
+describe('block metadata on a running engine', () => {
+  it('sets the label, position and editor metadata a block saves with', async () => {
+    const { command } = session();
+    const id = await command.addBlock('Add', FIRST);
+    await command.setBlockMetadata(id, 'sum', { x: 1.5, y: -2 });
+    await command.setBlockEditor(id, editor);
+
+    let saved = (await command.getProgram()) as Program;
+    expect(saved.blocks[FIRST].label).toBe('sum');
+    expect(saved.blocks[FIRST].position).toStrictEqual({ x: 1.5, y: -2 });
+    expect(saved.blocks[FIRST].editor).toStrictEqual(editor);
+
+    // A field left out keeps its value; a null editor removes it.
+    await command.setBlockMetadata(id, undefined, { x: 3, y: 4 });
+    await command.setBlockEditor(id, null);
+    saved = (await command.getProgram()) as Program;
+    expect(saved.blocks[FIRST].label).toBe('sum');
+    expect(saved.blocks[FIRST].position).toStrictEqual({ x: 3, y: 4 });
+    expect(saved.blocks[FIRST].editor).toBeUndefined();
+  });
+
+  it('rejects an unknown block and malformed metadata', async () => {
+    const { command } = session();
+    const id = await command.addBlock('Add');
+
+    await expect(
+      command.setBlockMetadata(SECOND, 'sum', undefined),
+    ).rejects.toMatchObject({
+      name: 'LogicMeshError',
+      code: 'BlockInstanceNotFound',
+    });
+    await expect(command.setBlockEditor(SECOND, editor)).rejects.toMatchObject({
+      name: 'LogicMeshError',
+      code: 'BlockInstanceNotFound',
+    });
+    await expect(
+      command.setBlockMetadata(id, 'sum', { x: 'left' }),
+    ).rejects.toMatchObject({
+      name: 'LogicMeshError',
+      code: 'InvalidArgument',
+    });
+    await expect(command.setBlockEditor(id, 42)).rejects.toMatchObject({
+      name: 'LogicMeshError',
+      code: 'InvalidArgument',
+    });
+
+    // Nothing was stored.
+    const saved = (await command.getProgram()) as Program;
+    expect(saved.blocks[id]).not.toHaveProperty('label');
+    expect(saved.blocks[id]).not.toHaveProperty('editor');
   });
 });

@@ -28,7 +28,7 @@
 //! Everything runs on the `SingleThreadedEngine`, which manages the
 //! connector's lifecycle: `run()` awaits the connector's `start`
 //! before any block executes, and `Shutdown` awaits its `stop`. A
-//! small driver task watches the pin graph (the same `WatchBlockSubReq`
+//! small driver task watches the pin graph (the same `watch`
 //! primitive the web editor and the `tui_runner` example build on),
 //! prints every output change, and shuts the engine down after a few
 //! seconds so the demo terminates on its own.
@@ -45,12 +45,11 @@ use uuid::Uuid;
 use logic_mesh::base::Status;
 use logic_mesh::base::block::connect_output;
 use logic_mesh::base::connector::{Connector, ConnectorFuture, ConnectorHandle, ValueStream};
-use logic_mesh::base::engine::messages::{ChangeSource, EngineMessage, WatchMessage};
+use logic_mesh::base::engine::messages::{ChangeSource, WatchMessage};
 use logic_mesh::blocks::external::{ExternalIn, ExternalOut, Request};
 use logic_mesh::blocks::math::Add;
 use logic_mesh::prelude::*;
 use logic_mesh::single_threaded::SingleThreadedEngine;
-use logic_mesh::sync::mpsc;
 use logic_mesh::{ConnectorError, Value};
 
 /// Name the connector is registered under. The external blocks resolve
@@ -291,31 +290,25 @@ async fn main() {
     engine.schedule(convert).expect("schedule convert");
 
     // ----- 3. Watch the flow and bound the runtime -----
-    // `run()` only returns on `EngineMessage::Shutdown`, so a driver
-    // task subscribes to change-of-value notifications, prints them,
-    // and pulls the plug after `RUN_FOR`.
-    let (reply_tx, mut reply_rx) = mpsc::channel(32);
-    let channel_id = Uuid::new_v4();
-    let engine_sender = engine.create_message_channel(channel_id, reply_tx);
+    // `run()` only returns on a shutdown request, so a driver task
+    // opens a watch on change-of-value notifications through an
+    // `EngineClient`, prints them, and shuts the engine down after
+    // `RUN_FOR`.
+    let client = engine.client();
 
     tokio::spawn(async move {
-        let (watch_tx, mut watch_rx) = mpsc::unbounded_channel::<WatchMessage>();
-        engine_sender
-            .send(EngineMessage::WatchBlockSubReq(channel_id, watch_tx))
-            .await
-            .expect("engine is receiving");
-        let _ = reply_rx.recv().await; // drain the WatchBlockSubRes
+        let mut watch = client.watch().await.expect("engine is running");
 
         let deadline = tokio::time::Instant::now() + RUN_FOR;
         loop {
             tokio::select! {
-                Some(msg) = watch_rx.recv() => print_watch(&names, msg),
+                Some(msg) = watch.notifications.recv() => print_watch(&names, msg),
                 _ = tokio::time::sleep_until(deadline) => break,
             }
         }
 
         println!("[demo] time is up, shutting the engine down");
-        let _ = engine_sender.send(EngineMessage::Shutdown).await;
+        let _ = client.shutdown().await;
     });
 
     engine.run().await;

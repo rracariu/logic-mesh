@@ -50,6 +50,21 @@ describe('engine pin writes', () => {
     await until(() => (lastOut(notes, id) === 7 ? true : undefined), 'out = 7');
   });
 
+  it("resolve with the pin's previous value", async () => {
+    const session = startEngine({ sleepDuration: 10 });
+    sessions.push(session);
+    const { command } = session;
+
+    const id = await command.addBlock('Add');
+    // Held, the block cannot recompute `out` between the writes.
+    await command.pauseExecution();
+    expect(await command.writeBlockOutput(id, 'out', 5)).toBeUndefined();
+    expect(await command.writeBlockOutput(id, 'out', 7)).toBe(5);
+    expect(await command.writeBlockInput(id, 'in0', 1)).toBeUndefined();
+    expect(await command.writeBlockInput(id, 'in0', 2)).toBe(1);
+    await command.resumeExecution();
+  });
+
   it('run a registered JS block whose inputs are not linked', async () => {
     const session = createEngineSession({ sleepDuration: 10 });
     sessions.push(session);

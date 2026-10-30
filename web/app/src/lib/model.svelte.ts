@@ -63,8 +63,7 @@ class FlowModel {
       });
       blockValue.inputs['connector'].value = UI_CONNECTOR_NAME;
       blockValue.inputs['address'].value = id;
-      // Sequential awaits: EngineCommand methods take `&mut self`, so
-      // overlapping calls on the shared instance panic in wasm-bindgen.
+      // Bind the connector before the address, in that order.
       await command.writeBlockInput(id, 'connector', UI_CONNECTOR_NAME);
       await command.writeBlockInput(id, 'address', id);
     }

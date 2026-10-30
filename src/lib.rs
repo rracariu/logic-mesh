@@ -31,11 +31,12 @@ pub use serde_json;
 
 /// The tokio channel modules the engines' API is built on.
 ///
-/// An engine's [`Channel`](base::engine::Engine::Channel) is an
-/// [`mpsc::Sender`](sync::mpsc::Sender), the watch subscription in
-/// [`Messages`](base::engine::Messages) an
-/// [`mpsc::UnboundedSender`](sync::mpsc::UnboundedSender),
-/// and pins read and write [`watch`](sync::watch) channels
+/// An engine receives requests on an
+/// [`mpsc::Sender`](sync::mpsc::Sender), answers them and delivers
+/// watch notifications on
+/// [`mpsc::UnboundedSender`](sync::mpsc::UnboundedSender)s (see
+/// [`messages`](base::engine::messages)), and pins read and write
+/// [`watch`](sync::watch) channels
 /// ([`blocks::ReaderImpl`], [`blocks::WriterImpl`]). Creating these
 /// channels through this module keeps them the same tokio version as
 /// the crate's own, without a direct tokio dependency for the
@@ -56,10 +57,11 @@ pub use tokio_impl::engine::single_threaded;
 pub use tokio_impl::engine::multi_threaded;
 
 /// The per-subsystem errors this crate reports, the [`Error`] aggregate
-/// that wraps them, and the matching `Result` alias.
+/// that wraps them, the matching `Result` alias, and the
+/// [`RequestError`] an engine answers a failed request with.
 pub use base::error::{
     BlockDescError, ConnectError, ConnectorError, ConnectorErrorSource, EngineError, Error,
-    ExternalError, LinkEnd, RegistryError, Result, ValueError,
+    ErrorCode, ExternalError, LinkEnd, RegistryError, RequestError, Result, ValueError,
 };
 
 #[cfg(target_arch = "wasm32")]

@@ -281,28 +281,33 @@ fn undo_recovery<B: EngineBlock>(block: &mut B, recovering_from: Option<BlockSta
 
 /// Runs one `execute()` cycle, returning the panic message if it
 /// panicked.
-#[cfg(not(target_arch = "wasm32"))]
 async fn execute_guarded<B>(block: &mut B) -> Result<(), String>
 where
     B: EngineBlock + 'static,
 {
+    catch_panic(block.execute()).await
+}
+
+/// Awaits `future`, returning the message of a panic raised while it
+/// is polled instead of unwinding into the caller.
+///
+/// The future is asserted unwind safe: the caller must not trust what
+/// a panic may have left half-updated.
+#[cfg(not(target_arch = "wasm32"))]
+pub(super) async fn catch_panic<F: Future>(future: F) -> Result<F::Output, String> {
     use futures::FutureExt;
 
-    std::panic::AssertUnwindSafe(block.execute())
+    std::panic::AssertUnwindSafe(future)
         .catch_unwind()
         .await
         .map_err(|payload| panic_message(payload.as_ref()))
 }
 
-/// Runs one `execute()` cycle. A panic aborts a `wasm32` instance, so
-/// there is none to catch.
+/// Awaits `future`. A panic aborts a `wasm32` instance, so there is
+/// none to catch.
 #[cfg(target_arch = "wasm32")]
-async fn execute_guarded<B>(block: &mut B) -> Result<(), String>
-where
-    B: EngineBlock + 'static,
-{
-    block.execute().await;
-    Ok(())
+pub(super) async fn catch_panic<F: Future>(future: F) -> Result<F::Output, String> {
+    Ok(future.await)
 }
 
 /// The message a panic was raised with: `panic!` payloads are a `&str`

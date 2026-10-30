@@ -10,7 +10,7 @@
 //! semantics (timeouts, ordering, and error wording) by construction.
 
 use crate::base::connector::{ConnectorHandle, get_connector, unregister_connector};
-use crate::base::error::ErrorChain;
+use crate::base::error::{ConnectorError, EngineError, Error, ErrorChain};
 use crate::tokio_impl::sleep::sleep_millis;
 
 /// Deadline for a connector `start`/`stop` await, in milliseconds. A
@@ -31,27 +31,35 @@ pub(super) async fn start_connectors(connectors: &[String]) {
             continue;
         };
         if let Err(err) = start_connector(name, &handle).await {
-            log::error!("{err}");
+            log::error!("{}", ErrorChain(&err));
         }
     }
 }
 
 /// Awaits `start` on one connector handle, bounded by
 /// [`CONNECTOR_LIFECYCLE_TIMEOUT_MILLIS`] so a hung connector cannot
-/// wedge the caller. Failures and timeouts are returned as an error
-/// message.
-pub(super) async fn start_connector(name: &str, handle: &ConnectorHandle) -> Result<(), String> {
+/// wedge the caller.
+///
+/// # Errors
+///
+/// Returns [`EngineError::ConnectorStartFailed`] or
+/// [`EngineError::ConnectorStartTimeout`].
+pub(super) async fn start_connector(
+    name: &str,
+    handle: &ConnectorHandle,
+) -> Result<(), EngineError> {
     tokio::select! {
         result = handle.start() => {
-            result.map_err(|err| {
-                format!("Connector '{name}' failed to start: {}", ErrorChain(&err))
+            result.map_err(|source| EngineError::ConnectorStartFailed {
+                name: name.to_string(),
+                source,
             })
         }
         _ = sleep_millis(CONNECTOR_LIFECYCLE_TIMEOUT_MILLIS) => {
-            Err(format!(
-                "Connector '{name}' did not start within \
-                 {CONNECTOR_LIFECYCLE_TIMEOUT_MILLIS} ms"
-            ))
+            Err(EngineError::ConnectorStartTimeout {
+                name: name.to_string(),
+                millis: CONNECTOR_LIFECYCLE_TIMEOUT_MILLIS,
+            })
         }
     }
 }
@@ -96,8 +104,8 @@ pub(super) async fn stop_connector(name: &str, handle: &ConnectorHandle) {
 ///
 /// This is the running-phase counterpart of the engines'
 /// `add_connector`, reachable over the engine message channel
-/// ([`AddConnectorReq`](crate::base::engine::messages::EngineMessage::AddConnectorReq)).
-/// Handles cannot ride in engine messages, so callers register the
+/// ([`AddConnector`](crate::base::engine::messages::EngineRequest::AddConnector)).
+/// Handles cannot ride in engine requests, so callers register the
 /// handle first and attach it here by name.
 ///
 /// A registered connector must be attached to at most one engine: the
@@ -107,9 +115,11 @@ pub(super) async fn stop_connector(name: &str, handle: &ConnectorHandle) {
 ///
 /// # Errors
 ///
-/// Returns an error message if the name is not registered, is already
-/// engine-managed, or the connector fails to start (or times out). On
-/// a start failure the connector's `stop` is awaited before returning
+/// Returns [`EngineError::ConnectorAlreadyManaged`] if the name is
+/// engine-managed already, [`ConnectorError::NotFound`] if it is not
+/// registered, and [`EngineError::ConnectorStartFailed`] or
+/// [`EngineError::ConnectorStartTimeout`] if the connector fails to
+/// start or times out. On a start failure the connector's `stop` is awaited before returning
 /// — a failing `start` may have spawned IO tasks before erroring (or
 /// completed after the timeout cancelled the await), and nothing else
 /// would ever stop an untracked connector. The name stays registered,
@@ -117,18 +127,16 @@ pub(super) async fn stop_connector(name: &str, handle: &ConnectorHandle) {
 pub(super) async fn attach_connector(
     connectors: &mut Vec<String>,
     name: String,
-) -> Result<String, String> {
+) -> Result<String, Error> {
     if connectors.contains(&name) {
-        return Err(format!(
-            "Connector '{name}' is already managed by the engine"
-        ));
+        return Err(EngineError::ConnectorAlreadyManaged { name }.into());
     }
     let Some(handle) = get_connector(&name) else {
-        return Err(format!("Connector '{name}' is not registered"));
+        return Err(ConnectorError::NotFound { name }.into());
     };
     if let Err(err) = start_connector(&name, &handle).await {
         stop_connector(&name, &handle).await;
-        return Err(err);
+        return Err(err.into());
     }
     connectors.push(name.clone());
     Ok(name)
@@ -141,17 +149,20 @@ pub(super) async fn attach_connector(
 /// timeouts are logged, not fatal.
 ///
 /// Reachable over the engine message channel
-/// ([`RemoveConnectorReq`](crate::base::engine::messages::EngineMessage::RemoveConnectorReq)).
+/// ([`RemoveConnector`](crate::base::engine::messages::EngineRequest::RemoveConnector)).
 ///
 /// # Errors
 ///
-/// Returns an error message if `name` is not engine-managed.
+/// Returns [`EngineError::ConnectorNotManaged`] if `name` is not
+/// engine-managed.
 pub(super) async fn detach_connector(
     connectors: &mut Vec<String>,
     name: &str,
-) -> Result<String, String> {
+) -> Result<String, EngineError> {
     let Some(position) = connectors.iter().position(|n| n == name) else {
-        return Err(format!("Connector '{name}' is not managed by the engine"));
+        return Err(EngineError::ConnectorNotManaged {
+            name: name.to_string(),
+        });
     };
     connectors.remove(position);
     if let Some(handle) = unregister_connector(name) {
@@ -225,11 +236,49 @@ pub(super) mod test_support {
         Arc,
         atomic::{AtomicBool, Ordering},
     };
+    use std::time::Duration;
 
     use libhaystack::val::Value;
 
     use crate::base::connector::{Connector, ConnectorFuture, ValueStream};
     use crate::base::error::ConnectorError;
+
+    /// How long a [`SlowStopConnector`]'s `stop` takes.
+    pub(crate) const SLOW_STOP: Duration = Duration::from_millis(200);
+
+    /// `stop` takes [`SLOW_STOP`], then records that it finished — so a
+    /// test can tell an answer sent once the stop is done from one sent
+    /// while it is still under way.
+    pub(crate) struct SlowStopConnector {
+        pub(crate) stopped: Arc<AtomicBool>,
+    }
+
+    impl Connector for SlowStopConnector {
+        fn start(&self) -> ConnectorFuture<'_, ()> {
+            Box::pin(async { Ok(()) })
+        }
+
+        fn stop(&self) -> ConnectorFuture<'_, ()> {
+            let stopped = self.stopped.clone();
+            Box::pin(async move {
+                tokio::time::sleep(SLOW_STOP).await;
+                stopped.store(true, Ordering::SeqCst);
+                Ok(())
+            })
+        }
+
+        fn subscribe(&self, _address: &str) -> ConnectorFuture<'_, ValueStream> {
+            Box::pin(async { Ok(Box::pin(futures::stream::empty()) as ValueStream) })
+        }
+
+        fn publish(&self, _address: &str, _value: Value) -> ConnectorFuture<'_, ()> {
+            Box::pin(async { Ok(()) })
+        }
+
+        fn request(&self, _address: &str, value: Value) -> ConnectorFuture<'_, Value> {
+            Box::pin(async move { Ok(value) })
+        }
+    }
 
     /// Records `start`/`stop` calls so tests can observe the engine
     /// driving the lifecycle.

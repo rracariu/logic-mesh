@@ -64,8 +64,8 @@
     if (!engineRunning) {
       engineRunning = true;
       // Kick off the engine through the session so it knows it has
-      // started (watches then use the pre-created slots); same effect
-      // as the old direct `engine.run()` call, same tick.
+      // started; same effect as the old direct `engine.run()` call,
+      // same tick.
       start();
 
       // addConnector is a message to the now-running engine;
@@ -218,10 +218,8 @@
     }
   }
 
-  // Serializes whole program operations (reset, load, paste) — the
-  // same idiom as Engine.ts's `commandChain`, one level up. That chain
-  // makes individual `command` calls overlap-proof, but a program
-  // operation is a multi-step pipeline (reset → clear the model →
+  // Serializes whole program operations (reset, load, paste). A
+  // program operation is a multi-step pipeline (reset → clear the model →
   // re-attach the connector → populate), and two pipelines running
   // concurrently interleave those steps: the second pipeline's
   // `clearAll` fires before the first has populated the model, and its
@@ -240,21 +238,13 @@
   }
 
   async function doReset() {
-    // Reset travels on the session's private control handle (via
-    // `useEngine().reset`), never the shared `command` handle — a
-    // reset issued there while e.g. `loadProgram` or a palette drop's
-    // `addBlock` holds that handle mid-round-trip would throw
-    // "recursive use of an object detected". It resolves when the
-    // Reset is merely enqueued, which suffices here: engine messages
-    // are FIFO, and the attach below awaits a request/reply barrier
-    // ordered after it. A failure still rejects doReset's promise —
-    // onPaste/onLoad and onReset surface it from there.
+    // Resolves once the engine has reset (via `useEngine().reset`, on
+    // the session's control handle). A failure rejects doReset's
+    // promise — onPaste/onLoad and onReset surface it from there.
     await reset();
     model.clearAll();
     // Reset unregisters and stops attached connectors; the UI connector
     // must be re-registered and re-attached for widget blocks to work.
-    // `attachUiConnector` awaits a request/reply barrier so the attach
-    // is ordered after the engine has actually processed the Reset.
     await attachUiConnector(connectorCommand).catch((err) =>
       toast.error(`Failed to attach UI connector: ${err}`),
     );

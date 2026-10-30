@@ -69,13 +69,10 @@
   });
 
   // Flips the UI to running, resumes the engine, and reopens the
-  // widget-push gate. resumeExecution resolves when Resume is enqueued,
-  // not when it is dispatched — which suffices: engine messages are
-  // FIFO, so Resume is queued ahead of anything the reopened gate
-  // flushes, and that backlog stays bounded and drains as soon as the
-  // engine works through the queue. The gate reopens only if isRunning
-  // still holds — the user may pause again while the send settles, and
-  // a stale resume must not reopen the gate on a paused engine.
+  // widget-push gate once the engine has resumed. The gate reopens only
+  // if isRunning still holds — the user may pause again while the
+  // resume settles, and a stale resume must not reopen the gate on a
+  // paused engine.
   function resumeEngine(): Promise<void> {
     isRunning = true;
     return command
