@@ -6,6 +6,7 @@
   import { model } from '$lib/model.svelte';
   import type { Block } from '$lib/Block';
   import { widgetBlockDescs } from '$lib/Widgets';
+  import SourceIndicators from './SourceIndicators.svelte';
 
   interface Props {
     data: Block;
@@ -58,6 +59,7 @@
 <div
   class="node-container"
   class:node-faulted={data.state === 'fault'}
+  class:node-source-highlight={model.highlightedBlock === data.id}
   title={data.faultReason ?? doc}
   style={isSelected ? 'box-shadow: 0 0 0 2px var(--primary);' : ''}
 >
@@ -101,6 +103,9 @@
   <div class="node-body">
     {@render children()}
   </div>
+  {#if data.widget}
+    <SourceIndicators block={data} />
+  {/if}
 </div>
 
 <style>
@@ -112,6 +117,12 @@
 
   .node-faulted {
     box-shadow: 0 0 0 2px #e0405b !important;
+  }
+
+  /* Dashed, so it doesn't read as the selection ring. */
+  .node-source-highlight {
+    outline: 2px dashed var(--primary);
+    outline-offset: 3px;
   }
 
   :global(.faulted-edge .svelte-flow__edge-path) {
