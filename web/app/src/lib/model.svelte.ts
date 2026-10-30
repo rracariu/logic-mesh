@@ -25,6 +25,8 @@ class FlowModel {
   edges = $state.raw<Edge[]>([]);
   currentBlock = $state<Node | undefined>(undefined);
   currentEdge = $state<Edge | undefined>(undefined);
+  /** Block to outline as a widget's source while its indicator is hovered. */
+  highlightedBlock = $state<string | undefined>(undefined);
 
   async addBlock(desc: BlockDesc): Promise<Block> {
     // A widget palette entry is realized as an engine ExternalIn (input
@@ -106,6 +108,7 @@ class FlowModel {
     blockInstances.clear();
     this.currentBlock = undefined;
     this.currentEdge = undefined;
+    this.highlightedBlock = undefined;
   }
 }
 
