@@ -405,6 +405,38 @@ for (const block of Object.values(saved.blocks)) {
 On a running engine, `command.setBlockMetadata(id, label, position)` and
 `command.setBlockEditor(id, editor)` change what a block is saved with.
 
+`ProgramSchema` is a Zod schema of the save format. It checks a program
+without the engine, before you store an upload, say, and reports each
+problem at its path. It reads a program as `loadProgram` does: a 1.x save
+parses, and a newer format fails on its `version`. `programSchema(editor)`
+also checks the editor metadata with your own schema, and types the result
+with it:
+
+```ts
+import { ProgramSchema, programSchema, startEngine } from 'logic-mesh';
+import { z } from 'zod';
+
+const { command } = startEngine();
+
+const result = ProgramSchema.safeParse(
+  JSON.parse(localStorage.getItem('program')!),
+);
+if (!result.success) throw new Error(z.prettifyError(result.error));
+await command.loadProgram(result.data);
+
+// A loose object keeps editor keys the schema does not name.
+const MyProgram = programSchema(
+  z.looseObject({ widget: z.string().optional() }),
+);
+const saved = MyProgram.parse(await command.getProgram());
+console.log(Object.values(saved.blocks)[0]?.editor?.widget);
+```
+
+A program that passes can still fail to load: only the engine knows
+whether its block types are registered and its pins and links exist.
+`z.toJSONSchema(ProgramSchema, { io: 'input' })` gives the format as a
+JSON Schema, for tools outside JavaScript.
+
 ### List all registered blocks
 
 ```ts

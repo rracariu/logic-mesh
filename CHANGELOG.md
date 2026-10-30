@@ -186,6 +186,11 @@ with before and after code, for Rust and for JavaScript and TypeScript.
 - Exported types `Program`, `ProgramBlock`, `PinValue`, `Position`,
   `EditorMetadata` and `PROGRAM_FORMAT_VERSION` ([#28]), and `JsBlockExecutor`,
   `JsBlockFactory`, `BlockInspection` and `BlockState` ([#30]).
+- `ProgramSchema` and `programSchema(editor)`, Zod schemas of the save
+  format that check a program without the engine, each problem at its
+  path, and the editor metadata with a schema of the caller's.
+  `z.toJSONSchema(ProgramSchema, { io: 'input' })` gives the format as a
+  JSON Schema ([#35]).
 - The cargo feature `js`, on by default, gates the JavaScript bindings on
   wasm32 ([#30]).
 
@@ -197,13 +202,17 @@ with before and after code, for Rust and for JavaScript and TypeScript.
   feedback address (`valueSource`) ([#13]).
 - The editor saves the versioned format and upgrades older saves on load
   ([#28]).
+- Each widget lists the sources it reads without a link (its
+  `valueSource`, `configSources` and MultiChart series addresses), and
+  hovering one outlines the block that publishes it ([#34]).
 
 #### Tooling and release
 
 - CI checks, lints and documents every workspace member, the crate on its
   default features alone, wasm32 with and without default features, and the
   MSRV, plus Package and Version sync jobs ([#11], [#20], [#27], [#30]).
-- The JS tests run in CI ([#7]), and so do the web app's tests ([#28]).
+- The JS tests run in CI ([#7]), and so do the web app's tests ([#28]),
+  before every npm release too ([#33]).
 - Compile-fail tests for the block macros (`tests_lib_usage`, with
   trybuild) and tests of the crate used from outside, renamed or not ([#5],
   [#24]).
@@ -443,7 +452,11 @@ with before and after code, for Rust and for JavaScript and TypeScript.
 - The crates.io release stops if the macro publish fails, checks that the
   release tag matches the crate and npm versions, publishes with
   `--locked`, and skips versions already published. The npm release runs
-  the checks first and publishes prereleases to the `next` dist-tag ([#20]).
+  the checks first and publishes prereleases to the `next` dist-tag ([#20]),
+  and runs every check a pull request gets, on the build it publishes
+  ([#32]).
+- The macro crate ships the LICENSE too, and the Package job checks that
+  both `.crate` files carry it ([#32]).
 - `rust-version = "1.88"` is declared ([#20]).
 - The npm build cleans its output first, and `prepublishOnly` refuses an
   incomplete or out-of-date build ([#21]).
@@ -684,6 +697,10 @@ surfaces that 1.0 deliberately breaks (see the **Changed** /
 [#28]: https://github.com/rracariu/logic-mesh/pull/28
 [#29]: https://github.com/rracariu/logic-mesh/pull/29
 [#30]: https://github.com/rracariu/logic-mesh/pull/30
+[#32]: https://github.com/rracariu/logic-mesh/pull/32
+[#33]: https://github.com/rracariu/logic-mesh/pull/33
+[#34]: https://github.com/rracariu/logic-mesh/pull/34
+[#35]: https://github.com/rracariu/logic-mesh/pull/35
 [Unreleased]: https://github.com/rracariu/logic-mesh/compare/v2.0.0...HEAD
 [2.0.0]: https://github.com/rracariu/logic-mesh/compare/v1.0.0...v2.0.0
 [1.0.0]: https://github.com/rracariu/logic-mesh/releases/tag/v1.0.0
