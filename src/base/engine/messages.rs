@@ -21,8 +21,12 @@ use crate::base::block::BlockState;
 use crate::base::program::{Program, data::LinkData};
 
 /// Block input properties.
+///
+/// `#[non_exhaustive]`: engines produce it; build one with
+/// [`BlockInputData::new`].
 #[derive(Default, Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
+#[non_exhaustive]
 pub struct BlockInputData {
     /// Haystack type kind.
     pub kind: String,
@@ -35,8 +39,23 @@ pub struct BlockInputData {
     pub is_connected: bool,
 }
 
+impl BlockInputData {
+    /// An input of `kind` holding `val`, wired up or not.
+    pub fn new(kind: impl Into<String>, val: Value, is_connected: bool) -> Self {
+        Self {
+            kind: kind.into(),
+            val,
+            is_connected,
+        }
+    }
+}
+
 /// Block output properties.
+///
+/// `#[non_exhaustive]`: engines produce it; build one with
+/// [`BlockOutputData::new`].
 #[derive(Default, Debug, Serialize, Deserialize, Clone)]
+#[non_exhaustive]
 pub struct BlockOutputData {
     /// Haystack type kind.
     pub kind: String,
@@ -44,8 +63,40 @@ pub struct BlockOutputData {
     pub val: Value,
 }
 
+impl BlockOutputData {
+    /// An output of `kind` holding `val`.
+    pub fn new(kind: impl Into<String>, val: Value) -> Self {
+        Self {
+            kind: kind.into(),
+            val,
+        }
+    }
+}
+
 /// Block definition.
+///
+/// `#[non_exhaustive]`: engines produce it; build one with
+/// [`BlockDefinition::new`] and the `with_*` methods.
+///
+/// # Examples
+///
+/// ```
+/// use logic_mesh::{
+///     Value,
+///     base::block::BlockState,
+///     base::engine::messages::{BlockDefinition, BlockInputData},
+/// };
+///
+/// let def = BlockDefinition::new("b1", "Add", "core")
+///     .with_input("in0", BlockInputData::new("number", Value::make_int(1), false))
+///     .with_state(&BlockState::fault("overflow"));
+///
+/// assert_eq!(def.state, "fault");
+/// assert_eq!(def.fault_reason.as_deref(), Some("overflow"));
+/// assert_eq!(def.inputs["in0"].val, Value::make_int(1));
+/// ```
 #[derive(Debug, Default, Serialize, Deserialize, Clone)]
+#[non_exhaustive]
 pub struct BlockDefinition {
     /// Block instance UUID.
     pub id: String,
@@ -66,8 +117,45 @@ pub struct BlockDefinition {
     pub fault_reason: Option<String>,
 }
 
+impl BlockDefinition {
+    /// The definition of block `id` of type `name` in `library`, with
+    /// no pins, in the [`BlockState::Running`] state.
+    pub fn new(id: impl Into<String>, name: impl Into<String>, library: impl Into<String>) -> Self {
+        Self {
+            id: id.into(),
+            name: name.into(),
+            library: library.into(),
+            state: BlockState::Running.label().to_string(),
+            ..Self::default()
+        }
+    }
+
+    /// Adds input `name`, replacing an input of that name.
+    pub fn with_input(mut self, name: impl Into<String>, input: BlockInputData) -> Self {
+        self.inputs.insert(name.into(), input);
+        self
+    }
+
+    /// Adds output `name`, replacing an output of that name.
+    pub fn with_output(mut self, name: impl Into<String>, output: BlockOutputData) -> Self {
+        self.outputs.insert(name.into(), output);
+        self
+    }
+
+    /// Sets [`state`](Self::state) and [`fault_reason`](Self::fault_reason)
+    /// from `state`.
+    pub fn with_state(mut self, state: &BlockState) -> Self {
+        self.state = state.label().to_string();
+        self.fault_reason = state.fault_reason().map(str::to_string);
+        self
+    }
+}
+
 /// The source of a change.
+///
+/// `#[non_exhaustive]`: a `match` on it needs a wildcard arm.
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub enum ChangeSource {
     /// Change originated from an input pin.
     Input(String, Value),
@@ -76,7 +164,11 @@ pub enum ChangeSource {
 }
 
 /// A notification message for a block change.
+///
+/// `#[non_exhaustive]`: engines produce it; build one with
+/// [`WatchMessage::new`].
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub struct WatchMessage {
     /// UUID of the block that changed.
     pub block_id: Uuid,
@@ -85,6 +177,18 @@ pub struct WatchMessage {
     /// Block's operational state at the time the notification was sent.
     /// Carries fault propagation visibility to the UI.
     pub state: BlockState,
+}
+
+impl WatchMessage {
+    /// A notification that block `block_id`, in `state`, changed the
+    /// pins in `changes`.
+    pub fn new(block_id: Uuid, changes: HashMap<String, ChangeSource>, state: BlockState) -> Self {
+        Self {
+            block_id,
+            changes,
+            state,
+        }
+    }
 }
 
 /// Messages that the engine accepts.

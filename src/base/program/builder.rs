@@ -19,6 +19,7 @@ use super::data::{LinkData, PinValue, Position, Program, ProgramBlock};
 /// Only handed out by the builder, so a link names a block that was
 /// added to a program rather than an arbitrary id.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[must_use = "a block is linked through its `BlockRef`"]
 pub struct BlockRef(Uuid);
 
 impl BlockRef {
@@ -52,6 +53,7 @@ impl BlockRef {
 /// # Ok::<(), logic_mesh::Error>(())
 /// ```
 #[derive(Debug, Default)]
+#[must_use = "a builder does nothing until `build` returns the program"]
 pub struct ProgramBuilder {
     program: Program,
     /// Descriptor of every added block, to validate pins against.
@@ -162,6 +164,7 @@ impl ProgramBuilder {
     }
 
     /// Returns the assembled program.
+    #[must_use = "the program is lost unless it is loaded or saved"]
     pub fn build(self) -> Program {
         self.program
     }
@@ -176,6 +179,7 @@ impl ProgramBuilder {
 /// Configures a block just added to a [`ProgramBuilder`]; [`finish`](Self::finish)
 /// returns the [`BlockRef`] to link it with.
 #[derive(Debug)]
+#[must_use = "call `finish` for the block's `BlockRef`"]
 pub struct ProgramBlockBuilder<'a> {
     builder: &'a mut ProgramBuilder,
     id: Uuid,

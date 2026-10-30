@@ -71,13 +71,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut add1 = Add::new();
 
     let mut sine1 = SineWave::new();
-    sine1.amplitude.val = Some(3.into());
-    sine1.freq.val = Some(200.into());
+    sine1.amplitude.set(3);
+    sine1.freq.set(200);
     connect_output(&mut sine1.out, add1.inputs_mut()[0])?;
 
     let mut sine2 = SineWave::new();
-    sine2.amplitude.val = Some(7.into());
-    sine2.freq.val = Some(400.into());
+    sine2.amplitude.set(7);
+    sine2.freq.set(400);
     sine2.connect_output("out", add1.inputs_mut()[1])?;
 
     let mut engine = SingleThreadedEngine::new();

@@ -10,6 +10,7 @@
 //! semantics (timeouts, ordering, and error wording) by construction.
 
 use crate::base::connector::{ConnectorHandle, get_connector, unregister_connector};
+use crate::base::error::ErrorChain;
 use crate::tokio_impl::sleep::sleep_millis;
 
 /// Deadline for a connector `start`/`stop` await, in milliseconds. A
@@ -42,7 +43,9 @@ pub(super) async fn start_connectors(connectors: &[String]) {
 pub(super) async fn start_connector(name: &str, handle: &ConnectorHandle) -> Result<(), String> {
     tokio::select! {
         result = handle.start() => {
-            result.map_err(|err| format!("Connector '{name}' failed to start: {err}"))
+            result.map_err(|err| {
+                format!("Connector '{name}' failed to start: {}", ErrorChain(&err))
+            })
         }
         _ = sleep_millis(CONNECTOR_LIFECYCLE_TIMEOUT_MILLIS) => {
             Err(format!(
@@ -74,7 +77,7 @@ pub(super) async fn stop_connector(name: &str, handle: &ConnectorHandle) {
     tokio::select! {
         result = handle.stop() => {
             if let Err(err) = result {
-                log::error!("Connector '{name}' failed to stop: {err}");
+                log::error!("Connector '{name}' failed to stop: {}", ErrorChain(&err));
             }
         }
         _ = sleep_millis(CONNECTOR_LIFECYCLE_TIMEOUT_MILLIS) => {
@@ -267,14 +270,30 @@ pub(super) mod test_support {
         }
     }
 
-    /// `start` always fails; `stop` records that it ran.
+    /// The message of the underlying error [`FailingStartConnector`]'s
+    /// `start` failure carries as its source.
+    pub(crate) const START_FAILURE_CAUSE: &str = "port in use";
+
+    /// The message an engine replies with when attaching the
+    /// [`FailingStartConnector`] registered as `name`.
+    pub(crate) fn start_failure_reply(name: &str) -> String {
+        format!(
+            "Connector '{name}' failed to start: Transport error: start refused: \
+             {START_FAILURE_CAUSE}"
+        )
+    }
+
+    /// `start` always fails, with a source; `stop` records that it ran.
     pub(crate) struct FailingStartConnector {
         pub(crate) stopped: Arc<AtomicBool>,
     }
 
     impl Connector for FailingStartConnector {
         fn start(&self) -> ConnectorFuture<'_, ()> {
-            Box::pin(async { Err(ConnectorError::Transport("start refused".into())) })
+            Box::pin(async {
+                Err(ConnectorError::transport("start refused")
+                    .with_source(std::io::Error::other(START_FAILURE_CAUSE)))
+            })
         }
 
         fn stop(&self) -> ConnectorFuture<'_, ()> {

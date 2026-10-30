@@ -30,6 +30,13 @@ mod test_support;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod multi_threaded;
 
+/// The unqualified name of the engine phase `S`, as an engine's
+/// `Debug` output shows it.
+fn phase_name<S: crate::base::engine::EngineState>() -> &'static str {
+    let name = std::any::type_name::<S>();
+    name.rsplit("::").next().unwrap_or(name)
+}
+
 /// Constructs the block `block` describes and hands it to `sink` — an
 /// engine in either phase — returning its id.
 pub(super) fn schedule_block_on_engine(

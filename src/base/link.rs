@@ -14,7 +14,11 @@ pub use base::BaseLink;
 /// [`Status::Stale`](crate::base::Status::Stale) status on the receiving
 /// input pin instead (see [`crate::base::Status`]).
 /// [`LinkState::Disconnected`]/[`LinkState::Connected`] track wiring state only.
+///
+/// `#[non_exhaustive]`: further states may follow, so a `match` on it
+/// needs a wildcard arm.
 #[derive(Default, Debug, Clone, Copy, PartialEq)]
+#[non_exhaustive]
 pub enum LinkState {
     /// The link is disconnected.
     #[default]

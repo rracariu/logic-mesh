@@ -40,6 +40,7 @@ impl Block for Negate {
 mod tests {
     use super::*;
     use mesh_renamed::base::block::BlockProps;
+    use mesh_renamed::base::output::OutputProps;
 
     #[test]
     fn desc_reflects_attributes() {
@@ -66,6 +67,6 @@ mod tests {
             .unwrap();
 
         block.execute().await;
-        assert_eq!(block.out.value, (-21).into());
+        assert_eq!(block.out.value(), &(-21).into());
     }
 }

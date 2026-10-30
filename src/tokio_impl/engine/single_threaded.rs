@@ -137,13 +137,13 @@ mod tests {
 
         let mut sine1 = SineWave::new();
 
-        sine1.amplitude.val = Some(3.into());
-        sine1.freq.val = Some(200.into());
+        sine1.amplitude.set(3);
+        sine1.freq.set(200);
         connect_output(&mut sine1.out, add1.inputs_mut()[0]).expect("Connected");
 
         let mut sine2 = SineWave::new();
-        sine2.amplitude.val = Some(7.into());
-        sine2.freq.val = Some(400.into());
+        sine2.amplitude.set(7);
+        sine2.freq.set(400);
 
         sine2
             .connect_output("out", add1.inputs_mut()[1])
@@ -187,6 +187,35 @@ mod tests {
         eng.schedule(sine2).unwrap();
 
         eng.run().await;
+    }
+
+    /// The engine and its block handles summarise themselves without
+    /// dumping blocks, descriptors or channels.
+    #[tokio::test(flavor = "current_thread")]
+    async fn debug_summarises_the_engine_and_its_blocks() {
+        let mut source = Add::new();
+        let mut target = Add::new();
+        let target_id = *target.id();
+        source
+            .connect_output("out", target.inputs_mut()[0])
+            .expect("not linked yet");
+
+        let mut eng = SingleThreadedEngine::new();
+        eng.schedule(source).expect("scheduled");
+        eng.schedule(target).expect("scheduled");
+
+        assert_eq!(
+            format!("{eng:?}"),
+            "SingleThreadedEngine { phase: \"Idle\", executing: false, blocks: 2, links: 1, \
+             pending_programs: 0, connectors: [], .. }"
+        );
+        assert_eq!(
+            format!("{:?}", eng.block_handle(&target_id).expect("scheduled")),
+            format!(
+                "BlockHandle {{ id: {target_id}, name: \"Add\", library: \"core\", \
+                 label: None, position: None, .. }}"
+            )
+        );
     }
 
     /// Regression: a save always returned no name and no description,
@@ -701,8 +730,8 @@ mod tests {
             let mock = Arc::new(MockConnector::default());
 
             let mut ext = ExternalIn::new();
-            ext.connector.val = Some(Value::make_str(&name));
-            ext.address.val = Some(Value::make_str("sensor"));
+            ext.connector.set(Value::make_str(&name));
+            ext.address.set(Value::make_str("sensor"));
 
             let mut add = Add::new();
             let add_uuid = *add.id();
@@ -1020,7 +1049,7 @@ mod tests {
             RemoveConnectorReq, RemoveConnectorRes, Reset,
         };
         use crate::tokio_impl::engine::connectors::test_support::{
-            FailingStartConnector, FlagConnector,
+            FailingStartConnector, FlagConnector, start_failure_reply,
         };
 
         /// The connector registry is process-global and tests run in
@@ -1240,13 +1269,13 @@ mod tests {
                     let _ = engine_sender
                         .send(AddConnectorReq(channel_id, driver_name.clone()))
                         .await;
-                    match receiver.recv().await {
-                        Some(AddConnectorRes(Err(_))) => {}
+                    let reply = match receiver.recv().await {
+                        Some(AddConnectorRes(Err(reply))) => reply,
                         other => panic!(
                             "Expected AddConnectorRes(Err) on start failure, got {:?}",
                             other
                         ),
-                    }
+                    };
                     assert!(
                         driver_stopped.load(Ordering::SeqCst),
                         "failed attach stops the connector before replying"
@@ -1268,14 +1297,18 @@ mod tests {
                     }
 
                     let _ = engine_sender.send(Shutdown).await;
+                    reply
                 });
                 rt.block_on(handle)
             });
 
             eng.run().await;
-            driver.join().unwrap().unwrap();
-
+            let reply = driver.join().unwrap().unwrap();
             unregister_connector(&name);
+
+            // The reply carries the start error's source too
+            // (regression: it printed only the error's own message).
+            assert_eq!(reply, start_failure_reply(&name));
         }
 
         /// Attach/detach error cases: an unregistered name, a name the
