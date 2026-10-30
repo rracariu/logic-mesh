@@ -670,7 +670,7 @@ impl Connector for Echo {
 fn main() -> logic_mesh::Result<()> {
     let mut engine = SingleThreadedEngine::new();
     engine.add_connector("echo", ConnectorHandle::new(Echo))?; // started when run() begins
-    assert_eq!(engine.connector_names(), ["echo"]);
+    assert_eq!(engine.managed_connectors(), ["echo"]);
     Ok(())
 }
 ```

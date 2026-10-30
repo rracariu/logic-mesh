@@ -40,7 +40,7 @@ release. If you used them from git, read
       with their constructors, and add wildcard arms to matches on the
       `#[non_exhaustive]` enums.
 - [ ] Replace pin and link field access (`pin.val = …`, `out.value`) with the
-      accessors.
+      accessors, and rename `InputProps::get_value()` to `value()`.
 - [ ] Check saved programs against the new load checks. 1.x saves load as
       they are.
 
@@ -53,7 +53,9 @@ release. If you used them from git, read
 - [ ] Close watches with the `WatchSubscription` that `session.watch()`
       resolves with.
 - [ ] Pass the scan interval as a `number` of milliseconds (`scanInterval`).
-- [ ] Read `getProgram()` and `inspectBlock()` results as plain objects.
+- [ ] Read the values the bindings hand you as plain objects, with `null` for
+      a missing value: command results, watch notifications and JS block
+      inputs.
 - [ ] A Rust application that builds logic-mesh for `wasm32` with its own
       bindings: turn off the `js` feature.
 
@@ -319,7 +321,7 @@ async fn run_once(engine: SingleThreadedEngine) -> SingleThreadedEngine {
 
 ### Configuration goes through the `Engine` trait
 
-**What changed.** `add_connector`, `connector_names`, `block_handles`,
+**What changed.** `add_connector`, `managed_connectors`, `block_handles`,
 `block_handle`, `set_block_metadata`, `set_block_editor` and the scan
 interval methods are `Engine` trait methods, implemented by both engines.
 Calling them needs the trait in scope (`logic_mesh::prelude::*` or
@@ -388,6 +390,12 @@ No code change is needed for these, but behaviour you may rely on changed:
   pin that does not exist is rejected up front with `PinNotFound`.
 - **A closed mailbox ends its actor** instead of spinning, and dropping an
   engine ends all of its actors.
+- **Evaluating a block cannot stall the engine.** `eval_block` runs the block
+  on the engine's own event loop. A block that panics there fails the request
+  with `EvalPanicked` (native targets), and one still running after 5 s, a
+  block waiting for an input you did not supply say, fails it with
+  `EvalTimeout`. In 1.x the first ended the run and the second left the
+  engine answering nothing.
 
 ## 4. Driving a running engine: `EngineClient`
 
@@ -415,7 +423,7 @@ request:
 | `WatchBlockUnsubReq` | `unwatch(watch_id)` | `Unwatch` |
 | `Pause`, `Resume`, `Reset`, `Shutdown` | `pause()`, `resume()`, `reset()`, `shutdown()` | `Pause`, `Resume`, `Reset`, `Shutdown` |
 | (new) | `set_block_metadata`, `set_block_editor` | `SetBlockMetadata`, `SetBlockEditor` |
-| (new) | `add_connector`, `remove_connector`, `list_connectors` | `AddConnector`, `RemoveConnector`, `ListConnectors` |
+| (new) | `add_connector`, `remove_connector`, `managed_connectors` | `AddConnector`, `RemoveConnector`, `ManagedConnectors` |
 
 **Why.** Requests were tuples with positional fields, the caller picked the
 sender id, replies were matched by order (one request in flight per channel),
@@ -468,6 +476,12 @@ async fn main() -> Result<(), RequestError> {
     driven
 }
 ```
+
+`write_input` and `write_output` answer with the pin's previous value, as
+1.x did. `inspect_block` answers with a typed `BlockDefinition`: its `id` is
+a `Uuid` and its `state` a `BlockState`, which carries the fault reason. In
+1.x both were strings, with the reason beside them in `fault_reason`.
+Serialized, it is camelCase throughout, `faultReason` included.
 
 On native targets an `EngineClient` is `Send + Sync`, so it can drive a
 multi-threaded engine from any task:
@@ -560,7 +574,7 @@ at the crate root:
 
 - `Error`, the aggregate the entry points return, and `Result<T>`;
 - the per-subsystem enums it wraps: `RegistryError`, `EngineError`,
-  `ConnectError`, `ValueError`, `ExternalError` and `ConnectorError`, plus
+  `ConnectError`, `ValueError`, `ExternalError`, `ConnectorError` and
   `BlockDescError`;
 - `RequestError`, which an engine answers a failed request with.
 
@@ -628,7 +642,8 @@ still show the cause.
 
 `BlockImplementation` and `BlockRunCondition` parse with `str::parse`
 (`FromStr<Err = BlockDescError>`). Their `TryFrom<&str, Error = String>`
-impls are removed.
+impls are removed. `Error` wraps a `BlockDescError` too, so `?` also works in
+a function returning `logic_mesh::Result`.
 
 ```rust
 use logic_mesh::base::block::BlockRunCondition;
@@ -667,7 +682,7 @@ struct Double {
 impl Block for Double {
     async fn execute(&mut self) {
         self.read_inputs_until_ready().await;
-        if let Some(Ok(num)) = self.input.get_value().map(f64::try_from) {
+        if let Some(Ok(num)) = self.input.value().map(f64::try_from) {
             self.out.set((num * 2.0).into());
         }
     }
@@ -754,6 +769,9 @@ descriptors.
   `BlockStaticDesc` bound. Registering a type by name still needs one.
 - `BlockStaticDesc::desc()` is renamed `static_desc()`, so it no longer
   shares a name with `BlockProps::desc(&self)`.
+- `InputProps::get_value()` is renamed `value()`, the name
+  `OutputProps::value()` has. It still returns `Option<&Value>`, since an
+  input can have no value yet.
 - `BlockConnect` has a blanket impl for every `BlockProps` type and cannot be
   implemented by hand. Its methods, and the free functions `connect_output`,
   `connect_input`, `disconnect_output` and `disconnect_input`, return
@@ -842,7 +860,7 @@ never received it.
 | 1.x | 2.0 |
 |---|---|
 | `input.val = Some(value)` | `input.set(value)` (`InputImpl::set`, status `Ok`) or `Input::set_value(value, status)` |
-| `input.val`, `input.status` | `InputProps::get_value()`, `Input::status()` |
+| `input.val`, `input.status` | `InputProps::value()`, `Input::status()` |
 | `input.connection_count` | `input.connection_count()` |
 | `out.value = value` | `out.set(value)` (`Output::set`) |
 | `out.value`, `out.links`, `out.block_id` | `OutputProps::value()`, `links()`, `block_id()` |
@@ -864,7 +882,7 @@ use logic_mesh::{blocks::misc::SineWave, prelude::*};
 
 let mut sine = SineWave::new();
 sine.amplitude.set(3);
-assert_eq!(sine.amplitude.get_value(), Some(&3.into()));
+assert_eq!(sine.amplitude.value(), Some(&3.into()));
 println!("{:?}", sine.out.value());
 ```
 
@@ -931,7 +949,9 @@ fn main() -> Result<(), serde_json::Error> {
 
 **What changed.** `Program`, `ProgramBlock`, `LinkData`, `PinValue` and
 `Position` are `#[non_exhaustive]`, and `ProgramBlock::positions` is renamed
-`position`. Build them with their constructors, then set the public fields.
+`position`. `ProgramBlock::lib` is renamed `library`, the name every other
+type gives a block's library; it is still saved as `"lib"`. Build them with
+their constructors, then set the public fields.
 
 Before:
 
@@ -963,6 +983,7 @@ use logic_mesh::{
 
 let (a, b) = (Uuid::new_v4(), Uuid::new_v4());
 let mut block = ProgramBlock::new("Add", "core");
+assert_eq!(block.library, "core");
 block.label = Some("sum".into());
 block.position = Some(Position::new(10.0, 20.0));
 block.inputs.insert("in1".into(), PinValue::new(2, false));
@@ -1087,7 +1108,11 @@ Malformed input is rejected instead of being guessed at:
   arrays, `Map`s and plain objects are read, and `null` and `undefined` still
   write Null;
 - `loadProgram` rejects a newer format with `UnsupportedProgramVersion` and
-  any other unreadable payload with `InvalidProgram`.
+  any other unreadable payload with `InvalidProgram`;
+- `registerBlock` throws `InvalidArgument` for a factory that is not a
+  function, `null` or `undefined`, before it registers anything. A block
+  registered without a factory runs as a no-op, as documented; in 1.x
+  `addBlock` rejected it unless another block of its library had a factory.
 
 ### Watches can be closed
 
@@ -1130,8 +1155,16 @@ const engine = initEngine(50); // was initEngine(50) or new BlocksEngine(50n)
 
 ### Plain objects, and typed declarations
 
+- Every value the bindings hand to JavaScript has one, JSON-compatible
+  encoding: a Haystack Dict is a plain object, and Null or a missing value is
+  `null`. That covers command results (`getProgram()`, `inspectBlock()`,
+  `createLink()`, the pin writes, `evalBlock()`), watch notifications, the
+  inputs a JS block executor receives, and the values a JS connector is
+  handed. 1.x handed over a `Map` for a Dict and `undefined` for Null, so
+  `value.get('a')` becomes `value.a`, and a check for `undefined` becomes one
+  for `null`. A `Map` you write is still read as a Dict.
 - `getProgram()` resolves with plain JSON objects: `program.blocks[id]`
-  works, and `program.blocks.get(id)` does not. Missing values are `null`.
+  works, and `program.blocks.get(id)` does not.
 - `inspectBlock()` resolves with a `BlockInspection` of plain objects:
   `{ id, name, lib, inputs: { [pin]: { kind, val, isConnected } },
   outputs: { [pin]: { kind, val } }, state, faultReason? }`. In 1.x it
@@ -1164,13 +1197,21 @@ setLogLevel('debug'); // 'off' | 'error' | 'warn' | 'info' | 'debug' | 'trace'
 ```
 
 The level applies to the whole wasm module, including a logger a Rust
-application installed.
+application installed. A faulting block logs at debug, not at error on every
+cycle it faults: its state and fault reason reach you through `inspectBlock`
+and watch notifications. A panicking block still logs at error, once per
+retry.
 
 ### JS blocks
 
 - An executor may return its outputs directly instead of through a Promise.
   A throw or a rejection faults the block with
   `JS execute failed: <error.toString()>`.
+- An executor gets `null` for an input with no value, where 1.x passed
+  `undefined`. `TypedBlock` reads `null` as unset, as it read `undefined`.
+- A block fed by its own output, directly or through other blocks, no longer
+  freezes the page or Node process: the engine hands the host's event loop a
+  turn while such a loop keeps cycling.
 - `defineBlock` maps `.nullable()`, `.optional()` and `.default()` schemas to
   their inner kind, a literal to its value's kind, and a union to the kind
   its members share. Any other schema throws
@@ -1199,10 +1240,14 @@ against `main` in between needs these changes too.
   first issued, so a stream of engine requests can no longer keep a slow
   operation from timing out.
 - The connector messages became `AddConnector`, `RemoveConnector` and
-  `ListConnectors` requests, with the typed errors `ConnectorNotFound`,
+  `ManagedConnectors` requests, with the typed errors `ConnectorNotFound`,
   `ConnectorAlreadyManaged`, `ConnectorNotManaged`, `ConnectorStartFailed`
-  and `ConnectorStartTimeout`.
-- `add_connector` and `connector_names` are `Engine` trait methods.
+  and `ConnectorStartTimeout`. The list request is named for what it lists,
+  the connectors the engine manages, unlike the registry's
+  `list_connectors()`, which lists every registered one. The JS command keeps
+  its name, `listConnectors`.
+- `add_connector` is an `Engine` trait method, and so is `connector_names`,
+  renamed `managed_connectors`.
 - `JsConnector::from_js` returns `ExternalError` instead of `String`.
 
 **`ProgramBuilder`** (added in [#18]):
@@ -1222,7 +1267,10 @@ against `main` in between needs these changes too.
 - `EngineSessionOptions.watchSlots` is removed: `watch()` opens any number of
   watches, and resolves with a `WatchSubscription` rather than an id.
 - `EngineSessionOptions.sleepDuration` is renamed `scanInterval`.
-- `reset()` and `stop()` resolve once the engine has applied them.
+- `reset()` and `stop()` resolve once the engine has applied them. Once the
+  engine has stopped, however it was stopped (`session.command.stopEngine()`,
+  say), `stop()` resolves and `reset()` rejects, where they used to wait
+  forever. `reset()` after `stop()` rejects instead of throwing.
 
 **Typed errors** (added in [#11]):
 

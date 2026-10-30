@@ -129,6 +129,10 @@ console.log(block.state, block.outputs.out.val);
 await session.stop();
 ```
 
+Values reach JavaScript in one JSON-compatible encoding, from every command,
+watch notification and JS block call: a Haystack Dict is a plain object, and
+Null or a missing value is `null`.
+
 Under the hood the sequence matters, and getting it wrong fails in
 confusing ways — which is why the wrapper owns it:
 

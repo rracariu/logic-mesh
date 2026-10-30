@@ -40,14 +40,17 @@ with before and after code, for Rust and for JavaScript and TypeScript.
   one enum per subsystem), all `#[non_exhaustive]`.
 - **Blocks:** the block macros report misuse as compile errors, `BlockDesc`
   and the pin descriptors are built with builders, `Block` needs only
-  `BlockProps`, connect functions return `ConnectError`, and the pin and
-  link fields are private behind accessors.
+  `BlockProps`, connect functions return `ConnectError`, the pin and
+  link fields are private behind accessors, and `InputProps::get_value` is
+  renamed `value`.
 - **Save format:** programs carry a format `version` and each block its
   type's `ver` and opaque `editor` metadata, `positions` is renamed
-  `position`, the program types are `#[non_exhaustive]`, and loads are all
-  or nothing. 1.x saves load unchanged.
+  `position`, `ProgramBlock::lib` is renamed `library` (still saved as
+  `"lib"`), the program types are `#[non_exhaustive]`, and loads are all or
+  nothing. 1.x saves load unchanged.
 - **JavaScript:** commands reject with coded `LogicMeshError`s, watches can
-  be closed, results are plain objects, the scan interval is a `number` of
+  be closed, every value handed to JavaScript is JSON-compatible (plain
+  objects, `null` for a missing value), the scan interval is a `number` of
   milliseconds (`scanInterval`), and the declarations are typed.
 
 ### Added
@@ -58,7 +61,7 @@ with before and after code, for Rust and for JavaScript and TypeScript.
   `MultiThreadedEngine<Idle>` are configured, and `run()` drives them in
   the `Running` phase, which configuration code cannot reach ([#18]).
 - `Engine` trait methods implemented by both engines: `add_connector`,
-  `connector_names`, `block_handles`, `block_handle`,
+  `managed_connectors` (named in [#29]), `block_handles`, `block_handle`,
   `set_block_metadata` ([#27]), `set_block_editor` ([#28]), `client` ([#29]), the
   per-engine scan interval `scan_interval`, `set_scan_interval` and
   `with_scan_interval` ([#27]), and the associated type `RunFuture`, so
@@ -77,7 +80,8 @@ with before and after code, for Rust and for JavaScript and TypeScript.
   `DuplicateLink`, `DuplicateLinkId`, `InvalidLinkUuid` ([#23]),
   `UnsupportedProgramVersion`, `BlockVersionMismatch` ([#28]),
   `ConnectorAlreadyManaged`, `ConnectorNotManaged`, `ConnectorStartFailed`,
-  `ConnectorStartTimeout`, `EngineGone` and `UnexpectedResponse` ([#29]).
+  `ConnectorStartTimeout`, `EngineGone`, `UnexpectedResponse`,
+  `EvalPanicked` and `EvalTimeout` ([#29]).
 - `Debug` for both engines, `BlockHandle` and `ConnectorHandle` ([#26]).
 
 #### External integration
@@ -125,7 +129,8 @@ with before and after code, for Rust and for JavaScript and TypeScript.
 - Typed errors: `Error`, `Result`, `RegistryError`, `EngineError`,
   `ValueError` and `ExternalError` ([#11]), joined by `ConnectError` ([#24]),
   `ConnectorError`, `ConnectorErrorSource`, `BlockDescError` ([#26]) and
-  `RequestError` ([#29]).
+  `RequestError` ([#29]). `Error` wraps each subsystem error, so `?`
+  converts any of them ([#11], [#27]).
 - `ErrorCode`, a stable, serializable name for every failure, and `code()`
   on every error type. A code from a newer release reads as
   `ErrorCode::Unknown` ([#29], [#30]).
@@ -296,6 +301,8 @@ with before and after code, for Rust and for JavaScript and TypeScript.
   (`BlockDescError`) instead of `TryFrom<&str>` ([#26]).
 - The fields of `BaseInput`, `BaseOutput` and `BaseLink` are private to the
   crate ([#26]).
+- `InputProps::get_value` is renamed `value`, the name `OutputProps::value`
+  has ([#27]).
 - `schedule_block`, `schedule_block_with_uuid` and `eval_static_block` take
   the block's library ([#5]).
 - A lookup without a library searches every library, everywhere: the
@@ -331,6 +338,8 @@ with before and after code, for Rust and for JavaScript and TypeScript.
   `BlockVersionMismatch` ([#28]).
 - `ProgramBlock::positions` is renamed `position`, serialized as
   `"position"`; `"positions"` is still read ([#28]).
+- `ProgramBlock::lib` is renamed `library`, and is still serialized as
+  `"lib"` ([#28]).
 - `LinkData` without an id no longer writes `"id": null` ([#28]).
 - `Program`, `ProgramBlock`, `LinkData`, `PinValue` and `Position` are
   `#[non_exhaustive]` ([#28]).
@@ -350,6 +359,10 @@ with before and after code, for Rust and for JavaScript and TypeScript.
   hold any number of them ([#29]).
 - The multi-threaded engine's public async methods are reached through
   `EngineClient` instead ([#18], [#29]).
+- `BlockDefinition`, the answer to `InspectBlock`, has `id: Uuid` and
+  `state: BlockState`, which carries the fault reason, instead of string
+  fields and `fault_reason`. It serializes camelCase, `faultReason`
+  included ([#29]).
 
 #### JavaScript and TypeScript
 
@@ -363,9 +376,17 @@ with before and after code, for Rust and for JavaScript and TypeScript.
   as Null or as a Dict of its properties ([#30]).
 - `loadProgram` rejects a newer format with `UnsupportedProgramVersion` and
   any other unreadable payload with `InvalidProgram` ([#28], [#29]).
-- `getProgram` returns plain JSON objects instead of `Map`s, with `null` for
-  missing values ([#28]). `inspectBlock` returns a `BlockInspection` of plain
-  objects, keyed `lib` and `faultReason` ([#30]).
+- Every value handed to JavaScript is JSON-compatible: a Dict is a plain
+  object and Null or a missing value is `null`, instead of a `Map` and
+  `undefined`. That covers `getProgram` ([#28]), `inspectBlock`,
+  `createLink`, the pin writes, `evalBlock`, watch notifications, JS block
+  inputs and JS connector values ([#30]). `inspectBlock` returns a
+  `BlockInspection`, keyed `lib` and `faultReason` ([#30]).
+- `registerBlock` throws `InvalidArgument` for a factory that is not a
+  function, `null` or `undefined` ([#30]).
+- A faulting block logs at debug instead of at error on every cycle, and
+  `Sub` no longer logs its fault. A panicking block still logs at error, once
+  per retry delay ([#30]).
 - `createWatch` resolves with the watch id once the watch is open ([#29]).
 - `pauseExecution`, `resumeExecution`, `resetEngine` and `stopEngine`
   resolve once the engine has applied them ([#29]). A paused engine answers
@@ -390,8 +411,7 @@ with before and after code, for Rust and for JavaScript and TypeScript.
 - Rust side of the bindings (wasm32): `BlocksEngine::new` and `init_engine`
   take `Option<f64>` and return `Result<BlocksEngine, JsValue>`;
   `BlocksEngine::register_block`, `register_connector` and
-  `register_js_connector` return `JsValue` errors ([#30]);
-  `TryFrom<JsBlockDesc> for BlockDesc` returns `BlockDescError` ([#26]).
+  `register_js_connector` return `JsValue` errors ([#30]).
 
 #### npm package
 
@@ -436,6 +456,9 @@ with before and after code, for Rust and for JavaScript and TypeScript.
   blocks' leaf modules and `multi_threaded::engine` ([#27]).
 - `TryFrom<&str>` for `BlockImplementation` and `BlockRunCondition` ([#26]).
 - `EngineMessage`, `Messages` and `Engine::Channel` ([#29]).
+- The public `wasm::types` and `wasm::js_block` modules (wasm32), with
+  `JsBlockDesc`, `JsBlockPin`, `JsWatchNotification`, `JsWatchChange` and
+  `JsBlock`: they only serialize the bindings' values ([#30]).
 
 ### Fixed
 
@@ -457,6 +480,15 @@ with before and after code, for Rust and for JavaScript and TypeScript.
   whole if one block's actor was gone ([#23]).
 - `BitwiseNot` wrote its result without propagating it to linked blocks
   ([#26]).
+- A block that panicked while evaluated ended the engine's run, and one
+  waiting on an input the evaluation did not supply left the engine
+  answering nothing. Such an evaluation now fails with `EvalPanicked`, or
+  with `EvalTimeout` after 5 s ([#29]).
+- On wasm32, a block fed by its own output, directly or through other
+  blocks, froze the page or Node process ([#30]).
+- A JS block registered without a factory was rejected with
+  `ExternalLibraryNotFound` unless another block of its library had one
+  ([#30]).
 - The wasm start hook panicked when a logger was already installed ([#30]).
 - A JS block that returned its outputs synchronously threw through the wasm
   frames, and a thrown `Error` faulted the block with a serde message ([#30]).
@@ -483,7 +515,7 @@ they affect only code built from git in between:
   `#[non_exhaustive]` ([#26]). `ConnectorError` is no longer `UnwindSafe`
   ([#26]).
 - The connector messages became the `AddConnector`, `RemoveConnector` and
-  `ListConnectors` requests, with typed errors ([#29]).
+  `ManagedConnectors` requests, with typed errors ([#29]).
 - `ExternalIn` gained its `timeout` input, and `ExternalOut` and `Request`
   count their deadline from the first issue of an operation ([#23]).
 - The `ExternalIn`, `ExternalOut` and `Request` fault reasons render the
@@ -503,9 +535,12 @@ they affect only code built from git in between:
 - `EngineSessionOptions.watchSlots` is removed ([#29]) and `sleepDuration` is
   renamed `scanInterval` ([#30]). `EngineSession.watch` resolves with a
   `WatchSubscription` ([#30]), and `EngineSession.reset` and `stop` resolve
-  once the engine has applied them ([#29]).
+  once the engine has applied them ([#29]). Once the engine has stopped,
+  however it was stopped, `stop` resolves and `reset` rejects instead of
+  waiting forever ([#30]).
 - `add_connector` and `connector_names` moved from the engines onto the
-  `Engine` trait ([#27]).
+  `Engine` trait ([#27]), and `connector_names` is renamed
+  `managed_connectors` ([#29]).
 - `SingleThreadedEngine::schedule_local`, added in [#18], returns a `Result`
   ([#22]).
 - The rustdoc anchor `base::engine#lifecycle-messages` is now
