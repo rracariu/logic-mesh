@@ -3,7 +3,21 @@
 #[cfg(target_arch = "wasm32")]
 pub(crate) use crate::wasm::sleep::current_time_millis;
 #[cfg(target_arch = "wasm32")]
+pub(crate) use crate::wasm::sleep::monotonic_millis;
+#[cfg(target_arch = "wasm32")]
 pub(crate) use crate::wasm::sleep::sleep_millis;
+
+/// Milliseconds on a monotonic clock (non-WASM version): only the
+/// difference between two readings means anything, and wall-clock
+/// changes do not move it, so it is what deadlines are measured on.
+#[cfg(not(target_arch = "wasm32"))]
+pub(crate) fn monotonic_millis() -> u64 {
+    use std::sync::OnceLock;
+    use std::time::Instant;
+
+    static ORIGIN: OnceLock<Instant> = OnceLock::new();
+    ORIGIN.get_or_init(Instant::now).elapsed().as_millis() as u64
+}
 
 /// Sleeps for the given number of milliseconds (non-WASM version).
 #[cfg(not(target_arch = "wasm32"))]

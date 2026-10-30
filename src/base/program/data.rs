@@ -42,7 +42,9 @@ pub struct ProgramMeta {
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LinkData {
-    /// Optional link UUID (omitted for auto-generated IDs).
+    /// Optional link UUID. An engine keeps the id a link is created or
+    /// loaded with; left out, a connect request gets a fresh id, and a
+    /// loaded link the key it has in [`Program::links`].
     pub id: Option<String>,
     /// UUID of the source block.
     pub source_block_uuid: String,

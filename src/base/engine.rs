@@ -48,8 +48,9 @@
 //!   execution; resuming an engine that is not paused does nothing.
 //!   Every `run()` starts unpaused.
 //! - [`Reset`](messages::EngineMessage::Reset) terminates and removes
-//!   every block and link and unregisters the managed connectors,
-//!   whether or not the engine is paused. A paused engine stays paused.
+//!   every block and link, forgets the loaded program's name and
+//!   description, and unregisters the managed connectors, whether or
+//!   not the engine is paused. A paused engine stays paused.
 
 use super::error::Result;
 use super::{block::Block, program::Program};
@@ -189,22 +190,40 @@ pub trait Engine: Sized {
     where
         B: Block<Writer = Self::Writer, Reader = Self::Reader> + MaybeSendSync + 'static;
 
-    /// Synchronously schedules the blocks and validates-and-queues the links
-    /// from a [`Program`]. The queued links are wired, and pin values
-    /// can be pushed, once [`run`](Self::run) starts — to load a full
-    /// program including its pin values, send a
-    /// [`LoadProgramReq`](messages::EngineMessage::LoadProgramReq) to the
-    /// running engine instead.
+    /// Synchronously checks a whole [`Program`] and schedules its blocks,
+    /// recording their UI metadata and the program's name and
+    /// description. Its links are wired, and its saved pin values pushed,
+    /// once [`run`](Self::run) starts and before any block executes; a
+    /// running engine loads a program with a
+    /// [`LoadProgramReq`](messages::EngineMessage::LoadProgramReq)
+    /// instead.
+    ///
+    /// Every link keeps the id it was saved under — its
+    /// [`LinkData::id`](crate::base::program::LinkData::id), or else its
+    /// key in [`Program::links`].
     ///
     /// # Errors
     ///
-    /// Every block id is checked before any block is scheduled: an id
-    /// that does not parse, or that is already scheduled or named twice
-    /// in `program`
-    /// ([`EngineError::DuplicateBlockId`](crate::base::error::EngineError::DuplicateBlockId)),
-    /// rejects the program without scheduling any of its blocks. An
-    /// unknown block type or an invalid link is reported after the
-    /// blocks before it were scheduled.
+    /// All or nothing: the program is checked whole before any of its
+    /// blocks is scheduled, and a program failing a check schedules
+    /// nothing. The checks: every block id parses and is neither
+    /// scheduled already nor named twice in `program`
+    /// ([`EngineError::DuplicateBlockId`](crate::base::error::EngineError::DuplicateBlockId));
+    /// every block type resolves and the engine can host it; every pin
+    /// a saved value names exists
+    /// ([`EngineError::InputNotFound`](crate::base::error::EngineError::InputNotFound),
+    /// [`EngineError::OutputNotFound`](crate::base::error::EngineError::OutputNotFound));
+    /// every link id parses and is free
+    /// ([`EngineError::InvalidLinkUuid`](crate::base::error::EngineError::InvalidLinkUuid),
+    /// [`EngineError::DuplicateLinkId`](crate::base::error::EngineError::DuplicateLinkId));
+    /// every link joins existing pins
+    /// ([`EngineError::PinNotFound`](crate::base::error::EngineError::PinNotFound))
+    /// of blocks of `program`
+    /// ([`EngineError::LinkBlockNotInProgram`](crate::base::error::EngineError::LinkBlockNotInProgram)),
+    /// and no two links join the same pins
+    /// ([`EngineError::DuplicateLink`](crate::base::error::EngineError::DuplicateLink)).
+    /// A link the blocks still reject when `run` wires it, or a pin value
+    /// they reject, is dropped with a warning.
     fn schedule_program_blocks(&mut self, program: &Program) -> Result<()>;
 
     /// Runs the event loop of this engine and executes the scheduled blocks.

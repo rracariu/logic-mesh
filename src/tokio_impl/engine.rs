@@ -2,11 +2,9 @@
 
 use std::collections::BTreeSet;
 
-use crate::base::error::{EngineError, Result, parse_block_uuid};
 // External blocks only exist on `wasm32`, where the host supplies their
-// executor; every other target rejects them with this error.
-#[cfg(not(target_arch = "wasm32"))]
-use crate::base::error::ExternalError;
+// executor; every other target rejects them with `ExternalError`.
+use crate::base::error::{EngineError, ExternalError, Result, parse_block_uuid};
 use libhaystack::val::Value;
 use uuid::Uuid;
 
@@ -21,6 +19,7 @@ use crate::{
 mod actor_step;
 mod block_mailbox;
 mod connectors;
+mod graph;
 mod message_dispatch;
 pub mod single_threaded;
 #[cfg(not(target_arch = "wasm32"))]
@@ -51,6 +50,27 @@ pub(super) fn schedule_block_on_engine(
     } else {
         make_block_into(&block.name, Some(&block.library), block_id, sink)
     }
+}
+
+/// Checks, without constructing anything, that
+/// [`schedule_block_on_engine`] supports the kind of block `block`
+/// describes: external blocks only exist on `wasm32`, where the host
+/// supplies their executor.
+pub(super) fn ensure_schedulable(block: &BlockDesc) -> Result<()> {
+    if cfg!(not(target_arch = "wasm32")) && block.implementation == BlockImplementation::External {
+        return Err(ExternalError::Unsupported.into());
+    }
+    Ok(())
+}
+
+/// [`ensure_schedulable`] for [`schedule_block_on_engine_mt`].
+#[cfg(feature = "multi-threaded")]
+#[cfg(not(target_arch = "wasm32"))]
+pub(super) fn ensure_schedulable_mt(block: &BlockDesc) -> Result<()> {
+    if block.implementation == BlockImplementation::External {
+        return Err(ExternalError::UnsupportedMultiThreaded.into());
+    }
+    Ok(())
 }
 
 /// [`schedule_block_on_engine`] for the multi-threaded engine, which

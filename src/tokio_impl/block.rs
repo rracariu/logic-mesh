@@ -3,12 +3,12 @@
 use std::time::Duration;
 
 use futures::future::select_all;
-use libhaystack::val::kind::HaystackKind;
+use libhaystack::val::{Value, kind::HaystackKind};
 
 use super::sleep::sleep_millis;
 use crate::base::Status;
 use crate::base::block::{Block, BlockState, convert_value_kind};
-use crate::base::input::{InputProps, input_reader::InputReader};
+use crate::base::input::{Input, InputProps, input_reader::InputReader};
 use crate::blocks::InputImpl;
 use crate::blocks::utils::get_sleep_dur;
 
@@ -16,6 +16,26 @@ use crate::blocks::utils::get_sleep_dur;
 pub type ReaderImpl = <InputImpl as InputProps>::Reader;
 /// Concrete writer type extracted from [`InputImpl`].
 pub type WriterImpl = <InputImpl as InputProps>::Writer;
+
+/// Writes `value` to `input` the way an engine pin write does, with
+/// [`Status::Ok`] — the value comes from the engine, not from a
+/// producer block.
+///
+/// The value lands in the input's cache at once, so everything reading
+/// the cache — `execute`, an inspection, the input's chained links —
+/// sees it even while the block is held. It is also sent through the
+/// input's own watch channel, which [`drain_ready_inputs`] reads whether
+/// or not the input is linked, so the block's next input read returns
+/// with it and the block runs one `execute` cycle with the new value: a
+/// reactive block recomputes after a write to a constant input just as
+/// it does after a linked one changes.
+pub(crate) fn write_input_value<I>(input: &mut I, value: Value)
+where
+    I: Input<Reader = ReaderImpl, Writer = WriterImpl> + ?Sized,
+{
+    input.set_value(value.clone(), Status::Ok);
+    input.writer().send_replace((value, Status::Ok));
+}
 
 impl<B: Block> InputReader for B {
     async fn read_inputs(&mut self) -> Option<usize> {
@@ -86,11 +106,17 @@ impl<B: Block> InputReader for B {
 /// at a time.
 ///
 /// Behavior:
-/// - If any connected input already has a fresh value, drain them all
-///   synchronously and return the index of the last one drained.
+/// - If any input already has a fresh value — a linked one, or any input
+///   an engine pin write reached (see [`write_input_value`]) — drain them
+///   all synchronously and return the index of the last one drained.
 /// - Otherwise, await `receiver()` on every connected input and, when one
 ///   wakes up, drain again (the wait might have woken several at once).
-/// - Returns [`None`] only when the block has no connected inputs at all.
+///   Unlinked inputs need no waiting: only an engine pin write reaches
+///   them, and that write arrives as a mailbox command, which ends the
+///   block's in-flight `execute` — the next one drains it in the first
+///   step.
+/// - Returns [`None`] only when nothing was fresh and the block has no
+///   connected inputs at all.
 ///
 /// Type-mismatched inputs are converted via [`convert_value_kind`]; if the
 /// conversion fails the block transitions to [`BlockState::Fault`].
@@ -125,6 +151,10 @@ pub(crate) async fn read_block_inputs<B: Block>(block: &mut B) -> Option<usize> 
 /// Synchronously drain every input that has a fresh payload. Returns the
 /// index of the last drained input (or [`None`] if nothing was ready).
 ///
+/// Every input is read, linked or not: an unlinked input's channel only
+/// changes on an engine pin write, which must run the block like any
+/// other fresh value.
+///
 /// Faults the block if:
 /// - any value fails type conversion (Phase 1: block-level fault), or
 /// - any drained payload carries [`Status::Fault`] — upstream fault
@@ -138,9 +168,6 @@ pub(crate) fn drain_ready_inputs<B: Block>(block: &mut B) -> Option<usize> {
     {
         let mut inputs = block.inputs_mut();
         for (idx, input) in inputs.iter_mut().enumerate() {
-            if !input.is_connected() {
-                continue;
-            }
             let Some((value, status)) = input.try_take() else {
                 continue;
             };

@@ -50,13 +50,17 @@
 //! - [`engine`] — [`SingleThreadedEngine`] itself: lifecycle, the [`Engine`]
 //!   trait impl, sync configuration helpers, and the async APIs that
 //!   `message_dispatch` routes external requests to.
+//! - `graph` (shared with the multi-threaded engine) — the
+//!   [`BlockHandle`]s and the running-phase operations over them: pin
+//!   writes, link wiring, block removal, program save and load.
 //!
 //! [`Engine`]: crate::base::engine::Engine
 
 mod actor;
 mod engine;
 
-pub use engine::{BlockHandle, Messages, SingleThreadedEngine};
+pub use super::graph::BlockHandle;
+pub use engine::{Messages, SingleThreadedEngine};
 
 #[cfg(not(target_arch = "wasm32"))]
 #[cfg(test)]
@@ -66,7 +70,7 @@ mod tests {
     use crate::base;
     use crate::base::program::{
         Program, ProgramBlock,
-        data::{LinkData, PinValue, Position},
+        data::{LinkData, PinValue},
     };
     use crate::blocks::{math::Add, misc::SineWave};
     use base::block::{BlockConnect, BlockProps};
@@ -185,132 +189,101 @@ mod tests {
         eng.run().await;
     }
 
-    /// End-to-end Q4+A3 check: a [`Program`] with blocks, a link, an
-    /// input constant, and UI metadata (label + position) round-trips
-    /// through `LoadProgramReq` and `GetCurrentProgramReq` without the
-    /// JS layer being involved at all.
-    #[tokio::test(flavor = "current_thread")]
-    async fn program_load_save_round_trip() {
-        // Two Add blocks wired together. `Add` has 16 numeric inputs +
-        // one numeric output; we'll seed `in0` on the first block with
-        // a constant.
-        let add0_uuid = Uuid::new_v4();
-        let add1_uuid = Uuid::new_v4();
-        let link_uuid = Uuid::new_v4();
+    /// Regression: a save always returned no name and no description,
+    /// and lost the ids of the links it had loaded — see
+    /// `test_support::round_trip`.
+    mod round_trip {
+        use super::*;
+        use crate::tokio_impl::engine::test_support::round_trip;
 
-        let mut input_consts = std::collections::BTreeMap::new();
-        input_consts.insert(
-            "in0".to_string(),
-            PinValue {
-                value: 42.into(),
-                is_connected: false,
-            },
-        );
+        #[tokio::test(flavor = "current_thread")]
+        async fn a_saved_program_reloads_unchanged() {
+            round_trip::a_saved_program_reloads_unchanged(SingleThreadedEngine::new()).await;
+        }
 
-        let mut blocks = std::collections::BTreeMap::new();
-        blocks.insert(
-            add0_uuid.to_string(),
-            ProgramBlock {
-                name: "Add".to_string(),
-                lib: "core".to_string(),
-                label: Some("Summer A".to_string()),
-                positions: Some(Position { x: 10.0, y: 20.0 }),
-                inputs: input_consts,
-                outputs: Default::default(),
-            },
-        );
-        blocks.insert(
-            add1_uuid.to_string(),
-            ProgramBlock {
-                name: "Add".to_string(),
-                lib: "core".to_string(),
-                label: Some("Summer B".to_string()),
-                positions: Some(Position { x: 200.0, y: 20.0 }),
-                inputs: Default::default(),
-                outputs: Default::default(),
-            },
-        );
+        #[tokio::test(flavor = "current_thread")]
+        async fn reset_forgets_the_program_identity() {
+            round_trip::reset_forgets_the_program_identity(SingleThreadedEngine::new()).await;
+        }
 
-        let mut links = std::collections::BTreeMap::new();
-        links.insert(
-            link_uuid.to_string(),
-            LinkData {
-                id: Some(link_uuid.to_string()),
-                source_block_uuid: add0_uuid.to_string(),
-                target_block_uuid: add1_uuid.to_string(),
-                source_block_pin_name: "out".to_string(),
-                target_block_pin_name: "in0".to_string(),
-            },
-        );
+        #[tokio::test(flavor = "current_thread")]
+        async fn a_program_scheduled_while_idle_saves_its_identity() {
+            round_trip::a_program_scheduled_while_idle_saves_its_identity(
+                SingleThreadedEngine::new(),
+            )
+            .await;
+        }
+    }
 
-        let program = Program {
-            name: Some("rust-headless-test".to_string()),
-            description: None,
-            blocks,
-            links,
-        };
+    /// Regression: a load that failed on a block type, a link or a pin
+    /// left the blocks scheduled before the failure in place, half
+    /// wired, and ignored unknown pin names in saved values — see
+    /// `test_support::atomic_loads`.
+    mod atomic_loads {
+        use super::*;
+        use crate::tokio_impl::engine::test_support::atomic_loads;
 
-        let mut eng = SingleThreadedEngine::new();
-        let (sender, mut receiver) = mpsc::channel(32);
-        let channel_id = Uuid::new_v4();
-        let engine_sender = eng.create_message_channel(channel_id, sender.clone());
+        #[tokio::test(flavor = "current_thread")]
+        async fn a_program_failing_its_checks_loads_nothing() {
+            atomic_loads::a_program_failing_its_checks_loads_nothing(SingleThreadedEngine::new())
+                .await;
+        }
 
-        // Driver thread: pushes Load, reads back via Get, asserts, then
-        // shuts down so eng.run() unblocks.
-        thread::spawn(move || {
-            let rt = Runtime::new().expect("RT");
-            let handle = rt.spawn(async move {
-                sleep(Duration::from_millis(100)).await;
+        #[tokio::test(flavor = "current_thread")]
+        async fn a_program_failing_its_checks_schedules_nothing() {
+            atomic_loads::a_program_failing_its_checks_schedules_nothing(
+                SingleThreadedEngine::new(),
+            )
+            .await;
+        }
 
-                let _ = engine_sender
-                    .send(LoadProgramReq(channel_id, program.clone()))
-                    .await;
+        #[tokio::test(flavor = "current_thread")]
+        async fn a_program_failing_to_wire_is_removed_again() {
+            atomic_loads::a_program_failing_to_wire_is_removed_again(SingleThreadedEngine::new())
+                .await;
+        }
 
-                match receiver.recv().await {
-                    Some(LoadProgramRes(Ok(()))) => {}
-                    other => panic!("Expected LoadProgramRes(Ok), got {:?}", other),
-                }
+        #[tokio::test(flavor = "current_thread")]
+        async fn a_program_scheduled_while_idle_drops_a_link_it_fails_to_wire() {
+            atomic_loads::a_program_scheduled_while_idle_drops_a_link_it_fails_to_wire(
+                SingleThreadedEngine::new(),
+            )
+            .await;
+        }
 
-                let _ = engine_sender.send(GetCurrentProgramReq(channel_id)).await;
-                let res = receiver.recv().await;
-                match res {
-                    Some(GetCurrentProgramRes(Ok(saved))) => {
-                        assert_eq!(saved.blocks.len(), 2);
-                        let saved0 = saved
-                            .blocks
-                            .get(&add0_uuid.to_string())
-                            .expect("first block round-trips");
-                        assert_eq!(saved0.name, "Add");
-                        assert_eq!(saved0.label.as_deref(), Some("Summer A"));
-                        let pos = saved0.positions.expect("position survives");
-                        assert!((pos.x - 10.0).abs() < f64::EPSILON);
-                        // Input constant round-trips.
-                        let in0 = saved0.inputs.get("in0").expect("in0 survives");
-                        assert_eq!(in0.value, 42.into());
+        #[tokio::test(flavor = "current_thread")]
+        async fn a_program_scheduled_while_idle_gets_its_pin_values() {
+            atomic_loads::a_program_scheduled_while_idle_gets_its_pin_values(
+                SingleThreadedEngine::new(),
+            )
+            .await;
+        }
+    }
 
-                        // The wired link survives. After connect, target
-                        // input 'in0' on the second block should report
-                        // is_connected = true.
-                        assert_eq!(saved.links.len(), 1);
-                        let saved1 = saved
-                            .blocks
-                            .get(&add1_uuid.to_string())
-                            .expect("second block round-trips");
-                        let target_in0 = saved1.inputs.get("in0").expect("target input present");
-                        assert!(
-                            target_in0.is_connected,
-                            "wired target input should report is_connected=true"
-                        );
-                    }
-                    other => panic!("Expected GetCurrentProgramRes(Ok), got {:?}", other),
-                }
+    /// Regression: once a block's actor was gone, the block could not
+    /// be removed, saving the program failed, and its links could not be
+    /// removed — see `test_support::dead_actors`.
+    mod dead_actors {
+        use super::*;
+        use crate::tokio_impl::engine::test_support::dead_actors;
 
-                let _ = engine_sender.send(Shutdown).await;
-            });
-            rt.block_on(handle)
-        });
+        #[tokio::test(flavor = "current_thread")]
+        async fn a_block_whose_actor_is_gone_is_saved_without_pins() {
+            dead_actors::a_block_whose_actor_is_gone_is_saved_without_pins(
+                SingleThreadedEngine::new(),
+            )
+            .await;
+        }
 
-        eng.run().await;
+        #[tokio::test(flavor = "current_thread")]
+        async fn a_link_out_of_a_gone_actor_is_removed() {
+            dead_actors::a_link_out_of_a_gone_actor_is_removed(SingleThreadedEngine::new()).await;
+        }
+
+        #[tokio::test(flavor = "current_thread")]
+        async fn a_block_whose_actor_is_gone_is_removed() {
+            dead_actors::a_block_whose_actor_is_gone_is_removed(SingleThreadedEngine::new()).await;
+        }
     }
 
     /// Regression: a panic in `execute` killed the block's actor task —
@@ -379,6 +352,122 @@ mod tests {
         #[tokio::test(flavor = "current_thread")]
         async fn reset_while_paused() {
             lifecycle::reset_while_paused(SingleThreadedEngine::new()).await;
+        }
+    }
+
+    /// Regression: a pin write landed in the input's cache only, and an
+    /// actor wakes on linked inputs alone, so a write to an unlinked
+    /// input never ran the block — see `test_support::pin_writes`.
+    mod pin_writes {
+        use super::*;
+        use crate::tokio_impl::engine::test_support::pin_writes;
+
+        #[tokio::test(flavor = "current_thread")]
+        async fn writing_an_unlinked_block_recomputes_it() {
+            pin_writes::writing_an_unlinked_block_recomputes_it(SingleThreadedEngine::new()).await;
+        }
+
+        #[tokio::test(flavor = "current_thread")]
+        async fn writing_a_constant_input_recomputes_a_linked_block() {
+            pin_writes::writing_a_constant_input_recomputes_a_linked_block(
+                SingleThreadedEngine::new(),
+            )
+            .await;
+        }
+
+        #[tokio::test(flavor = "current_thread")]
+        async fn a_fix_written_to_an_unlinked_input_clears_a_fault() {
+            pin_writes::a_fix_written_to_an_unlinked_input_clears_a_fault(
+                SingleThreadedEngine::new(),
+            )
+            .await;
+        }
+    }
+
+    /// Regression: wiring a link always made up a fresh id, so a link
+    /// lost the id a connect request named or a loaded program saved it
+    /// under — and removing it by that id failed. See
+    /// `test_support::link_ids`.
+    mod link_ids {
+        use super::*;
+        use crate::tokio_impl::engine::test_support::link_ids;
+
+        #[tokio::test(flavor = "current_thread")]
+        async fn connecting_keeps_a_named_link_id() {
+            link_ids::connecting_keeps_a_named_link_id(SingleThreadedEngine::new()).await;
+        }
+
+        #[tokio::test(flavor = "current_thread")]
+        async fn connecting_rejects_a_taken_or_invalid_link_id() {
+            link_ids::connecting_rejects_a_taken_or_invalid_link_id(SingleThreadedEngine::new())
+                .await;
+        }
+
+        #[tokio::test(flavor = "current_thread")]
+        async fn a_loaded_link_keeps_its_saved_id() {
+            link_ids::a_loaded_link_keeps_its_saved_id(SingleThreadedEngine::new()).await;
+        }
+
+        #[tokio::test(flavor = "current_thread")]
+        async fn a_program_reusing_a_link_id_is_rejected() {
+            link_ids::a_program_reusing_a_link_id_is_rejected(SingleThreadedEngine::new()).await;
+        }
+    }
+
+    /// Regression: every request addressed to a block cancels its
+    /// cycle, and the re-issued operation restarted its timeout, so
+    /// steady requests kept a slow publish or request from ever timing
+    /// out; a subscribe had no timeout at all — see
+    /// `test_support::connector_deadlines`.
+    mod connector_deadlines {
+        use super::*;
+        use crate::tokio_impl::engine::test_support::connector_deadlines;
+
+        #[tokio::test(flavor = "current_thread")]
+        async fn external_out_times_out_under_requests() {
+            connector_deadlines::external_out_times_out_under_requests(SingleThreadedEngine::new())
+                .await;
+        }
+
+        #[tokio::test(flavor = "current_thread")]
+        async fn request_times_out_under_requests() {
+            connector_deadlines::request_times_out_under_requests(SingleThreadedEngine::new())
+                .await;
+        }
+
+        #[tokio::test(flavor = "current_thread")]
+        async fn external_in_times_out_under_requests() {
+            connector_deadlines::external_in_times_out_under_requests(SingleThreadedEngine::new())
+                .await;
+        }
+
+        /// Regression: an operation's deadline was fixed from the
+        /// `timeout` pin when the operation was first issued, so a
+        /// timeout written while it was in flight — as a program load
+        /// writes it, after `in` — was ignored until the next value.
+        #[tokio::test(flavor = "current_thread")]
+        async fn external_out_applies_a_late_timeout() {
+            connector_deadlines::external_out_applies_a_late_timeout(SingleThreadedEngine::new())
+                .await;
+        }
+
+        #[tokio::test(flavor = "current_thread")]
+        async fn request_applies_a_late_timeout() {
+            connector_deadlines::request_applies_a_late_timeout(SingleThreadedEngine::new()).await;
+        }
+
+        #[tokio::test(flavor = "current_thread")]
+        async fn external_in_applies_a_late_timeout() {
+            connector_deadlines::external_in_applies_a_late_timeout(SingleThreadedEngine::new())
+                .await;
+        }
+
+        #[tokio::test(flavor = "current_thread")]
+        async fn a_loaded_timeout_applies_to_the_first_operation() {
+            connector_deadlines::a_loaded_timeout_applies_to_the_first_operation(
+                SingleThreadedEngine::new(),
+            )
+            .await;
         }
     }
 

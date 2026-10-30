@@ -5,8 +5,10 @@
 use libhaystack::val::Value;
 
 use crate::base::connector::ValueStream;
+use crate::base::error::ConnectorError;
 use crate::base::input::InputProps;
 use crate::blocks::InputImpl;
+use crate::tokio_impl::sleep::{monotonic_millis, sleep_millis};
 
 /// A live connector subscription held by an external block across
 /// execution cycles: the binding identity plus the value stream it
@@ -56,6 +58,90 @@ pub(crate) fn input_as_timeout_millis(input: &InputImpl) -> u64 {
     }
 }
 
+/// The point in time a connector operation must settle by: the time it
+/// was first issued plus the block's timeout.
+///
+/// The block actor drops a block's in-flight `execute` whenever a
+/// mailbox command arrives, and the next cycle re-issues the operation.
+/// Keeping the time of the first issue on the block across those cycles
+/// is what lets steady command traffic re-issue an operation without
+/// restarting its clock. Each re-issue builds its deadline anew from
+/// that time and the `timeout` pin's current value, so a timeout
+/// written while the operation is owed applies to it — a program load,
+/// for one, writes `timeout` after the pins that start the operation.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct Deadline {
+    /// The timeout the deadline was set with, in milliseconds.
+    millis: u64,
+    /// When it runs out, on the [`monotonic_millis`] clock.
+    at: u64,
+}
+
+impl Deadline {
+    /// A deadline `millis` milliseconds after `issued_at`, a reading of
+    /// the [`monotonic_millis`] clock.
+    pub(crate) fn since(issued_at: u64, millis: u64) -> Self {
+        Self {
+            millis,
+            at: issued_at.saturating_add(millis),
+        }
+    }
+
+    /// The time left, in milliseconds; zero once the deadline passed.
+    fn remaining_millis(&self) -> u64 {
+        self.at.saturating_sub(monotonic_millis())
+    }
+
+    /// Whether the deadline has passed.
+    pub(crate) fn has_passed(&self) -> bool {
+        self.remaining_millis() == 0
+    }
+
+    /// Resolves once the deadline has passed.
+    pub(crate) async fn passed(&self) {
+        sleep_millis(self.remaining_millis()).await;
+    }
+
+    /// The error reporting an operation on `address` that missed this
+    /// deadline.
+    pub(crate) fn timeout_error(&self, address: String) -> ConnectorError {
+        ConnectorError::Timeout {
+            address,
+            millis: self.millis,
+        }
+    }
+}
+
+/// A connector operation an external block owes: the value to send and,
+/// from the first time the operation is issued, when that was. Kept on
+/// the block until the operation completes, so a cancelled `execute`
+/// re-issues it with the time it has left.
+#[derive(Debug)]
+pub(crate) struct PendingOp {
+    /// The value the operation sends.
+    pub(crate) value: Value,
+    /// When the operation was first issued, on the [`monotonic_millis`]
+    /// clock.
+    issued_at: Option<u64>,
+}
+
+impl PendingOp {
+    /// An operation sending `value`, not issued yet.
+    pub(crate) fn new(value: Value) -> Self {
+        Self {
+            value,
+            issued_at: None,
+        }
+    }
+
+    /// The operation's [`Deadline`]: `millis` milliseconds after it was
+    /// first issued — now, if this is the first time.
+    pub(crate) fn deadline(&mut self, millis: u64) -> Deadline {
+        let issued_at = *self.issued_at.get_or_insert_with(monotonic_millis);
+        Deadline::since(issued_at, millis)
+    }
+}
+
 #[cfg(all(test, not(target_arch = "wasm32")))]
 pub(crate) mod mock {
     use std::collections::HashMap;
@@ -81,6 +167,9 @@ pub(crate) mod mock {
         pub(crate) requests: Mutex<Vec<(String, Value)>>,
         /// When set, `subscribe` fails with [`ConnectorError::Subscribe`].
         pub(crate) fail_subscribe: bool,
+        /// When set, `subscribe` sleeps this many milliseconds before
+        /// opening the subscription.
+        pub(crate) subscribe_delay_millis: Option<u64>,
         /// When set, `publish` fails with [`ConnectorError::Publish`].
         pub(crate) fail_publish: bool,
         /// When set, `publish` sleeps this many milliseconds before
@@ -119,6 +208,9 @@ pub(crate) mod mock {
         fn subscribe(&self, address: &str) -> ConnectorFuture<'_, ValueStream> {
             let address = address.to_string();
             Box::pin(async move {
+                if let Some(millis) = self.subscribe_delay_millis {
+                    tokio::time::sleep(std::time::Duration::from_millis(millis)).await;
+                }
                 if self.fail_subscribe {
                     return Err(ConnectorError::Subscribe {
                         address,
