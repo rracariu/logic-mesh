@@ -37,7 +37,7 @@ use crate::base::engine::messages::BlockDefinition;
 use crate::base::error::{EngineError, LinkEnd, Result, parse_block_uuid, parse_link_uuid};
 use crate::base::program::{
     Program,
-    data::{LinkData, PinValue, Position, ProgramBlock},
+    data::{EditorMetadata, LinkData, PinValue, Position, ProgramBlock},
 };
 use crate::blocks::registry::get_block;
 
@@ -70,6 +70,9 @@ pub struct BlockHandle {
     /// UI position. Same role as `label`: pure passthrough so headless
     /// save/load preserves the layout.
     position: Option<Position>,
+    /// Opaque editor metadata. Same role as `label`: kept only so a save
+    /// returns it as it was loaded or set.
+    editor: Option<EditorMetadata>,
 }
 
 impl BlockHandle {
@@ -96,6 +99,12 @@ impl BlockHandle {
     /// Returns the UI position, if any.
     pub fn position(&self) -> Option<Position> {
         self.position
+    }
+    /// Returns the editor metadata, if any: the one the block was loaded
+    /// with, or the last one
+    /// [set](crate::base::engine::Engine::set_block_editor).
+    pub fn editor(&self) -> Option<&EditorMetadata> {
+        self.editor.as_ref()
     }
 }
 
@@ -245,6 +254,7 @@ impl BlockGraph {
             mailbox,
             label: None,
             position: None,
+            editor: None,
         };
         self.handles.insert(id, handle);
         Ok(())
@@ -268,6 +278,20 @@ impl BlockGraph {
         if let Some(position) = position {
             handle.position = Some(position);
         }
+        Ok(())
+    }
+
+    /// Replaces block `id`'s editor metadata, or removes it for `None`.
+    pub(super) fn set_editor(
+        &mut self,
+        id: &Uuid,
+        editor: Option<EditorMetadata>,
+    ) -> Result<(), EngineError> {
+        let handle = self
+            .handles
+            .get_mut(id)
+            .ok_or(EngineError::BlockInstanceNotFound { id: *id })?;
+        handle.editor = editor;
         Ok(())
     }
 
@@ -643,9 +667,11 @@ impl BlockGraph {
                 id.to_string(),
                 ProgramBlock {
                     name: handle.name.clone(),
-                    lib: handle.library.clone(),
+                    library: handle.library.clone(),
+                    ver: Some(handle.desc.ver.clone()),
                     label: handle.label.clone(),
-                    positions: handle.position,
+                    position: handle.position,
+                    editor: handle.editor.clone(),
                     inputs,
                     outputs,
                 },
@@ -661,6 +687,7 @@ impl BlockGraph {
         }
 
         Ok(Program {
+            version: Program::FORMAT_VERSION,
             name: self.name.clone(),
             description: self.description.clone(),
             blocks,
@@ -939,8 +966,11 @@ struct CheckedProgram<'p> {
 /// its link ids — or changes nothing and fails.
 ///
 /// The checks cover everything that can be checked before a block
-/// exists: every block id parses and is free, on the engine and in the
-/// program; every block type resolves, and `host` can schedule it;
+/// exists: the program's format is one this crate reads
+/// ([`EngineError::UnsupportedProgramVersion`]); every block id parses
+/// and is free, on the engine and in the program; every block type
+/// resolves, at a version compatible with the one it was saved at
+/// ([`EngineError::BlockVersionMismatch`]), and `host` can schedule it;
 /// every pin a saved value names exists on its block
 /// ([`EngineError::InputNotFound`], [`EngineError::OutputNotFound`]);
 /// and every link has an id that parses and is free, joins two pins
@@ -968,7 +998,8 @@ pub(super) fn stage_program<H: ProgramHost>(
         // Record UI metadata on the handle so it round-trips on save.
         if let Some(handle) = host.graph_mut().handles.get_mut(id) {
             handle.label = block.label.clone();
-            handle.position = block.positions;
+            handle.position = block.position;
+            handle.editor = block.editor.clone();
         }
     }
 
@@ -987,11 +1018,15 @@ pub(super) fn stage_program<H: ProgramHost>(
 
 /// The checks of [`stage_program`].
 fn check_program<'p, H: ProgramHost>(host: &H, program: &'p Program) -> Result<CheckedProgram<'p>> {
+    program.check_version()?;
     let graph = host.graph();
     let mut blocks = Vec::new();
     let mut pins = Vec::new();
     for (id, block) in program_block_ids(program, |id| graph.contains(id))? {
-        let entry = get_block(&block.name, Some(&block.lib))?;
+        let entry = get_block(&block.name, Some(&block.library))?;
+        if let Some(saved) = &block.ver {
+            check_block_version(id, &block.name, saved, &entry.desc.ver)?;
+        }
         host.ensure_schedulable(&entry.desc)?;
         for (output, pins_of, values) in [
             (false, &entry.desc.inputs, &block.inputs),
@@ -1056,6 +1091,45 @@ fn check_program<'p, H: ProgramHost>(host: &H, program: &'p Program) -> Result<C
         links,
         pins,
     })
+}
+
+/// Checks that block `id` of type `name`, saved at version `saved`, can
+/// load as the registered version `registered`.
+///
+/// Versions compare as semantic versions do for compatibility: by major
+/// version, and below 1.0 by minor version too. Any other difference is
+/// logged and loads.
+fn check_block_version(
+    id: Uuid,
+    name: &str,
+    saved: &str,
+    registered: &str,
+) -> Result<(), EngineError> {
+    if saved == registered {
+        return Ok(());
+    }
+    if compatibility_key(saved) != compatibility_key(registered) {
+        return Err(EngineError::BlockVersionMismatch {
+            block: id,
+            name: name.to_string(),
+            saved: saved.to_string(),
+            registered: registered.to_string(),
+        });
+    }
+    log::warn!("Block {id} ({name}) was saved at version {saved}, loading it as {registered}");
+    Ok(())
+}
+
+/// The components of `version` that a compatible version shares: the
+/// major version, and below 1.0 the minor version as well.
+fn compatibility_key(version: &str) -> (&str, Option<&str>) {
+    let mut parts = version.trim().split('.');
+    let major = parts.next().unwrap_or_default();
+    if major == "0" {
+        (major, Some(parts.next().unwrap_or("0")))
+    } else {
+        (major, None)
+    }
 }
 
 /// Filter for "this is a real saved value, not a placeholder."

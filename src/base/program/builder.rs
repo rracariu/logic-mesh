@@ -11,7 +11,7 @@ use crate::base::block::BlockDesc;
 use crate::base::error::{EngineError, LinkEnd, Result};
 use crate::blocks::registry::{CORE_LIB, get_block};
 
-use super::data::{LinkData, PinValue, Position, Program, ProgramBlock};
+use super::data::{EditorMetadata, LinkData, PinValue, Position, Program, ProgramBlock};
 
 /// A block added to a [`ProgramBuilder`], used to refer to it when
 /// linking.
@@ -63,11 +63,10 @@ pub struct ProgramBuilder {
 impl ProgramBuilder {
     /// Starts an empty program named `name`.
     pub fn new(name: impl Into<String>) -> Self {
+        let mut program = Program::new();
+        program.name = Some(name.into());
         Self {
-            program: Program {
-                name: Some(name.into()),
-                ..Default::default()
-            },
+            program,
             descs: BTreeMap::new(),
         }
     }
@@ -87,24 +86,20 @@ impl ProgramBuilder {
         self.add_block_in(name, CORE_LIB)
     }
 
-    /// Adds block `name` from library `lib`. The block name comes first,
-    /// as in every other lookup that names a library.
+    /// Adds block `name` from `library`. The block name comes first, as
+    /// in every other lookup that names a library. The block is saved
+    /// with its registered version.
     ///
     /// # Errors
     ///
     /// Returns an error if no such block is registered.
-    pub fn add_block_in(&mut self, name: &str, lib: &str) -> Result<ProgramBlockBuilder<'_>> {
-        let entry = get_block(name, Some(lib))?;
+    pub fn add_block_in(&mut self, name: &str, library: &str) -> Result<ProgramBlockBuilder<'_>> {
+        let entry = get_block(name, Some(library))?;
 
         let id = Uuid::new_v4();
-        self.program.blocks.insert(
-            id.to_string(),
-            ProgramBlock {
-                name: name.to_string(),
-                lib: lib.to_string(),
-                ..Default::default()
-            },
-        );
+        let mut block = ProgramBlock::new(name, library);
+        block.ver = Some(entry.desc.ver.clone());
+        self.program.blocks.insert(id.to_string(), block);
         self.descs.insert(id, entry.desc);
 
         Ok(ProgramBlockBuilder { builder: self, id })
@@ -150,13 +145,7 @@ impl ProgramBuilder {
         let id = Uuid::new_v4();
         self.program.links.insert(
             id.to_string(),
-            LinkData {
-                id: Some(id.to_string()),
-                source_block_uuid: source.id().to_string(),
-                target_block_uuid: target.id().to_string(),
-                source_block_pin_name: source_pin.to_string(),
-                target_block_pin_name: target_pin.to_string(),
-            },
+            LinkData::new(source.id(), source_pin, target.id(), target_pin).with_id(id),
         );
         Ok(id)
     }
@@ -192,7 +181,14 @@ impl ProgramBlockBuilder<'_> {
 
     /// Sets the block's UI position.
     pub fn position(mut self, x: f64, y: f64) -> Self {
-        self.block().positions = Some(Position { x, y });
+        self.block().position = Some(Position::new(x, y));
+        self
+    }
+
+    /// Sets the block's opaque editor metadata, saved back as it is
+    /// given.
+    pub fn editor(mut self, editor: EditorMetadata) -> Self {
+        self.block().editor = Some(editor);
         self
     }
 
@@ -212,13 +208,9 @@ impl ProgramBlockBuilder<'_> {
             .into());
         }
 
-        self.block().inputs.insert(
-            name.to_string(),
-            PinValue {
-                value: value.into(),
-                is_connected: false,
-            },
-        );
+        self.block()
+            .inputs
+            .insert(name.to_string(), PinValue::new(value, false));
         Ok(self)
     }
 
@@ -254,7 +246,10 @@ mod test {
 
         let program = builder.build();
         let block = &program.blocks[&add.id().to_string()];
-        assert_eq!((block.name.as_str(), block.lib.as_str()), ("Add", CORE_LIB));
+        assert_eq!(
+            (block.name.as_str(), block.library.as_str()),
+            ("Add", CORE_LIB)
+        );
 
         let mut builder = ProgramBuilder::new("swapped");
         assert_matches!(
@@ -266,12 +261,15 @@ mod test {
 
     #[test]
     fn built_program_schedules_with_its_metadata() {
+        let mut editor = EditorMetadata::new();
+        editor.insert("widget".to_string(), serde_json::json!({"kind": "Display"}));
         let mut builder = ProgramBuilder::new("demo").description("two adders");
         let a = builder
             .add_block("Add")
             .unwrap()
             .label("first")
             .position(10.0, 20.0)
+            .editor(editor.clone())
             .input("in1", 5)
             .unwrap()
             .finish();
@@ -279,10 +277,12 @@ mod test {
         let link = builder.link(a, "out", b, "in0").unwrap();
 
         let program = builder.build();
+        assert_eq!(program.version, Program::FORMAT_VERSION);
         assert_eq!(program.name.as_deref(), Some("demo"));
         assert_eq!(program.description.as_deref(), Some("two adders"));
         let first = &program.blocks[&a.id().to_string()];
         assert_eq!(first.inputs["in1"].value, 5.into());
+        assert_eq!(first.ver.as_deref(), Some(BlockDesc::DEFAULT_VER));
         assert_eq!(
             program.links[&link.to_string()].target_block_uuid,
             b.id().to_string()
@@ -294,7 +294,8 @@ mod test {
             .expect("a built program schedules");
         let handle = engine.block_handle(&a.id()).expect("scheduled");
         assert_eq!(handle.label(), Some("first"));
-        assert_eq!(handle.position(), Some(Position { x: 10.0, y: 20.0 }));
+        assert_eq!(handle.position(), Some(Position::new(10.0, 20.0)));
+        assert_eq!(handle.editor(), Some(&editor));
     }
 
     #[test]

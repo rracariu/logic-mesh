@@ -449,15 +449,21 @@ a cancelled subscribe cannot leak a live JS subscription.
 
 The SvelteKit editor is the first consumer of this API and exercises every part of it. Its UI widgets
 are not engine block types; each widget is a plain `ExternalIn` or `ExternalOut` bound to a
-JavaScript-implemented connector named `ui`, addressed by its own block id, and carrying editor-only
-metadata (`widget: { kind, config, configSources, valueSource }`) that the engine ignores.
+JavaScript-implemented connector named `ui`, addressed by its own block id. The widget itself —
+`{ kind, config, configSources, valueSource }` — is saved in the block's editor metadata, as
+`editor.widget` (the `editor` field of `ProgramBlock`, typed `EditorMetadata`). The engine keeps that
+field without reading it, and `getProgram` / `save_program` return it as it was loaded (or, from
+Rust, last set with `Engine::set_block_editor`). A `widget` key beside the block's own fields is not
+part of the program format, and a load drops it; the editor moves the one a save from before format
+versions has there into `editor.widget` (`upgradeFormat` in `ProgramFormat.ts`).
 
 | Module (`web/app/src/lib/`) | Role |
 |---|---|
 | `UiConnector.ts` | The `ui` connector. Input widgets call `pushValue(address, v)`; engine-side `ExternalIn` blocks subscribe. `ExternalOut` blocks publish; display widgets listen through `onValue(address, cb)`. Latest values are cached in both directions so late subscribers and late-mounting widgets see the current value. |
 | `Widgets.ts` | Palette entries (`WidgetBlockDesc`), each `{ kind, direction: 'in' \| 'out', defaultConfig }`. Placing one creates the corresponding core block bound to `connector = 'ui'`. |
 | `WidgetConfig.svelte.ts` | `useWidgetConfig` resolves live config overrides; `useValueFeedback` tracks a feedback address for input widgets. |
-| `Program.ts` | Serialization of widget metadata, and migration of programs saved before this design (§9). |
+| `Program.ts` | Serialization of widget metadata into `editor.widget`, and migration of programs saved before this design (§9). |
+| `ProgramFormat.ts` | The editor's save format (`EditorProgram`, `BlockEditor`) and the upgrade of saves from before format versions: `positions` to `position`, a block-level `widget` to `editor.widget`. |
 
 ### 8.1 Round trip: input widget → program → display widget
 

@@ -1,0 +1,34 @@
+{
+  "name": "Demand sum",
+  "blocks": {
+    "00000000-0000-4000-8000-000000000001": {
+      "name": "Add",
+      "lib": "core",
+      "positions": { "x": 81, "y": -72.5 },
+      "label": "Zone A + B",
+      "inputs": {
+        "in0": { "value": 12, "isConnected": false },
+        "in1": { "value": 7, "isConnected": false }
+      },
+      "outputs": { "out": { "value": 19 } }
+    },
+    "00000000-0000-4000-8000-000000000002": {
+      "name": "Add",
+      "lib": "core",
+      "positions": { "x": 267, "y": 25 },
+      "inputs": {
+        "in0": { "value": 19, "isConnected": true },
+        "in1": { "value": 1, "isConnected": false }
+      },
+      "outputs": { "out": { "value": 20 } }
+    }
+  },
+  "links": {
+    "00000000-0000-4000-8000-0000000000aa": {
+      "sourceBlockPinName": "out",
+      "targetBlockPinName": "in0",
+      "sourceBlockUuid": "00000000-0000-4000-8000-000000000001",
+      "targetBlockUuid": "00000000-0000-4000-8000-000000000002"
+    }
+  }
+}

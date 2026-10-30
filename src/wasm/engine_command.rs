@@ -8,6 +8,7 @@ use crate::base::program::LinkData;
 use crate::base::program::Program;
 use crate::wasm::types::JsWatchNotification;
 
+use serde::Serialize;
 use tokio::sync::mpsc::{Receiver, Sender, unbounded_channel};
 use uuid::Uuid;
 use wasm_bindgen::JsValue;
@@ -224,9 +225,15 @@ impl EngineCommand {
     }
 
     /// Atomically load a full program (blocks + links + pin values +
-    /// UI metadata) into the engine. Replaces the previous JS-side
-    /// `addBlock` + `createLink` + `writeBlockInput` chain. The engine
-    /// is expected to be empty (call `resetEngine` first if reloading).
+    /// UI and editor metadata) into the engine. Replaces the previous
+    /// JS-side `addBlock` + `createLink` + `writeBlockInput` chain. The
+    /// engine is expected to be empty (call `resetEngine` first if
+    /// reloading).
+    ///
+    /// A program with no `version` is a save from before format
+    /// versions, and loads as one. A program from a newer format is
+    /// rejected before its shape is read (see [`Program`]), so the error
+    /// names its version rather than a field this crate does not know.
     #[wasm_bindgen(js_name = "loadProgram")]
     pub async fn load_program(&mut self, program: JsValue) -> Result<(), String> {
         let program: Program = serde_wasm_bindgen::from_value(program)
@@ -246,8 +253,10 @@ impl EngineCommand {
     }
 
     /// Returns the current running engine program in the canonical save
-    /// format ([`Program`] serialized as JSON). Round-trips through
-    /// `loadProgram` without re-assembly.
+    /// format ([`Program`]) as plain JSON-compatible JS objects: maps are
+    /// objects, not `Map`s, and a missing value is `null`. Round-trips
+    /// through `loadProgram` without re-assembly, editor metadata
+    /// included.
     #[wasm_bindgen(js_name = "getProgram")]
     pub async fn get_program(&mut self) -> Result<JsValue, String> {
         match self
@@ -257,8 +266,8 @@ impl EngineCommand {
         {
             Ok(_) => match self.receiver.recv().await {
                 Some(res) => match res {
-                    EngineMessage::GetCurrentProgramRes(data) => data
-                        .map(|ok| serde_wasm_bindgen::to_value(&ok))?
+                    EngineMessage::GetCurrentProgramRes(data) => data?
+                        .serialize(&serde_wasm_bindgen::Serializer::json_compatible())
                         .map_err(|err| err.to_string()),
                     _ => Err("Invalid response".to_string()),
                 },
