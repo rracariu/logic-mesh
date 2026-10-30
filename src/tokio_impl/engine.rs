@@ -30,6 +30,7 @@ mod client;
 mod connectors;
 mod graph;
 mod message_dispatch;
+mod pin_changes;
 pub mod single_threaded;
 #[cfg(not(target_arch = "wasm32"))]
 #[cfg(test)]

@@ -267,7 +267,7 @@ export interface BlockNotification {
   id: string;
 
   /**
-   * The changes
+   * The pins that changed, outputs first, each in the block's pin order
    */
   changes: {
     /**

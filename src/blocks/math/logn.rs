@@ -31,7 +31,7 @@ impl Block for Logn {
         if let Some(Value::Number(a)) = self.input.value() {
             self.out.set(
                 Number {
-                    value: a.value.log2(),
+                    value: a.value.ln(),
                     unit: a.unit,
                 }
                 .into(),
@@ -54,13 +54,14 @@ mod test {
     async fn test_logn_block() {
         let mut block = Logn::new();
 
-        write_block_inputs([(&mut block.input, 2)]).await;
+        write_block_inputs([(&mut block.input, std::f64::consts::E)]).await;
 
         block.execute().await;
 
+        // Regression: the block computed log2, which is about 1.44 here.
         assert_matches!(
             block.out.value,
-            Value::Number(Number { value, .. }) if value == 1.0
+            Value::Number(Number { value, .. }) if (value - 1.0).abs() < 1e-12
         );
     }
 }

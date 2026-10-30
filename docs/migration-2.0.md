@@ -41,6 +41,8 @@ release. If you used them from git, read
       `#[non_exhaustive]` enums.
 - [ ] Replace pin and link field access (`pin.val = …`, `out.value`) with the
       accessors, and rename `InputProps::get_value()` to `value()`.
+- [ ] Read `BlockProps::state()` through the reference it returns, and
+      iterate `WatchMessage::changes` as a list.
 - [ ] Check saved programs against the new load checks. 1.x saves load as
       they are.
 
@@ -552,6 +554,23 @@ async fn print_changes(client: &EngineClient) -> Result<(), RequestError> {
 }
 ```
 
+`WatchMessage::changes` is a `Vec<ChangeSource>` instead of a `HashMap`
+keyed by pin name, since an input and an output may share a name. It lists
+the changed outputs first, then the inputs, each in the block's pin order.
+Each `ChangeSource` carries the pin's name and new value.
+
+```rust
+use logic_mesh::base::engine::messages::{ChangeSource, WatchMessage};
+
+fn print_outputs(message: WatchMessage) {
+    for change in message.changes {
+        if let ChangeSource::Output(name, value) = change {
+            println!("{name} = {value:?}");
+        }
+    }
+}
+```
+
 ### Custom transports
 
 `Engine::create_message_channel` now takes the response sender and returns
@@ -772,6 +791,14 @@ descriptors.
 - `InputProps::get_value()` is renamed `value()`, the name
   `OutputProps::value()` has. It still returns `Option<&Value>`, since an
   input can have no value yet.
+- `BlockProps::state()` returns `&BlockState`, so the engines no longer
+  clone a fault reason each time they look at a block's state, and
+  `set_state` returns nothing. Compare with `*block.state() == …`, and
+  `clone()` the state to keep it. A hand-written `BlockProps` returns a
+  reference to its field.
+- `Input::receiver()` resolves with `true` once a fresh payload has
+  arrived, or `false` once none can, instead of with a clone of the value.
+  Take the payload with `try_take()`.
 - `BlockConnect` has a blanket impl for every `BlockProps` type and cannot be
   implemented by hand. Its methods, and the free functions `connect_output`,
   `connect_input`, `disconnect_output` and `disconnect_input`, return
@@ -790,6 +817,19 @@ fn main() -> Result<(), ConnectError> {
     assert!(matches!(again, Err(ConnectError::AlreadyConnected { .. })));
     Ok(())
 }
+```
+
+```rust
+use logic_mesh::{base::block::BlockState, blocks::math::Add, prelude::*};
+
+let mut add = Add::new();
+add.set_state(BlockState::fault("unit mismatch"));
+assert!(add.state().is_fault());
+assert_eq!(add.state().fault_reason(), Some("unit mismatch"));
+let kept: BlockState = add.state().clone();
+add.set_state(BlockState::Running);
+assert_eq!(*add.state(), BlockState::Running);
+assert!(kept.is_fault());
 ```
 
 ### The registry

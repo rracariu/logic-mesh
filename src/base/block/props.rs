@@ -62,10 +62,10 @@ pub trait BlockProps {
     fn desc(&self) -> &BlockDesc;
 
     /// Returns the block's state.
-    fn state(&self) -> BlockState;
+    fn state(&self) -> &BlockState;
 
     /// Sets the block's state.
-    fn set_state(&mut self, state: BlockState) -> BlockState;
+    fn set_state(&mut self, state: BlockState);
 
     /// Returns all the block inputs.
     fn inputs(&self) -> Vec<&(dyn BlockInput<Self::Reader, Self::Writer> + Send)>;

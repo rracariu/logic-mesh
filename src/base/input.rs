@@ -22,8 +22,11 @@ pub use props::InputProps;
 /// Sealed through its supertrait [`InputProps`]: only the crate's
 /// [`InputImpl`](crate::blocks::InputImpl) implements it.
 pub trait Input: InputProps {
-    /// Returns this input's receiver which can be polled for data.
-    fn receiver(&mut self) -> Pin<Box<dyn Future<Output = Option<Value>> + Send + '_>>;
+    /// Returns a future that resolves once a fresh payload has arrived,
+    /// with `true`, or with `false` once none can arrive anymore. The
+    /// payload itself stays in the input for [`try_take`](Self::try_take)
+    /// to take.
+    fn receiver(&mut self) -> Pin<Box<dyn Future<Output = bool> + Send + '_>>;
 
     /// Non-blocking peek: take the latest (value, status) if a fresh
     /// payload has arrived since the last observation, returning [`None`]

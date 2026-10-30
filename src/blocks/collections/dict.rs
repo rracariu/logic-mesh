@@ -34,12 +34,8 @@ impl Block for Dict {
         {
             let mut dict = HDict::new();
 
-            for (i, key) in keys.iter().enumerate() {
-                if i > values.len() - 1 {
-                    break;
-                }
-
-                if let (Value::Str(key), Some(value)) = (key, values.get(i)) {
+            for (key, value) in keys.iter().zip(values.iter()) {
+                if let Value::Str(key) = key {
                     dict.insert(key.value().into(), value.clone());
                 }
             }
@@ -66,5 +62,18 @@ mod test {
 
         block.execute().await;
         assert_eq!(block.out.value, Value::Dict(dict! {"a" => 200}));
+    }
+
+    /// Regression: an empty `values` list underflowed the bound the keys
+    /// were checked against, which panics in a debug build.
+    #[tokio::test]
+    async fn keys_without_values_make_an_empty_dict() {
+        let mut block = DictBlock::new();
+
+        write_block_inputs([(block.inputs_mut()[0], vec!["a".into()])]).await;
+        write_block_inputs([(block.inputs_mut()[1], Vec::<Value>::new())]).await;
+
+        block.execute().await;
+        assert_eq!(block.out.value, Value::Dict(Dict::default()));
     }
 }

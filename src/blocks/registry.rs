@@ -149,11 +149,11 @@ impl BlockProps for RegisteredBlock {
         self.0.desc()
     }
 
-    fn state(&self) -> BlockState {
+    fn state(&self) -> &BlockState {
         self.0.state()
     }
 
-    fn set_state(&mut self, state: BlockState) -> BlockState {
+    fn set_state(&mut self, state: BlockState) {
         self.0.set_state(state)
     }
 

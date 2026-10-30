@@ -42,6 +42,13 @@ impl Block for Median {
             })
             .collect::<Vec<Number>>();
 
+        // A fresh value that is not a number, such as the `Null` a new
+        // link delivers from an output never set, leaves none to take
+        // the median of.
+        if val.is_empty() {
+            return;
+        }
+
         if let Ok(mut numbers) = convert_units(&val) {
             if !matches!(self.state(), BlockState::Running) {
                 self.set_state(BlockState::Running);
@@ -77,6 +84,8 @@ impl Block for Median {
 #[cfg(test)]
 mod test {
 
+    use libhaystack::val::Value;
+
     use crate::base::block::test_utils::write_block_inputs;
     use crate::{base::block::Block, base::input::InputReader, blocks::math::Median};
 
@@ -99,5 +108,17 @@ mod test {
 
         block.execute().await;
         assert_eq!(block.out.value, 2.into());
+    }
+
+    /// Regression: with no number among its inputs, the block indexed
+    /// an empty list and panicked, which on wasm32 aborts the engine.
+    #[tokio::test]
+    async fn no_numeric_input_leaves_the_output_unset() {
+        let mut block = Median::new();
+
+        write_block_inputs([(block._inputs.get_mut(0).unwrap(), Value::Null)]).await;
+
+        block.execute().await;
+        assert_eq!(block.out.value, Value::Null);
     }
 }

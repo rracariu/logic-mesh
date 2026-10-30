@@ -2080,15 +2080,22 @@ pub(crate) mod runtime_descs {
     impl Echo {
         /// A new `Echo`, described as `runtime_desc_test::Echo`.
         pub(crate) fn new() -> Self {
+            Self::with_pin_names("in", "out")
+        }
+
+        /// A new `Echo` whose input is named `input` and output
+        /// `output`. Unlike the block macro, a hand-written block may
+        /// give both the same name.
+        pub(crate) fn with_pin_names(input: &str, output: &str) -> Self {
             let id = Uuid::new_v4();
             let desc = BlockDesc::new("Echo", LIBRARY)
-                .with_input("in", HaystackKind::Number)
-                .with_output("out", HaystackKind::Number);
+                .with_input(input, HaystackKind::Number)
+                .with_output(output, HaystackKind::Number);
             Self {
                 id,
                 desc,
-                input: InputImpl::new("in", HaystackKind::Number, id),
-                out: OutputImpl::new_named("out", HaystackKind::Number, id),
+                input: InputImpl::new(input, HaystackKind::Number, id),
+                out: OutputImpl::new_named(output, HaystackKind::Number, id),
                 state: BlockState::Running,
             }
         }
@@ -2110,13 +2117,12 @@ pub(crate) mod runtime_descs {
             &self.desc
         }
 
-        fn state(&self) -> BlockState {
-            self.state.clone()
+        fn state(&self) -> &BlockState {
+            &self.state
         }
 
-        fn set_state(&mut self, state: BlockState) -> BlockState {
+        fn set_state(&mut self, state: BlockState) {
             self.state = state;
-            self.state.clone()
         }
 
         fn inputs(&self) -> Vec<&(dyn BlockInput<ReaderImpl, WriterImpl> + Send)> {

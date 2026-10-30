@@ -12,17 +12,17 @@
 //! the command is handled before a fresh `execute()` is started.
 
 use std::cell::RefCell;
-use std::collections::{BTreeMap, HashMap};
+use std::collections::BTreeMap;
 use std::rc::Rc;
 
-use libhaystack::val::Value;
 use tokio::sync::mpsc;
 
 use super::super::actor_step::{ExecutionGate, PanicHold, Step, run_one_step, yield_between_steps};
 use super::super::block_mailbox::BlockMailboxCmd;
+use super::super::pin_changes::PinSnapshot;
 use crate::base::Status;
 use crate::base::block::{Block, BlockState};
-use crate::base::engine::messages::{ChangeSource, WatchId, WatchMessage, WatchSender};
+use crate::base::engine::messages::{WatchId, WatchMessage, WatchSender};
 use crate::tokio_impl::EngineBlock;
 
 /// ST-side watchers handle: single-threaded, no thread-safety needed.
@@ -39,7 +39,7 @@ pub(super) async fn block_actor_task<B>(
 ) where
     B: EngineBlock + 'static,
 {
-    let mut last_pin_values = BTreeMap::<String, Value>::new();
+    let mut snapshot = PinSnapshot::default();
     let mut last_state = BlockState::Running;
     let mut hold = PanicHold::default();
 
@@ -55,13 +55,13 @@ pub(super) async fn block_actor_task<B>(
 
         // Propagate state changes to output statuses. emit_status is a no-op
         // on the wire when nothing changed (send_if_modified comparison).
-        let current_state = block.state();
+        let current_state = block.state().clone();
         propagate_status(&current_state, &last_state, &mut block);
 
         change_of_value_check(
             &watchers,
             &block,
-            &mut last_pin_values,
+            &mut snapshot,
             &current_state,
             &last_state,
         );
@@ -109,38 +109,16 @@ where
 fn change_of_value_check<B: Block + 'static>(
     notification_channels: &WatchersHandle,
     block: &B,
-    last_pin_values: &mut BTreeMap<String, Value>,
+    snapshot: &mut PinSnapshot,
     state: &BlockState,
     prev_state: &BlockState,
 ) {
     if notification_channels.borrow().is_empty() {
-        if !last_pin_values.is_empty() {
-            last_pin_values.clear();
-        }
+        snapshot.clear();
         return;
     }
 
-    let mut changes = HashMap::<String, ChangeSource>::new();
-
-    block.outputs().iter().for_each(|output| {
-        let pin = output.desc().name.to_string();
-        let val = output.value();
-        if last_pin_values.get(&pin) != Some(val) {
-            changes.insert(pin.clone(), ChangeSource::Output(pin.clone(), val.clone()));
-            last_pin_values.insert(pin, val.clone());
-        }
-    });
-
-    block.inputs().iter().for_each(|input| {
-        let val = input.value();
-        if let Some(val) = val {
-            let pin = input.name().to_string();
-            if last_pin_values.get(&pin) != Some(val) {
-                changes.insert(pin.clone(), ChangeSource::Input(pin.clone(), val.clone()));
-                last_pin_values.insert(pin, val.clone());
-            }
-        }
-    });
+    let changes = snapshot.changes(block);
 
     // Emit when either a pin value changed OR the block's state did.
     // Without the state-change check, a block entering Fault with no

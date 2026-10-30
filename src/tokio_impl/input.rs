@@ -66,22 +66,19 @@ impl InputImpl {
 }
 
 impl Input for InputImpl {
-    fn receiver(&mut self) -> Pin<Box<dyn Future<Output = Option<Value>> + Send + '_>> {
+    fn receiver(&mut self) -> Pin<Box<dyn Future<Output = bool> + Send + '_>> {
         // Wait for the next change. We deliberately do NOT consume the value
         // here: `changed()` marks the latest value as seen, so we re-arm via
         // `mark_changed()` so that the subsequent `try_take()` in
         // `drain_ready_inputs` actually surfaces it. Without re-arming, the
-        // value would be silently dropped — `read_block_inputs` discards the
-        // future result with `let _ = ...` and relies on `try_take` to
-        // surface the value.
+        // value would be silently dropped — `read_block_inputs` relies on
+        // `try_take` to surface the value.
         Box::pin(async move {
-            match self.reader.changed().await {
-                Ok(()) => {
-                    self.reader.mark_changed();
-                    Some(self.reader.borrow().0.clone())
-                }
-                Err(_) => None,
+            let changed = self.reader.changed().await.is_ok();
+            if changed {
+                self.reader.mark_changed();
             }
+            changed
         })
     }
 

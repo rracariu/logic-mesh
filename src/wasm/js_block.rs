@@ -199,13 +199,12 @@ impl BlockProps for JsBlock {
         &self.desc
     }
 
-    fn set_state(&mut self, state: BlockState) -> BlockState {
+    fn set_state(&mut self, state: BlockState) {
         self.state = state;
-        self.state.clone()
     }
 
-    fn state(&self) -> BlockState {
-        self.state.clone()
+    fn state(&self) -> &BlockState {
+        &self.state
     }
 
     fn get_input(

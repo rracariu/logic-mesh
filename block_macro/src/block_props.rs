@@ -156,13 +156,12 @@ pub(super) fn block_props_impl(ast: &DeriveInput) -> syn::Result<TokenStream> {
                 <Self as #krate::base::block::BlockStaticDesc>::static_desc()
             }
 
-            fn state(&self) -> #krate::base::block::BlockState {
-                ::core::clone::Clone::clone(&self.state)
+            fn state(&self) -> &#krate::base::block::BlockState {
+                &self.state
             }
 
-            fn set_state(&mut self, state: #krate::base::block::BlockState) -> #krate::base::block::BlockState {
+            fn set_state(&mut self, state: #krate::base::block::BlockState) {
                 self.state = state;
-                ::core::clone::Clone::clone(&self.state)
             }
 
             fn inputs(&self) -> ::std::vec::Vec<&(#input_dyn)> {

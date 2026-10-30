@@ -146,7 +146,7 @@ fn apply_watch_message(rows: &mut BTreeMap<Uuid, BlockRow>, msg: WatchMessage) {
     entry.state = msg.state.label().to_string();
     entry.fault_reason = msg.state.fault_reason().map(|s| s.to_string());
     entry.last_update = Some(Instant::now());
-    for (pin, change) in msg.changes {
+    for change in msg.changes {
         match change {
             ChangeSource::Input(name, value) => {
                 entry.inputs.insert(name, value);
@@ -158,7 +158,6 @@ fn apply_watch_message(rows: &mut BTreeMap<Uuid, BlockRow>, msg: WatchMessage) {
             // runner does not know.
             _ => {}
         }
-        let _ = pin; // pin == change name; kept by source enum
     }
 }
 
