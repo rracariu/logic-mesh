@@ -15,6 +15,12 @@ bindings with typed declarations and coded errors. It also fixes how the
 engines start, stop, pause, fail, save and load. From 2.0 on, 2.x
 releases are additive and breaking changes wait for 3.0.
 
+Thank you to Souyama ([@sansmoraxz](https://github.com/sansmoraxz)), whose
+four pull requests are part of this release: the connector API and the
+external blocks the web editor's widgets run on ([#13]), block macros that
+work outside this crate ([#5]), the JS tests running in CI ([#7]), and the
+doc comment conventions that the `missing_docs` lint now enforces ([#12]).
+
 ### Breaking changes
 
 The [migration guide](docs/migration-2.0.md) walks through each of these
