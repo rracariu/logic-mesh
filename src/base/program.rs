@@ -4,12 +4,18 @@
 //!
 //! [`Program`] is the canonical, fully-self-describing shape an engine
 //! can serialize out and load back in — including pin values (constants)
-//! and UI metadata (label, position). Previous versions exposed a
-//! `Program<E>` runner type that combined a save format with an engine
-//! instance; that fused two concerns and made the saveable format a
-//! generic. The new [`Program`] is plain data — engine instances are
-//! managed separately and load it via [`crate::base::engine::Engine`].
-//! To assemble one in code, use [`ProgramBuilder`].
+//! and UI metadata (label, position, editor metadata). It is plain data,
+//! serialized with serde, and the same shape the JavaScript bindings
+//! take and return. To assemble one in code, use [`ProgramBuilder`].
+//!
+//! An idle engine schedules a program with
+//! [`Engine::schedule_program_blocks`](crate::base::engine::Engine::schedule_program_blocks);
+//! a running one loads it, and saves its current program, through an
+//! [`EngineClient`](crate::base::engine::EngineClient)
+//! ([`load_program`](crate::base::engine::EngineClient::load_program),
+//! [`save_program`](crate::base::engine::EngineClient::save_program)).
+//! Either way the program is checked whole before any of its blocks is
+//! scheduled, and a program failing a check schedules nothing.
 //!
 //! # Format versions
 //!

@@ -43,13 +43,15 @@
 //!
 //! ## Module layout
 //!
-//! - `mailbox` — the `BlockMailboxCmd` enum and the actor-side
-//!   `handle_cmd` that turns a command into mutations on the owned block.
+//! - `block_mailbox` (shared with the multi-threaded engine) — the
+//!   `BlockMailboxCmd` enum and the actor-side `handle_cmd` that turns a
+//!   command into mutations on the owned block.
 //! - `actor` — the per-block task loop (`block_actor_task`) and the
 //!   change-of-value detector that runs after each step.
 //! - `engine` — [`SingleThreadedEngine`] itself: lifecycle, the [`Engine`]
-//!   trait impl, sync configuration helpers, and the async APIs that
-//!   `message_dispatch` routes external requests to.
+//!   trait impl, sync configuration helpers, and the event loop, which
+//!   hands each request to the dispatcher both engines share
+//!   (`message_dispatch`).
 //! - `graph` (shared with the multi-threaded engine) — the
 //!   [`BlockHandle`]s and the running-phase operations over them: pin
 //!   writes, link wiring, block removal, program save and load.
