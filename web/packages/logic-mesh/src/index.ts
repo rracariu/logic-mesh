@@ -27,6 +27,8 @@ export {
   type JsBlockFn,
   type JsBlocksOptions,
 } from './JsBlocks.js';
+export { PROGRAM_FORMAT_VERSION } from './ProgramVersion.js';
+export { ProgramSchema, programSchema } from './ProgramSchema.js';
 
 /**
  * The callback a connector subscription pushes values through.
@@ -384,17 +386,6 @@ export type LinkData = {
    */
   targetBlockUuid: string;
 };
-
-/**
- * The program save format version this package writes, and the newest
- * its engine loads. `getProgram` returns programs in this version;
- * `loadProgram` rejects a program with a higher one.
- *
- * A program with no `version` is a save from before format versions
- * (logic-mesh 1.x): the same shape, except that a block's position is
- * keyed `positions`. `loadProgram` still loads it.
- */
-export const PROGRAM_FORMAT_VERSION = 1;
 
 /**
  * A block's UI position in a saved program.
