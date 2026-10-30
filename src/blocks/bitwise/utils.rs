@@ -1,21 +1,23 @@
 // Copyright (c) 2022-2024, Radu Racariu.
 
-use crate::base::block::Block;
 use crate::base::block::BlockState;
-use crate::base::input::InputReader;
+use crate::base::input::InputProps;
+use crate::base::output::Output;
+use crate::blocks::{InputImpl, OutputImpl};
 use libhaystack::val::Value;
 
-pub(super) async fn execute_impl<B: Block>(block: &mut B, calc: impl Fn(i64, i64) -> i64) {
-    block.read_inputs_until_ready().await;
-
-    let inputs = block.inputs();
-
-    if let (Some(Value::Number(in1)), Some(Value::Number(in2))) =
-        (inputs[0].value().cloned(), inputs[1].value().cloned())
-    {
-        block.outputs_mut()[0].set(Value::make_int(calc(in1.value as i64, in2.value as i64)));
-        block.set_state(BlockState::Running);
+/// Sets `out` to `calc` of the two inputs as integers, and returns the
+/// state the block is in: a fault while either input is not a number.
+pub(super) fn execute_impl(
+    in1: &InputImpl,
+    in2: &InputImpl,
+    out: &mut OutputImpl,
+    calc: impl FnOnce(i64, i64) -> i64,
+) -> BlockState {
+    if let (Some(Value::Number(in1)), Some(Value::Number(in2))) = (in1.value(), in2.value()) {
+        out.set(Value::make_int(calc(in1.value as i64, in2.value as i64)));
+        BlockState::Running
     } else {
-        block.set_state(BlockState::fault("bitwise: non-numeric input"));
+        BlockState::fault("bitwise: non-numeric input")
     }
 }

@@ -19,7 +19,7 @@ use tokio::sync::mpsc;
 
 use super::super::actor_step::{ExecutionGate, PanicHold, Step, run_one_step, yield_between_steps};
 use super::super::block_mailbox::BlockMailboxCmd;
-use super::super::pin_changes::PinSnapshot;
+use super::super::pin_changes::{PinSnapshot, send_to_watchers};
 use crate::base::Status;
 use crate::base::block::{Block, BlockState};
 use crate::base::engine::messages::{WatchId, WatchMessage, WatchSender};
@@ -55,18 +55,13 @@ pub(super) async fn block_actor_task<B>(
 
         // Propagate state changes to output statuses. emit_status is a no-op
         // on the wire when nothing changed (send_if_modified comparison).
-        let current_state = block.state().clone();
-        propagate_status(&current_state, &last_state, &mut block);
+        propagate_status(&last_state, &mut block);
 
-        change_of_value_check(
-            &watchers,
-            &block,
-            &mut snapshot,
-            &current_state,
-            &last_state,
-        );
+        change_of_value_check(&watchers, &block, &mut snapshot, &last_state);
 
-        last_state = current_state;
+        if *block.state() != last_state {
+            last_state = block.state().clone();
+        }
 
         if matches!(step, Step::Command(true)) || matches!(block.state(), BlockState::Terminated) {
             break;
@@ -84,11 +79,11 @@ pub(super) async fn block_actor_task<B>(
 /// between Fault and not-Fault. Recovery (Fault → Running) also re-emits
 /// [`Status::Ok`](crate::base::Status::Ok) so consumers see the recovery
 /// even if the value didn't change.
-fn propagate_status<B>(current: &BlockState, previous: &BlockState, block: &mut B)
+fn propagate_status<B>(previous: &BlockState, block: &mut B)
 where
     B: EngineBlock + 'static,
 {
-    let now_fault = current.is_fault();
+    let now_fault = block.state().is_fault();
     let was_fault = previous.is_fault();
 
     if now_fault {
@@ -110,7 +105,6 @@ fn change_of_value_check<B: Block + 'static>(
     notification_channels: &WatchersHandle,
     block: &B,
     snapshot: &mut PinSnapshot,
-    state: &BlockState,
     prev_state: &BlockState,
 ) {
     if notification_channels.borrow().is_empty() {
@@ -123,26 +117,21 @@ fn change_of_value_check<B: Block + 'static>(
     // Emit when either a pin value changed OR the block's state did.
     // Without the state-change check, a block entering Fault with no
     // value change (e.g., upstream stopped emitting) would be invisible.
+    let state = block.state();
     if !changes.is_empty() || state != prev_state {
+        let message = WatchMessage::new(*block.id(), changes, state.clone());
         // Unbounded channel: `send` is synchronous and only fails once
         // the receiver is gone — the watcher went away without
         // unsubscribing (a closed UI tab). Drop it, or every actor would
         // keep computing changes for nobody.
-        notification_channels
-            .borrow_mut()
-            .retain(|watcher, sender| {
-                let sent = sender
-                    .send(WatchMessage::new(
-                        *block.id(),
-                        changes.clone(),
-                        state.clone(),
-                    ))
-                    .is_ok();
-                if !sent {
-                    log::debug!("Dropping watcher {watcher}: its receiver is gone");
-                }
-                sent
-            });
+        let gone = send_to_watchers(notification_channels.borrow().iter(), message);
+        if !gone.is_empty() {
+            let mut watchers = notification_channels.borrow_mut();
+            for watcher in gone {
+                log::debug!("Dropping watcher {watcher}: its receiver is gone");
+                watchers.remove(&watcher);
+            }
+        }
     }
 }
 

@@ -144,7 +144,7 @@ impl Block for ExternalOut {
         let value = pending.value.clone();
         let deadline = pending.deadline(input_as_timeout_millis(&self.timeout));
 
-        let Some(handle) = get_connector(&connector) else {
+        let Some(handle) = get_connector(connector) else {
             self.pending = None;
             self.set_state(BlockState::fault(format!(
                 "ExternalOut: no connector named '{connector}'"
@@ -170,7 +170,7 @@ impl Block for ExternalOut {
         // held value while a cancellation keeps it for the retry above.
         tokio::select! {
             biased;
-            result = handle.publish(&address, value.clone()) => {
+            result = handle.publish(address, value.clone()) => {
                 self.pending = None;
                 match result {
                     Ok(()) => self.out.set(value),

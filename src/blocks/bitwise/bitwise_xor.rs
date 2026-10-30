@@ -2,7 +2,8 @@
 
 //! Bitwise XOR block.
 
-use crate::base::block::Block;
+use crate::base::block::{Block, BlockProps};
+use crate::base::input::InputReader;
 
 use crate::{blocks::InputImpl, blocks::OutputImpl};
 
@@ -23,7 +24,9 @@ pub struct BitwiseXor {
 
 impl Block for BitwiseXor {
     async fn execute(&mut self) {
-        execute_impl(self, |in1, in2| in1 ^ in2).await;
+        self.read_inputs_until_ready().await;
+        let state = execute_impl(&self.in1, &self.in2, &mut self.out, |in1, in2| in1 ^ in2);
+        self.set_state(state);
     }
 }
 
