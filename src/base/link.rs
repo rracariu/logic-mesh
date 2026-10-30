@@ -4,6 +4,8 @@
 
 use uuid::Uuid;
 
+use super::sealed::Sealed;
+
 pub mod base;
 pub use base::BaseLink;
 
@@ -22,7 +24,36 @@ pub enum LinkState {
 }
 
 /// A link creates a connection from a block output to another block's input.
-pub trait Link {
+///
+/// # Sealed
+///
+/// Only [`BaseLink`] implements this trait, and no other crate can, so
+/// methods can be added to it in a minor release. A link to a block is
+/// made with [`BlockConnect`](crate::base::block::BlockConnect) or an
+/// engine message, never by hand:
+///
+/// ```compile_fail,E0277
+/// use logic_mesh::Uuid;
+/// use logic_mesh::base::link::{Link, LinkState};
+///
+/// struct MyLink(Uuid);
+///
+/// impl Link for MyLink {
+///     fn id(&self) -> &Uuid {
+///         &self.0
+///     }
+///     fn state(&self) -> LinkState {
+///         LinkState::Connected
+///     }
+///     fn target_block_id(&self) -> &Uuid {
+///         &self.0
+///     }
+///     fn target_input(&self) -> &str {
+///         "in"
+///     }
+/// }
+/// ```
+pub trait Link: Sealed {
     /// Returns the unique link id.
     fn id(&self) -> &Uuid;
 

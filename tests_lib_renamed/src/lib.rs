@@ -45,7 +45,7 @@ mod tests {
     fn desc_reflects_attributes() {
         use mesh_renamed::base::block::BlockStaticDesc;
 
-        let desc = <Negate as BlockStaticDesc>::desc();
+        let desc = <Negate as BlockStaticDesc>::static_desc();
         assert_eq!(desc.name, "Negate");
         assert_eq!(desc.library, "downstream_renamed");
         assert_eq!(desc.inputs.len(), 1);

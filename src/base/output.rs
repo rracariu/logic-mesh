@@ -14,6 +14,9 @@ pub use base::BaseOutput;
 pub use props::OutputProps;
 
 /// The output trait.
+///
+/// Sealed through its supertrait [`OutputProps`]: only the crate's
+/// [`OutputImpl`](crate::blocks::OutputImpl) implements it.
 pub trait Output: OutputProps {
     /// The transmission type used by this output's links.
     type Writer: Clone;

@@ -4,6 +4,8 @@
 
 use uuid::Uuid;
 
+use crate::base::sealed::Sealed;
+
 use super::{Link, LinkState};
 
 /// Base link that uses an abstract optional transmitter type `Tx`.
@@ -24,6 +26,8 @@ pub struct BaseLink<Tx> {
     /// The current link state.
     pub state: LinkState,
 }
+
+impl<Tx> Sealed for BaseLink<Tx> {}
 
 impl<Tx: Clone> Link for BaseLink<Tx> {
     fn id(&self) -> &Uuid {

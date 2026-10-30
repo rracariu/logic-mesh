@@ -1,0 +1,5 @@
+error: block `Uncategorized` needs a category: add `#[category = "..."]`, the category the block is listed under
+ --> tests/ui/missing_category.rs:7:8
+  |
+7 | struct Uncategorized {
+  |        ^^^^^^^^^^^^^

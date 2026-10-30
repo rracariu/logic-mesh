@@ -10,3 +10,7 @@ workspace = true
 [dependencies]
 logic-mesh = { path = "..", features = ["multi-threaded"] }
 tokio = { version = "^1.50", features = ["rt", "rt-multi-thread", "macros"] }
+
+[dev-dependencies]
+# Compile-fail tests of the block macros' errors (tests/compile_fail.rs).
+trybuild = "^1.0"

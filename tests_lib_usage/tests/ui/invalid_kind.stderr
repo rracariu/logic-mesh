@@ -1,0 +1,5 @@
+error: expected the name of a `HaystackKind` variant, such as "Number"
+ --> tests/ui/invalid_kind.rs:8:21
+  |
+8 |     #[output(kind = "Num ber")]
+  |                     ^^^^^^^^^

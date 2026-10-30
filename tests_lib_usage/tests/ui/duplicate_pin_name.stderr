@@ -1,0 +1,5 @@
+error: pin name `in1` is used by another pin of this block
+ --> tests/ui/duplicate_pin_name.rs:9:20
+  |
+9 |     #[input(name = "in1", kind = "Number")]
+  |                    ^^^^^

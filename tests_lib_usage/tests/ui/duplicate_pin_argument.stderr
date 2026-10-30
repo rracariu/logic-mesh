@@ -1,0 +1,5 @@
+error: duplicate `name` argument
+ --> tests/ui/duplicate_pin_argument.rs:8:25
+  |
+8 |     #[input(name = "a", name = "b")]
+  |                         ^^^^^^^^^^

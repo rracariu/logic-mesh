@@ -17,6 +17,9 @@ pub use base::BaseInput;
 pub use props::InputProps;
 
 /// The input trait.
+///
+/// Sealed through its supertrait [`InputProps`]: only the crate's
+/// [`InputImpl`](crate::blocks::InputImpl) implements it.
 pub trait Input: InputProps {
     /// Returns this input's receiver which can be polled for data.
     fn receiver(&mut self) -> Pin<Box<dyn Future<Output = Option<Value>> + Send + '_>>;

@@ -952,6 +952,23 @@ mod test {
         }
     }
 
+    /// Regression: see the single-threaded `runtime_descs`.
+    mod runtime_descs {
+        use super::*;
+        use crate::tokio_impl::engine::test_support::runtime_descs;
+
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn a_block_with_a_runtime_desc_runs_and_saves() {
+            runtime_descs::a_block_with_a_runtime_desc_runs_and_saves(MultiThreadedEngine::new())
+                .await;
+        }
+
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn a_registered_block_loads_and_saves() {
+            runtime_descs::a_registered_block_loads_and_saves(MultiThreadedEngine::new()).await;
+        }
+    }
+
     /// Regression: see the single-threaded `atomic_loads`.
     mod atomic_loads {
         use super::*;
@@ -1015,6 +1032,23 @@ mod test {
                 MultiThreadedEngine::new(),
             )
             .await;
+        }
+    }
+
+    /// Regression: see the single-threaded `rejections`.
+    mod rejections {
+        use super::*;
+        use crate::tokio_impl::engine::test_support::rejections;
+
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn writing_a_missing_pin_names_it() {
+            rejections::writing_a_missing_pin_names_it(MultiThreadedEngine::new()).await;
+        }
+
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn linking_the_same_pins_twice_is_a_connect_error() {
+            rejections::linking_the_same_pins_twice_is_a_connect_error(MultiThreadedEngine::new())
+                .await;
         }
     }
 

@@ -312,7 +312,6 @@ impl BlockGraph {
             reply,
         })
         .await?
-        .map_err(EngineError::BlockRequestRejected)
     }
 
     /// Writes `value` to block `id`'s output `name`, returning the
@@ -331,7 +330,6 @@ impl BlockGraph {
             reply,
         })
         .await?
-        .map_err(EngineError::BlockRequestRejected)
     }
 
     /// Connects two blocks (source pin → target input), returning the
@@ -374,8 +372,7 @@ impl BlockGraph {
                 reply,
             }
         })
-        .await?
-        .map_err(EngineError::BlockRequestRejected)?;
+        .await??;
 
         // Try AddOutputLink first; if the source pin is not an output, fall
         // back to AddInputLink.
@@ -408,7 +405,7 @@ impl BlockGraph {
             }
         })
         .await?
-        .map_err(EngineError::BlockRequestRejected)?;
+        .map_err(EngineError::Connect)?;
 
         if let Err(err) = self.attach_target(link, is_output).await {
             let _ = mailbox_request(source_mb, link.source, |reply| {

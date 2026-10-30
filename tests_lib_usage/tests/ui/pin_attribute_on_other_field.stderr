@@ -1,0 +1,5 @@
+error: `#[input]` goes on an `InputImpl` field
+ --> tests/ui/pin_attribute_on_other_field.rs:8:5
+  |
+8 |     #[input(kind = "Number")]
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^
