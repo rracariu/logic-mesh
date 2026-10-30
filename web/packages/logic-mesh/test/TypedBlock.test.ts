@@ -117,6 +117,15 @@ describe('zodToKind mapping', () => {
     { schema: z.unknown(), kind: 'null' },
     { schema: z.optional(z.string()), kind: 'str' },
     { schema: z.string().default('x'), kind: 'str' },
+    // Regression: these threw 'Invalid kind'.
+    { schema: z.number().nullable(), kind: 'number' },
+    { schema: z.literal('on'), kind: 'str' },
+    { schema: z.literal(['on', 'off']), kind: 'str' },
+    { schema: z.literal(1), kind: 'number' },
+    { schema: z.literal(true), kind: 'bool' },
+    { schema: z.union([z.literal('on'), z.literal('off')]), kind: 'str' },
+    { schema: z.union([z.number(), z.null()]), kind: 'number' },
+    { schema: z.union([z.string(), z.enum(['a'])]).optional(), kind: 'str' },
   ] as const;
 
   for (const { schema, kind } of cases) {
@@ -129,6 +138,54 @@ describe('zodToKind mapping', () => {
       expect(new Block().desc.inputs[0].kind).toBe(kind);
     });
   }
+
+  const unmapped = [
+    { schema: z.union([z.string(), z.number()]), error: /kinds str, number/ },
+    { schema: z.literal(null), error: /literal null has no pin kind/ },
+    { schema: z.date(), error: /ZodDate has no pin kind/ },
+  ] as const;
+
+  for (const { schema, error } of unmapped) {
+    it(`throws a clear error for ${schema.constructor.name}`, () => {
+      const Block = defineBlock({
+        desc,
+        inputs: [['pin', schema]] as const,
+        outputs: [['out', z.unknown()]] as const,
+      });
+      expect(() => new Block()).toThrow(error);
+    });
+  }
+});
+
+describe('TypedBlock description', () => {
+  // Regression: the constructor wrote the pins and the implementation
+  // into the caller's object.
+  it("copies the caller's desc instead of filling it in", () => {
+    const shared = { ...desc };
+    const First = defineBlock({
+      desc: shared,
+      inputs: [['a', z.number()]] as const,
+      outputs: [['out', z.number()]] as const,
+    });
+    const Second = defineBlock({
+      desc: shared,
+      inputs: [['b', z.string()]] as const,
+      outputs: [] as const,
+    });
+
+    const first = new First();
+    const second = new Second();
+    expect(first.desc.inputs).toEqual([{ name: 'a', kind: 'number' }]);
+    expect(second.desc.inputs).toEqual([{ name: 'b', kind: 'str' }]);
+    expect(Object.keys(shared)).toEqual([
+      'name',
+      'dis',
+      'lib',
+      'ver',
+      'category',
+      'doc',
+    ]);
+  });
 });
 
 describe('TypedBlock.executeImpl', () => {
@@ -213,6 +270,33 @@ describe('TypedBlock.executeImpl', () => {
     expect(executeSpy).not.toHaveBeenCalled();
   });
 
+  // The engine hands a pin with no value to JS as `null`, as every
+  // binding does; the block reads it as unset, not as a value.
+  it('reads a null input as unset', async () => {
+    const b = new TestBlock();
+    const executeSpy = vi.spyOn(b, 'execute');
+    await expect(b.runImpl([null, 'hello'])).resolves.toBeUndefined();
+    expect(executeSpy).not.toHaveBeenCalled();
+
+    const seen: unknown[][] = [];
+    const OptionalBase = defineBlock({
+      desc,
+      inputs: [['x', z.number().optional()]] as const,
+      outputs: [['out', z.boolean()]] as const,
+      execute([x]) {
+        seen.push([x]);
+        return Promise.resolve([x === undefined]);
+      },
+    });
+    class OptionalBlock extends OptionalBase {
+      runImpl(inputs: unknown[]) {
+        return this.executeImpl(inputs as any);
+      }
+    }
+    await expect(new OptionalBlock().runImpl([null])).resolves.toEqual([true]);
+    expect(seen).toEqual([[undefined]]);
+  });
+
   it('materializes a .default(...) for an unset input and executes', async () => {
     const seen: unknown[][] = [];
     const DefaultBase = defineBlock({
@@ -294,13 +378,14 @@ async function until<T>(
 }
 
 /** All values notifications reported for the block's `out` pin, in
- * order. Valueless changes are dropped: the block-added notification
- * reports every output pin as a change with no value. */
+ * order. Null changes are dropped: the block-added notification
+ * reports every output pin as a change, with the Null of a pin that
+ * has no value yet. */
 function outValues(notes: BlockNotification[], id: string): unknown[] {
   return notes
     .filter((n) => n.id === id)
     .flatMap((n) => n.changes)
-    .filter((c) => c.name === 'out' && c.value !== undefined)
+    .filter((c) => c.name === 'out' && c.value !== null)
     .map((c) => c.value);
 }
 
@@ -315,7 +400,7 @@ let blockSerial = 0;
 
 describe('defineBlock against the real engine', () => {
   it('link-driven values reach execute; the pre-value window is a no-op, not a fault', async () => {
-    const session = createEngineSession({ sleepDuration: 10 });
+    const session = createEngineSession({ scanInterval: 10 });
     sessions.push(session);
 
     const name = `TypedDoubler${blockSerial++}`;
@@ -381,7 +466,7 @@ describe('defineBlock against the real engine', () => {
   });
 
   it('a .default(...) input lets the executor run without that pin being driven', async () => {
-    const session = createEngineSession({ sleepDuration: 10 });
+    const session = createEngineSession({ scanInterval: 10 });
     sessions.push(session);
 
     const name = `TypedOffset${blockSerial++}`;

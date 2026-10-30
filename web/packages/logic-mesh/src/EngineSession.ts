@@ -14,11 +14,48 @@ export interface EngineSessionOptions {
   engine?: BlocksEngine;
 
   /**
-   * Block sleep duration in milliseconds, forwarded to `initEngine`
+   * The engine's scan interval in milliseconds — how long a block that
+   * runs on every cycle waits between runs — forwarded to `initEngine`
    * when the session creates the engine itself. Ignored when an
    * `engine` is supplied.
    */
-  sleepDuration?: number;
+  scanInterval?: number;
+}
+
+/**
+ * A watch {@link EngineSession.watch} opened. Close it with
+ * {@link close}, or let `await using` close it.
+ */
+export interface WatchSubscription extends AsyncDisposable {
+  /** The watch's id, as `EngineCommand.createWatch` resolved with it. */
+  readonly id: number;
+
+  /**
+   * Closes the watch, resolving with whether the engine still had it
+   * open — `false` once the session has stopped. The callback is not
+   * called from the moment this is called. Idempotent: later calls
+   * share the first call's promise.
+   */
+  close(): Promise<boolean>;
+}
+
+/** The {@link WatchSubscription} {@link EngineSession.watch} returns. */
+class Subscription implements WatchSubscription {
+  private closing: Promise<boolean> | undefined;
+
+  constructor(
+    readonly id: number,
+    private readonly closeWatch: () => Promise<boolean>,
+  ) {}
+
+  close(): Promise<boolean> {
+    this.closing ??= this.closeWatch();
+    return this.closing;
+  }
+
+  async [Symbol.asyncDispose](): Promise<void> {
+    await this.close();
+  }
 }
 
 /**
@@ -54,7 +91,7 @@ export interface EngineSessionOptions {
  * {@link createEngineSession} (handles now, {@link start} later — for
  * hosts that create the engine at module load but start it on mount).
  */
-export class EngineSession {
+export class EngineSession implements AsyncDisposable {
   /**
    * The engine object. Valid for pre-start setup only —
    * `registerBlock`, `listBlocks`, `run` — and off limits from the
@@ -83,8 +120,12 @@ export class EngineSession {
 
   private stopDone: Promise<void> | undefined;
 
+  /** Whether `run()`'s future has completed: the engine answers
+   * nothing from then on. */
+  private ended = false;
+
   constructor(options: EngineSessionOptions = {}) {
-    this.engine = options.engine ?? initEngine(options.sleepDuration);
+    this.engine = options.engine ?? initEngine(options.scanInterval);
     this.command = this.engine.engineCommand();
     this.connectorCommand = this.engine.engineCommand();
     this.control = this.engine.engineCommand();
@@ -101,24 +142,28 @@ export class EngineSession {
    * here on the engine object must not be touched — everything goes
    * through the pre-created command handles.
    *
-   * Throws after {@link stop}: a stopped engine cannot be restarted —
-   * without the guard the session would look started while every
-   * command hangs forever against the ended message loop.
+   * Throws after {@link stop}: a session runs its engine once. Once
+   * the engine has stopped, the session answers {@link watch},
+   * {@link unwatch}, {@link reset} and {@link stop} without asking the
+   * engine, and a restart under it would contradict that.
    */
   start(): void {
     if (this.stopDone) {
       throw new Error(
-        'EngineSession.start() called after stop(): a stopped engine ' +
-          'cannot be restarted — its message loop has ended and commands ' +
-          'would hang forever. Create a new session to run again.',
+        'EngineSession.start() called after stop(): a session runs its ' +
+          'engine once. Create a new session to run again.',
       );
     }
     if (this.runDone) return;
     const run = this.engine.run();
     this.runDone = run;
-    // Keep a shutdown-time rejection from surfacing as an unhandled
-    // rejection when nobody ever calls stop(); stop() still sees it.
-    run.catch(() => {});
+    // Handling a rejection too keeps a shutdown-time one from surfacing
+    // as an unhandled rejection when nobody ever calls stop(); stop()
+    // still sees it.
+    const end = (): void => {
+      this.ended = true;
+    };
+    run.then(end, end);
   }
 
   /**
@@ -142,20 +187,54 @@ export class EngineSession {
 
   /**
    * Registers `callback` for block change notifications, resolving with
-   * the watch's id once the engine opened it — before or after
-   * {@link start}: before, the watch opens as the engine starts. Pass
-   * the id to {@link unwatch} to stop the notifications.
+   * the watch once the engine opened it — before or after
+   * {@link start}: before, the watch opens as the engine starts. Close
+   * the watch to stop the notifications:
+   *
+   * ```ts
+   * await using watch = await session.watch((n) => console.log(n));
+   * // ...
+   * // Closed when the scope ends, or earlier with `watch.close()`.
+   * ```
+   *
+   * The watch may outlive the session: once the session has stopped,
+   * closing it resolves `false` at once. Rejects if the session stops
+   * before the engine opened the watch.
    */
-  watch(callback: (notification: BlockNotification) => void): Promise<number> {
-    return this.command.createWatch(callback);
+  async watch(
+    callback: (notification: BlockNotification) => void,
+  ): Promise<WatchSubscription> {
+    // Closing turns delivery off at once, before the engine answers.
+    let open = true;
+    const id = await this.unlessStopped(
+      () =>
+        this.command.createWatch((notification) => {
+          if (open) callback(notification);
+        }),
+      () => {
+        throw new Error(
+          'EngineSession.watch() called after stop(): the engine has shut ' +
+            'down and opens no watches. Create a new session to run again.',
+        );
+      },
+    );
+    return new Subscription(id, () => {
+      open = false;
+      return this.unwatch(id);
+    });
   }
 
   /**
-   * Closes the watch {@link watch} resolved with `watchId`, resolving
-   * with whether it was open.
+   * Closes the watch with id `watchId` — one `EngineCommand.createWatch`
+   * opened, or a {@link WatchSubscription.id} — resolving with whether
+   * it was open. Once the session has stopped, resolves `false`: the
+   * engine is gone, and its watches with it.
    */
   unwatch(watchId: number): Promise<boolean> {
-    return this.command.removeWatch(watchId);
+    return this.unlessStopped(
+      () => this.command.removeWatch(watchId),
+      () => false,
+    );
   }
 
   /**
@@ -164,20 +243,25 @@ export class EngineSession {
    * the reset is done, so a command issued afterwards sees the engine
    * empty.
    *
-   * Throws after {@link stop} — there is nothing left to reset, and
-   * the request would otherwise wait on the ended message loop
-   * forever. (A reset issued concurrently with stop() is fine: both go
-   * through the control chain, reset first.)
+   * Rejects once the engine has stopped — through {@link stop}, or a
+   * `stopEngine` sent on a command handle — or if it stops before
+   * answering: there is nothing left to reset, and the request would
+   * otherwise wait on the ended message loop forever. (A reset issued
+   * concurrently with stop() is fine: both go through the control
+   * chain, reset first.)
    */
   reset(): Promise<void> {
-    if (this.stopDone) {
+    const stopped = (): never => {
       throw new Error(
         'EngineSession.reset() called after stop(): the engine has shut ' +
           'down and no longer services commands. Create a new session to ' +
           'run again.',
       );
-    }
-    return this.enqueueControl(() => this.control.resetEngine());
+    };
+    if (this.stopDone) return Promise.resolve().then(stopped);
+    return this.enqueueControl(() =>
+      this.unlessStopped(() => this.control.resetEngine(), stopped),
+    );
   }
 
   /**
@@ -185,6 +269,11 @@ export class EngineSession {
    * completed. A no-op before {@link start}. The session is spent
    * afterwards — commands are no longer serviced; create a new session
    * to run again.
+   *
+   * If the engine has already stopped — through a `stopEngine` sent on
+   * a command handle — or stops while this waits, it resolves once
+   * `run()`'s future has completed, without waiting for an answer the
+   * stopped engine will never send.
    */
   stop(): Promise<void> {
     const runDone = this.runDone;
@@ -192,10 +281,44 @@ export class EngineSession {
     // Idempotent: a second Shutdown would wait on the ended message
     // loop forever, so every caller shares the first stop's promise.
     this.stopDone ??= this.enqueueControl(async () => {
-      await this.control.stopEngine();
+      await this.unlessStopped(
+        () => this.control.stopEngine(),
+        () => undefined,
+      );
       await runDone;
     });
     return this.stopDone;
+  }
+
+  /**
+   * {@link stop}s the session, so that `await using` stops it when the
+   * scope ends:
+   *
+   * ```ts
+   * await using session = startEngine();
+   * ```
+   */
+  async [Symbol.asyncDispose](): Promise<void> {
+    await this.stop();
+  }
+
+  /**
+   * Sends a request with `send` and settles as it does — or with
+   * `stopped()` once the engine has stopped without answering it, or
+   * at once, without sending, if it already has. A stopped engine
+   * answers nothing, and its channel keeps a request it will never
+   * read, so the request would otherwise wait forever.
+   */
+  private unlessStopped<T>(
+    send: () => Promise<T>,
+    stopped: () => T,
+  ): Promise<T> {
+    if (this.ended) return Promise.resolve().then(stopped);
+    const request = send();
+    const runDone = this.runDone;
+    // Before start(), the request waits for the engine to start.
+    if (!runDone) return request;
+    return Promise.race([request, runDone.then(stopped, stopped)]);
   }
 
   private enqueueControl<T>(op: () => Promise<T>): Promise<T> {

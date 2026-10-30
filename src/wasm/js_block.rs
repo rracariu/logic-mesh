@@ -1,6 +1,9 @@
 // Copyright (c) 2022-2023, Radu Racariu.
 
 //! JavaScript-backed block implementation.
+//!
+//! Crate-private: JavaScript registers these blocks with
+//! `registerBlock`, so nothing here is Rust API.
 
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -20,6 +23,8 @@ use crate::base::block::{Block, BlockState};
 use crate::blocks::registry::{BlockSink, eval_block_impl};
 use crate::tokio_impl::block::drain_ready_inputs;
 use crate::tokio_impl::scan::scan_interval_millis;
+use crate::wasm::error::{js_detail, js_type_name};
+use crate::wasm::types::to_js_value;
 use crate::{
     base::{
         block::{BlockDesc, BlockProps},
@@ -30,7 +35,9 @@ use crate::{
     blocks::{InputImpl, OutputImpl},
 };
 
-type ExternFuncRegistryType = HashMap<String, HashMap<String, js_sys::Function>>;
+/// The factory of every block `registerBlock` registered, by library
+/// and block name — `None` for a block registered without one.
+type ExternFuncRegistryType = HashMap<String, HashMap<String, Option<js_sys::Function>>>;
 
 thread_local! {
     /// A registry of JS functions that implement block logic.
@@ -65,7 +72,7 @@ thread_local! {
 /// outputs are never committed. Keep executors bounded in time as
 /// well as idempotent.
 #[derive(Debug, Default)]
-pub struct JsBlock {
+pub(crate) struct JsBlock {
     id: Uuid,
     desc: BlockDesc,
     inputs: Vec<InputImpl>,
@@ -89,7 +96,11 @@ pub struct JsBlock {
 
 impl JsBlock {
     /// Creates a new instance of a block.
-    pub fn new(desc: BlockDesc, func: Option<js_sys::Function>, block_id: Option<Uuid>) -> Self {
+    pub(crate) fn new(
+        desc: BlockDesc,
+        func: Option<js_sys::Function>,
+        block_id: Option<Uuid>,
+    ) -> Self {
         let id = block_id.unwrap_or_else(uuid::Uuid::new_v4);
 
         let inputs = desc
@@ -115,46 +126,54 @@ impl JsBlock {
         }
     }
 
-    // Call the JS function with the inputs as arguments
+    /// Calls the JS function with the inputs as arguments — in the
+    /// bindings' one encoding, so an input with no value is `null` —
+    /// and sets the outputs from the array it returns or resolves with.
+    /// Anything else leaves the outputs as they are. A throw or a
+    /// rejection faults the block, with the thrown value as the reason.
+    ///
+    /// A fault is logged at debug only: it reaches JavaScript through
+    /// the block's state and fault reason, and a block that runs on
+    /// every cycle would log it on every cycle.
     async fn call_js_function(&mut self, values: JsValue) {
-        if let Some(ref func) = self.func {
-            match func.call1(&JsValue::NULL, &values) {
-                Ok(result) => {
-                    let promise = Promise::from(result);
-                    let future = JsFuture::from(promise);
+        let Some(ref func) = self.func else {
+            return;
+        };
 
-                    future
-                        .await
-                        .map_err(|err| {
-                            serde_wasm_bindgen::from_value::<String>(err)
-                                .unwrap_or_else(|err| err.to_string())
-                        })
-                        .and_then(|res| {
-                            if res.is_array() {
-                                serde_wasm_bindgen::from_value::<Vec<Value>>(res)
-                                    .map(|list| {
-                                        list.iter().enumerate().for_each(|(index, res)| {
-                                            if let Some(output) = self.outputs.get_mut(index) {
-                                                output.set(res.clone());
-                                            }
-                                        });
-                                    })
-                                    .map_err(|err| err.to_string())
-                            } else {
-                                Ok(())
-                            }
-                        })
-                        .unwrap_or_else(|err| {
-                            log::error!("Failed to process the return of the JS function: {err}");
-                            self.set_state(BlockState::fault(format!(
-                                "JS return processing failed: {err}"
-                            )));
-                        });
+        // `Promise::resolve` takes a plain return value, a native
+        // Promise and any thenable alike: a synchronous executor's
+        // array is not a Promise, and awaiting it as one would call its
+        // missing `then`.
+        let settled = match func.call1(&JsValue::NULL, &values) {
+            Ok(result) => JsFuture::from(Promise::resolve(&result)).await,
+            Err(err) => Err(err),
+        };
+
+        let result = match settled {
+            Ok(result) => result,
+            Err(err) => {
+                let detail = js_detail(&err);
+                log::debug!("JS function of block '{}' failed: {detail}", self.desc.name);
+                self.set_state(BlockState::fault(format!("JS execute failed: {detail}")));
+                return;
+            }
+        };
+
+        if !result.is_array() {
+            return;
+        }
+
+        match serde_wasm_bindgen::from_value::<Vec<Value>>(result) {
+            Ok(list) => list.into_iter().enumerate().for_each(|(index, value)| {
+                if let Some(output) = self.outputs.get_mut(index) {
+                    output.set(value);
                 }
-                Err(err) => {
-                    log::error!("Failed to execute JS function block: {err:#?}");
-                    self.set_state(BlockState::fault(format!("JS execute failed: {err:#?}")));
-                }
+            }),
+            Err(err) => {
+                log::debug!("Failed to process the return of the JS function: {err}");
+                self.set_state(BlockState::fault(format!(
+                    "JS return processing failed: {err}"
+                )));
             }
         }
     }
@@ -329,12 +348,12 @@ impl Block for JsBlock {
             .map(|input| input.value())
             .collect::<Vec<_>>();
 
-        match serde_wasm_bindgen::to_value(&values) {
+        match to_js_value(&values) {
             Ok(values) => {
                 self.call_js_function(values).await;
             }
             Err(err) => {
-                log::error!("Failed to serialize input values: {err}");
+                log::debug!("Failed to serialize input values: {err}");
                 self.set_state(BlockState::fault(format!(
                     "JS input serialization failed: {err}"
                 )));
@@ -371,41 +390,47 @@ pub(crate) async fn eval_js_block(desc: &BlockDesc, inputs: Vec<Value>) -> Resul
     eval_block_impl(&mut block, inputs).await
 }
 
+/// The function executing a block of type `desc`: what its factory
+/// returns, or `None` for a block registered without a factory, which
+/// is a no-op.
+///
+/// A block `registerBlock` never registered — an external block a Rust
+/// application put in the registry — has no executor, and is rejected
+/// with [`ExternalError::LibraryNotFound`].
 fn resolve_js_execute_function(
     desc: &BlockDesc,
 ) -> Result<Option<js_sys::Function>, ExternalError> {
     JS_FNS.with(|fns| {
         let fns = fns.borrow();
-        let lib = fns.get(&desc.library);
+        let factory = fns
+            .get(&desc.library)
+            .and_then(|lib| lib.get(desc.name.as_str()));
 
-        let Some(lib) = lib else {
+        let Some(factory) = factory else {
             return Err(ExternalError::LibraryNotFound {
                 library: desc.library.clone(),
                 name: desc.name.clone(),
             });
         };
+        let Some(factory) = factory else {
+            return Ok(None);
+        };
 
-        let func = lib.get(desc.name.as_str());
-        let func = match func {
-            Some(func) => {
-                let func =
-                    func.call0(&JsValue::NULL)
-                        .map_err(|err| ExternalError::FactoryCallFailed {
-                            name: desc.name.clone(),
-                            detail: format!("{err:#?}"),
-                        })?;
-
-                let func = func.dyn_into::<js_sys::Function>().map_err(|err| {
-                    ExternalError::FactoryReturnedNonFunction {
-                        name: desc.name.clone(),
-                        detail: format!("{err:#?}"),
-                    }
+        let func =
+            factory
+                .call0(&JsValue::NULL)
+                .map_err(|err| ExternalError::FactoryCallFailed {
+                    name: desc.name.clone(),
+                    detail: js_detail(&err),
                 })?;
 
-                Some(func)
+        let func = func.dyn_into::<js_sys::Function>().map_err(|func| {
+            ExternalError::FactoryReturnedNonFunction {
+                name: desc.name.clone(),
+                detail: format!("it returned a value of type {}", js_type_name(&func)),
             }
-            None => None,
-        };
-        Ok(func)
+        })?;
+
+        Ok(Some(func))
     })
 }

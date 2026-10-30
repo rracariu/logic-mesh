@@ -11,11 +11,12 @@ use thiserror::Error;
 /// Failures of external block resolution and execution, and of reading
 /// a connector the JavaScript host supplies.
 ///
-/// External blocks only exist on `wasm32`, where the host registers the
-/// JavaScript function that executes them; the `Unsupported*` variants
-/// are what every other target and the multi-threaded engine report
-/// instead. The other variants are declared on every target, so code
-/// that handles them builds anywhere, but only `wasm32` produces them.
+/// External blocks only exist on `wasm32` with the `js` feature, where
+/// the host registers the JavaScript function that executes them; the
+/// `Unsupported*` variants are what every other build and the
+/// multi-threaded engine report instead. The other variants are
+/// declared on every target, so code that handles them builds anywhere,
+/// but only such a `wasm32` build produces them.
 #[derive(Debug, Error)]
 #[non_exhaustive]
 pub enum ExternalError {
@@ -28,7 +29,9 @@ pub enum ExternalError {
     UnsupportedMultiThreaded,
 
     /// The JavaScript library that provides an external block's executor
-    /// function is not registered with the engine.
+    /// function is not registered with the engine: the JavaScript
+    /// bindings never registered the block, so it has no executor, not
+    /// even a no-op one.
     #[error(
         "Missing library: '{library}'. Can't find the executor JavaScript function for: '{name}' block."
     )]

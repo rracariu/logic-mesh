@@ -164,6 +164,23 @@ enum Race {
     GateClosed,
 }
 
+/// The co-operative yield an actor loop makes between two steps, so a
+/// block that cycles without awaiting anything — one fed by its own
+/// output, or a feedback loop of several — cannot starve the rest.
+///
+/// It lets the sibling tasks of the runtime or `LocalSet` run. On
+/// `wasm32` that is not enough: there the tasks are woken through the
+/// JavaScript host's microtasks, so such a block would also keep every
+/// timer, I/O callback and rendering of the page or process from ever
+/// running. Every so often the yield there waits for the host's event
+/// loop instead (see
+/// [`yield_to_host`](crate::tokio_impl::sleep::yield_to_host)).
+pub(super) async fn yield_between_steps() {
+    tokio::task::yield_now().await;
+    #[cfg(target_arch = "wasm32")]
+    crate::tokio_impl::sleep::yield_to_host().await;
+}
+
 /// Drives `block` one step. `open` is the gate state the caller read
 /// for this step: the block only executes if it is `true` and `hold` is
 /// not waiting out a retry delay, and a gate that has closed since then

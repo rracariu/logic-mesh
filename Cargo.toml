@@ -33,7 +33,20 @@ members = ["block_macro", "tests_lib_usage", "tests_lib_renamed"]
 workspace = true
 
 [features]
-default = []
+default = ["js"]
+# The JavaScript bindings, on wasm32: the `wasm` module (`BlocksEngine`,
+# the engine commands, JS blocks and connectors) and the module's start
+# hook, which installs a panic hook and a console logger. The npm
+# package is built with it. A Rust application that builds this crate
+# for wasm32 and has bindings of its own turns it off with
+# `default-features = false`; the engine still runs there without it,
+# but rejects external blocks as other targets do. Other targets ignore
+# the feature.
+js = [
+	"dep:serde-wasm-bindgen",
+	"dep:wasm-bindgen-console-logger",
+	"dep:console_error_panic_hook",
+]
 # The multi-threaded engine, for a tokio multi-thread runtime. Native
 # targets only: wasm32 has no threads to run it on, and there the
 # feature adds nothing. It enables no tokio feature: the engine only
@@ -72,22 +85,28 @@ log = "^0.4"
 # application's choice.
 tokio = { version = "^1.50", features = ["rt", "sync", "time", "macros"] }
 
+# The engine's timers and clocks need wasm-bindgen, js-sys and
+# wasm-bindgen-futures on wasm32 with or without the `js` bindings.
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 uuid = { version = "^1.23", features = ["v4", "js"] }
 wasm-bindgen = { version = "^0.2", features = ["serde-serialize"] }
-serde-wasm-bindgen = "^0.6"
+serde-wasm-bindgen = { version = "^0.6", optional = true }
 js-sys = "^0.3"
 wasm-bindgen-futures = "^0.4"
-wasm-bindgen-console-logger = "^0.1"
-console_error_panic_hook = "^0.1"
+wasm-bindgen-console-logger = { version = "^0.1", optional = true }
+console_error_panic_hook = { version = "^0.1", optional = true }
 getrandom = { version = "^0.3", default-features = false, features = [
 	"wasm_js",
 ] }
 
 # Document the multi-threaded engine on docs.rs too; it is behind a
-# feature, so a default build would leave it out.
+# feature, so a default build would leave it out. The wasm32 build,
+# which docs.rs offers in its platform menu, adds the JavaScript
+# bindings (the `wasm` module, from the default `js` feature) and the
+# wasm32 forms of the block and connector traits.
 [package.metadata.docs.rs]
 features = ["multi-threaded"]
+targets = ["x86_64-unknown-linux-gnu", "wasm32-unknown-unknown"]
 
 [package.metadata.wasm-pack.profile.release]
 wasm-opt = ["-Oz", "--enable-bulk-memory", "--enable-nontrapping-float-to-int"]

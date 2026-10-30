@@ -202,6 +202,12 @@ jobs:
       - name: Run cargo clippy (all features)
         run: cargo clippy --lib --target wasm32-unknown-unknown --all-features -- -D warnings
 
+      # A wasm32 application with JavaScript bindings of its own builds
+      # logic-mesh without the default `js` feature: the engine must
+      # build there without the bindings.
+      - name: Run cargo clippy (no default features)
+        run: cargo clippy --lib --target wasm32-unknown-unknown --no-default-features -- -D warnings
+
   package:
     name: Package
     runs-on: ubuntu-latest

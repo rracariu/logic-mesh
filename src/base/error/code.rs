@@ -211,6 +211,9 @@ error_codes! {
     /// An argument handed to an engine through a transport is unusable,
     /// such as a watch id that is not one.
     InvalidArgument,
+    /// A value handed to an engine through a transport — such as a pin
+    /// value from JavaScript — is not a Haystack value.
+    InvalidValue,
     /// A transport could not convert a response for its caller.
     Serialization,
 }

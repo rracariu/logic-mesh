@@ -83,9 +83,9 @@ console.log(await command.evalBlock('Add', [1, 2])); // [ 3 ]
 
 ### TypeScript
 
-Type declarations ship with the package. The wasm-bindgen declarations use
-`Symbol.dispose`, so compile with `skipLibCheck: true` or add
-`ESNext.Disposable` (or `ESNext`) to `lib`.
+Type declarations ship with the package. The declarations use
+`Symbol.dispose` and `Symbol.asyncDispose`, so compile with
+`skipLibCheck: true` or add `ESNext.Disposable` (or `ESNext`) to `lib`.
 
 ## UI Editor
 
@@ -149,15 +149,16 @@ import { startEngine } from 'logic-mesh';
 const session = startEngine();
 
 // Register a callback that will be called when a block changes. The
-// promise resolves with the watch's id once the engine opened it.
-const watchId = await session.watch((notification) => {
+// promise resolves with the watch once the engine opened it.
+const watch = await session.watch((notification) => {
   console.log('Block changed', JSON.stringify(notification));
 });
 
 const sineWave = await session.command.addBlock('SineWave');
 
-// Stop the notifications.
-await session.unwatch(watchId);
+// Stop the notifications. `await using watch = ...` closes it at the
+// end of the scope instead.
+await watch.close();
 ```
 
 ### Handle errors
@@ -166,7 +167,8 @@ A command that fails rejects with a `LogicMeshError`: an `Error` whose
 `code` names the failure — `'BlockInstanceNotFound'`,
 `'UnsupportedProgramVersion'`, … (the `LogicMeshErrorCode` union) — and
 whose `message` describes it. The codes are stable; the messages are
-for people.
+for people. The synchronous calls — `initEngine`, `registerBlock`,
+`registerConnector`, `setLogLevel` — throw `LogicMeshError`s too.
 
 ```ts
 import { isLogicMeshError, startEngine } from 'logic-mesh';
@@ -182,6 +184,17 @@ try {
     throw err;
   }
 }
+```
+
+### Logging
+
+The engine logs warnings and errors to the console. `setLogLevel` makes
+it more verbose, or silences it:
+
+```ts
+import { setLogLevel } from 'logic-mesh';
+
+setLogLevel('debug'); // 'off' | 'error' | 'warn' | 'info' | 'debug' | 'trace'
 ```
 
 ### Expose JavaScript functions as blocks

@@ -26,18 +26,21 @@ async function until<T>(
   }
 }
 
-/** The latest value a notification reported for the block's `out` pin. */
+/** The latest value a notification reported for the block's `out` pin,
+ * or `undefined` while it is Null. */
 function lastOut(notes: BlockNotification[], id: string): unknown {
-  return notes
-    .filter((n) => n.id === id)
-    .flatMap((n) => n.changes)
-    .filter((c) => c.name === 'out')
-    .at(-1)?.value;
+  return (
+    notes
+      .filter((n) => n.id === id)
+      .flatMap((n) => n.changes)
+      .filter((c) => c.name === 'out')
+      .at(-1)?.value ?? undefined
+  );
 }
 
 describe('engine pin writes', () => {
   it('recompute a native block with no links', async () => {
-    const session = startEngine({ sleepDuration: 10 });
+    const session = startEngine({ scanInterval: 10 });
     sessions.push(session);
     const notes: BlockNotification[] = [];
     session.watch((n) => notes.push(n));
@@ -58,15 +61,15 @@ describe('engine pin writes', () => {
     const id = await command.addBlock('Add');
     // Held, the block cannot recompute `out` between the writes.
     await command.pauseExecution();
-    expect(await command.writeBlockOutput(id, 'out', 5)).toBeUndefined();
+    expect(await command.writeBlockOutput(id, 'out', 5)).toBeNull();
     expect(await command.writeBlockOutput(id, 'out', 7)).toBe(5);
-    expect(await command.writeBlockInput(id, 'in0', 1)).toBeUndefined();
+    expect(await command.writeBlockInput(id, 'in0', 1)).toBeNull();
     expect(await command.writeBlockInput(id, 'in0', 2)).toBe(1);
     await command.resumeExecution();
   });
 
   it('run a registered JS block whose inputs are not linked', async () => {
-    const session = createEngineSession({ sleepDuration: 10 });
+    const session = createEngineSession({ scanInterval: 10 });
     sessions.push(session);
     const desc: BlockDesc = {
       name: 'DoublesUnlinked',

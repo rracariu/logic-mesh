@@ -138,7 +138,9 @@ use crate::base::connector::{
     Connector, ConnectorFuture, ConnectorHandle, ValueStream, get_connector, register_connector,
     unregister_connector,
 };
-use crate::base::error::{ConnectorError, ExternalError};
+use crate::base::error::{ConnectorError, ExternalError, RequestError};
+use crate::wasm::error::{js_detail, js_error};
+use crate::wasm::types::to_js_value;
 
 /// The value callback handed to the JS `subscribe` method.
 ///
@@ -236,8 +238,7 @@ impl Connector for JsConnector {
         Box::pin(async move {
             let error = |detail: String| ConnectorError::publish(address.clone(), detail);
 
-            let value =
-                serde_wasm_bindgen::to_value(&value).map_err(|err| error(err.to_string()))?;
+            let value = to_js_value(&value).map_err(|err| error(err.to_string()))?;
             let ret = func
                 .call2(&this, &JsValue::from_str(&address), &value)
                 .map_err(|err| error(js_detail(&err)))?;
@@ -258,8 +259,7 @@ impl Connector for JsConnector {
         Box::pin(async move {
             let error = |detail: String| ConnectorError::request(address.clone(), detail);
 
-            let value =
-                serde_wasm_bindgen::to_value(&value).map_err(|err| error(err.to_string()))?;
+            let value = to_js_value(&value).map_err(|err| error(err.to_string()))?;
             let ret = func
                 .call2(&this, &JsValue::from_str(&address), &value)
                 .map_err(|err| error(js_detail(&err)))?;
@@ -276,23 +276,26 @@ impl Connector for JsConnector {
 /// Registers a JavaScript-implemented connector under `name` in the
 /// process-wide connector registry.
 ///
-/// `connector` is a JS object carrying `subscribe`, `publish` and
-/// `request` functions plus optional `start` and `stop` — see the
-/// [module docs](self) for the full contract. Callable at any time,
-/// including while an engine runs; attach the registered connector to
-/// a running engine with the `addConnector` engine command.
+/// `connector` is an object carrying `subscribe`, `publish` and
+/// `request` functions plus optional `start` and `stop` (see
+/// `JsConnector`). Callable at any time, including while an engine
+/// runs; attach the registered connector to a running engine with the
+/// `addConnector` engine command.
 ///
-/// Exported to JS as `registerConnector`.
-///
-/// # Errors
-///
-/// Returns (throws, on the JS side) a message if `connector` does not
-/// have the required shape — see [`JsConnector::from_js`] — or if a
-/// connector named `name` is already registered.
+/// Throws a `LogicMeshError`: `ConnectorMethodMissing`,
+/// `ConnectorMethodNotFunction` or `ConnectorPropertyUnreadable` if
+/// `connector` does not have the required shape, and
+/// `ConnectorAlreadyRegistered` if a connector named `name` is already
+/// registered.
 #[wasm_bindgen(js_name = "registerConnector")]
-pub fn register_js_connector(name: String, connector: JsValue) -> Result<(), String> {
-    let js_connector = JsConnector::from_js(&connector).map_err(|err| err.to_string())?;
-    register_connector(&name, ConnectorHandle::new(js_connector)).map_err(|err| err.to_string())?;
+pub fn register_js_connector(
+    name: String,
+    #[wasm_bindgen(unchecked_param_type = "JsConnector")] connector: JsValue,
+) -> Result<(), JsValue> {
+    let js_connector =
+        JsConnector::from_js(&connector).map_err(|err| js_error(RequestError::from(err)))?;
+    register_connector(&name, ConnectorHandle::new(js_connector))
+        .map_err(|err| js_error(RequestError::from(err)))?;
     // Record the raw object only once the registration is in — the
     // identity table must never claim a name the registry rejected.
     JS_CONNECTOR_OBJECTS.with_borrow_mut(|map| {
@@ -330,10 +333,11 @@ thread_local! {
 /// connector behind the façade's back, after which the same name may
 /// be re-registered by someone else. `false` therefore means either
 /// "nothing is registered under `name`" or "something else is".
-///
-/// Exported to JS as `connectorIs`.
 #[wasm_bindgen(js_name = "connectorIs")]
-pub fn js_connector_is(name: &str, connector: JsValue) -> bool {
+pub fn js_connector_is(
+    name: &str,
+    #[wasm_bindgen(unchecked_param_type = "JsConnector")] connector: JsValue,
+) -> bool {
     if get_connector(name).is_none() {
         // The registration is gone (reset, detach, or explicit
         // unregister); drop the stale object reference too, so the
@@ -354,15 +358,13 @@ pub fn js_connector_is(name: &str, connector: JsValue) -> bool {
 /// process-wide connector registry, returning whether a connector was
 /// removed.
 ///
-/// Symmetric with [`registerConnector`](register_js_connector) and
-/// meant for a connector that was registered but never attached to an
-/// engine. A connector attached to a running engine should instead be
-/// removed with the `removeConnector` engine command, which detaches
-/// and stops it before unregistering — raw unregistration leaves the
-/// engine tracking a stale name (the engine copes: detaching it later
-/// warns that the connector was already unregistered externally).
-///
-/// Exported to JS as `unregisterConnector`.
+/// Symmetric with `registerConnector` and meant for a connector that
+/// was registered but never attached to an engine. A connector
+/// attached to a running engine should instead be removed with the
+/// `removeConnector` engine command, which detaches and stops it before
+/// unregistering — raw unregistration leaves the engine tracking a
+/// stale name (the engine copes: detaching it later warns that the
+/// connector was already unregistered externally).
 #[wasm_bindgen(js_name = "unregisterConnector")]
 pub fn unregister_js_connector(name: String) -> bool {
     let removed = unregister_connector(&name).is_some();
@@ -381,11 +383,8 @@ pub fn unregister_js_connector(name: String) -> bool {
 /// Lets JS distinguish "not yet registered" from "registered but
 /// stale" (e.g. a registry entry that outlived a module re-init)
 /// without attempting a registration just to catch the
-/// already-registered error — [`registerConnector`](register_js_connector)
-/// rejects duplicates, and the registry lives for the process, not the
-/// module.
-///
-/// Exported to JS as `connectorRegistered`.
+/// already-registered error — `registerConnector` rejects duplicates,
+/// and the registry lives for the process, not the module.
 #[wasm_bindgen(js_name = "connectorRegistered")]
 pub fn js_connector_registered(name: String) -> bool {
     get_connector(&name).is_some()
@@ -581,18 +580,6 @@ fn as_unsubscribe_fn(address: &str, value: JsValue) -> Option<js_sys::Function> 
 /// path reports.
 fn subscribe_error(address: &str, detail: String) -> ConnectorError {
     ConnectorError::subscribe(address, detail)
-}
-
-/// Renders a JS exception or rejection reason as a detail message: an
-/// `Error` via its own `toString()` (preserving the error name, e.g.
-/// `"TypeError: ..."`), a plain string as-is, anything else via its
-/// debug representation.
-fn js_detail(err: &JsValue) -> String {
-    if let Some(error) = err.dyn_ref::<js_sys::Error>() {
-        return String::from(js_sys::Error::to_string(error));
-    }
-
-    err.as_string().unwrap_or_else(|| format!("{err:?}"))
 }
 
 /// Reads property `name` from `connector`, requiring it to be a

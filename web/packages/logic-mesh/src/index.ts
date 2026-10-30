@@ -6,6 +6,7 @@ export {
   unregisterConnector,
   connectorRegistered,
   connectorIs,
+  setLogLevel,
 } from './logic_mesh.js';
 export { defineBlock, TypedBlock } from './TypedBlock.js';
 export {
@@ -13,6 +14,7 @@ export {
   startEngine,
   EngineSession,
   type EngineSessionOptions,
+  type WatchSubscription,
 } from './EngineSession.js';
 export {
   isLogicMeshError,
@@ -118,6 +120,36 @@ export type Kind =
   | 'grid';
 
 /**
+ * The level `setLogLevel` takes: the most verbose level the engine
+ * logs to the console at. The module starts at `'warn'`.
+ */
+export type LogLevel = 'off' | 'error' | 'warn' | 'info' | 'debug' | 'trace';
+
+/**
+ * The function that executes a JS block.
+ *
+ * It is called with the block's input values, in the order of the
+ * inputs in the block description, and returns the output values in
+ * the order of the outputs — directly or through a Promise. The values
+ * are Haystack values in their JSON encoding, as every binding hands
+ * them out: a Dict is a plain object, and an input with no value, or a
+ * `Null` one, is `null`. Returning
+ * anything but an array leaves the outputs as they are. A throw or a
+ * rejection faults the block, with the error's message as the fault
+ * reason.
+ */
+export type JsBlockExecutor = (
+  inputs: unknown[],
+) => unknown[] | undefined | Promise<unknown[] | undefined>;
+
+/**
+ * What `BlocksEngine.registerBlock` takes to run a JS block: a factory
+ * called once per block instance, returning the instance's
+ * {@link JsBlockExecutor}.
+ */
+export type JsBlockFactory = () => JsBlockExecutor;
+
+/**
  * A block that is implemented in JS
  */
 export type JsBlock = {
@@ -128,14 +160,9 @@ export type JsBlock = {
 
   /**
    * An optional block factory function that returns a function that is called when the block is executed.
-   *
-   * The execute function is called with the block inputs and should return the block outputs.
-   * The order of the inputs and outputs is the same as the order of the pins in the block description.
-   * Returning `undefined` will not change the output value.
-   *
-   * @returns The execute function that is called when the block is executed.
+   * See {@link JsBlockExecutor}.
    */
-  executor?: () => (inputs: unknown[]) => Promise<unknown[] | undefined>;
+  executor?: JsBlockFactory;
 };
 
 /**
@@ -251,8 +278,10 @@ export interface BlockNotification {
     source: string;
     /**
      * The value that was changed on this pin. The shape is
-     * Haystack-encoded JSON; consumers narrow as needed (e.g.
-     * `typeof value === 'number'` for a numeric pin).
+     * Haystack-encoded JSON, as `inspectBlock` and `getProgram` give
+     * it: a Dict is a plain object, and `Null` is `null`. Consumers
+     * narrow as needed (e.g. `typeof value === 'number'` for a numeric
+     * pin).
      */
     value: unknown;
   }[];
@@ -261,7 +290,7 @@ export interface BlockNotification {
    * The block's operational state at the time of the notification.
    * Drives fault visualization on the UI.
    */
-  state: 'running' | 'fault' | 'disabled' | 'terminated';
+  state: BlockState;
 
   /**
    * Optional reason associated with `state === "fault"`.
@@ -269,7 +298,67 @@ export interface BlockNotification {
   faultReason?: string;
 }
 
-export interface LinkData {
+/**
+ * A block's operational state.
+ */
+export type BlockState = 'running' | 'fault' | 'disabled' | 'terminated';
+
+/**
+ * A block's state and pin values, as `EngineCommand.inspectBlock`
+ * resolves with them: plain objects, with pin values in the Haystack
+ * JSON encoding `getProgram` uses.
+ */
+export interface BlockInspection {
+  /** The block id. */
+  id: string;
+
+  /** The block type name. */
+  name: string;
+
+  /** The library of the block type. */
+  lib: string;
+
+  /** The input pins by name. */
+  inputs: Record<
+    string,
+    {
+      /** The pin kind. */
+      kind: Kind;
+      /** The pin value; `null` when it has none. */
+      val: unknown;
+      /** True if the pin is linked to another pin. */
+      isConnected: boolean;
+    }
+  >;
+
+  /** The output pins by name. */
+  outputs: Record<
+    string,
+    {
+      /** The pin kind. */
+      kind: Kind;
+      /** The pin value; `null` when it has none. */
+      val: unknown;
+    }
+  >;
+
+  /** The block's operational state. */
+  state: BlockState;
+
+  /** The reason when `state` is `'fault'`. */
+  faultReason?: string;
+}
+
+/**
+ * A link between two block pins, as `createLink` resolves with it and a
+ * program saves it.
+ *
+ * Declared with `type`, so that it is a plain JSON object to
+ * TypeScript too: a `LinkData` can be stored where a
+ * `Record<string, unknown>` is expected, such as a graph library's edge
+ * data.
+ */
+export type LinkData = {
   /**
    * The link id
    */
@@ -294,7 +383,7 @@ export interface LinkData {
    * The link target block uuid
    */
   targetBlockUuid: string;
-}
+};
 
 /**
  * The program save format version this package writes, and the newest

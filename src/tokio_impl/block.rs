@@ -177,7 +177,7 @@ pub(crate) fn drain_ready_inputs<B: Block>(block: &mut B) -> Option<usize> {
                         // The decoder's own error is the source, so
                         // render the chain to keep its detail.
                         let err = ErrorChain(&err);
-                        log::error!("Error converting value: {err}");
+                        log::debug!("Error converting value: {err}");
                         if conversion_fault.is_none() {
                             conversion_fault = Some(format!(
                                 "type conversion failed on input {}: {err}",

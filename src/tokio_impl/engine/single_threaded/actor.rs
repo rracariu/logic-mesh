@@ -18,7 +18,7 @@ use std::rc::Rc;
 use libhaystack::val::Value;
 use tokio::sync::mpsc;
 
-use super::super::actor_step::{ExecutionGate, PanicHold, Step, run_one_step};
+use super::super::actor_step::{ExecutionGate, PanicHold, Step, run_one_step, yield_between_steps};
 use super::super::block_mailbox::BlockMailboxCmd;
 use crate::base::Status;
 use crate::base::block::{Block, BlockState};
@@ -73,9 +73,10 @@ pub(super) async fn block_actor_task<B>(
         }
 
         // Co-operative yield: prevents a tight-cycling block (e.g. a
-        // misconfigured periodic block with no awaits) from starving siblings
-        // on the same LocalSet.
-        tokio::task::yield_now().await;
+        // misconfigured periodic block with no awaits, or a feedback
+        // loop) from starving siblings on the same LocalSet — and, on
+        // wasm32, the JavaScript host's event loop.
+        yield_between_steps().await;
     }
 }
 

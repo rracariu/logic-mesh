@@ -40,8 +40,9 @@ export default ts.config(
     },
   },
   {
-    // Build and packaging scripts run under Node, not in the browser.
-    files: ['scripts/**/*.mjs'],
+    // Build and packaging scripts, and the test fixtures that run in
+    // worker threads, run under Node, not in the browser.
+    files: ['scripts/**/*.mjs', 'test/fixtures/**/*.mjs'],
     languageOptions: { globals: globals.node },
   },
   {
