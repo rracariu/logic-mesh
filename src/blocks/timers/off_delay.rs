@@ -4,13 +4,14 @@
 
 use std::time::Duration;
 
-use crate::base::output::props::OutputProps;
+use crate::base::output::OutputProps;
 use crate::base::{
     block::Block,
     input::{InputProps, input_reader::InputReader},
     output::Output,
 };
-use crate::blocks::utils::{get_sleep_dur, input_to_millis_or_default};
+use crate::blocks::utils::input_to_millis_or_default;
+use crate::tokio_impl::scan::scan_interval_millis;
 use crate::tokio_impl::sleep::current_time_millis;
 
 use libhaystack::val::{Bool, Value};
@@ -36,14 +37,14 @@ pub struct OffDelay {
 
 impl Block for OffDelay {
     async fn execute(&mut self) {
-        let poll = get_sleep_dur();
+        let poll = scan_interval_millis();
         self.wait_on_inputs(Duration::from_millis(poll)).await;
 
         if !self.out.is_connected() {
             return;
         }
 
-        let input = matches!(self.input.get_value(), Some(Value::Bool(b)) if b.value);
+        let input = matches!(self.input.value(), Some(Value::Bool(b)) if b.value);
         let delay_ms = input_to_millis_or_default(&self.delay.val);
         let now = current_time_millis();
 

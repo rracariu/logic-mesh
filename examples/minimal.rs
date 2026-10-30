@@ -21,9 +21,9 @@
 //! pushes new values into the adder's input watch channel; `Add::execute`
 //! drains them on its next cycle.
 
-use logic_mesh::base::block::{Block, BlockProps, connect::connect_output};
-use logic_mesh::base::output::OutputProps;
+use logic_mesh::base::block::connect_output;
 use logic_mesh::blocks::{math::Add, misc::SineWave};
+use logic_mesh::prelude::*;
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() {
@@ -61,6 +61,6 @@ async fn main() {
 }
 
 /// Extract a numeric pin value or 0 if the block has not emitted yet.
-fn pin_to_f64(v: &libhaystack::val::Value) -> f64 {
+fn pin_to_f64(v: &logic_mesh::Value) -> f64 {
     v.try_into().unwrap_or(0.0)
 }

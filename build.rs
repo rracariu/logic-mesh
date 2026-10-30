@@ -63,12 +63,12 @@ fn main() {
     // Generate the registry code
     let mut code = String::new();
 
-    // Generate use statements
+    // Generate use statements. The block modules are private, so each
+    // block is imported through its category's re-export — which also
+    // fails the build if a category forgets to re-export one.
     for (category, category_blocks) in &blocks {
-        for (module, struct_name) in category_blocks {
-            code.push_str(&format!(
-                "use crate::blocks::{category}::{module}::{struct_name};\n"
-            ));
+        for (_, struct_name) in category_blocks {
+            code.push_str(&format!("use crate::blocks::{category}::{struct_name};\n"));
         }
     }
 

@@ -101,10 +101,10 @@ impl ExternalOut {
     /// retry; `Null` fires nothing but still moves the baseline, so a
     /// later return to the previous value fires again.
     fn promote_fresh_input(&mut self) {
-        if self.input.get_value() == self.last_input.as_ref() {
+        if self.input.value() == self.last_input.as_ref() {
             return;
         }
-        self.last_input = self.input.get_value().cloned();
+        self.last_input = self.input.value().cloned();
         if let Some(value) = &self.last_input
             && !matches!(value, Value::Null)
         {

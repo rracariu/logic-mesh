@@ -16,14 +16,14 @@ use tokio::{
 };
 use uuid::Uuid;
 
-use crate::base::block::{BlockProps, connect::connect_output};
+use crate::base::block::{BlockProps, connect_output};
 use crate::base::engine::{
     Engine,
     messages::{BlockDefinition, EngineMessage},
 };
 use crate::base::program::{LinkData, Program, ProgramBlock};
 use crate::blocks::math::Add;
-use crate::single_threaded::Messages;
+use crate::tokio_impl::engine::Messages;
 use crate::tokio_impl::{ReaderImpl, WriterImpl};
 
 /// How long a test waits for a reply before declaring the engine stuck.
@@ -1061,7 +1061,7 @@ pub(crate) mod dead_actors {
     use crate::base::block::{Block, BlockState};
     use crate::base::engine::messages::EngineMessage::{InspectBlockReq, InspectBlockRes};
     use crate::base::error::EngineError;
-    use crate::base::input::input_reader::InputReader;
+    use crate::base::input::InputReader;
     use crate::blocks::{InputImpl, OutputImpl};
 
     /// Ends its own actor — by entering [`BlockState::Terminated`] —
@@ -1495,7 +1495,7 @@ pub(crate) mod panics {
         GetCurrentProgramReq, GetCurrentProgramRes, InspectBlockReq, InspectBlockRes,
         RemoveBlockReq, RemoveBlockRes,
     };
-    use crate::base::input::input_reader::InputReader;
+    use crate::base::input::InputReader;
     use crate::base::output::Output;
     use crate::blocks::{InputImpl, OutputImpl};
     use crate::tokio_impl::engine::actor_step::PANIC_RETRY_INITIAL;
@@ -1708,7 +1708,7 @@ pub(crate) mod drops {
     use super::lifecycle::TestEngine;
     use super::*;
     use crate::base::block::Block;
-    use crate::base::input::input_reader::InputReader;
+    use crate::base::input::InputReader;
     use crate::blocks::OutputImpl;
 
     /// How many blocks each test schedules.
@@ -1893,7 +1893,7 @@ pub(crate) mod runtime_descs {
     impl Block for Echo {
         async fn execute(&mut self) {
             self.read_inputs_until_ready().await;
-            if let Some(value) = self.input.get_value().cloned() {
+            if let Some(value) = self.input.value().cloned() {
                 self.out.set(value);
             }
         }
@@ -1915,7 +1915,7 @@ pub(crate) mod runtime_descs {
     impl Block for Registered {
         async fn execute(&mut self) {
             self.read_inputs_until_ready().await;
-            if let Some(value) = self.input.get_value().cloned() {
+            if let Some(value) = self.input.value().cloned() {
                 self.out.set(value);
             }
         }
@@ -1960,6 +1960,41 @@ pub(crate) mod runtime_descs {
         .await;
     }
 
+    /// Regression: a request that named no library looked the block up
+    /// in the core library only, so a block registered in its own
+    /// library could not be added or evaluated by its name alone, while
+    /// `schedule_block` with no library searched every library.
+    pub(crate) async fn a_registered_block_is_found_by_its_name_alone<E: TestEngine>(engine: E) {
+        use crate::base::engine::messages::EngineMessage::{
+            AddBlockReq, AddBlockRes, EvaluateBlockReq, EvaluateBlockRes,
+        };
+
+        let _ = registry::register::<Registered>();
+        drive(engine, move |mut client| async move {
+            let added = client
+                .request(AddBlockReq(client.id, "Registered".to_string(), None, None))
+                .await;
+            let AddBlockRes(Ok(id)) = added else {
+                panic!("not added: {added:?}");
+            };
+            assert_eq!(client.inspect(id).await.name, "Registered");
+
+            let evaluated = client
+                .request(EvaluateBlockReq(
+                    client.id,
+                    "Registered".to_string(),
+                    vec![5.into()],
+                    None,
+                ))
+                .await;
+            let EvaluateBlockRes(Ok(outputs)) = evaluated else {
+                panic!("not evaluated: {evaluated:?}");
+            };
+            assert_eq!(outputs, vec![Value::from(5)]);
+        })
+        .await;
+    }
+
     /// A program of runtime-registered blocks, which the engine
     /// schedules as the registry's type-erased block, loads, runs, and
     /// saves back as it was loaded.
@@ -1989,6 +2024,134 @@ pub(crate) mod runtime_descs {
             client.send(Reset).await;
             client.load(saved.clone()).await.expect("reloaded");
             super::round_trip::wait_for_save(&mut client, &saved).await;
+        })
+        .await;
+    }
+}
+
+/// Per-engine scan intervals, written once against the [`Engine`]
+/// trait and run by each engine's tests.
+pub(crate) mod scan_intervals {
+    use std::time::Duration;
+
+    use super::lifecycle::TestEngine;
+    use super::*;
+    use crate::base::block::Block;
+    use crate::base::input::InputReader;
+    use crate::base::output::Output;
+    use crate::blocks::OutputImpl;
+    use crate::tokio_impl::scan::scan_interval_millis;
+
+    /// Publishes the scan interval its actor task runs with on `out`.
+    #[block]
+    #[derive(BlockProps, Debug)]
+    #[library = "scan_interval_test"]
+    #[category = "test"]
+    pub(crate) struct ScanProbe {
+        #[output(kind = "Number")]
+        out: OutputImpl,
+    }
+
+    impl Block for ScanProbe {
+        async fn execute(&mut self) {
+            self.out.set((scan_interval_millis() as f64).into());
+            // No linked inputs: this waits a scan interval or more.
+            self.read_inputs_until_ready().await;
+        }
+    }
+
+    /// Schedules a [`ScanProbe`] on `engine` and returns the interval,
+    /// in milliseconds, it reports once the engine runs.
+    async fn probe<E: TestEngine>(mut engine: E, expected: f64) {
+        let probe = ScanProbe::new();
+        let id = *probe.id();
+        engine.schedule(probe).expect("scheduled");
+        drive(engine, move |mut client| async move {
+            client.wait_for_output(id, "out", expected.into()).await;
+        })
+        .await;
+    }
+
+    /// Regression: the scan interval was one process-wide value, so
+    /// configuring a second engine changed it for the first one's
+    /// blocks too.
+    pub(crate) async fn each_engine_keeps_its_own_scan_interval<E: TestEngine>(
+        first: E,
+        second: E,
+    ) {
+        let first = first.with_scan_interval(Duration::from_millis(40));
+        let second = second.with_scan_interval(Duration::from_millis(60));
+        assert_eq!(first.scan_interval(), Duration::from_millis(40));
+
+        probe(first, 40.0).await;
+        probe(second, 60.0).await;
+    }
+
+    /// A new interval reaches the blocks scheduled before it was set.
+    pub(crate) async fn a_new_scan_interval_reaches_scheduled_blocks<E: TestEngine>(mut engine: E) {
+        let probe = ScanProbe::new();
+        let id = *probe.id();
+        engine.schedule(probe).expect("scheduled");
+        engine.set_scan_interval(Duration::from_millis(30));
+
+        drive(engine, move |mut client| async move {
+            client.wait_for_output(id, "out", 30.0.into()).await;
+        })
+        .await;
+    }
+}
+
+/// Engine configuration written once against the [`Engine`] trait and
+/// run by each engine's tests.
+pub(crate) mod configuration {
+    use std::sync::Arc;
+
+    use assert_matches::assert_matches;
+
+    use super::lifecycle::TestEngine;
+    use super::*;
+    use crate::base::program::Position;
+    use crate::blocks::external::support::mock::MockConnector;
+    use crate::{EngineError, Error};
+
+    /// Regression: `add_connector`, `connector_names`, `block_handles`
+    /// and `block_handle` were inherent methods of each engine, and
+    /// `set_block_metadata` existed on the single-threaded engine only,
+    /// so code generic over [`Engine`] could not configure an engine.
+    pub(crate) async fn an_engine_is_configured_through_the_trait<E: TestEngine>(mut engine: E) {
+        let name = format!("trait-config-{}", Uuid::new_v4());
+        engine
+            .add_connector(&name, Arc::new(MockConnector::default()))
+            .expect("added");
+        assert_eq!(engine.connector_names(), [name]);
+
+        let (source, target) = schedule_linked_adds(&mut engine);
+        let mut scheduled: Vec<_> = engine.block_handles().iter().map(|h| *h.id()).collect();
+        scheduled.sort();
+        let mut expected = vec![source, target];
+        expected.sort();
+        assert_eq!(scheduled, expected);
+
+        let position = Position { x: 1.0, y: 2.0 };
+        engine
+            .set_block_metadata(&source, Some("source".to_string()), Some(position))
+            .expect("scheduled");
+        let handle = engine.block_handle(&source).expect("scheduled");
+        assert_eq!(handle.label(), Some("source"));
+        assert_eq!(handle.position(), Some(position));
+
+        let unknown = Uuid::new_v4();
+        assert!(engine.block_handle(&unknown).is_none());
+        assert_matches!(
+            engine.set_block_metadata(&unknown, None, None),
+            Err(Error::Engine(EngineError::BlockInstanceNotFound { id })) if id == unknown
+        );
+
+        drive(engine, move |mut client| async move {
+            let saved = client.save().await;
+            let block = &saved.blocks[&source.to_string()];
+            assert_eq!(block.label.as_deref(), Some("source"));
+            assert_eq!(block.positions, Some(position));
         })
         .await;
     }

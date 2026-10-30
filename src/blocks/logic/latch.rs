@@ -29,8 +29,8 @@ impl Block for Latch {
     async fn execute(&mut self) {
         self.read_inputs_until_ready().await;
 
-        let input = self.input.get_value();
-        let condition = self.condition.get_value();
+        let input = self.input.value();
+        let condition = self.condition.value();
 
         if let (Some(Value::Bool(condition)), Some(input)) = (condition, input) {
             if condition.value {

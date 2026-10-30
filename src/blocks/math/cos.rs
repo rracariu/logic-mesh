@@ -27,7 +27,7 @@ impl Block for Cos {
     async fn execute(&mut self) {
         self.read_inputs_until_ready().await;
 
-        if let Some(Value::Number(a)) = self.a.get_value() {
+        if let Some(Value::Number(a)) = self.a.value() {
             self.out.set(
                 Number {
                     value: a.value.cos(),

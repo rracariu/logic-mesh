@@ -3,9 +3,9 @@
 //! [`SingleThreadedEngine`] — engine struct, lifecycle, and the
 //! synchronous + async API surface that messaging dispatch routes to.
 
-use std::{cell::RefCell, collections::BTreeMap, marker::PhantomData, rc::Rc};
+use std::{cell::RefCell, collections::BTreeMap, marker::PhantomData, rc::Rc, time::Duration};
 
-use crate::base::error::{EngineError, RegistryError, Result};
+use crate::base::error::{EngineError, Result};
 use libhaystack::val::Value;
 use tokio::{
     sync::{
@@ -34,17 +34,13 @@ use crate::base::{
         data::{LinkData, Position},
     },
 };
-use crate::blocks::registry::{BlockSink, CORE_LIB, get_block};
+use crate::blocks::registry::{BlockSink, get_block};
+use crate::tokio_impl::engine::Messages;
 use crate::tokio_impl::engine::message_dispatch::dispatch_message;
 use crate::tokio_impl::engine::{ensure_schedulable, phase_name, schedule_block_on_engine};
+use crate::tokio_impl::scan::ScanInterval;
 use crate::tokio_impl::{ReaderImpl, WriterImpl};
-
-/// Concrete engine-message type.
-///
-/// The watch-event sender is unbounded — see `wasm/engine_command.rs`
-/// `create_watch` for the rationale (fault notifications must not drop
-/// under burst load).
-pub type Messages = EngineMessage<UnboundedSender<WatchMessage>>;
+use futures::future::LocalBoxFuture;
 
 /// Single-threaded execution environment for blocks.
 ///
@@ -54,15 +50,19 @@ pub type Messages = EngineMessage<UnboundedSender<WatchMessage>>;
 ///
 /// # Examples
 ///
+/// The engine runs its blocks on the thread that drives it, so a
+/// current-thread runtime (tokio's `rt` and `macros` features) is all it
+/// needs.
+///
 /// ```no_run
 /// use logic_mesh::{
-///     base::block::{Block, BlockProps, connect::connect_output},
-///     base::engine::Engine,
+///     base::block::connect_output,
 ///     blocks::{math::Add, misc::SineWave},
+///     prelude::*,
 ///     single_threaded::SingleThreadedEngine,
 /// };
 ///
-/// #[tokio::main]
+/// #[tokio::main(flavor = "current_thread")]
 /// async fn main() -> Result<(), Box<dyn std::error::Error>> {
 ///     let mut sine = SineWave::new();
 ///     let mut add = Add::new();
@@ -107,6 +107,8 @@ pub struct SingleThreadedEngine<S: EngineState = Idle> {
     /// engine runs and is not paused. Actors keep serving their mailbox
     /// either way, so requests are answered while blocks are held.
     execution: watch::Sender<bool>,
+    /// The scan interval every block actor task runs with.
+    scan: ScanInterval,
     /// The lifecycle phase, tracked in the type only.
     state: PhantomData<S>,
 }
@@ -118,8 +120,9 @@ impl Default for SingleThreadedEngine {
 }
 
 /// Shows the engine's phase, whether its blocks may execute, how many
-/// blocks, links and staged programs it holds and the connectors it
-/// manages — not the blocks or channels themselves.
+/// blocks, links and staged programs it holds, the connectors it
+/// manages and its scan interval — not the blocks or channels
+/// themselves.
 impl<S: EngineState> std::fmt::Debug for SingleThreadedEngine<S> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("SingleThreadedEngine")
@@ -129,6 +132,7 @@ impl<S: EngineState> std::fmt::Debug for SingleThreadedEngine<S> {
             .field("links", &self.graph.link_count())
             .field("pending_programs", &self.pending.len())
             .field("connectors", &self.connectors.as_slice())
+            .field("scan_interval", &self.scan.get())
             .finish_non_exhaustive()
     }
 }
@@ -137,6 +141,7 @@ impl Engine for SingleThreadedEngine<Idle> {
     type Writer = WriterImpl;
     type Reader = ReaderImpl;
     type Channel = Sender<Messages>;
+    type RunFuture = LocalBoxFuture<'static, Self>;
 
     fn schedule<B>(&mut self, block: B) -> Result<()>
     where
@@ -155,10 +160,50 @@ impl Engine for SingleThreadedEngine<Idle> {
         Ok(())
     }
 
-    async fn run(self) -> Self {
-        let mut engine = self.into_state::<Running>();
-        engine.event_loop().await;
-        engine.into_state()
+    fn add_connector(&mut self, name: &str, handle: impl Into<ConnectorHandle>) -> Result<()> {
+        register_connector(name, handle)?;
+        self.connectors.push(name.to_string());
+        Ok(())
+    }
+
+    fn connector_names(&self) -> Vec<String> {
+        self.connectors.to_vec()
+    }
+
+    fn block_handles(&self) -> Vec<&BlockHandle> {
+        self.graph.handles()
+    }
+
+    fn block_handle(&self, id: &Uuid) -> Option<&BlockHandle> {
+        self.graph.handle(id)
+    }
+
+    fn set_block_metadata(
+        &mut self,
+        id: &Uuid,
+        label: Option<String>,
+        position: Option<Position>,
+    ) -> Result<()> {
+        Ok(self.graph.set_metadata(id, label, position)?)
+    }
+
+    fn scan_interval(&self) -> Duration {
+        self.scan.get()
+    }
+
+    fn set_scan_interval(&mut self, interval: Duration) {
+        self.scan.set(interval);
+    }
+
+    fn run(self) -> Self::RunFuture {
+        // The event loop evaluates blocks too (`EvaluateBlockReq`), so it
+        // runs with the engine's scan interval like the actor tasks.
+        let scan = self.scan.clone();
+        Box::pin(scan.scope(async move {
+            let mut engine = self.into_state::<Running>();
+            engine.event_loop().await;
+            engine.into_state()
+        }))
     }
 
     fn create_message_channel(
@@ -185,6 +230,7 @@ impl SingleThreadedEngine<Idle> {
             watchers: Rc::default(),
             connectors: ManagedConnectors::default(),
             execution: watch::Sender::new(false),
+            scan: ScanInterval::default(),
             state: PhantomData,
         }
     }
@@ -199,12 +245,7 @@ impl SingleThreadedEngine<Idle> {
     ///
     /// ```
     /// use std::cell::Cell;
-    /// use logic_mesh::{
-    ///     BlockProps, block,
-    ///     base::block::Block,
-    ///     blocks::{InputImpl, OutputImpl},
-    ///     single_threaded::SingleThreadedEngine,
-    /// };
+    /// use logic_mesh::{prelude::*, single_threaded::SingleThreadedEngine};
     ///
     /// #[block]
     /// #[derive(BlockProps, Debug)]
@@ -239,32 +280,6 @@ impl SingleThreadedEngine<Idle> {
     {
         Ok(self.spawn_block(block)?)
     }
-
-    /// Registers `handle` in the process-wide connector registry under
-    /// `name` and puts it under this engine's lifecycle management.
-    ///
-    /// The engine awaits the connector's `start` when [`run`](Engine::run)
-    /// begins — before any block actor makes progress, so blocks never
-    /// resolve an unstarted connector — and its `stop` on shutdown; the
-    /// connector stays registered so a re-run picks it up again. A reset
-    /// unregisters the connector first and then stops it. Dropping the
-    /// engine unregisters any still-tracked connectors without awaiting
-    /// `stop`. Start/stop failures and timeouts are logged, not fatal.
-    ///
-    /// Connectors own their IO loops: spawn them from `start` (via the
-    /// ambient `tokio::spawn` natively, `wasm_bindgen_futures::spawn_local`
-    /// on wasm) and wind them down in `stop`. Pausing the engine does not
-    /// pause these tasks — pause only stops block execution.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if a connector with this name is already
-    /// registered.
-    pub fn add_connector(&mut self, name: &str, handle: impl Into<ConnectorHandle>) -> Result<()> {
-        register_connector(name, handle)?;
-        self.connectors.push(name.to_string());
-        Ok(())
-    }
 }
 
 impl<S: EngineState> SingleThreadedEngine<S> {
@@ -280,6 +295,7 @@ impl<S: EngineState> SingleThreadedEngine<S> {
             watchers,
             connectors,
             execution,
+            scan,
             state: _,
         } = self;
         SingleThreadedEngine {
@@ -292,6 +308,7 @@ impl<S: EngineState> SingleThreadedEngine<S> {
             watchers,
             connectors,
             execution,
+            scan,
             state: PhantomData,
         }
     }
@@ -300,22 +317,6 @@ impl<S: EngineState> SingleThreadedEngine<S> {
     fn set_execution(&self, open: bool) {
         self.execution
             .send_if_modified(|current| std::mem::replace(current, open) != open);
-    }
-
-    /// The names of the connectors this engine manages.
-    pub fn connector_names(&self) -> Vec<String> {
-        self.connectors.to_vec()
-    }
-
-    /// Returns sync metadata handles for every scheduled block. Use the
-    /// async snapshot APIs (`inspect_block`, etc.) to read dynamic state.
-    pub fn block_handles(&self) -> Vec<&BlockHandle> {
-        self.graph.handles()
-    }
-
-    /// Returns the handle for a specific block, if scheduled.
-    pub fn block_handle(&self, id: &Uuid) -> Option<&BlockHandle> {
-        self.graph.handle(id)
     }
 
     // --- Sync engine ops (any phase) ---------------------------------------
@@ -335,12 +336,12 @@ impl<S: EngineState> SingleThreadedEngine<S> {
         self.graph.insert(&block, mailbox_tx)?;
 
         let watchers = self.watchers.clone();
-        self.local.spawn_local(block_actor_task(
+        self.local.spawn_local(self.scan.scope(block_actor_task(
             block,
             mailbox_rx,
             watchers,
             self.execution.subscribe(),
-        ));
+        )));
         Ok(())
     }
 
@@ -349,18 +350,6 @@ impl<S: EngineState> SingleThreadedEngine<S> {
     #[cfg(test)]
     pub(super) fn validate_link(&self, link_data: &LinkData) -> Result<(Uuid, LinkRecord)> {
         self.graph.validate_link(link_data)
-    }
-
-    /// Mutator for UI-metadata sidecar fields. Used by the message
-    /// dispatch path when an external caller wants to update a label /
-    /// position without going through a full program reload.
-    pub fn set_block_metadata(
-        &mut self,
-        id: &Uuid,
-        label: Option<String>,
-        position: Option<Position>,
-    ) {
-        self.graph.set_metadata(id, label, position);
     }
 }
 
@@ -497,6 +486,12 @@ impl SingleThreadedEngine<Running> {
         connectors::attach_connector(&mut self.connectors, name).await
     }
 
+    /// The names of the connectors this engine manages, for
+    /// [`ListConnectorsReq`](EngineMessage::ListConnectorsReq).
+    pub(crate) fn managed_connectors(&self) -> Vec<String> {
+        self.connectors.to_vec()
+    }
+
     /// Detaches an engine-managed connector: stops tracking it,
     /// unregisters it from the process-wide registry, and then awaits
     /// its `stop` — the same ordering as a reset, so no block can
@@ -519,11 +514,7 @@ impl SingleThreadedEngine<Running> {
         block_id: Option<Uuid>,
         lib: Option<&str>,
     ) -> Result<Uuid> {
-        let block_def =
-            get_block(block_name.as_str(), lib).ok_or_else(|| RegistryError::BlockNotFound {
-                library: lib.unwrap_or(CORE_LIB).to_string(),
-                name: block_name.clone(),
-            })?;
+        let block_def = get_block(block_name.as_str(), lib)?;
         // schedule_block_on_engine spawns the actor task immediately (via
         // `spawn_block()`); it returns the assigned block id.
         schedule_block_on_engine(&block_def.desc, block_id, self)
@@ -628,6 +619,6 @@ mod test {
         timeout(Duration::from_secs(2), eng.reset())
             .await
             .expect("reset completes despite the full mailbox");
-        assert!(eng.block_handles().is_empty());
+        assert!(eng.graph.handles().is_empty());
     }
 }

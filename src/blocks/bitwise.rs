@@ -2,10 +2,10 @@
 
 //! Bitwise operation blocks.
 
-pub mod bitwise_and;
-pub mod bitwise_not;
-pub mod bitwise_or;
-pub mod bitwise_xor;
+mod bitwise_and;
+mod bitwise_not;
+mod bitwise_or;
+mod bitwise_xor;
 pub(crate) mod utils;
 
 pub use bitwise_and::BitwiseAnd;

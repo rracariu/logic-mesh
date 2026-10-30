@@ -4,13 +4,13 @@
 
 use std::time::Duration;
 
-use crate::base::output::props::OutputProps;
+use crate::base::output::OutputProps;
 use crate::base::{
     block::Block,
     input::{InputProps, input_reader::InputReader},
     output::Output,
 };
-use crate::blocks::utils::get_sleep_dur;
+use crate::tokio_impl::scan::scan_interval_millis;
 use crate::tokio_impl::sleep::current_time_millis;
 
 use libhaystack::units::units_generated::HOUR;
@@ -39,15 +39,15 @@ pub struct Runtime {
 
 impl Block for Runtime {
     async fn execute(&mut self) {
-        let poll = get_sleep_dur();
+        let poll = scan_interval_millis();
         self.wait_on_inputs(Duration::from_millis(poll)).await;
 
         if !self.out.is_connected() {
             return;
         }
 
-        let on = matches!(self.input.get_value(), Some(Value::Bool(b)) if b.value);
-        let reset = matches!(self.reset.get_value(), Some(Value::Bool(b)) if b.value);
+        let on = matches!(self.input.value(), Some(Value::Bool(b)) if b.value);
+        let reset = matches!(self.reset.value(), Some(Value::Bool(b)) if b.value);
         let now = current_time_millis();
 
         // Reset on rising edge of `reset` so the accumulator clears once,

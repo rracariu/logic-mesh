@@ -61,13 +61,13 @@ impl Block for PriorityArray {
         if let Some(Some(input)) = self
             .inputs()
             .iter()
-            .map(|input| input.get_value())
+            .map(|input| input.value())
             .find(|input| input.is_some())
         {
             self.out.set(input.clone());
         } else {
             self.out
-                .set(self.default.get_value().cloned().unwrap_or_default());
+                .set(self.default.value().cloned().unwrap_or_default());
         }
     }
 }

@@ -4,7 +4,7 @@
 
 use crate::base::{
     block::{Block, BlockProps},
-    input::input_reader::InputReader,
+    input::InputReader,
     output::Output,
 };
 
@@ -34,7 +34,7 @@ impl Block for Mul {
         for el in self
             .inputs()
             .into_iter()
-            .filter_map(|input| match input.get_value().as_ref() {
+            .filter_map(|input| match input.value().as_ref() {
                 Some(Value::Number(num)) => Some(*num),
                 _ => None,
             })
@@ -75,7 +75,7 @@ impl Block for Mul {
 mod test {
     use crate::{
         base::block::{Block, BlockProps},
-        base::input::input_reader::InputReader,
+        base::input::InputReader,
         blocks::math::Mul,
     };
 

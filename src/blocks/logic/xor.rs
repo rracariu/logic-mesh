@@ -30,7 +30,7 @@ impl Block for Xor {
         self.read_inputs_until_ready().await;
 
         if let (Some(Value::Bool(a)), Some(Value::Bool(b))) =
-            (self.input1.get_value(), self.input2.get_value())
+            (self.input1.value(), self.input2.value())
         {
             self.out.set(
                 Bool {

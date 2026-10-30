@@ -22,7 +22,7 @@ use thiserror::Error;
 /// # Examples
 ///
 /// ```
-/// use logic_mesh::{BlockDescError, base::block::desc::BlockRunCondition};
+/// use logic_mesh::{BlockDescError, base::block::BlockRunCondition};
 ///
 /// let err = "sometimes".parse::<BlockRunCondition>().expect_err("not a run condition");
 /// assert_eq!(
@@ -34,7 +34,7 @@ use thiserror::Error;
 #[non_exhaustive]
 pub enum BlockDescError {
     /// The string names no
-    /// [`BlockImplementation`](crate::base::block::desc::BlockImplementation).
+    /// [`BlockImplementation`](crate::base::block::BlockImplementation).
     #[error("Invalid implementation: {value}")]
     UnknownImplementation {
         /// The string that was rejected.
@@ -42,7 +42,7 @@ pub enum BlockDescError {
     },
 
     /// The string names no
-    /// [`BlockRunCondition`](crate::base::block::desc::BlockRunCondition).
+    /// [`BlockRunCondition`](crate::base::block::BlockRunCondition).
     #[error("Invalid run condition: {value}")]
     UnknownRunCondition {
         /// The string that was rejected.

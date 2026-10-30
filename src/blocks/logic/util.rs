@@ -4,12 +4,12 @@ use libhaystack::val::Bool;
 use libhaystack::val::Value;
 
 use crate::base::block::{Block, convert_value};
-use crate::base::input::input_reader::InputReader;
+use crate::base::input::InputReader;
 
 /// Converts the inputs to the same type.
 pub(super) fn convert_inputs<B: Block>(block: &B) -> (Option<Value>, Option<Value>) {
-    let in1 = block.inputs().first().and_then(|input| input.get_value());
-    let in2 = block.inputs().get(1).and_then(|input| input.get_value());
+    let in1 = block.inputs().first().and_then(|input| input.value());
+    let in2 = block.inputs().get(1).and_then(|input| input.value());
 
     let in2 = in2.and_then(|in2| in1.and_then(|in1| convert_value(in1, in2.clone()).ok()));
 

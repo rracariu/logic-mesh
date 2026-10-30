@@ -28,7 +28,7 @@ impl Block for StrLen {
     async fn execute(&mut self) {
         self.read_inputs_until_ready().await;
 
-        if let Some(Value::Str(a)) = self.input.get_value() {
+        if let Some(Value::Str(a)) = self.input.value() {
             self.out.set(
                 Number {
                     value: a.len() as f64,

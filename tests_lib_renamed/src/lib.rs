@@ -2,11 +2,7 @@
 //! renames the `logic-mesh` dependency, using the
 //! `#[logic_mesh(crate = "path")]` escape hatch.
 
-use mesh_renamed::base::block::Block;
-use mesh_renamed::base::input::{InputProps, input_reader::InputReader};
-use mesh_renamed::base::output::Output;
-use mesh_renamed::blocks::{InputImpl, OutputImpl};
-use mesh_renamed::{BlockProps, block};
+use mesh_renamed::prelude::*;
 
 /// Negates the value of its numeric input.
 #[block]
@@ -26,7 +22,7 @@ impl Block for Negate {
     async fn execute(&mut self) {
         self.read_inputs_until_ready().await;
 
-        if let Some(value) = self.input.get_value() {
+        if let Some(value) = self.input.value() {
             let num: f64 = match value.try_into() {
                 Ok(num) => num,
                 Err(_) => return,
@@ -39,13 +35,9 @@ impl Block for Negate {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use mesh_renamed::base::block::BlockProps;
-    use mesh_renamed::base::output::OutputProps;
 
     #[test]
     fn desc_reflects_attributes() {
-        use mesh_renamed::base::block::BlockStaticDesc;
-
         let desc = <Negate as BlockStaticDesc>::static_desc();
         assert_eq!(desc.name, "Negate");
         assert_eq!(desc.library, "downstream_renamed");

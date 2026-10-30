@@ -5,16 +5,13 @@
 pub mod block;
 pub mod connector;
 pub mod engine;
-pub mod error;
+// The errors' canonical path is the crate root (`logic_mesh::Error`, …).
+pub(crate) mod error;
 pub mod input;
 pub mod link;
 pub mod output;
 pub mod program;
 pub(crate) mod sealed;
-pub mod status;
+pub(crate) mod status;
 
-pub use error::{
-    BlockDescError, ConnectorError, EngineError, Error, ExternalError, LinkEnd, RegistryError,
-    Result, ValueError,
-};
 pub use status::Status;

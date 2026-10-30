@@ -4,8 +4,6 @@
 
 #![allow(dead_code)]
 
-use std::sync::atomic::AtomicU64;
-
 use super::InputImpl;
 use crate::base::error::{Result, ValueError};
 use libhaystack::{
@@ -13,23 +11,9 @@ use libhaystack::{
     val::{Number, Value},
 };
 
-/// Default value for sleep intervals.
+/// The duration, in milliseconds, a timer input that holds no valid
+/// duration stands for.
 const DEFAULT_SLEEP_DUR: u64 = 200;
-
-/// Global variable that controls the sleep duration used
-/// to schedule the execution of blocks.
-static SLEEP_DUR: AtomicU64 = AtomicU64::new(DEFAULT_SLEEP_DUR);
-
-/// Sets the sleep duration used to schedule the execution of blocks.
-pub fn set_sleep_dur(dur: u64) {
-    SLEEP_DUR.store(dur, std::sync::atomic::Ordering::Relaxed);
-}
-
-/// Returns the sleep duration used to schedule the execution of blocks.
-/// Returns the default value if not explicitly set.
-pub fn get_sleep_dur() -> u64 {
-    SLEEP_DUR.load(std::sync::atomic::Ordering::Relaxed)
-}
 
 pub(super) fn input_as_float_or_default(input: &InputImpl) -> f64 {
     input_as_number(input).map(|v| v.value).unwrap_or(0.0)

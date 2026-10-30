@@ -5,7 +5,7 @@
 use crate::{
     base::{
         block::{Block, BlockProps, BlockState},
-        input::input_reader::InputReader,
+        input::InputReader,
         output::Output,
     },
     blocks::utils::convert_units,
@@ -36,7 +36,7 @@ impl Block for Median {
         let val = self
             .inputs()
             .into_iter()
-            .filter_map(|input| match input.get_value().as_ref() {
+            .filter_map(|input| match input.value().as_ref() {
                 Some(Value::Number(num)) => Some(*num),
                 _ => None,
             })
@@ -78,7 +78,7 @@ impl Block for Median {
 mod test {
 
     use crate::base::block::test_utils::write_block_inputs;
-    use crate::{base::block::Block, base::input::input_reader::InputReader, blocks::math::Median};
+    use crate::{base::block::Block, base::input::InputReader, blocks::math::Median};
 
     #[tokio::test]
     async fn test_median_block() {

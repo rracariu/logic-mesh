@@ -15,10 +15,11 @@ use super::{Link, LinkState};
 /// multiple links to multiple block inputs.
 ///
 /// Its fields are private: read them through [`Link`] and
-/// [`tx`](Self::tx). The [`connect`](crate::base::block::connect)
-/// functions and the engines create the links between pins; a pin
-/// implementation that wires its own builds one with
-/// [`connected`](Self::connected).
+/// [`tx`](Self::tx). The
+/// [`connect_output`](crate::base::block::connect_output) and
+/// [`connect_input`](crate::base::block::connect_input) functions and
+/// the engines create the links between pins; a pin implementation that
+/// wires its own builds one with [`connected`](Self::connected).
 #[derive(Debug, Default, Clone, PartialEq)]
 pub struct BaseLink<Tx> {
     /// Unique link id.

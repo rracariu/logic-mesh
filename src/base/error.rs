@@ -24,13 +24,13 @@
 //! ```
 //!
 
-pub mod connect;
-pub mod connector;
-pub mod desc;
-pub mod engine;
-pub mod external;
-pub mod registry;
-pub mod value;
+mod connect;
+mod connector;
+mod desc;
+mod engine;
+mod external;
+mod registry;
+mod value;
 
 pub use connect::ConnectError;
 pub use connector::{ConnectorError, ConnectorErrorSource};
@@ -87,6 +87,11 @@ pub enum Error {
     /// failed.
     #[error(transparent)]
     Connector(#[from] ConnectorError),
+
+    /// Reading a block description field from a string, or converting
+    /// the description a JavaScript host registers, failed.
+    #[error(transparent)]
+    BlockDesc(#[from] BlockDescError),
 }
 
 /// Displays an error followed by every error in its
@@ -112,7 +117,10 @@ impl std::fmt::Display for ErrorChain<'_> {
 
 #[cfg(test)]
 mod test {
-    use super::{ConnectorError, EngineError, Error, ErrorChain, RegistryError, ValueError};
+    use super::{
+        BlockDescError, ConnectorError, EngineError, Error, ErrorChain, RegistryError, ValueError,
+    };
+    use crate::base::block::desc::BlockRunCondition;
     use assert_matches::assert_matches;
 
     #[test]
@@ -156,6 +164,37 @@ mod test {
 
         assert_eq!(err.to_string(), format!("Block '{id}' actor task is gone"));
         assert_matches!(err, Error::Engine(EngineError::BlockTaskGone { .. }));
+    }
+
+    /// Regression: `BlockDescError` was the one subsystem error the
+    /// aggregate did not wrap, so `?` on a description field's
+    /// `str::parse` did not compile in a function returning
+    /// [`crate::Result`].
+    #[test]
+    fn block_desc_errors_convert_into_the_aggregate() {
+        fn parse(value: &str) -> crate::Result<BlockRunCondition> {
+            Ok(value.parse()?)
+        }
+
+        let err = parse("sometimes").expect_err("not a run condition");
+        assert_eq!(err.to_string(), "Invalid run condition: sometimes");
+        assert_matches!(
+            err,
+            Error::BlockDesc(BlockDescError::UnknownRunCondition { value })
+                if value == "sometimes"
+        );
+
+        let err: Error = BlockDescError::Field {
+            field: "runCondition",
+            error: Box::new(BlockDescError::UnknownRunCondition {
+                value: "sometimes".to_string(),
+            }),
+        }
+        .into();
+        assert_eq!(
+            ErrorChain(&err).to_string(),
+            "field 'runCondition': Invalid run condition: sometimes"
+        );
     }
 
     #[test]

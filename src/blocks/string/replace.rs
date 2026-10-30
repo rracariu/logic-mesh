@@ -32,11 +32,9 @@ impl Block for Replace {
     async fn execute(&mut self) {
         self.read_inputs_until_ready().await;
 
-        if let (Some(Value::Str(input)), Some(Value::Str(find)), Some(Value::Str(replace))) = (
-            self.input.get_value(),
-            self.find.get_value(),
-            self.replace.get_value(),
-        ) {
+        if let (Some(Value::Str(input)), Some(Value::Str(find)), Some(Value::Str(replace))) =
+            (self.input.value(), self.find.value(), self.replace.value())
+        {
             self.out
                 .set(Str::from(input.replace(find.value(), replace.value())).into());
         }

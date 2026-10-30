@@ -33,9 +33,7 @@ impl Block for Mod {
     async fn execute(&mut self) {
         self.read_inputs_until_ready().await;
 
-        if let (Some(Value::Number(a)), Some(Value::Number(b))) =
-            (self.a.get_value(), self.b.get_value())
-        {
+        if let (Some(Value::Number(a)), Some(Value::Number(b))) = (self.a.value(), self.b.value()) {
             convert_units(&[a.to_owned(), b.to_owned()])
                 .map(|parts| {
                     if let [a, b] = &parts[..] {

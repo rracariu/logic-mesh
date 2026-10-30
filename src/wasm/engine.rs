@@ -3,7 +3,6 @@
 //! Block engine exposed to JavaScript.
 
 use crate::blocks::registry::{list_registered_blocks, register_block_desc};
-use crate::blocks::utils::set_sleep_dur;
 use crate::single_threaded::SingleThreadedEngine;
 use crate::wasm::engine_command::EngineCommand;
 use crate::wasm::js_block::JS_FNS;
@@ -29,16 +28,16 @@ pub struct BlocksEngine {
 
 #[wasm_bindgen]
 impl BlocksEngine {
-    /// Creates a new engine instance.
+    /// Creates a new engine instance. `sleep_duration`, in
+    /// milliseconds, is the engine's
+    /// [scan interval](crate::base::engine::Engine::scan_interval).
     #[wasm_bindgen(constructor)]
     pub fn new(sleep_duration: Option<u64>) -> Self {
+        let mut engine = SingleThreadedEngine::default();
         if let Some(sleep_duration) = sleep_duration {
-            set_sleep_dur(sleep_duration);
+            engine.set_scan_interval(std::time::Duration::from_millis(sleep_duration));
         }
-
-        Self {
-            engine: SingleThreadedEngine::default(),
-        }
+        Self { engine }
     }
 
     /// Lists all available blocks.

@@ -16,6 +16,23 @@
 //! (`Arc<RwLock<…>>` instead of `Rc<RefCell<…>>`) and the cross-thread
 //! mailbox semantics.
 //!
+//! ### Runtime
+//!
+//! The engine builds no runtime of its own: it spawns its blocks onto
+//! the tokio runtime it is scheduled from, and scheduling outside one
+//! fails with [`EngineError::NoRuntime`](crate::EngineError::NoRuntime).
+//! Building that runtime is the application's part, and so is the tokio
+//! feature it needs: this crate's `multi-threaded` feature enables no
+//! tokio feature, so an application that runs the engine on a
+//! multi-thread runtime enables `rt-multi-thread` on its own tokio
+//! dependency:
+//!
+//! ```toml
+//! [dependencies]
+//! logic-mesh = { version = "2", features = ["multi-threaded"] }
+//! tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+//! ```
+//!
 //! ### Actor lifetime
 //!
 //! Actor tasks are detached — the engine keeps no join handles — and
@@ -37,7 +54,7 @@
 //!
 //! - `actor` — the per-block actor task (`block_actor_task`) and
 //!   MT-specific watcher types.
-//! - [`engine`] — [`MultiThreadedEngine`] itself: lifecycle, the
+//! - `engine` — [`MultiThreadedEngine`] itself: lifecycle, the
 //!   [`Engine`] trait impl, sync configuration helpers, async APIs, and
 //!   message dispatch.
 //!
@@ -45,7 +62,6 @@
 //! [`SingleThreadedEngine`]: crate::single_threaded::SingleThreadedEngine
 
 mod actor;
-pub mod engine;
+mod engine;
 
-pub use super::graph::BlockHandle;
-pub use engine::{Messages, MultiThreadedEngine};
+pub use engine::MultiThreadedEngine;

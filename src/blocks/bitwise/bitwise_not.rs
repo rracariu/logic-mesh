@@ -26,7 +26,7 @@ impl Block for BitwiseNot {
     async fn execute(&mut self) {
         self.read_inputs_until_ready().await;
 
-        if let Some(Value::Number(n)) = self.input.get_value() {
+        if let Some(Value::Number(n)) = self.input.value() {
             self.out.set(Value::make_int(!(n.value as i64)));
         }
     }
@@ -39,7 +39,7 @@ mod test {
     use crate::{
         base::{
             Status,
-            block::{Block, connect::connect_output, test_utils::write_block_inputs},
+            block::{Block, connect_output, test_utils::write_block_inputs},
             input::Input,
         },
         blocks::{InputImpl, bitwise::BitwiseNot},

@@ -29,8 +29,7 @@ impl Block for FlipFlop {
     async fn execute(&mut self) {
         self.read_inputs_until_ready().await;
 
-        if let (Some(Value::Bool(s)), Some(Value::Bool(r))) =
-            (self.set.get_value(), self.reset.get_value())
+        if let (Some(Value::Bool(s)), Some(Value::Bool(r))) = (self.set.value(), self.reset.value())
         {
             let current = matches!(&self.out.value, Value::Bool(b) if b.value);
 

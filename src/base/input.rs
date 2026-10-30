@@ -9,11 +9,12 @@ use libhaystack::val::Value;
 
 use crate::base::Status;
 
-pub mod base;
-pub mod input_reader;
-pub mod props;
+pub(crate) mod base;
+pub(crate) mod input_reader;
+pub(crate) mod props;
 
 pub use base::BaseInput;
+pub use input_reader::InputReader;
 pub use props::InputProps;
 
 /// The input trait.

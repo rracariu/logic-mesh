@@ -20,7 +20,9 @@ use crate::base::output::Output;
 ///
 /// Each method reports a pin missing from this block as
 /// [`ConnectError::OutputNotFound`] or [`ConnectError::InputNotFound`],
-/// and otherwise fails as the matching [free function](self) does.
+/// and otherwise fails as the matching free function —
+/// [`connect_output`], [`disconnect_output`], [`connect_input`] or
+/// [`disconnect_input`] — does.
 ///
 /// # Examples
 ///
@@ -166,7 +168,7 @@ impl<T: BlockProps + ?Sized> BlockConnect for T {
 /// ```
 /// use logic_mesh::{
 ///     ConnectError,
-///     base::block::{Block, BlockProps, connect::connect_output},
+///     base::block::{Block, BlockProps, connect_output},
 ///     blocks::math::Add,
 ///     blocks::misc::SineWave,
 /// };
@@ -218,7 +220,7 @@ pub fn connect_output<Reader, Writer: Clone>(
 /// ```
 /// use logic_mesh::{
 ///     ConnectError,
-///     base::block::{Block, BlockProps, connect::{connect_output, disconnect_output}},
+///     base::block::{Block, BlockProps, connect_output, disconnect_output},
 ///     blocks::math::Add,
 ///     blocks::misc::SineWave,
 /// };
@@ -260,7 +262,7 @@ pub fn disconnect_output<Reader, Writer: Clone>(
 /// ```
 /// use logic_mesh::{
 ///     ConnectError,
-///     base::block::{Block, BlockProps, connect::connect_input},
+///     base::block::{Block, BlockProps, connect_input},
 ///     blocks::math::{Add, Mul},
 /// };
 ///
@@ -313,83 +315,6 @@ pub fn disconnect_input<I: InputProps + ?Sized>(
     source_input.remove_link_by_id(&id);
     target_input.decrement_conn();
     Ok(())
-}
-
-/// Disconnects all inputs and outputs of `block`.
-///
-/// `decrement_target_input` is called for each disconnected link to
-/// decrement the target input's connection count.
-pub fn disconnect_block<B, F>(block: &mut B, mut decrement_target_input: F)
-where
-    B: BlockProps + ?Sized,
-    F: FnMut(&Uuid, &str) -> Option<usize>,
-{
-    block
-        .outputs_mut()
-        .iter()
-        .filter(|output| output.is_connected())
-        .for_each(|out| {
-            out.links().iter_mut().for_each(|link| {
-                decrement_target_input(link.target_block_id(), link.target_input());
-            });
-        });
-
-    block
-        .inputs_mut()
-        .iter()
-        .filter(|input| input.has_output())
-        .for_each(|src_input| {
-            src_input.links().iter_mut().for_each(|link| {
-                decrement_target_input(link.target_block_id(), link.target_input());
-            });
-        });
-
-    block.remove_all_links();
-}
-
-/// Disconnects the link identified by `link_id` from `block`.
-///
-/// `decrement_target_input` is called for the disconnected link to
-/// decrement the target input's connection count.
-pub fn disconnect_link<B, F>(block: &mut B, link_id: &Uuid, mut decrement_target_input: F) -> bool
-where
-    B: BlockProps + ?Sized,
-    F: FnMut(&Uuid, &str) -> Option<usize>,
-{
-    if !block
-        .outputs_mut()
-        .iter()
-        .filter(|output| output.is_connected())
-        .any(|out| {
-            out.links().iter_mut().any(|link| {
-                if link.id() == link_id {
-                    decrement_target_input(link.target_block_id(), link.target_input());
-                    true
-                } else {
-                    false
-                }
-            })
-        })
-        && !block
-            .inputs_mut()
-            .iter()
-            .filter(|input| input.has_output())
-            .any(|src_input| {
-                src_input.links().iter_mut().any(|link| {
-                    if link.id() == link_id {
-                        decrement_target_input(link.target_block_id(), link.target_input());
-                        true
-                    } else {
-                        false
-                    }
-                })
-            })
-    {
-        return false;
-    }
-
-    block.remove_link_by_id(link_id);
-    true
 }
 
 /// A pin at one end of a link: its block's id and its name.
@@ -482,7 +407,7 @@ mod test {
     use libhaystack::val::kind::HaystackKind;
 
     use crate::base::{
-        block::{Block, BlockProps, connect::disconnect_block},
+        block::{Block, BlockProps},
         error::ConnectError,
         input::InputProps,
     };
@@ -612,16 +537,11 @@ mod test {
             assert!(block1.input1.links().len() == 1);
         }
 
-        let gid = *block2.id();
-        let input1 = &mut block2.input1;
+        block1
+            .disconnect_input("input1", &mut block2.input1)
+            .expect("Could not disconnect");
 
-        disconnect_block(&mut block1, |id, name| {
-            assert!(*id == gid);
-            assert!(name == "input1");
-            Some(input1.decrement_conn())
-        });
-
-        assert!(!input1.is_connected());
+        assert!(!block2.input1.is_connected());
         assert!(block1.input1.links().is_empty());
     }
 

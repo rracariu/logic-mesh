@@ -6,7 +6,7 @@ use libhaystack::val::Value;
 use serde::{Deserialize, Serialize};
 
 use crate::base::{
-    block::{BlockDesc, BlockPin, desc::BlockImplementation},
+    block::{BlockDesc, BlockImplementation, BlockPin},
     engine::messages::{ChangeSource, WatchMessage},
     error::BlockDescError,
 };

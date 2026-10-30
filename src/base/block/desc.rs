@@ -202,7 +202,7 @@ impl BlockPin {
 /// # Examples
 ///
 /// ```
-/// use logic_mesh::base::block::desc::BlockImplementation;
+/// use logic_mesh::base::block::BlockImplementation;
 ///
 /// let imp: BlockImplementation = "external".parse()?;
 /// assert_eq!(imp, BlockImplementation::External);

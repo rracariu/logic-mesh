@@ -35,7 +35,7 @@ impl std::fmt::Debug for ActiveSubscription {
 /// Reads a `Str` input as a non-empty string, or [`None`] if the pin has
 /// no value, a non-string value, or an empty string.
 pub(crate) fn input_as_str(input: &InputImpl) -> Option<String> {
-    match input.get_value() {
+    match input.value() {
         Some(Value::Str(s)) if !s.is_empty() => Some(s.value().to_owned()),
         _ => None,
     }
@@ -51,7 +51,7 @@ pub(crate) const DEFAULT_TIMEOUT_MILLIS: u64 = 5000;
 /// millisecond, and anything else (unset, non-Number, NaN, infinite,
 /// zero, negative) falls back to [`DEFAULT_TIMEOUT_MILLIS`].
 pub(crate) fn input_as_timeout_millis(input: &InputImpl) -> u64 {
-    match input.get_value() {
+    match input.value() {
         Some(Value::Number(num)) if num.value.is_finite() && num.value > 0.0 => {
             num.value.ceil() as u64
         }

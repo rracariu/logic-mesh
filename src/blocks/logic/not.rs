@@ -27,7 +27,7 @@ impl Block for Not {
     async fn execute(&mut self) {
         self.read_inputs_until_ready().await;
 
-        if let Some(Value::Bool(a)) = self.input.get_value() {
+        if let Some(Value::Bool(a)) = self.input.value() {
             self.out.set(Bool { value: !a.value }.into());
         }
     }

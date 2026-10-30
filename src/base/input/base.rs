@@ -104,7 +104,7 @@ impl<Reader, Writer: Clone + Send> InputProps for BaseInput<Reader, Writer> {
         &mut self.writer
     }
 
-    fn get_value(&self) -> Option<&Value> {
+    fn value(&self) -> Option<&Value> {
         self.val.as_ref()
     }
 
