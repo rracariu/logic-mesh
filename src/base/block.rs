@@ -341,7 +341,7 @@ mod test {
         assert_eq!(test_block.desc().name, "Test");
         assert_eq!(test_block.desc().dis, "Test long name");
         assert_eq!(test_block.desc().library, "test");
-        assert_eq!(test_block.state(), BlockState::Running);
+        assert_eq!(*test_block.state(), BlockState::Running);
         assert_eq!(test_block.inputs().len(), 17);
         assert_eq!(test_block.outputs().len(), 1);
 

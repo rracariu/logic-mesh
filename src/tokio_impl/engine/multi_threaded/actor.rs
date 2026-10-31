@@ -13,17 +13,17 @@
 //! - Watchers are stored as `Arc<RwLock<...>>` (cross-worker visibility),
 //!   so the change-of-value check is async.
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::BTreeMap;
 use std::sync::Arc;
 
-use libhaystack::val::Value;
 use tokio::sync::{RwLock, mpsc};
 
 use super::super::actor_step::{ExecutionGate, PanicHold, Step, run_one_step, yield_between_steps};
 use super::super::block_mailbox::BlockMailboxCmd;
+use super::super::pin_changes::PinSnapshot;
 use crate::base::Status;
 use crate::base::block::{Block, BlockState};
-use crate::base::engine::messages::{ChangeSource, WatchId, WatchMessage, WatchSender};
+use crate::base::engine::messages::{WatchId, WatchMessage, WatchSender};
 use crate::tokio_impl::MtBlock;
 
 /// MT-side watchers handle: cross-thread, async-locked.
@@ -40,7 +40,7 @@ pub(super) async fn block_actor_task<B>(
 ) where
     B: MtBlock + 'static,
 {
-    let mut last_pin_values = BTreeMap::<String, Value>::new();
+    let mut snapshot = PinSnapshot::default();
     let mut last_state = BlockState::Running;
     let mut hold = PanicHold::default();
 
@@ -51,13 +51,13 @@ pub(super) async fn block_actor_task<B>(
         // single_threaded::actor and `actor_step`.
         let step = run_one_step(&mut block, &mut mailbox, &mut gate, open, &mut hold).await;
 
-        let current_state = block.state();
+        let current_state = block.state().clone();
         propagate_status(&current_state, &last_state, &mut block);
 
         change_of_value_check(
             &watchers,
             &block,
-            &mut last_pin_values,
+            &mut snapshot,
             &current_state,
             &last_state,
         )
@@ -95,37 +95,16 @@ where
 async fn change_of_value_check<B: Block + 'static>(
     notification_channels: &WatchersHandle,
     block: &B,
-    last_pin_values: &mut BTreeMap<String, Value>,
+    snapshot: &mut PinSnapshot,
     state: &BlockState,
     prev_state: &BlockState,
 ) {
     if notification_channels.read().await.is_empty() {
-        if !last_pin_values.is_empty() {
-            last_pin_values.clear();
-        }
+        snapshot.clear();
         return;
     }
 
-    let mut changes = HashMap::<String, ChangeSource>::new();
-
-    for output in block.outputs() {
-        let pin = output.desc().name.to_string();
-        let val = output.value();
-        if last_pin_values.get(&pin) != Some(val) {
-            changes.insert(pin.clone(), ChangeSource::Output(pin.clone(), val.clone()));
-            last_pin_values.insert(pin, val.clone());
-        }
-    }
-
-    for input in block.inputs() {
-        if let Some(val) = input.value() {
-            let pin = input.name().to_string();
-            if last_pin_values.get(&pin) != Some(val) {
-                changes.insert(pin.clone(), ChangeSource::Input(pin.clone(), val.clone()));
-                last_pin_values.insert(pin, val.clone());
-            }
-        }
-    }
+    let changes = snapshot.changes(block);
 
     if !changes.is_empty() || state != prev_state {
         // Unbounded channel — see single_threaded/actor.rs rationale. A

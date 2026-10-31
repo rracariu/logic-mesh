@@ -323,7 +323,7 @@ fn print_watch(names: &BTreeMap<Uuid, &str>, msg: WatchMessage) {
     if let Some(reason) = msg.state.fault_reason() {
         println!("[flow] {block:<9} FAULT: {reason}");
     }
-    for change in msg.changes.into_values() {
+    for change in msg.changes {
         if let ChangeSource::Output(pin, value) = change {
             println!("[flow] {block:<9} {pin} = {}", fmt_value(&value));
         }

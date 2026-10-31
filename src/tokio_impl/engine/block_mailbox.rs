@@ -356,7 +356,7 @@ where
 fn snapshot_block_definition<B: BlockProps + ?Sized>(block: &B) -> BlockDefinition {
     let mut definition =
         BlockDefinition::new(*block.id(), block.name(), block.desc().library.clone())
-            .with_state(block.state());
+            .with_state(block.state().clone());
     for input in block.inputs() {
         definition = definition.with_input(
             input.name(),

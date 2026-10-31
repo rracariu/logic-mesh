@@ -143,7 +143,7 @@ impl PanicHold {
             return;
         };
         self.next_delay = PANIC_RETRY_INITIAL;
-        if block.state() == fault {
+        if *block.state() == fault {
             block.set_state(BlockState::Running);
         }
         log::info!(
@@ -275,12 +275,12 @@ where
 /// A block held after a panic does not recover here: it stays in Fault
 /// until a cycle completes cleanly (see the [module docs](self)).
 fn recover_optimistically<B: EngineBlock>(block: &mut B, hold: &PanicHold) -> Option<BlockState> {
-    let state = block.state();
-    if hold.is_holding() || !state.is_fault() {
+    if hold.is_holding() || !block.state().is_fault() {
         return None;
     }
+    let fault = block.state().clone();
     block.set_state(BlockState::Running);
-    Some(state)
+    Some(fault)
 }
 
 /// Puts back the fault [`recover_optimistically`] cleared, for a cycle
@@ -290,7 +290,7 @@ fn recover_optimistically<B: EngineBlock>(block: &mut B, hold: &PanicHold) -> Op
 /// dropped cycle set itself, other than Running, is kept.
 fn undo_recovery<B: EngineBlock>(block: &mut B, recovering_from: Option<BlockState>) {
     if let Some(fault) = recovering_from
-        && block.state() == BlockState::Running
+        && *block.state() == BlockState::Running
     {
         block.set_state(fault);
     }

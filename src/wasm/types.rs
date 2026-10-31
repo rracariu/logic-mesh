@@ -240,16 +240,16 @@ impl From<WatchMessage> for JsWatchNotification {
         let changes = msg
             .changes
             .into_iter()
-            .map(|(name, source)| JsWatchChange {
-                name,
-                source: match source {
-                    ChangeSource::Input(_, _) => "input".to_string(),
-                    ChangeSource::Output(_, _) => "output".to_string(),
-                },
-                value: match source {
-                    ChangeSource::Input(_, v) => v,
-                    ChangeSource::Output(_, v) => v,
-                },
+            .map(|change| {
+                let (source, name, value) = match change {
+                    ChangeSource::Input(name, value) => ("input", name, value),
+                    ChangeSource::Output(name, value) => ("output", name, value),
+                };
+                JsWatchChange {
+                    name,
+                    source: source.to_string(),
+                    value,
+                }
             })
             .collect();
 

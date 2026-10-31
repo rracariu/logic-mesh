@@ -41,14 +41,16 @@ with before and after code, for Rust and for JavaScript and TypeScript.
 - **Protocol:** `EngineMessage` is replaced by `EngineRequest` and
   `EngineResponse`, correlated by request id and driven through
   `EngineClient`. Every request is answered, control requests included,
-  with a typed `RequestError` carrying an `ErrorCode`.
+  with a typed `RequestError` carrying an `ErrorCode`. A `WatchMessage`
+  lists its changes in a `Vec`.
 - **Errors:** `anyhow` is replaced by typed errors (`logic_mesh::Error` and
   one enum per subsystem), all `#[non_exhaustive]`.
 - **Blocks:** the block macros report misuse as compile errors, `BlockDesc`
   and the pin descriptors are built with builders, `Block` needs only
   `BlockProps`, connect functions return `ConnectError`, the pin and
-  link fields are private behind accessors, and `InputProps::get_value` is
-  renamed `value`.
+  link fields are private behind accessors, `InputProps::get_value` is
+  renamed `value`, `BlockProps::state()` returns a reference, and
+  `Input::receiver()` resolves with a `bool`.
 - **Save format:** programs carry a format `version` and each block its
   type's `ver` and opaque `editor` metadata, `positions` is renamed
   `position`, `ProgramBlock::lib` is renamed `library` (still saved as
@@ -308,6 +310,12 @@ with before and after code, for Rust and for JavaScript and TypeScript.
 - `Block` requires `BlockProps` only, and `BlockConnect` has a blanket impl
   for every `BlockProps` type ([#24]).
 - `BlockStaticDesc::desc()` is renamed `static_desc()` ([#24]).
+- `BlockProps::state()` returns `&BlockState` instead of a clone, and
+  `BlockProps::set_state` returns nothing instead of a clone of the new
+  state ([#36]).
+- `Input::receiver()` resolves with a `bool`, whether a fresh payload
+  arrived, instead of a clone of the value, which `try_take` still returns
+  ([#36]).
 - The connect and disconnect functions and `BlockConnect` methods return
   `ConnectError` instead of `&'static str` ([#24]).
 - `BlockDesc`, `BlockPin`, `OutDesc`, `BlockImplementation` and
@@ -372,6 +380,9 @@ with before and after code, for Rust and for JavaScript and TypeScript.
   and the `Messages` alias are removed ([#29]).
 - A watch is identified by an engine-assigned `WatchId`, and a client can
   hold any number of them ([#29]).
+- `WatchMessage::changes` is a `Vec<ChangeSource>`, outputs first and each
+  in the block's pin order, instead of a `HashMap` keyed by pin name
+  ([#36]).
 - The multi-threaded engine's public async methods are reached through
   `EngineClient` instead ([#18], [#29]).
 - `BlockDefinition`, the answer to `InspectBlock`, has `id: Uuid` and
@@ -517,6 +528,16 @@ with before and after code, for Rust and for JavaScript and TypeScript.
 - The npm package's `require.resolve('logic-mesh')` failed with
   `ERR_PACKAGE_PATH_NOT_EXPORTED`, and stale build output could ship ([#21]).
 - The block macro was unusable outside this crate ([#5]).
+- `Logn` (LogNatural) computed the base-2 logarithm instead of the natural
+  one ([#36]).
+- `Dict` panicked in a debug build when its `values` list was empty
+  ([#36]).
+- `Median` panicked when none of its inputs held a number, as when linked
+  from an output that was never set, which on wasm32 aborted the engine
+  ([#36]).
+- When an input and an output shared a name, which a JS block or a
+  hand-written `BlockProps` can have, watch notifications carried only one
+  of them ([#36]).
 
 ### Changes to APIs added after 1.0.0
 
@@ -701,6 +722,7 @@ surfaces that 1.0 deliberately breaks (see the **Changed** /
 [#33]: https://github.com/rracariu/logic-mesh/pull/33
 [#34]: https://github.com/rracariu/logic-mesh/pull/34
 [#35]: https://github.com/rracariu/logic-mesh/pull/35
+[#36]: https://github.com/rracariu/logic-mesh/pull/36
 [Unreleased]: https://github.com/rracariu/logic-mesh/compare/v2.0.0...HEAD
 [2.0.0]: https://github.com/rracariu/logic-mesh/compare/v1.0.0...v2.0.0
 [1.0.0]: https://github.com/rracariu/logic-mesh/releases/tag/v1.0.0

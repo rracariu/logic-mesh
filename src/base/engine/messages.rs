@@ -30,7 +30,7 @@
 //! [`WriteInput`](EngineRequest::WriteInput) path — `ExternalIn`
 //! observes the pin change and resubscribes automatically.
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::BTreeMap;
 use std::fmt;
 
 use libhaystack::val::Value;
@@ -264,15 +264,16 @@ impl TryFrom<WireBlockDefinition> for BlockDefinition {
     }
 }
 
-/// The source of a change.
+/// A pin that changed: whether it is an input or an output, its name and
+/// its new value.
 ///
 /// `#[non_exhaustive]`: a `match` on it needs a wildcard arm.
 #[derive(Debug, Clone)]
 #[non_exhaustive]
 pub enum ChangeSource {
-    /// Change originated from an input pin.
+    /// An input pin changed.
     Input(String, Value),
-    /// Change originated from an output pin.
+    /// An output pin changed.
     Output(String, Value),
 }
 
@@ -285,8 +286,10 @@ pub enum ChangeSource {
 pub struct WatchMessage {
     /// UUID of the block that changed.
     pub block_id: Uuid,
-    /// Changed pins keyed by name.
-    pub changes: HashMap<String, ChangeSource>,
+    /// The pins that changed, outputs first and each in the block's pin
+    /// order. An input and an output may share a name, so each change
+    /// says which of the two it is.
+    pub changes: Vec<ChangeSource>,
     /// Block's operational state at the time the notification was sent.
     /// Carries fault propagation visibility to the UI.
     pub state: BlockState,
@@ -295,7 +298,7 @@ pub struct WatchMessage {
 impl WatchMessage {
     /// A notification that block `block_id`, in `state`, changed the
     /// pins in `changes`.
-    pub fn new(block_id: Uuid, changes: HashMap<String, ChangeSource>, state: BlockState) -> Self {
+    pub fn new(block_id: Uuid, changes: Vec<ChangeSource>, state: BlockState) -> Self {
         Self {
             block_id,
             changes,
