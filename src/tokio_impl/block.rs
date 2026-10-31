@@ -127,16 +127,16 @@ pub(crate) async fn read_block_inputs<B: Block>(block: &mut B) -> Option<usize> 
     // the futures (and their `&mut` borrows) are released before phase 3
     // re-borrows the block.
     {
-        let mut connected: Vec<_> = block
+        let changes: Vec<_> = block
             .inputs_mut()
             .into_iter()
             .filter(|i| i.is_connected())
+            .map(|i| i.receiver())
             .collect();
-        if connected.is_empty() {
+        if changes.is_empty() {
             return None;
         }
-        let futures: Vec<_> = connected.iter_mut().map(|i| i.receiver()).collect();
-        let _ = select_all(futures).await;
+        select_all(changes).await;
     }
 
     // Phase 3: drain everything that changed during the await — multiple

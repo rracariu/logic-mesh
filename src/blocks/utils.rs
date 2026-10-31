@@ -72,42 +72,88 @@ pub(super) fn input_to_millis_or_default(dur: &Option<Value>) -> u64 {
     }
 }
 
-/// Converts all `numbers` to a common unit.
+/// The unit a set of numbers converts to: the first one any of them
+/// has.
+pub(super) fn common_unit(numbers: impl IntoIterator<Item = Number>) -> Option<&'static Unit> {
+    numbers.into_iter().find_map(|n| n.unit)
+}
+
+/// `number` in `unit`: converted from another unit, given `unit` if it
+/// has none, and unchanged when `unit` is [`None`].
 ///
 /// # Errors
 ///
 /// Returns an error if unit conversion fails.
-pub(super) fn convert_units(numbers: &[Number]) -> Result<Vec<Number>, ValueError> {
-    if numbers.len() <= 1 {
-        Ok(numbers.to_vec())
-    } else if let Some(unit) = numbers
-        .iter()
-        .find_map(|n| if n.unit.is_some() { n.unit } else { None })
-    {
-        numbers
-            .iter()
-            .map(|n| {
-                if let Some(other_unit) = n.unit {
-                    if other_unit != unit {
-                        other_unit
-                            .convert_to(n.value, unit)
-                            .map_err(ValueError::UnitConversion)
-                            .map(|v| Number {
-                                value: v,
-                                unit: Some(unit),
-                            })
-                    } else {
-                        Ok(*n)
-                    }
-                } else {
-                    Ok(Number {
-                        value: n.value,
-                        unit: Some(unit),
-                    })
-                }
-            })
-            .collect::<Result<Vec<Number>, ValueError>>()
-    } else {
-        Ok(numbers.to_vec())
+pub(super) fn to_unit(number: Number, unit: Option<&'static Unit>) -> Result<Number, ValueError> {
+    match (number.unit, unit) {
+        (Some(from), Some(to)) if from != to => from
+            .convert_to(number.value, to)
+            .map_err(ValueError::UnitConversion)
+            .map(|value| Number {
+                value,
+                unit: Some(to),
+            }),
+        (None, Some(to)) => Ok(Number {
+            value: number.value,
+            unit: Some(to),
+        }),
+        _ => Ok(number),
+    }
+}
+
+/// Converts all `numbers` to a common unit, in place.
+///
+/// # Errors
+///
+/// Returns an error if unit conversion fails.
+pub(super) fn convert_units(numbers: &mut [Number]) -> Result<(), ValueError> {
+    let unit = common_unit(numbers.iter().copied());
+    for number in numbers {
+        *number = to_unit(*number, unit)?;
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod test {
+    use libhaystack::units::units_generated::{CELSIUS, FAHRENHEIT, METER};
+    use libhaystack::val::Number;
+
+    use super::convert_units;
+
+    #[test]
+    fn numbers_convert_to_the_first_unit_any_of_them_has() {
+        let mut numbers = [
+            Number::make(1.0),
+            Number::make_with_unit(212.0, &FAHRENHEIT),
+            Number::make_with_unit(20.0, &CELSIUS),
+        ];
+
+        convert_units(&mut numbers).expect("temperatures convert");
+
+        assert_eq!(
+            numbers.map(|n| (n.value.round(), n.unit)),
+            [
+                (1.0, Some(&FAHRENHEIT)),
+                (212.0, Some(&FAHRENHEIT)),
+                (68.0, Some(&FAHRENHEIT)),
+            ]
+        );
+    }
+
+    #[test]
+    fn numbers_without_units_are_left_as_they_are() {
+        let mut numbers = [Number::make(1.0), Number::make(2.0)];
+        convert_units(&mut numbers).expect("nothing to convert");
+        assert_eq!(numbers, [Number::make(1.0), Number::make(2.0)]);
+    }
+
+    #[test]
+    fn incompatible_units_do_not_convert() {
+        let mut numbers = [
+            Number::make_with_unit(1.0, &CELSIUS),
+            Number::make_with_unit(1.0, &METER),
+        ];
+        assert!(convert_units(&mut numbers).is_err());
     }
 }

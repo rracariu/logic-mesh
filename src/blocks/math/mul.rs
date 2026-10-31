@@ -3,8 +3,8 @@
 //! Multiplication block.
 
 use crate::base::{
-    block::{Block, BlockProps},
-    input::InputReader,
+    block::Block,
+    input::{InputProps, InputReader},
     output::Output,
 };
 
@@ -31,14 +31,10 @@ impl Block for Mul {
 
         let mut val: Option<Number> = None;
         let mut cnt = 0;
-        for el in self
-            .inputs()
-            .into_iter()
-            .filter_map(|input| match input.value().as_ref() {
-                Some(Value::Number(num)) => Some(*num),
-                _ => None,
-            })
-        {
+        for el in self._inputs.iter().filter_map(|input| match input.value() {
+            Some(Value::Number(num)) => Some(*num),
+            _ => None,
+        }) {
             cnt += 1;
 
             if let Some(v) = val {

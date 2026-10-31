@@ -5,7 +5,7 @@
 use crate::{
     base::{
         block::{Block, BlockProps, BlockState},
-        input::InputReader,
+        input::{InputProps, InputReader},
         output::Output,
     },
     blocks::utils::convert_units,
@@ -33,23 +33,20 @@ impl Block for Median {
     async fn execute(&mut self) {
         self.read_inputs_until_ready().await;
 
-        let val = self
-            .inputs()
-            .into_iter()
-            .filter_map(|input| match input.value().as_ref() {
-                Some(Value::Number(num)) => Some(*num),
-                _ => None,
-            })
-            .collect::<Vec<Number>>();
+        let mut numbers = Vec::with_capacity(self._inputs.len());
+        numbers.extend(self._inputs.iter().filter_map(|input| match input.value() {
+            Some(Value::Number(num)) => Some(*num),
+            _ => None,
+        }));
 
         // A fresh value that is not a number, such as the `Null` a new
         // link delivers from an output never set, leaves none to take
         // the median of.
-        if val.is_empty() {
+        if numbers.is_empty() {
             return;
         }
 
-        if let Ok(mut numbers) = convert_units(&val) {
+        if convert_units(&mut numbers).is_ok() {
             if !matches!(self.state(), BlockState::Running) {
                 self.set_state(BlockState::Running);
             }

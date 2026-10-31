@@ -56,11 +56,11 @@ impl Output for OutputImpl {
         // Re-emit the current value with the new status. Updates effective
         // status so subsequent `set(value)` calls keep using it.
         self.effective_status = status;
-        let value = self.value.clone();
-        for link in &mut self.links {
+        let value = &self.value;
+        for link in &self.links {
             if let Some(tx) = &link.tx {
                 tx.send_if_modified(|current| {
-                    if current.0 != value || current.1 != status {
+                    if current.0 != *value || current.1 != status {
                         current.0 = value.clone();
                         current.1 = status;
                         true

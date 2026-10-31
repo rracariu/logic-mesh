@@ -34,9 +34,9 @@ impl std::fmt::Debug for ActiveSubscription {
 
 /// Reads a `Str` input as a non-empty string, or [`None`] if the pin has
 /// no value, a non-string value, or an empty string.
-pub(crate) fn input_as_str(input: &InputImpl) -> Option<String> {
+pub(crate) fn input_as_str(input: &InputImpl) -> Option<&str> {
     match input.value() {
-        Some(Value::Str(s)) if !s.is_empty() => Some(s.value().to_owned()),
+        Some(Value::Str(s)) if !s.is_empty() => Some(s.value()),
         _ => None,
     }
 }
@@ -112,9 +112,9 @@ impl Deadline {
 
     /// The error reporting an operation on `address` that missed this
     /// deadline.
-    pub(crate) fn timeout_error(&self, address: String) -> ConnectorError {
+    pub(crate) fn timeout_error(&self, address: &str) -> ConnectorError {
         ConnectorError::Timeout {
-            address,
+            address: address.to_owned(),
             millis: self.millis,
         }
     }

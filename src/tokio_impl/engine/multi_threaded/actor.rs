@@ -11,7 +11,8 @@
 //!   stays put. `B: `[`Send`] is required at scheduling time, but the actor
 //!   future itself is `!Send` (runs on the worker's [`LocalSet`](tokio::task::LocalSet)).
 //! - Watchers are stored as `Arc<RwLock<...>>` (cross-worker visibility),
-//!   so the change-of-value check is async.
+//!   so the change-of-value check is async. It takes the read lock once
+//!   per step.
 
 use std::collections::BTreeMap;
 use std::sync::Arc;
@@ -20,7 +21,7 @@ use tokio::sync::{RwLock, mpsc};
 
 use super::super::actor_step::{ExecutionGate, PanicHold, Step, run_one_step, yield_between_steps};
 use super::super::block_mailbox::BlockMailboxCmd;
-use super::super::pin_changes::PinSnapshot;
+use super::super::pin_changes::{PinSnapshot, send_to_watchers};
 use crate::base::Status;
 use crate::base::block::{Block, BlockState};
 use crate::base::engine::messages::{WatchId, WatchMessage, WatchSender};
@@ -51,19 +52,13 @@ pub(super) async fn block_actor_task<B>(
         // single_threaded::actor and `actor_step`.
         let step = run_one_step(&mut block, &mut mailbox, &mut gate, open, &mut hold).await;
 
-        let current_state = block.state().clone();
-        propagate_status(&current_state, &last_state, &mut block);
+        propagate_status(&last_state, &mut block);
 
-        change_of_value_check(
-            &watchers,
-            &block,
-            &mut snapshot,
-            &current_state,
-            &last_state,
-        )
-        .await;
+        change_of_value_check(&watchers, &block, &mut snapshot, &last_state).await;
 
-        last_state = current_state;
+        if *block.state() != last_state {
+            last_state = block.state().clone();
+        }
 
         if matches!(step, Step::Command(true)) || matches!(block.state(), BlockState::Terminated) {
             break;
@@ -74,11 +69,11 @@ pub(super) async fn block_actor_task<B>(
     }
 }
 
-fn propagate_status<B>(current: &BlockState, previous: &BlockState, block: &mut B)
+fn propagate_status<B>(previous: &BlockState, block: &mut B)
 where
     B: MtBlock + 'static,
 {
-    let now_fault = current.is_fault();
+    let now_fault = block.state().is_fault();
     let was_fault = previous.is_fault();
 
     if now_fault {
@@ -96,37 +91,37 @@ async fn change_of_value_check<B: Block + 'static>(
     notification_channels: &WatchersHandle,
     block: &B,
     snapshot: &mut PinSnapshot,
-    state: &BlockState,
     prev_state: &BlockState,
 ) {
-    if notification_channels.read().await.is_empty() {
-        snapshot.clear();
-        return;
-    }
+    let gone = {
+        let watchers = notification_channels.read().await;
+        if watchers.is_empty() {
+            snapshot.clear();
+            return;
+        }
 
-    let changes = snapshot.changes(block);
+        let changes = snapshot.changes(block);
 
-    if !changes.is_empty() || state != prev_state {
+        let state = block.state();
+        if changes.is_empty() && state == prev_state {
+            return;
+        }
         // Unbounded channel — see single_threaded/actor.rs rationale. A
         // failed send means the watcher went away without
         // unsubscribing; drop it under the write lock, sparing the
         // common path the exclusive lock.
-        let mut gone = Vec::new();
-        for (watcher, sender) in notification_channels.read().await.iter() {
-            let message = WatchMessage::new(*block.id(), changes.clone(), state.clone());
-            if sender.send(message).is_err() {
-                gone.push(*watcher);
-            }
-        }
-        if !gone.is_empty() {
-            // The id may have subscribed again in between, with a live
-            // channel: only drop a channel that is still closed.
-            notification_channels
-                .write()
-                .await
-                .retain(|watcher, sender| !(gone.contains(watcher) && sender.is_closed()));
-            log::debug!("Dropped watchers {gone:?}: their receivers are gone");
-        }
+        let message = WatchMessage::new(*block.id(), changes, state.clone());
+        send_to_watchers(watchers.iter(), message)
+    };
+
+    if !gone.is_empty() {
+        // The id may have subscribed again in between, with a live
+        // channel: only drop a channel that is still closed.
+        notification_channels
+            .write()
+            .await
+            .retain(|watcher, sender| !(gone.contains(watcher) && sender.is_closed()));
+        log::debug!("Dropped watchers {gone:?}: their receivers are gone");
     }
 }
 

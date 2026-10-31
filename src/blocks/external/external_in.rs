@@ -105,6 +105,7 @@ impl Block for ExternalIn {
             .is_none_or(|sub| sub.connector != connector || sub.address != address);
 
         if needs_bind {
+            let (connector, address) = (connector.to_owned(), address.to_owned());
             // Drop any previous subscription before opening the new one;
             // dropping the stream is the unsubscribe.
             self.subscription = None;
@@ -129,7 +130,7 @@ impl Block for ExternalIn {
             let deadline = Deadline::since(issued_at, input_as_timeout_millis(&self.timeout));
             if deadline.has_passed() {
                 self.binding = None;
-                let err = deadline.timeout_error(address);
+                let err = deadline.timeout_error(&address);
                 self.set_state(connector_fault("ExternalIn", &err));
                 return;
             }
@@ -144,7 +145,7 @@ impl Block for ExternalIn {
             let subscribed = tokio::select! {
                 biased;
                 subscribed = handle.subscribe(&address) => subscribed,
-                () = deadline.passed() => Err(deadline.timeout_error(address.clone())),
+                () = deadline.passed() => Err(deadline.timeout_error(&address)),
             };
             self.binding = None;
             match subscribed {

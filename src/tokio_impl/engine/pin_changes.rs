@@ -1,12 +1,12 @@
 // Copyright (c) 2026, Radu Racariu.
 
-//! The pin changes a watch notification carries, shared by both
-//! engines' actor loops.
+//! Watch notifications, shared by both engines' actor loops: the pin
+//! changes they carry, and their delivery.
 
 use libhaystack::val::Value;
 
 use crate::base::block::Block;
-use crate::base::engine::messages::ChangeSource;
+use crate::base::engine::messages::{ChangeSource, WatchId, WatchMessage, WatchSender};
 
 /// The pin values a block's watchers were last told about, by pin
 /// position: an input and an output may share a name, so a name does
@@ -60,16 +60,42 @@ impl PinSnapshot {
     }
 }
 
+/// Sends `message` to each of `watchers`, cloning it for all but the
+/// last, and returns the ids of the watchers whose receiver is gone.
+pub(super) fn send_to_watchers<'a>(
+    mut watchers: impl DoubleEndedIterator<Item = (&'a WatchId, &'a WatchSender)>,
+    message: WatchMessage,
+) -> Vec<WatchId> {
+    let mut gone = Vec::new();
+    let last = watchers.next_back();
+    for (watcher, sender) in watchers {
+        if sender.send(message.clone()).is_err() {
+            gone.push(*watcher);
+        }
+    }
+    if let Some((watcher, sender)) = last
+        && sender.send(message).is_err()
+    {
+        gone.push(*watcher);
+    }
+    gone
+}
+
 #[cfg(not(target_arch = "wasm32"))]
 #[cfg(test)]
 mod test {
     use assert_matches::assert_matches;
     use libhaystack::val::Value;
 
-    use super::PinSnapshot;
+    use std::collections::BTreeMap;
+
+    use tokio::sync::mpsc;
+    use uuid::Uuid;
+
+    use super::{PinSnapshot, send_to_watchers};
     use crate::base::Status;
-    use crate::base::block::BlockProps;
-    use crate::base::engine::messages::ChangeSource;
+    use crate::base::block::{BlockProps, BlockState};
+    use crate::base::engine::messages::{ChangeSource, WatchId, WatchMessage};
     use crate::base::output::Output;
     use crate::blocks::math::Add;
     use crate::tokio_impl::engine::test_support::runtime_descs::Echo;
@@ -117,5 +143,32 @@ mod test {
                     && input == "value" && *in_value == 1.into()
         );
         assert!(snapshot.changes(&block).is_empty());
+    }
+
+    #[test]
+    fn every_live_watcher_gets_the_message_and_the_gone_are_named() {
+        let (first, mut first_rx) = mpsc::unbounded_channel();
+        let (gone, gone_rx) = mpsc::unbounded_channel();
+        let (last, mut last_rx) = mpsc::unbounded_channel();
+        drop(gone_rx);
+        let watchers = BTreeMap::from([
+            (WatchId::new(1), first),
+            (WatchId::new(2), gone),
+            (WatchId::new(3), last),
+        ]);
+        let block_id = Uuid::new_v4();
+        let changes = vec![ChangeSource::Output("out".to_string(), 1.into())];
+
+        let dropped = send_to_watchers(
+            watchers.iter(),
+            WatchMessage::new(block_id, changes, BlockState::Running),
+        );
+
+        assert_eq!(dropped, [WatchId::new(2)]);
+        for rx in [&mut first_rx, &mut last_rx] {
+            let message = rx.try_recv().expect("delivered");
+            assert_eq!(message.block_id, block_id);
+            assert_matches!(&message.changes[..], [ChangeSource::Output(name, _)] if name == "out");
+        }
     }
 }

@@ -3,10 +3,11 @@
 //! Less-than-or-equal comparison block.
 
 use crate::base::block::Block;
+use crate::base::input::InputReader;
 
 use crate::{blocks::InputImpl, blocks::OutputImpl};
 
-use super::util::execute_impl;
+use super::util::compare;
 
 /// Outputs true if value of the in1 is less or equal.
 #[block]
@@ -24,7 +25,10 @@ pub struct LessThanEq {
 
 impl Block for LessThanEq {
     async fn execute(&mut self) {
-        execute_impl(self, |in1, in2| in1 <= in2).await;
+        self.read_inputs_until_ready().await;
+        compare(&self.input1, &self.input2, &mut self.out, |in1, in2| {
+            in1 <= in2
+        });
     }
 }
 

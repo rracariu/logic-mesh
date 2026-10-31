@@ -3,8 +3,8 @@
 //! List builder block.
 
 use crate::base::{
-    block::{Block, BlockProps},
-    input::InputReader,
+    block::Block,
+    input::{InputProps, InputReader},
     output::Output,
 };
 
@@ -27,8 +27,8 @@ impl Block for List {
         self.read_inputs_until_ready().await;
 
         let list = self
-            .inputs()
-            .into_iter()
+            ._inputs
+            .iter()
             .filter_map(|input| input.value().cloned())
             .collect();
 

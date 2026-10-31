@@ -142,7 +142,7 @@ impl Block for Request {
         let value = pending.value.clone();
         let deadline = pending.deadline(input_as_timeout_millis(&self.timeout));
 
-        let Some(handle) = get_connector(&connector) else {
+        let Some(handle) = get_connector(connector) else {
             self.pending = None;
             self.set_state(BlockState::fault(format!(
                 "Request: no connector named '{connector}'"
@@ -168,7 +168,7 @@ impl Block for Request {
         // held value while a cancellation keeps it for the retry above.
         tokio::select! {
             biased;
-            response = handle.request(&address, value) => {
+            response = handle.request(address, value) => {
                 self.pending = None;
                 match response {
                     Ok(result) => self.out.set(result),

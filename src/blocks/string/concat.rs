@@ -3,8 +3,8 @@
 //! String concatenation block.
 
 use crate::base::{
-    block::{Block, BlockProps},
-    input::InputReader,
+    block::Block,
+    input::{InputProps, InputReader},
     output::Output,
 };
 
@@ -27,19 +27,16 @@ impl Block for Concat {
     async fn execute(&mut self) {
         self.read_inputs_until_ready().await;
 
-        let result = self
-            .inputs()
-            .iter()
-            .filter_map(|input| match input.value() {
-                Some(Value::Str(val)) => Some(val.value().to_owned()),
+        let strings = || {
+            self._inputs.iter().filter_map(|input| match input.value() {
+                Some(Value::Str(val)) => Some(val.value()),
                 _ => None,
             })
-            .reduce(|mut acc, val| {
-                acc.push_str(&val);
-                acc
-            });
+        };
 
-        if let Some(result) = result {
+        if strings().next().is_some() {
+            let mut result = String::with_capacity(strings().map(str::len).sum());
+            strings().for_each(|val| result.push_str(val));
             self.out.set(result.into())
         }
     }

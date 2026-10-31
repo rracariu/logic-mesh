@@ -34,19 +34,18 @@ impl Block for Min {
         self.read_inputs_until_ready().await;
 
         if let (Some(Value::Number(a)), Some(Value::Number(b))) = (self.a.value(), self.b.value()) {
-            convert_units(&[a.to_owned(), b.to_owned()])
-                .map(|parts| {
-                    if let [a, b] = &parts[..] {
-                        let val = Number {
-                            value: a.value.min(b.value),
-                            unit: a.unit,
-                        };
-                        self.out.set(val.into());
-                    }
-                })
-                .unwrap_or_else(|_| {
-                    self.set_state(BlockState::fault("Min: unit conversion failed"));
-                });
+            let mut parts = [*a, *b];
+            match convert_units(&mut parts) {
+                Ok(()) => {
+                    let [a, b] = parts;
+                    let val = Number {
+                        value: a.value.min(b.value),
+                        unit: a.unit,
+                    };
+                    self.out.set(val.into());
+                }
+                Err(_) => self.set_state(BlockState::fault("Min: unit conversion failed")),
+            }
         }
     }
 }

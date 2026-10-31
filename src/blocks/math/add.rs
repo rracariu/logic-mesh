@@ -4,7 +4,7 @@
 
 use crate::base::{
     block::{Block, BlockProps, BlockState},
-    input::InputReader,
+    input::{InputProps, InputReader},
     output::Output,
 };
 
@@ -33,9 +33,9 @@ impl Block for Add {
         let mut has_err = false;
 
         let val = self
-            .inputs()
-            .into_iter()
-            .filter_map(|input| match input.value().as_ref() {
+            ._inputs
+            .iter()
+            .filter_map(|input| match input.value() {
                 Some(Value::Number(num)) => Some(*num),
                 _ => None,
             })

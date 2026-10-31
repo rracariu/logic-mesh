@@ -206,7 +206,7 @@ impl From<BlockDesc> for JsBlockDesc {
 }
 
 /// A watch notification sent to JavaScript when a block's state changes.
-#[derive(Default, Serialize, Deserialize)]
+#[derive(Default, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct JsWatchNotification {
     /// Block UUID as a string.
@@ -215,19 +215,19 @@ pub(crate) struct JsWatchNotification {
     pub(crate) changes: Vec<JsWatchChange>,
     /// Block's operational state at the time of the notification
     /// (`running | fault | disabled | terminated`).
-    pub(crate) state: String,
+    pub(crate) state: &'static str,
     /// Fault reason when `state == "fault"`, else [`None`].
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) fault_reason: Option<String>,
 }
 
 /// A single pin value change within a [`JsWatchNotification`].
-#[derive(Default, Serialize, Deserialize)]
+#[derive(Default, Serialize)]
 pub(crate) struct JsWatchChange {
     /// Pin name that changed.
     pub(crate) name: String,
     /// `"input"` or `"output"`.
-    pub(crate) source: String,
+    pub(crate) source: &'static str,
     /// New pin value.
     pub(crate) value: Value,
 }
@@ -235,7 +235,7 @@ pub(crate) struct JsWatchChange {
 impl From<WatchMessage> for JsWatchNotification {
     fn from(msg: WatchMessage) -> Self {
         let block_id = msg.block_id.to_string();
-        let state = msg.state.label().to_string();
+        let state = msg.state.label();
         let fault_reason = msg.state.fault_reason().map(|s| s.to_string());
         let changes = msg
             .changes
@@ -247,7 +247,7 @@ impl From<WatchMessage> for JsWatchNotification {
                 };
                 JsWatchChange {
                     name,
-                    source: source.to_string(),
+                    source,
                     value,
                 }
             })

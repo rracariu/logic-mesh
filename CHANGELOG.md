@@ -290,6 +290,12 @@ with before and after code, for Rust and for JavaScript and TypeScript.
 - logic-mesh enables tokio's `rt`, `sync`, `time` and `macros` only, with or
   without `multi-threaded`. An application that builds a multi-thread
   runtime enables `rt-multi-thread` on its own tokio ([#27]).
+- The engines and built-in blocks allocate less per cycle. An actor no
+  longer clones its block's state on every step, a watch notification is
+  cloned only for a second or later watcher, and the multi-threaded
+  engine takes the watchers' lock once per step. The math, logic, bitwise,
+  string, collection and external blocks read their pins without
+  collecting them or copying their strings ([#37]).
 
 #### Blocks and the block macros
 
@@ -723,6 +729,7 @@ surfaces that 1.0 deliberately breaks (see the **Changed** /
 [#34]: https://github.com/rracariu/logic-mesh/pull/34
 [#35]: https://github.com/rracariu/logic-mesh/pull/35
 [#36]: https://github.com/rracariu/logic-mesh/pull/36
+[#37]: https://github.com/rracariu/logic-mesh/pull/37
 [Unreleased]: https://github.com/rracariu/logic-mesh/compare/v2.0.0...HEAD
 [2.0.0]: https://github.com/rracariu/logic-mesh/compare/v1.0.0...v2.0.0
 [1.0.0]: https://github.com/rracariu/logic-mesh/releases/tag/v1.0.0
