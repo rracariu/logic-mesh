@@ -1,8 +1,8 @@
 <script lang="ts">
   import { Handle, Position, type IsValidConnection } from '@xyflow/svelte';
   import BlockCommons from '../BlockCommons.svelte';
-  import type { Block } from '$lib/Block';
-  import { isHaystackNumber, numericValue } from '$lib/utils';
+  import type { Block } from '#lib/Block.js';
+  import { isHaystackNumber, numericValue } from '#lib/utils.js';
 
   interface Props {
     data: { value: Block };

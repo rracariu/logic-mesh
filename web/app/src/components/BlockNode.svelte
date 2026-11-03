@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { Block } from '$lib/Block';
+  import type { Block } from '#lib/Block.js';
   import GenericBlock from './blocks/GenericBlock.svelte';
   import InputBlock from './blocks/InputBlock.svelte';
   import CheckboxBlock from './blocks/CheckboxBlock.svelte';

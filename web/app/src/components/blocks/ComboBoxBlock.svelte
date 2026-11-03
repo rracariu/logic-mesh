@@ -1,14 +1,17 @@
 <script lang="ts">
   import { Handle, Position } from '@xyflow/svelte';
   import { onMount } from 'svelte';
-  import * as Select from '$lib/components/ui/select';
-  import { Input } from '$lib/components/ui/input';
-  import { Button } from '$lib/components/ui/button';
+  import * as Select from '#lib/components/ui/select/index.js';
+  import { Input } from '#lib/components/ui/input/index.js';
+  import { Button } from '#lib/components/ui/button/index.js';
   import { Plus } from 'lucide-svelte';
   import BlockCommons from '../BlockCommons.svelte';
-  import type { Block } from '$lib/Block';
-  import { pushValue } from '$lib/UiConnector';
-  import { useValueFeedback, useWidgetConfig } from '$lib/WidgetConfig.svelte';
+  import type { Block } from '#lib/Block.js';
+  import { pushValue } from '#lib/UiConnector.js';
+  import {
+    useValueFeedback,
+    useWidgetConfig,
+  } from '#lib/WidgetConfig.svelte.js';
 
   interface Props {
     data: { value: Block };

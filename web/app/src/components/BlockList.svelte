@@ -5,9 +5,9 @@
     AccordionContent,
     AccordionItem,
     AccordionTrigger,
-  } from '$lib/components/ui/accordion';
-  import { Button } from '$lib/components/ui/button';
-  import { Input } from '$lib/components/ui/input';
+  } from '#lib/components/ui/accordion/index.js';
+  import { Button } from '#lib/components/ui/button/index.js';
+  import { Input } from '#lib/components/ui/input/index.js';
 
   interface Props {
     blocks: BlockDesc[];

@@ -10,20 +10,20 @@
     Blocks,
     Search,
   } from 'lucide-svelte';
-  import { Button } from '$lib/components/ui/button';
+  import { Button } from '#lib/components/ui/button/index.js';
   import {
     Select,
     SelectContent,
     SelectItem,
     SelectTrigger,
-  } from '$lib/components/ui/select';
-  import { Separator } from '$lib/components/ui/separator';
+  } from '#lib/components/ui/select/index.js';
+  import { Separator } from '#lib/components/ui/separator/index.js';
   import { toast } from 'svelte-sonner';
-  import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
-  import { examplePrograms } from '$lib/Examples';
-  import type { EditorProgram } from '$lib/Program';
-  import { useEngine } from '$lib/Engine';
-  import { setUiPushPaused } from '$lib/UiConnector';
+  import * as DropdownMenu from '#lib/components/ui/dropdown-menu/index.js';
+  import { examplePrograms } from '#lib/Examples.js';
+  import type { EditorProgram } from '#lib/Program.js';
+  import { useEngine } from '#lib/Engine.js';
+  import { setUiPushPaused } from '#lib/UiConnector.js';
   import type { BlockDesc } from 'logic-mesh';
 
   interface Props {

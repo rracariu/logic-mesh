@@ -1,9 +1,9 @@
 <script lang="ts">
   import { Handle, Position } from '@xyflow/svelte';
   import BlockCommons from '../BlockCommons.svelte';
-  import type { Block } from '$lib/Block';
-  import { onValue } from '$lib/UiConnector';
-  import { formatValue } from '$lib/utils';
+  import type { Block } from '#lib/Block.js';
+  import { onValue } from '#lib/UiConnector.js';
+  import { formatValue } from '#lib/utils.js';
 
   interface Props {
     data: { value: Block };
