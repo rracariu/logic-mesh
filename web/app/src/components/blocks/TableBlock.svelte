@@ -1,11 +1,11 @@
 <script lang="ts">
   import { Handle, Position } from '@xyflow/svelte';
-  import { Input } from '$lib/components/ui/input';
-  import { Button } from '$lib/components/ui/button';
+  import { Input } from '#lib/components/ui/input/index.js';
+  import { Button } from '#lib/components/ui/button/index.js';
   import { Plus, Trash2 } from 'lucide-svelte';
   import BlockCommons from '../BlockCommons.svelte';
-  import type { Block } from '$lib/Block';
-  import { pushValue } from '$lib/UiConnector';
+  import type { Block } from '#lib/Block.js';
+  import { pushValue } from '#lib/UiConnector.js';
 
   interface Props {
     data: { value: Block };

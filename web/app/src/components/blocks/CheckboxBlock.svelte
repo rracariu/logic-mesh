@@ -1,11 +1,14 @@
 <script lang="ts">
   import { Handle, Position } from '@xyflow/svelte';
   import { onMount } from 'svelte';
-  import { Checkbox } from '$lib/components/ui/checkbox';
+  import { Checkbox } from '#lib/components/ui/checkbox/index.js';
   import BlockCommons from '../BlockCommons.svelte';
-  import type { Block } from '$lib/Block';
-  import { pushValue } from '$lib/UiConnector';
-  import { useValueFeedback, useWidgetConfig } from '$lib/WidgetConfig.svelte';
+  import type { Block } from '#lib/Block.js';
+  import { pushValue } from '#lib/UiConnector.js';
+  import {
+    useValueFeedback,
+    useWidgetConfig,
+  } from '#lib/WidgetConfig.svelte.js';
 
   interface Props {
     data: { value: Block };

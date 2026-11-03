@@ -35,21 +35,21 @@
   import ToolBar from '../components/ToolBar.svelte';
   import FitView from '../components/FitView.svelte';
 
-  import { blockInstance, cloneWidget } from '$lib/Block';
-  import { attachUiConnector, forgetBlockAddress } from '$lib/UiConnector';
-  import { useEngine } from '$lib/Engine';
-  import { model, blockInstances } from '$lib/model.svelte';
+  import { blockInstance, cloneWidget } from '#lib/Block.js';
+  import { attachUiConnector, forgetBlockAddress } from '#lib/UiConnector.js';
+  import { useEngine } from '#lib/Engine.js';
+  import { model, blockInstances } from '#lib/model.svelte.js';
   import {
     prepare,
     pushToEngine,
     save,
     type EditorProgram,
-  } from '$lib/Program';
+  } from '#lib/Program.js';
   import {
     clipboardHasContent,
     clipboardRead,
     clipboardWrite,
-  } from '$lib/Clipboard';
+  } from '#lib/Clipboard.js';
 
   const { start, reset, blocks, command, connectorCommand, startWatch } =
     useEngine();

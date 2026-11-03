@@ -1,10 +1,10 @@
 <script lang="ts">
   import { Handle, Position } from '@xyflow/svelte';
   import { onMount } from 'svelte';
-  import { Button } from '$lib/components/ui/button';
+  import { Button } from '#lib/components/ui/button/index.js';
   import BlockCommons from '../BlockCommons.svelte';
-  import type { Block } from '$lib/Block';
-  import { pushValue } from '$lib/UiConnector';
+  import type { Block } from '#lib/Block.js';
+  import { pushValue } from '#lib/UiConnector.js';
 
   interface Props {
     data: { value: Block };

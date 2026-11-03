@@ -2,10 +2,10 @@
   import type { Snippet } from 'svelte';
   import { tick } from 'svelte';
   import { X } from 'lucide-svelte';
-  import { Button } from '$lib/components/ui/button';
-  import { model } from '$lib/model.svelte';
-  import type { Block } from '$lib/Block';
-  import { widgetBlockDescs } from '$lib/Widgets';
+  import { Button } from '#lib/components/ui/button/index.js';
+  import { model } from '#lib/model.svelte.js';
+  import type { Block } from '#lib/Block.js';
+  import { widgetBlockDescs } from '#lib/Widgets.js';
   import SourceIndicators from './SourceIndicators.svelte';
 
   interface Props {

@@ -2,9 +2,13 @@
   import { onDestroy } from 'svelte';
   import { useSvelteFlow } from '@xyflow/svelte';
   import { RadioReceiver } from 'lucide-svelte';
-  import type { Block } from '$lib/Block';
-  import { blockInstances, model } from '$lib/model.svelte';
-  import { blockDisplayName, findPublisher, widgetSources } from '$lib/Sources';
+  import type { Block } from '#lib/Block.js';
+  import { blockInstances, model } from '#lib/model.svelte.js';
+  import {
+    blockDisplayName,
+    findPublisher,
+    widgetSources,
+  } from '#lib/Sources.js';
 
   interface Props {
     block: Block;

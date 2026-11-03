@@ -2,10 +2,13 @@
   import { Handle, Position } from '@xyflow/svelte';
   import { onMount } from 'svelte';
   import BlockCommons from '../BlockCommons.svelte';
-  import type { Block } from '$lib/Block';
-  import { pushValue } from '$lib/UiConnector';
-  import { useValueFeedback, useWidgetConfig } from '$lib/WidgetConfig.svelte';
-  import { numericValue } from '$lib/utils';
+  import type { Block } from '#lib/Block.js';
+  import { pushValue } from '#lib/UiConnector.js';
+  import {
+    useValueFeedback,
+    useWidgetConfig,
+  } from '#lib/WidgetConfig.svelte.js';
+  import { numericValue } from '#lib/utils.js';
 
   interface Props {
     data: { value: Block };
