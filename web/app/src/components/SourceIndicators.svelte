@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onDestroy } from 'svelte';
   import { useSvelteFlow } from '@xyflow/svelte';
-  import { RadioReceiver } from 'lucide-svelte';
+  import { RadioReceiver } from '@lucide/svelte';
   import type { Block } from '#lib/Block.js';
   import { blockInstances, model } from '#lib/model.svelte.js';
   import {
