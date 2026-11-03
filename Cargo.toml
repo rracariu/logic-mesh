@@ -77,7 +77,7 @@ uuid = { version = "^1.23", features = ["v4"] }
 # feature already builds it.
 serde_json = "^1.0"
 futures = "^0.3"
-rand = "^0.9"
+rand = "^0.10"
 thiserror = "^2.0"
 log = "^0.4"
 # The engines need the scheduler-independent runtime pieces (`rt`)
@@ -95,7 +95,9 @@ js-sys = "^0.3"
 wasm-bindgen-futures = "^0.4"
 wasm-bindgen-console-logger = { version = "^0.1", optional = true }
 console_error_panic_hook = { version = "^0.1", optional = true }
-getrandom = { version = "^0.3", default-features = false, features = [
+# Not used directly: rand's getrandom has no wasm32 backend without this
+# feature. Keep the version on the one rand depends on.
+getrandom = { version = "^0.4", default-features = false, features = [
 	"wasm_js",
 ] }
 

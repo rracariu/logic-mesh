@@ -4,7 +4,7 @@
 
 use std::time::Duration;
 
-use rand::Rng;
+use rand::RngExt;
 
 use crate::base::output::OutputProps;
 use crate::{
