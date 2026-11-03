@@ -4,7 +4,7 @@
   import * as Select from '#lib/components/ui/select/index.js';
   import { Input } from '#lib/components/ui/input/index.js';
   import { Button } from '#lib/components/ui/button/index.js';
-  import { Plus } from 'lucide-svelte';
+  import { Plus } from '@lucide/svelte';
   import BlockCommons from '../BlockCommons.svelte';
   import type { Block } from '#lib/Block.js';
   import { pushValue } from '#lib/UiConnector.js';

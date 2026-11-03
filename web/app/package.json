@@ -19,7 +19,6 @@
     "chart.js": "^4.6.1",
     "clsx": "^2.1.1",
     "logic-mesh": "*",
-    "lucide-svelte": "^1.0.1",
     "mode-watcher": "^1.1.0",
     "svelte-sonner": "^1.2.3",
     "tailwind-merge": "^3.7.0",
