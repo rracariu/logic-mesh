@@ -6,7 +6,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-## [2.0.0] - Unreleased
+## [2.0.0] - 2026-11-06
 
 Settles the API for the 2.x series: typed errors with stable codes, a
 typed request/response protocol driven through `EngineClient`, a
