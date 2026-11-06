@@ -3,7 +3,7 @@
 //! Reset block.
 
 use crate::base::{block::Block, input::InputReader, output::Output};
-use crate::blocks::utils::{input_as_number, input_as_number_matching};
+use crate::blocks::utils::{input_as_bound, input_as_number, input_as_number_matching};
 
 use libhaystack::val::Number;
 
@@ -15,7 +15,8 @@ use crate::{blocks::InputImpl, blocks::OutputImpl};
 /// the common BAS reset pattern (e.g. SAT falls as OAT rises).
 ///
 /// `inMin` / `inMax` are matched to the unit of `in`; `outMin` /
-/// `outMax` define the output range and dictate the output's unit.
+/// `outMax` define the output range and dictate the output's unit. While
+/// either of them is unset or NaN, the output keeps its value.
 #[block]
 #[derive(BlockProps, Debug)]
 #[category = "control"]
@@ -51,14 +52,14 @@ impl Block for Reset {
             None => return,
         };
         let out_min_n = match input_as_number(&self.out_min) {
-            Some(n) => n,
-            None => return,
+            Some(n) if !n.value.is_nan() => n,
+            _ => return,
         };
         let out_unit = out_min_n
             .unit
             .or(input_as_number(&self.out_max).and_then(|n| n.unit));
         let out_min = out_min_n.value;
-        let out_max = match input_as_number_matching(&self.out_max, out_unit) {
+        let out_max = match input_as_bound(&self.out_max, out_unit) {
             Some(v) => v,
             None => return,
         };
@@ -139,5 +140,34 @@ mod test {
     async fn test_reset_inverted_clamp() {
         let v = run(80.0, 50.0, 70.0, 65.0, 55.0).await;
         assert_eq!(v, 55.0);
+    }
+
+    /// Regression: a NaN bound of the output range, which any block
+    /// upstream can produce, panicked in `f64::clamp` and on wasm32 aborted
+    /// the engine.
+    #[tokio::test]
+    async fn test_reset_nan_output_bound_reads_as_unset() {
+        for (out_min, out_max) in [(f64::NAN, 10.0), (0.0, f64::NAN), (f64::NAN, f64::NAN)] {
+            let mut block = Reset::new();
+            write_block_inputs([
+                (&mut block.input, 50.0),
+                (&mut block.in_min, 0.0),
+                (&mut block.in_max, 100.0),
+                (&mut block.out_min, 0.0),
+                (&mut block.out_max, 10.0),
+            ])
+            .await;
+            block.execute().await;
+            assert_eq!(block.out.value, 5.0.into());
+
+            write_block_inputs([(&mut block.out_min, out_min), (&mut block.out_max, out_max)])
+                .await;
+            block.execute().await;
+            assert_eq!(
+                block.out.value,
+                5.0.into(),
+                "outMin {out_min}, outMax {out_max}"
+            );
+        }
     }
 }

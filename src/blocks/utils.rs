@@ -55,6 +55,14 @@ pub(super) fn input_as_number_matching(
     }
 }
 
+/// Reads a numeric input that bounds a range, as
+/// [`input_as_number_matching`] does. NaN, which any block upstream can
+/// produce, reads as [`None`]: a NaN bound makes `f64::clamp` panic, which
+/// on wasm32 aborts the engine.
+pub(super) fn input_as_bound(input: &InputImpl, target: Option<&'static Unit>) -> Option<f64> {
+    input_as_number_matching(input, target).filter(|bound| !bound.is_nan())
+}
+
 /// Converts the duration to milliseconds, or returns `DEFAULT_SLEEP_DUR`
 /// if the conversion fails.
 pub(super) fn input_to_millis_or_default(dur: &Option<Value>) -> u64 {

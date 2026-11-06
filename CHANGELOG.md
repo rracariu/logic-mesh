@@ -544,6 +544,9 @@ with before and after code, for Rust and for JavaScript and TypeScript.
 - When an input and an output shared a name, which a JS block or a
   hand-written `BlockProps` can have, watch notifications carried only one
   of them ([#36]).
+- A NaN bound, as from a linked `Sqrt` of a negative number, panicked `Clamp`,
+  `Reset`, `Pid` and `TrimRespond`, which on wasm32 aborted the engine. A NaN
+  `min`, `max`, `outMin`, `outMax` or `maxChange` now reads as unset ([#42]).
 
 ### Changes to APIs added after 1.0.0
 
@@ -730,6 +733,7 @@ surfaces that 1.0 deliberately breaks (see the **Changed** /
 [#35]: https://github.com/rracariu/logic-mesh/pull/35
 [#36]: https://github.com/rracariu/logic-mesh/pull/36
 [#37]: https://github.com/rracariu/logic-mesh/pull/37
+[#42]: https://github.com/rracariu/logic-mesh/pull/42
 [Unreleased]: https://github.com/rracariu/logic-mesh/compare/v2.0.0...HEAD
 [2.0.0]: https://github.com/rracariu/logic-mesh/compare/v1.0.0...v2.0.0
 [1.0.0]: https://github.com/rracariu/logic-mesh/releases/tag/v1.0.0

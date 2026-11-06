@@ -5,6 +5,7 @@
 use std::time::Duration;
 
 use crate::base::output::OutputProps;
+use crate::blocks::utils::input_as_bound;
 use crate::blocks::utils::input_as_number;
 use crate::blocks::utils::input_to_millis_or_default;
 use crate::{
@@ -34,6 +35,8 @@ use crate::{blocks::InputImpl, blocks::OutputImpl};
 /// i.e. ~100 ms filter). Keep `bias ≥ dt` for stable filter behavior.
 ///
 /// `interval` accepts any time unit (`ms`, `s`, `min`, `h`); defaults to 200 ms.
+///
+/// `min` and `max` default to 0 and 100 while unset or NaN.
 ///
 /// If `input` is not connected, the controller's previous output is used as
 /// the process variable — convenient for demos that should converge to SP
@@ -100,8 +103,8 @@ impl Block for Pid {
         }
 
         let sp = input_as_float_or_default(&self.sp);
-        let min = input_as_number(&self.min).map(|v| v.value).unwrap_or(0.0);
-        let max = input_as_number(&self.max).map(|v| v.value).unwrap_or(100.0);
+        let min = input_as_bound(&self.min, None).unwrap_or(0.0);
+        let max = input_as_bound(&self.max, None).unwrap_or(100.0);
         let dt = millis as f64 / 1000.0;
         let (clamp_lo, clamp_hi) = if min <= max { (min, max) } else { (max, min) };
 
@@ -246,5 +249,30 @@ mod test {
         }
 
         assert_eq!(out_value(&block), 0.0);
+    }
+
+    /// Regression: a NaN limit, which any block upstream can produce,
+    /// panicked in `f64::clamp` and on wasm32 aborted the engine. It now
+    /// reads as unset, so the default limits of 0 and 100 apply.
+    #[tokio::test]
+    async fn test_pid_nan_limit_reads_as_unset() {
+        for (min, max) in [(f64::NAN, 100.0), (0.0, f64::NAN), (f64::NAN, f64::NAN)] {
+            let mut block = Pid::new();
+            link_out(&mut block);
+
+            write_block_inputs([
+                (&mut block.interval, 1.0),
+                (&mut block.sp, 500.0),
+                (&mut block.kp, 1.0),
+                (&mut block.ki, 0.0),
+                (&mut block.kd, 0.0),
+                (&mut block.min, min),
+                (&mut block.max, max),
+            ])
+            .await;
+            block.execute().await;
+
+            assert_eq!(out_value(&block), 100.0, "min {min}, max {max}");
+        }
     }
 }
