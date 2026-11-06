@@ -26,12 +26,12 @@ A reactive, async dataflow engine in Rust — wire blocks together, run programs
 | **Timers** | `OnDelay`, `OffDelay`, `OneShot`, `RateLimit`, `Runtime`, `CycleCount` |
 | **Time** | `Now`, `Schedule`, `Calendar`, `Sun` |
 | **Logic** | `And`, `Or`, `Not`, `Xor`, `Equal`, `NotEqual`, `GreaterThan`, `GreaterThanEq`, `LessThan`, `LessThanEq`, `FlipFlop`, `Latch`, `Trigger` |
-| **Math** | `Add`, `Sub`, `Mul`, `Div`, `Modulus`, `Neg`, `Abs`, `Pow`, `Sqrt`, `Exp`, `Log10`, `LogN`, `Sin`/`Cos`/`Tan` (+ inverses), `Min`, `Max`, `Average`, `Median`, `Even`, `Odd` |
+| **Math** | `Add`, `Sub`, `Mul`, `Div`, `Mod`, `Neg`, `Abs`, `Pow`, `Sqrt`, `Exp`, `Log10`, `Logn`, `Sin`/`Cos`/`Tan` (+ inverses), `Min`, `Max`, `Average`, `Median`, `Even`, `Odd` |
 | **Misc** | `Ema`, `MovingAverage`, `Derivative`, `Integrator`, `ChangeOfValue`, `SampleHold`, `Random`, `SineWave`, `HasValue`, `ParseBool`, `ParseNumber` |
 | **Bitwise** | `BitwiseAnd`, `BitwiseOr`, `BitwiseXor`, `BitwiseNot` |
 | **Psychrometrics** | `Enthalpy`, `Dewpoint`, `WetBulb` |
 | **External** | `ExternalIn`, `ExternalOut`, `Request` |
-| **Collections / Strings** | `Dict`, `List`, `Get`, `Keys`, `Values`, `Len`, `Concat`, `Replace` |
+| **Collections / Strings** | `Dict`, `List`, `GetElement`, `Keys`, `Values`, `Length`, `StrLen`, `Concat`, `Replace` |
 
 ## Web editor & demos
 

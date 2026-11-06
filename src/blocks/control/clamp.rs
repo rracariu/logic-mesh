@@ -3,7 +3,7 @@
 //! Clamp block.
 
 use crate::base::{block::Block, input::InputReader, output::Output};
-use crate::blocks::utils::{input_as_number, input_as_number_matching};
+use crate::blocks::utils::{input_as_bound, input_as_number};
 
 use libhaystack::val::Number;
 
@@ -14,7 +14,8 @@ use crate::{blocks::InputImpl, blocks::OutputImpl};
 ///
 /// `min` and `max` are read in the same unit as `in`; bounds with a
 /// compatible unit are converted, bounds without a unit are taken
-/// as-is. The output carries the unit of `in`.
+/// as-is. The output carries the unit of `in`. While a bound is unset or
+/// NaN, the output keeps its value.
 #[block]
 #[derive(BlockProps, Debug)]
 #[category = "control"]
@@ -37,11 +38,11 @@ impl Block for Clamp {
             Some(n) => n,
             None => return,
         };
-        let lo = match input_as_number_matching(&self.min, n.unit) {
+        let lo = match input_as_bound(&self.min, n.unit) {
             Some(v) => v,
             None => return,
         };
-        let hi = match input_as_number_matching(&self.max, n.unit) {
+        let hi = match input_as_bound(&self.max, n.unit) {
             Some(v) => v,
             None => return,
         };
@@ -98,5 +99,26 @@ mod test {
     async fn test_clamp_swapped_bounds() {
         // min > max → bounds get swapped so the block stays well-defined
         assert_eq!(run(5.0, 10.0, 0.0).await, 5.0);
+    }
+
+    /// Regression: a NaN bound, which any block upstream can produce,
+    /// panicked in `f64::clamp` and on wasm32 aborted the engine.
+    #[tokio::test]
+    async fn test_clamp_nan_bound_reads_as_unset() {
+        for (min, max) in [(f64::NAN, 10.0), (0.0, f64::NAN), (f64::NAN, f64::NAN)] {
+            let mut block = Clamp::new();
+            write_block_inputs([
+                (&mut block.input, 15.0),
+                (&mut block.min, 0.0),
+                (&mut block.max, 10.0),
+            ])
+            .await;
+            block.execute().await;
+            assert_eq!(block.out.value, 10.0.into());
+
+            write_block_inputs([(&mut block.min, min), (&mut block.max, max)]).await;
+            block.execute().await;
+            assert_eq!(block.out.value, 10.0.into(), "min {min}, max {max}");
+        }
     }
 }

@@ -6,7 +6,9 @@ use std::time::Duration;
 
 use crate::base::output::OutputProps;
 use crate::base::{block::Block, input::InputReader, output::Output};
-use crate::blocks::utils::{input_as_number, input_as_number_matching, input_to_millis_or_default};
+use crate::blocks::utils::{
+    input_as_bound, input_as_number, input_as_number_matching, input_to_millis_or_default,
+};
 use crate::tokio_impl::sleep::current_time_millis;
 
 use libhaystack::units::Unit;
@@ -22,7 +24,8 @@ use crate::{blocks::InputImpl, blocks::OutputImpl};
 ///
 /// Use signed values: e.g. for "increase SP to respond" (duct static
 /// pressure) set `trim = -0.05`, `respond = +0.05`. The output is held
-/// inside `[min..max]`.
+/// inside `[min..max]`. A limit that is unset or NaN does not bound the
+/// setpoint, and a `maxChange` that is unset or NaN does not cap the change.
 #[block]
 #[derive(BlockProps, Debug)]
 #[category = "control"]
@@ -71,8 +74,8 @@ impl Block for TrimRespond {
             .or_else(|| input_as_number(&self.min).and_then(|n| n.unit))
             .or_else(|| input_as_number(&self.max).and_then(|n| n.unit));
 
-        let lo = input_as_number_matching(&self.min, sp_unit).unwrap_or(f64::NEG_INFINITY);
-        let hi = input_as_number_matching(&self.max, sp_unit).unwrap_or(f64::INFINITY);
+        let lo = input_as_bound(&self.min, sp_unit).unwrap_or(f64::NEG_INFINITY);
+        let hi = input_as_bound(&self.max, sp_unit).unwrap_or(f64::INFINITY);
         let initial = input_as_number_matching(&self.initial, sp_unit)
             .unwrap_or_else(|| if lo.is_finite() { lo } else { 0.0 });
 
@@ -108,7 +111,7 @@ impl Block for TrimRespond {
             .unwrap_or(2.0);
         let trim = input_as_number_matching(&self.trim, sp_unit).unwrap_or(0.0);
         let respond = input_as_number_matching(&self.respond, sp_unit).unwrap_or(0.0);
-        let max_change = input_as_number_matching(&self.max_change, sp_unit)
+        let max_change = input_as_bound(&self.max_change, sp_unit)
             .map(|v| v.abs())
             .unwrap_or(f64::INFINITY);
 
@@ -227,6 +230,50 @@ mod test {
         block.execute().await;
         if let Value::Number(n) = block.out.value {
             assert!((n.value - 1.1).abs() < 1e-9, "got {}", n.value);
+        } else {
+            panic!("expected Number");
+        }
+    }
+
+    /// Regression: a NaN limit, which any block upstream can produce,
+    /// panicked in `f64::clamp` and on wasm32 aborted the engine. It now
+    /// reads as unset, which leaves that side of the setpoint unbounded.
+    #[tokio::test]
+    async fn test_trim_respond_nan_limit_reads_as_unset() {
+        for (min, max) in [(f64::NAN, 2.0), (0.0, f64::NAN), (f64::NAN, f64::NAN)] {
+            let mut block = TrimRespond::new();
+            link_out(&mut block);
+
+            drive(&mut block, 0.0, 2.0, -0.05, 0.05, 0.5, min, max, 0.5).await;
+            block.execute().await;
+            assert_eq!(block.out.value, 0.5.into(), "min {min}, max {max}");
+
+            // 5 requests, ignore 2 → 3 excess * 0.05 = 0.15
+            drive(&mut block, 5.0, 2.0, -0.05, 0.05, 0.5, min, max, 0.5).await;
+            block.execute().await;
+            if let Value::Number(n) = block.out.value {
+                assert!((n.value - 0.65).abs() < 1e-9, "got {}", n.value);
+            } else {
+                panic!("expected Number");
+            }
+        }
+    }
+
+    /// Regression: as above, for `maxChange`. Unset, it does not limit the
+    /// change.
+    #[tokio::test]
+    async fn test_trim_respond_nan_max_change_reads_as_unset() {
+        let mut block = TrimRespond::new();
+        link_out(&mut block);
+
+        drive(&mut block, 0.0, 2.0, -0.05, 0.05, f64::NAN, 0.0, 5.0, 1.0).await;
+        block.execute().await;
+
+        // 22 requests, ignore 2 → 20 excess * 0.05 = 1.0
+        drive(&mut block, 22.0, 2.0, -0.05, 0.05, f64::NAN, 0.0, 5.0, 1.0).await;
+        block.execute().await;
+        if let Value::Number(n) = block.out.value {
+            assert!((n.value - 2.0).abs() < 1e-9, "got {}", n.value);
         } else {
             panic!("expected Number");
         }
