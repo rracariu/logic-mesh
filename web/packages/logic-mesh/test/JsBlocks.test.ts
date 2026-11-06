@@ -382,7 +382,7 @@ describe('defineJsBlocks', () => {
     expect(received).toStrictEqual({ x: null, y: null, z: [null] });
   });
 
-  it('coerces safe BigInts to numbers and faults on unsafe ones', async () => {
+  it('coerces BigInts to numbers, rounding unsafe ones', async () => {
     const { session: s, notes } = session();
     let received: unknown;
     const jsBlocks = defineJsBlocks(
@@ -403,13 +403,13 @@ describe('defineJsBlocks', () => {
     expect(received).toBe(42);
     expect(out).toBe(42);
 
-    // Outside it the bridge faults the block before the function runs.
+    // Outside it, it rounds to the nearest Number, as `Number(value)`
+    // does: a Haystack Number is a float.
     const id2 = await jsBlocks.addBlock(s.command, 'probe');
     await s.command.writeBlockInput(id2, 'in', 9007199254740993n);
-    const fault = await until(() => lastFault(notes, id2), 'a bigint fault');
-    expect(fault.faultReason).toContain(
-      "can't be represented as a JavaScript number",
-    );
+    const out2 = await until(() => lastOut(notes, id2), 'the rounded value');
+    expect(received).toBe(Number(9007199254740993n));
+    expect(out2).toBe(9007199254740992);
   });
 
   it('round-trips arrays of dicts', async () => {

@@ -350,7 +350,8 @@ with before and after code, for Rust and for JavaScript and TypeScript.
   `base::program`), `Status` at `base::Status`, and `BlockHandle` in
   `base::engine` ([#27]).
 - `anyhow` is replaced by typed errors ([#11]).
-- libhaystack is upgraded to 4.0, a public dependency ([#17]).
+- libhaystack is upgraded to 4.0, a public dependency ([#17]). 4.1.1 is the
+  lowest version allowed, for its Number encoding fixes ([#43]).
 - `serde_json` is a normal, public dependency ([#28]).
 - `Status`, `BlockState`, `LinkState` and `ChangeSource` are
   `#[non_exhaustive]`, and so are `WatchMessage`, `BlockDefinition`,
@@ -414,6 +415,11 @@ with before and after code, for Rust and for JavaScript and TypeScript.
   `createLink`, the pin writes, `evalBlock`, watch notifications, JS block
   inputs and JS connector values ([#30]). `inspectBlock` returns a
   `BlockInspection`, keyed `lib` and `faultReason` ([#30]).
+- A non-finite Number reaches JavaScript Hayson-encoded, as
+  `{ _kind: 'number', val: 'INF' }` (`'-INF'`, `'NaN'`), instead of as
+  `null`, and a saved program keeps it. A `BigInt` outside the safe integer
+  range rounds to the nearest Number instead of faulting a JS block
+  ([#43]).
 - `registerBlock` throws `InvalidArgument` for a factory that is not a
   function, `null` or `undefined` ([#30]).
 - A faulting block logs at debug instead of at error on every cycle, and
@@ -547,6 +553,10 @@ with before and after code, for Rust and for JavaScript and TypeScript.
 - A NaN bound, as from a linked `Sqrt` of a negative number, panicked `Clamp`,
   `Reset`, `Pid` and `TrimRespond`, which on wasm32 aborted the engine. A NaN
   `min`, `max`, `outMin`, `outMax` or `maxChange` now reads as unset ([#42]).
+- A whole Number of magnitude 2^53 or more made the JavaScript commands that
+  carried it reject with `Serialization`, `getProgram` included, and dropped
+  its watch notifications. A saved program wrote one of 2^63 or more as
+  `9223372036854775807` ([#43]).
 
 ### Changes to APIs added after 1.0.0
 
@@ -734,6 +744,7 @@ surfaces that 1.0 deliberately breaks (see the **Changed** /
 [#36]: https://github.com/rracariu/logic-mesh/pull/36
 [#37]: https://github.com/rracariu/logic-mesh/pull/37
 [#42]: https://github.com/rracariu/logic-mesh/pull/42
+[#43]: https://github.com/rracariu/logic-mesh/pull/43
 [Unreleased]: https://github.com/rracariu/logic-mesh/compare/v2.0.0...HEAD
 [2.0.0]: https://github.com/rracariu/logic-mesh/compare/v1.0.0...v2.0.0
 [1.0.0]: https://github.com/rracariu/logic-mesh/releases/tag/v1.0.0

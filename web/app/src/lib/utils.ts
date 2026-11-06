@@ -20,13 +20,19 @@ export type WithElementRef<T, U extends HTMLElement = HTMLElement> = T & {
  * Haystack-encoded number, e.g. `{ _kind: "number", val: 47.4, unit: "kJ/kg" }`.
  * The engine hands a unit-bearing `Number` to JS as a plain object; a JS
  * `Map` of the same entries is read too. Unit-less numbers cross the wasm
- * boundary as primitives.
+ * boundary as primitives, except the non-finite ones: Hayson has no JSON
+ * number for them, so their `val` is `"INF"`, `"-INF"` or `"NaN"`.
  */
 export type HaystackNumberRecord = {
   _kind: 'number';
-  val: number;
+  val: number | NonFiniteVal;
   unit?: string;
 };
+
+/** The Hayson `val` of a non-finite number. */
+type NonFiniteVal = 'INF' | '-INF' | 'NaN';
+
+const NON_FINITE_VALS: ReadonlySet<unknown> = new Set(['INF', '-INF', 'NaN']);
 
 function readField(v: object, key: string): unknown {
   if (v instanceof Map) return v.get(key);
@@ -38,14 +44,22 @@ export function isHaystackNumber(v: unknown): boolean {
   if (typeof v !== 'object' || v === null) return false;
   return (
     readField(v, '_kind') === 'number' &&
-    typeof readField(v, 'val') === 'number'
+    (typeof readField(v, 'val') === 'number' ||
+      NON_FINITE_VALS.has(readField(v, 'val')))
   );
 }
 
-/** Strip the Haystack number wrapper so consumers see a primitive number. */
+/**
+ * Strip the Haystack number wrapper so consumers see a primitive number.
+ * A non-finite number reads as `null`, no number, as it does for the
+ * widgets and readouts.
+ */
 export function numericValue(v: unknown): number | null {
   if (typeof v === 'number') return v;
-  if (isHaystackNumber(v)) return readField(v as object, 'val') as number;
+  if (isHaystackNumber(v)) {
+    const val = readField(v as object, 'val');
+    return typeof val === 'number' ? val : null;
+  }
   if (typeof v === 'string') {
     const n = Number(v);
     return Number.isFinite(n) ? n : null;
@@ -68,7 +82,8 @@ export function formatValue(
   if (v == null) return '—';
   const max = opts?.maxFractionDigits ?? 4;
   if (isHaystackNumber(v)) {
-    const val = numericValue(v) ?? 0;
+    const val = numericValue(v);
+    if (val == null) return '—';
     const unit = unitOf(v);
     const num = Intl.NumberFormat(undefined, {
       maximumFractionDigits: max,

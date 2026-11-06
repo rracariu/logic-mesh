@@ -21,6 +21,7 @@ use crate::base::{
     },
     error::BlockDescError,
 };
+use crate::wasm::js_numbers::JsNumbers;
 
 /// The TypeScript types the generated declarations name in place of
 /// `any`, through `unchecked_param_type` and `unchecked_return_type`.
@@ -52,11 +53,13 @@ import type {
 /// hands values to JavaScript in: JSON-compatible values, so that a
 /// Haystack value has the same shape from every method and callback. A
 /// map, such as a Haystack Dict, is a plain object, not a `Map`, and a
-/// missing value, or `Null`, is `null`, not `undefined`.
+/// missing value, or `Null`, is `null`, not `undefined`. An integer
+/// beyond `±(2^53 − 1)`, as libhaystack serializes a large whole Number,
+/// is a `number` too, not an error (see [`JsNumbers`]).
 pub(crate) fn to_js_value<T: Serialize + ?Sized>(
     value: &T,
 ) -> Result<JsValue, serde_wasm_bindgen::Error> {
-    value.serialize(&serde_wasm_bindgen::Serializer::json_compatible())
+    JsNumbers(value).serialize(&serde_wasm_bindgen::Serializer::json_compatible())
 }
 
 /// Block field properties, inputs or output
