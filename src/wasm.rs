@@ -17,6 +17,7 @@ pub mod engine_command;
 pub(crate) mod error;
 pub(crate) mod js_block;
 pub mod js_connector;
+pub(crate) mod js_numbers;
 pub(crate) mod types;
 
 use std::str::FromStr;

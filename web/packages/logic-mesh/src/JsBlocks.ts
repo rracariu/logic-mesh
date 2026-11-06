@@ -20,10 +20,11 @@ import {
  * Values cross the wasm boundary in the Haystack JSON encoding:
  * numbers, strings, booleans, `null`, arrays and plain objects
  * round-trip, with measured exceptions. An `undefined` inside a dict
- * or array keeps its key or slot but arrives as `null`. A `BigInt` in
- * the safe integer range silently coerces to `Number`; one outside it
- * faults the block ("can't be represented as a JavaScript number")
- * before the function is called. Engine-side dicts arrive as plain
+ * or array keeps its key or slot but arrives as `null`. A `BigInt`
+ * becomes a `Number`, as a Haystack Number is a float: outside the safe
+ * integer range it rounds to the nearest one, as `Number(value)` does.
+ * Non-finite numbers arrive Hayson-encoded, as
+ * `{ _kind: 'number', val: 'INF' }` (`'-INF'`, `'NaN'`). Engine-side dicts arrive as plain
  * objects, so a multi-input block is simply a function taking an
  * object: feed the `in` pin a dict value and read named fields off the
  * argument. A returned `undefined` is coerced to `null` rather than

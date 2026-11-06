@@ -781,9 +781,9 @@ checksum = "65cd87c9a6d60536580b316ad985726104730a5151c99845f2490428ef91240a"
 
 [[package]]
 name = "libhaystack"
-version = "4.1.0"
+version = "4.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ecf86fde56496224f217dd20af5d58c53765f44757a821ec090783312fd01edd"
+checksum = "f73126ac2ec750e759da8b7cc70cf77b2241959e1713ef8a7e58b2d346a518b6"
 dependencies = [
  "chrono",
  "chrono-tz",
