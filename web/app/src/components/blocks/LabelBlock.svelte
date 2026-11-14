@@ -43,6 +43,9 @@
     font-size: 13px;
     font-weight: 500;
     min-width: 40px;
+    max-width: 260px;
+    line-height: 1.4;
+    overflow-wrap: anywhere;
     text-align: center;
     user-select: text;
   }

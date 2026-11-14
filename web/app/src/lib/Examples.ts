@@ -1048,10 +1048,515 @@ const outdoorLighting = {
   },
 } satisfies EditorProgram;
 
+// Async JS functions as blocks (src/lib/DemoServices.ts): two HTTP
+// APIs and a local LLM call through Request blocks on the 'js'
+// connector. `advise` needs Ollama on localhost, so the example is
+// listed in dev builds only.
+const weatherAdvisor = {
+  version: PROGRAM_FORMAT_VERSION,
+  name: 'AI Weather Advisor',
+  description:
+    'Async JS functions as blocks. Pick a city: `geocode` and `weather` call the Open-Meteo HTTP APIs, `advise` asks a local LLM (Ollama) for structured advice, and GetElement blocks fan the weather and the answer out to widgets, next to a plain LessThan frost check. Dev server only: needs Ollama running on localhost:11434.',
+  blocks: {
+    '66666666-6666-4666-8666-000000000001': {
+      name: 'ExternalIn',
+      lib: 'core',
+      position: {
+        x: 0,
+        y: 40,
+      },
+      label: 'City',
+      editor: {
+        widget: {
+          kind: 'ComboBox',
+          config: {
+            items: 'Berlin,Tokyo,Reykjavik,Cairo,New York,Sydney',
+            value: 'Berlin',
+          },
+        },
+      },
+      inputs: {
+        connector: {
+          value: 'ui',
+          isConnected: false,
+        },
+        address: {
+          value: '66666666-6666-4666-8666-000000000001',
+          isConnected: false,
+        },
+      },
+    },
+    '66666666-6666-4666-8666-000000000002': {
+      name: 'Request',
+      lib: 'core',
+      position: {
+        x: 230,
+        y: 0,
+      },
+      label: 'geocode · Open-Meteo',
+      inputs: {
+        connector: {
+          value: 'js',
+          isConnected: false,
+        },
+        address: {
+          value: 'geocode',
+          isConnected: false,
+        },
+        timeout: {
+          value: 8000,
+          isConnected: false,
+        },
+      },
+    },
+    '66666666-6666-4666-8666-000000000003': {
+      name: 'Request',
+      lib: 'core',
+      position: {
+        x: 500,
+        y: 0,
+      },
+      label: 'weather · Open-Meteo',
+      inputs: {
+        connector: {
+          value: 'js',
+          isConnected: false,
+        },
+        address: {
+          value: 'weather',
+          isConnected: false,
+        },
+        timeout: {
+          value: 8000,
+          isConnected: false,
+        },
+      },
+    },
+    '66666666-6666-4666-8666-000000000004': {
+      name: 'Request',
+      lib: 'core',
+      position: {
+        x: 800,
+        y: 230,
+      },
+      label: 'advise · Ollama',
+      inputs: {
+        connector: {
+          value: 'js',
+          isConnected: false,
+        },
+        address: {
+          value: 'advise',
+          isConnected: false,
+        },
+        timeout: {
+          value: 120000,
+          isConnected: false,
+        },
+      },
+    },
+    '66666666-6666-4666-8666-000000000005': {
+      name: 'GetElement',
+      lib: 'core',
+      position: {
+        x: 800,
+        y: -200,
+      },
+      label: 'temp',
+      inputs: {
+        key: {
+          value: 'temp',
+          isConnected: false,
+        },
+      },
+    },
+    '66666666-6666-4666-8666-000000000006': {
+      name: 'ExternalOut',
+      lib: 'core',
+      position: {
+        x: 1060,
+        y: -270,
+      },
+      editor: {
+        widget: {
+          kind: 'Display',
+          config: {
+            unit: '°C',
+            label: 'Temperature',
+          },
+        },
+      },
+      inputs: {
+        connector: {
+          value: 'ui',
+          isConnected: false,
+        },
+        address: {
+          value: '66666666-6666-4666-8666-000000000006',
+          isConnected: false,
+        },
+      },
+    },
+    '66666666-6666-4666-8666-000000000007': {
+      name: 'LessThan',
+      lib: 'core',
+      position: {
+        x: 1060,
+        y: -120,
+      },
+      label: 'temp < 3 °C',
+      inputs: {
+        in2: {
+          value: 3,
+          isConnected: false,
+        },
+      },
+    },
+    '66666666-6666-4666-8666-000000000008': {
+      name: 'ExternalOut',
+      lib: 'core',
+      position: {
+        x: 1300,
+        y: -100,
+      },
+      editor: {
+        widget: {
+          kind: 'Led',
+          config: {
+            label: 'Frost risk',
+            color: '#60a5fa',
+          },
+        },
+      },
+      inputs: {
+        connector: {
+          value: 'ui',
+          isConnected: false,
+        },
+        address: {
+          value: '66666666-6666-4666-8666-000000000008',
+          isConnected: false,
+        },
+      },
+    },
+    '66666666-6666-4666-8666-000000000009': {
+      name: 'GetElement',
+      lib: 'core',
+      position: {
+        x: 1080,
+        y: 110,
+      },
+      label: 'summary',
+      inputs: {
+        key: {
+          value: 'summary',
+          isConnected: false,
+        },
+      },
+    },
+    '66666666-6666-4666-8666-000000000010': {
+      name: 'ExternalOut',
+      lib: 'core',
+      position: {
+        x: 1320,
+        y: 130,
+      },
+      label: 'LLM says',
+      editor: {
+        widget: {
+          kind: 'Label',
+          config: {},
+        },
+      },
+      inputs: {
+        connector: {
+          value: 'ui',
+          isConnected: false,
+        },
+        address: {
+          value: '66666666-6666-4666-8666-000000000010',
+          isConnected: false,
+        },
+      },
+    },
+    '66666666-6666-4666-8666-000000000011': {
+      name: 'GetElement',
+      lib: 'core',
+      position: {
+        x: 1080,
+        y: 250,
+      },
+      label: 'umbrella',
+      inputs: {
+        key: {
+          value: 'umbrella',
+          isConnected: false,
+        },
+      },
+    },
+    '66666666-6666-4666-8666-000000000012': {
+      name: 'ExternalOut',
+      lib: 'core',
+      position: {
+        x: 1320,
+        y: 270,
+      },
+      editor: {
+        widget: {
+          kind: 'Led',
+          config: {
+            label: 'Umbrella',
+            color: '#60a5fa',
+          },
+        },
+      },
+      inputs: {
+        connector: {
+          value: 'ui',
+          isConnected: false,
+        },
+        address: {
+          value: '66666666-6666-4666-8666-000000000012',
+          isConnected: false,
+        },
+      },
+    },
+    '66666666-6666-4666-8666-000000000013': {
+      name: 'GetElement',
+      lib: 'core',
+      position: {
+        x: 1080,
+        y: 390,
+      },
+      label: 'jacket',
+      inputs: {
+        key: {
+          value: 'jacket',
+          isConnected: false,
+        },
+      },
+    },
+    '66666666-6666-4666-8666-000000000014': {
+      name: 'ExternalOut',
+      lib: 'core',
+      position: {
+        x: 1320,
+        y: 410,
+      },
+      editor: {
+        widget: {
+          kind: 'Led',
+          config: {
+            label: 'Jacket',
+            color: '#a78bfa',
+          },
+        },
+      },
+      inputs: {
+        connector: {
+          value: 'ui',
+          isConnected: false,
+        },
+        address: {
+          value: '66666666-6666-4666-8666-000000000014',
+          isConnected: false,
+        },
+      },
+    },
+    '66666666-6666-4666-8666-000000000015': {
+      name: 'GetElement',
+      lib: 'core',
+      position: {
+        x: 1080,
+        y: 530,
+      },
+      label: 'sunscreen',
+      inputs: {
+        key: {
+          value: 'sunscreen',
+          isConnected: false,
+        },
+      },
+    },
+    '66666666-6666-4666-8666-000000000016': {
+      name: 'ExternalOut',
+      lib: 'core',
+      position: {
+        x: 1320,
+        y: 550,
+      },
+      editor: {
+        widget: {
+          kind: 'Led',
+          config: {
+            label: 'Sunscreen',
+            color: '#f59e0b',
+          },
+        },
+      },
+      inputs: {
+        connector: {
+          value: 'ui',
+          isConnected: false,
+        },
+        address: {
+          value: '66666666-6666-4666-8666-000000000016',
+          isConnected: false,
+        },
+      },
+    },
+    '66666666-6666-4666-8666-000000000017': {
+      name: 'GetElement',
+      lib: 'core',
+      position: {
+        x: 800,
+        y: -360,
+      },
+      label: 'humidity',
+      inputs: {
+        key: {
+          value: 'humidity',
+          isConnected: false,
+        },
+      },
+    },
+    '66666666-6666-4666-8666-000000000018': {
+      name: 'ExternalOut',
+      lib: 'core',
+      position: {
+        x: 1060,
+        y: -470,
+      },
+      label: 'Humidity %',
+      editor: {
+        widget: {
+          kind: 'Gauge',
+          config: {},
+        },
+      },
+      inputs: {
+        connector: {
+          value: 'ui',
+          isConnected: false,
+        },
+        address: {
+          value: '66666666-6666-4666-8666-000000000018',
+          isConnected: false,
+        },
+      },
+    },
+  },
+  links: {
+    '66666666-6666-4666-9666-000000000001': {
+      sourceBlockPinName: 'out',
+      targetBlockPinName: 'in',
+      sourceBlockUuid: '66666666-6666-4666-8666-000000000001',
+      targetBlockUuid: '66666666-6666-4666-8666-000000000002',
+    },
+    '66666666-6666-4666-9666-000000000002': {
+      sourceBlockPinName: 'out',
+      targetBlockPinName: 'in',
+      sourceBlockUuid: '66666666-6666-4666-8666-000000000002',
+      targetBlockUuid: '66666666-6666-4666-8666-000000000003',
+    },
+    '66666666-6666-4666-9666-000000000003': {
+      sourceBlockPinName: 'out',
+      targetBlockPinName: 'in',
+      sourceBlockUuid: '66666666-6666-4666-8666-000000000003',
+      targetBlockUuid: '66666666-6666-4666-8666-000000000004',
+    },
+    '66666666-6666-4666-9666-000000000004': {
+      sourceBlockPinName: 'out',
+      targetBlockPinName: 'input',
+      sourceBlockUuid: '66666666-6666-4666-8666-000000000003',
+      targetBlockUuid: '66666666-6666-4666-8666-000000000005',
+    },
+    '66666666-6666-4666-9666-000000000005': {
+      sourceBlockPinName: 'out',
+      targetBlockPinName: 'in',
+      sourceBlockUuid: '66666666-6666-4666-8666-000000000005',
+      targetBlockUuid: '66666666-6666-4666-8666-000000000006',
+    },
+    '66666666-6666-4666-9666-000000000006': {
+      sourceBlockPinName: 'out',
+      targetBlockPinName: 'in1',
+      sourceBlockUuid: '66666666-6666-4666-8666-000000000005',
+      targetBlockUuid: '66666666-6666-4666-8666-000000000007',
+    },
+    '66666666-6666-4666-9666-000000000007': {
+      sourceBlockPinName: 'out',
+      targetBlockPinName: 'in',
+      sourceBlockUuid: '66666666-6666-4666-8666-000000000007',
+      targetBlockUuid: '66666666-6666-4666-8666-000000000008',
+    },
+    '66666666-6666-4666-9666-000000000008': {
+      sourceBlockPinName: 'out',
+      targetBlockPinName: 'input',
+      sourceBlockUuid: '66666666-6666-4666-8666-000000000004',
+      targetBlockUuid: '66666666-6666-4666-8666-000000000009',
+    },
+    '66666666-6666-4666-9666-000000000009': {
+      sourceBlockPinName: 'out',
+      targetBlockPinName: 'in',
+      sourceBlockUuid: '66666666-6666-4666-8666-000000000009',
+      targetBlockUuid: '66666666-6666-4666-8666-000000000010',
+    },
+    '66666666-6666-4666-9666-000000000010': {
+      sourceBlockPinName: 'out',
+      targetBlockPinName: 'input',
+      sourceBlockUuid: '66666666-6666-4666-8666-000000000004',
+      targetBlockUuid: '66666666-6666-4666-8666-000000000011',
+    },
+    '66666666-6666-4666-9666-000000000011': {
+      sourceBlockPinName: 'out',
+      targetBlockPinName: 'in',
+      sourceBlockUuid: '66666666-6666-4666-8666-000000000011',
+      targetBlockUuid: '66666666-6666-4666-8666-000000000012',
+    },
+    '66666666-6666-4666-9666-000000000012': {
+      sourceBlockPinName: 'out',
+      targetBlockPinName: 'input',
+      sourceBlockUuid: '66666666-6666-4666-8666-000000000004',
+      targetBlockUuid: '66666666-6666-4666-8666-000000000013',
+    },
+    '66666666-6666-4666-9666-000000000013': {
+      sourceBlockPinName: 'out',
+      targetBlockPinName: 'in',
+      sourceBlockUuid: '66666666-6666-4666-8666-000000000013',
+      targetBlockUuid: '66666666-6666-4666-8666-000000000014',
+    },
+    '66666666-6666-4666-9666-000000000014': {
+      sourceBlockPinName: 'out',
+      targetBlockPinName: 'input',
+      sourceBlockUuid: '66666666-6666-4666-8666-000000000004',
+      targetBlockUuid: '66666666-6666-4666-8666-000000000015',
+    },
+    '66666666-6666-4666-9666-000000000015': {
+      sourceBlockPinName: 'out',
+      targetBlockPinName: 'in',
+      sourceBlockUuid: '66666666-6666-4666-8666-000000000015',
+      targetBlockUuid: '66666666-6666-4666-8666-000000000016',
+    },
+    '66666666-6666-4666-9666-000000000016': {
+      sourceBlockPinName: 'out',
+      targetBlockPinName: 'input',
+      sourceBlockUuid: '66666666-6666-4666-8666-000000000003',
+      targetBlockUuid: '66666666-6666-4666-8666-000000000017',
+    },
+    '66666666-6666-4666-9666-000000000017': {
+      sourceBlockPinName: 'out',
+      targetBlockPinName: 'in',
+      sourceBlockUuid: '66666666-6666-4666-8666-000000000017',
+      targetBlockUuid: '66666666-6666-4666-8666-000000000018',
+    },
+  },
+} satisfies EditorProgram;
+
 export const examplePrograms = [
   datReset,
   coolingTower,
   economizer,
   antiShortCycle,
   outdoorLighting,
+  ...(import.meta.env.DEV ? [weatherAdvisor] : []),
 ];

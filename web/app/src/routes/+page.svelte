@@ -37,6 +37,7 @@
 
   import { blockInstance, cloneWidget } from '#lib/Block.js';
   import { attachUiConnector, forgetBlockAddress } from '#lib/UiConnector.js';
+  import { attachDemoServices } from '#lib/DemoServices.js';
   import { useEngine } from '#lib/Engine.js';
   import { model, blockInstances } from '#lib/model.svelte.js';
   import {
@@ -74,6 +75,9 @@
       // limits from continuations once run() has been polled.
       attachUiConnector(connectorCommand).catch((err) =>
         toast.error(`Failed to attach UI connector: ${err}`),
+      );
+      attachDemoServices(connectorCommand).catch((err) =>
+        toast.error(`Failed to attach the JS demo blocks: ${err}`),
       );
 
       startWatch((notification: BlockNotification) => {
@@ -247,6 +251,9 @@
     // must be re-registered and re-attached for widget blocks to work.
     await attachUiConnector(connectorCommand).catch((err) =>
       toast.error(`Failed to attach UI connector: ${err}`),
+    );
+    await attachDemoServices(connectorCommand).catch((err) =>
+      toast.error(`Failed to attach the JS demo blocks: ${err}`),
     );
   }
 
