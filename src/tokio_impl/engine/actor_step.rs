@@ -47,10 +47,10 @@
 use std::pin::Pin;
 use std::time::Duration;
 
-use tokio::sync::{mpsc, watch};
+use tokio::sync::watch;
 use tokio::time::Sleep;
 
-use super::block_mailbox::{BlockMailboxCmd, handle_cmd};
+use super::block_mailbox::{BlockMailboxCmd, MailboxReceiver, handle_cmd};
 use crate::base::block::BlockState;
 use crate::tokio_impl::EngineBlock;
 
@@ -159,7 +159,7 @@ enum Race {
     /// The cycle finished; `Err` holds its panic message.
     Finished(Result<(), String>),
     /// A mailbox command arrived first — or the mailbox closed.
-    Command(Option<BlockMailboxCmd>),
+    Command(Option<Box<BlockMailboxCmd>>),
     /// The gate closed first.
     GateClosed,
 }
@@ -187,7 +187,7 @@ pub(super) async fn yield_between_steps() {
 /// ends the step as [`Step::Woken`].
 pub(super) async fn run_one_step<B>(
     block: &mut B,
-    mailbox: &mut mpsc::Receiver<BlockMailboxCmd>,
+    mailbox: &mut MailboxReceiver,
     gate: &mut ExecutionGate,
     open: bool,
     hold: &mut PanicHold,
@@ -242,7 +242,7 @@ where
     };
 
     match cmd {
-        Some(cmd) => Step::Command(handle_cmd(cmd, block).await),
+        Some(cmd) => Step::Command(handle_cmd(*cmd, block).await),
         // Every sender is gone — the engine dropped this block's handle
         // (or the engine itself was dropped), so nothing can reach the
         // block again. A closed mailbox is always ready, so staying in

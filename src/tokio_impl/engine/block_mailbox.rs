@@ -4,7 +4,7 @@
 //!
 //! Defines [`BlockMailboxCmd`] — every external operation against a running
 //! block is encoded as one of these commands and sent through that block's
-//! `mpsc::Sender<BlockMailboxCmd>`. The receiving actor task handles the
+//! [`MailboxSender`]. The receiving actor task handles the
 //! command via [`handle_cmd`], which holds `&mut B` (the only mutable borrow
 //! of the block, period — no aliasing).
 
@@ -134,6 +134,45 @@ pub(super) enum BlockMailboxCmd {
 /// engine commands are infrequent compared to the per-cycle polling.
 pub(super) const BLOCK_MAILBOX_CAP: usize = 64;
 
+/// The engine's half of a block's mailbox.
+///
+/// Commands travel boxed. A tokio `mpsc` channel allocates its first
+/// block of 32 slots when it is created, whatever its capacity, so the
+/// slot size is paid by every scheduled block, used or not: unboxed,
+/// that is 32 × `size_of::<BlockMailboxCmd>()` (over 3 KiB) per block.
+/// Boxed, a slot is a pointer. Commands are rare next to block cycles
+/// — wiring, inspection, pin writes — so the allocation per send is
+/// immaterial. `send` and `try_send` take the command unboxed.
+#[derive(Debug, Clone)]
+pub(super) struct MailboxSender(mpsc::Sender<Box<BlockMailboxCmd>>);
+
+/// The actor's half of a block's mailbox; see [`MailboxSender`].
+pub(super) type MailboxReceiver = mpsc::Receiver<Box<BlockMailboxCmd>>;
+
+/// Creates a block's mailbox, [`BLOCK_MAILBOX_CAP`] commands deep.
+pub(super) fn mailbox_channel() -> (MailboxSender, MailboxReceiver) {
+    let (tx, rx) = mpsc::channel(BLOCK_MAILBOX_CAP);
+    (MailboxSender(tx), rx)
+}
+
+impl MailboxSender {
+    /// Sends `cmd`, waiting for room; fails once the actor is gone.
+    pub(super) async fn send(
+        &self,
+        cmd: BlockMailboxCmd,
+    ) -> Result<(), mpsc::error::SendError<Box<BlockMailboxCmd>>> {
+        self.0.send(Box::new(cmd)).await
+    }
+
+    /// Sends `cmd` if there is room right away.
+    pub(super) fn try_send(
+        &self,
+        cmd: BlockMailboxCmd,
+    ) -> Result<(), mpsc::error::TrySendError<Box<BlockMailboxCmd>>> {
+        self.0.try_send(Box::new(cmd))
+    }
+}
+
 /// Send a command that carries a `reply` channel and await the answer.
 ///
 /// Both halves of the round-trip can fail independently — the actor task
@@ -143,7 +182,7 @@ pub(super) const BLOCK_MAILBOX_CAP: usize = 64;
 /// through here so those two failure modes are never conflated or
 /// reported without the block they refer to.
 pub(super) async fn mailbox_request<R>(
-    mailbox: &mpsc::Sender<BlockMailboxCmd>,
+    mailbox: &MailboxSender,
     block_id: Uuid,
     make_cmd: impl FnOnce(oneshot::Sender<R>) -> BlockMailboxCmd,
 ) -> Result<R, EngineError> {
@@ -158,7 +197,7 @@ pub(super) async fn mailbox_request<R>(
 
 /// Send a command that has no `reply` channel.
 pub(super) async fn mailbox_send(
-    mailbox: &mpsc::Sender<BlockMailboxCmd>,
+    mailbox: &MailboxSender,
     block_id: Uuid,
     cmd: BlockMailboxCmd,
 ) -> Result<(), EngineError> {
@@ -176,7 +215,7 @@ pub(super) async fn mailbox_send(
 /// exits once it has drained the commands already queued. An awaited send
 /// could wait forever on a single-threaded engine, whose actors only make
 /// progress while the engine drives its `LocalSet`.
-pub(super) fn terminate_actor(mailbox: mpsc::Sender<BlockMailboxCmd>) {
+pub(super) fn terminate_actor(mailbox: MailboxSender) {
     let _ = mailbox.try_send(BlockMailboxCmd::Terminate);
 }
 

@@ -42,7 +42,7 @@ use tokio::sync::{
 };
 use uuid::Uuid;
 
-use super::super::block_mailbox::{BLOCK_MAILBOX_CAP, BlockMailboxCmd};
+use super::super::block_mailbox::mailbox_channel;
 use super::super::connectors::{self, ManagedConnectors};
 use super::super::graph::{BlockGraph, BlockHandle, ProgramHost, StagedProgram, stage_program};
 use super::super::message_dispatch::{Clients, Flow, RunningHost, dispatch};
@@ -308,7 +308,7 @@ impl<S: EngineState> MultiThreadedEngine<S> {
         // leaves no handle without an actor behind.
         let runtime =
             Handle::try_current().map_err(|_| EngineError::NoRuntime { id: *block.id() })?;
-        let (mailbox_tx, mailbox_rx) = mpsc::channel::<BlockMailboxCmd>(BLOCK_MAILBOX_CAP);
+        let (mailbox_tx, mailbox_rx) = mailbox_channel();
         self.graph.insert(&block, mailbox_tx)?;
 
         let watchers = self.watchers.clone();

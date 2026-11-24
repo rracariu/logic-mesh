@@ -1,6 +1,6 @@
 [package]
 name = "logic-mesh"
-version = "2.0.0"
+version = "2.1.0"
 edition = "2024"
 # The lowest toolchain that builds the workspace (CI's `msrv` job reads
 # it from here). Let-chains need 1.88, and so do several dependencies.
@@ -63,7 +63,7 @@ crate-type = ["cdylib", "rlib"]
 [dependencies]
 # Pinned exactly: the macro generates calls into `logic_mesh::__private`,
 # which only this exact version of the crate provides.
-logic_mesh_block_macro = { path = "block_macro", version = "=2.0.0" }
+logic_mesh_block_macro = { path = "block_macro", version = "=2.1.0" }
 serde = { version = "^1.0", features = ["derive"] }
 libhaystack = { version = "^4.1.1", default-features = false, features = [
 	"value",
@@ -145,6 +145,13 @@ name = "connector_demo"
 name = "tui_runner"
 # Uses `MultiThreadedEngine` so the engine.run() task can be spawned
 # via `tokio::spawn` while ratatui drives the main thread.
+required-features = ["multi-threaded"]
+
+[[example]]
+name = "scale_bench"
+# One program template instantiated per equipment, N engines on one
+# multi-thread runtime, each with its own scoped connector over a
+# shared backend. Run with --release.
 required-features = ["multi-threaded"]
 
 [workspace.lints.clippy]
