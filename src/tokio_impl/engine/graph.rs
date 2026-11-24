@@ -23,14 +23,17 @@
 //! links a block was scheduled with, and every link the graph wires
 //! or removes.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fmt;
+use std::sync::{Arc, LazyLock, Mutex, PoisonError};
 
 use libhaystack::val::Value;
-use tokio::sync::{mpsc, oneshot};
+use tokio::sync::oneshot;
 use uuid::Uuid;
 
-use super::block_mailbox::{BlockMailboxCmd, mailbox_request, mailbox_send, terminate_actor};
+use super::block_mailbox::{
+    BlockMailboxCmd, MailboxSender, mailbox_request, mailbox_send, terminate_actor,
+};
 use super::program_block_ids;
 use crate::base::block::{BlockDesc, BlockProps};
 use crate::base::engine::messages::BlockDefinition;
@@ -50,19 +53,14 @@ pub struct BlockHandle {
     id: Uuid,
     name: String,
     library: String,
-    /// Owned clone of the block's descriptor.
+    /// The block's descriptor, shared with every other block whose
+    /// descriptor is equal — see [`shared_desc`].
     ///
-    /// We clone instead of borrowing `&'static` [`BlockDesc`] because for
-    /// JS blocks the descriptor lives inside the block instance — and
-    /// the instance gets moved into its actor task at schedule time,
-    /// invalidating any borrowed pointer. Native (Rust) blocks back
-    /// their descriptor with a
-    /// [`LazyLock`](std::sync::LazyLock)`<`[`BlockDesc`]`>` so a
-    /// `&'static` would be sound for them, but we use a single uniform
-    /// owned shape to avoid an unsafe trait split. The clone happens
-    /// once per block at schedule time.
-    desc: BlockDesc,
-    mailbox: mpsc::Sender<BlockMailboxCmd>,
+    /// Owned rather than borrowed because for JS blocks the descriptor
+    /// lives inside the block instance, which moves into its actor task
+    /// at schedule time and would invalidate a borrowed pointer.
+    desc: Arc<BlockDesc>,
+    mailbox: MailboxSender,
     /// UI display label. Pure passthrough metadata — the engine never
     /// reads it. Stored here so `save_program` can round-trip it without
     /// the UI layer being the canonical store.
@@ -105,6 +103,36 @@ impl BlockHandle {
     /// [set](crate::base::engine::Engine::set_block_editor).
     pub fn editor(&self) -> Option<&EditorMetadata> {
         self.editor.as_ref()
+    }
+}
+
+/// Returns the shared copy of `desc`, making one if there is none.
+///
+/// Every scheduled block keeps its descriptor in its [`BlockHandle`].
+/// A deep copy each — names, pin lists and the documentation text, a
+/// few KiB for some blocks — would be paid again by every instance of
+/// the same block type, which adds up for applications that run
+/// hundreds of engines of one program. One copy per distinct
+/// descriptor is kept instead, process-wide.
+///
+/// Copies are keyed by library and name and reused only while they
+/// compare equal to `desc`: a JS block registered again with a changed
+/// descriptor gets a new copy, and the blocks scheduled before keep the
+/// one they hold.
+fn shared_desc(desc: &BlockDesc) -> Arc<BlockDesc> {
+    /// The shared descriptors, by library and block name.
+    type SharedDescs = HashMap<(String, String), Arc<BlockDesc>>;
+    static DESCS: LazyLock<Mutex<SharedDescs>> = LazyLock::new(Mutex::default);
+
+    let mut descs = DESCS.lock().unwrap_or_else(PoisonError::into_inner);
+    let key = (desc.library.clone(), desc.name.clone());
+    match descs.get(&key) {
+        Some(shared) if **shared == *desc => shared.clone(),
+        _ => {
+            let shared = Arc::new(desc.clone());
+            descs.insert(key, shared.clone());
+            shared
+        }
     }
 }
 
@@ -199,7 +227,7 @@ impl BlockGraph {
     }
 
     /// The mailbox of block `id`'s actor, if scheduled.
-    pub(super) fn mailbox(&self, id: &Uuid) -> Option<&mpsc::Sender<BlockMailboxCmd>> {
+    pub(super) fn mailbox(&self, id: &Uuid) -> Option<&MailboxSender> {
         self.handles.get(id).map(|h| &h.mailbox)
     }
 
@@ -211,7 +239,7 @@ impl BlockGraph {
     }
 
     /// [`mailbox`](Self::mailbox), same treatment.
-    fn mailbox_or_err(&self, id: &Uuid) -> Result<&mpsc::Sender<BlockMailboxCmd>, EngineError> {
+    fn mailbox_or_err(&self, id: &Uuid) -> Result<&MailboxSender, EngineError> {
         self.mailbox(id)
             .ok_or(EngineError::BlockInstanceNotFound { id: *id })
     }
@@ -226,7 +254,7 @@ impl BlockGraph {
     pub(super) fn insert<B: BlockProps + ?Sized>(
         &mut self,
         block: &B,
-        mailbox: mpsc::Sender<BlockMailboxCmd>,
+        mailbox: MailboxSender,
     ) -> Result<(), EngineError> {
         let id = *block.id();
         if self.handles.contains_key(&id) {
@@ -243,14 +271,14 @@ impl BlockGraph {
                 self.links.insert(*link.id(), record);
             }
         }
-        // Clone the desc into the handle BEFORE `block` moves into its
+        // Take the desc into the handle BEFORE `block` moves into its
         // actor task. JS blocks' "static" desc actually lives inside the
         // block instance; borrowing it across the move is UB.
         let handle = BlockHandle {
             id,
             name: block.name().to_string(),
             library: block.desc().library.clone(),
-            desc: block.desc().clone(),
+            desc: shared_desc(block.desc()),
             mailbox,
             label: None,
             position: None,

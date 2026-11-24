@@ -25,8 +25,6 @@ impl InputImpl {
         // overwrite; consumers always see the latest value. The seed
         // `(Value::Null, Status::Ok)` is what `borrow()` reports until the
         // first real send.
-        let (writer, reader) = watch::channel::<PinPayload>((Value::Null, Status::Ok));
-
         Self {
             name: name.to_string(),
             kind,
@@ -34,8 +32,11 @@ impl InputImpl {
             block_id,
             connection_count: 0,
 
-            reader,
-            writer,
+            channel: None,
+            open: || {
+                let (writer, reader) = watch::channel::<PinPayload>((Value::Null, Status::Ok));
+                (reader, writer)
+            },
 
             val: Default::default(),
             status: Status::Ok,
@@ -74,9 +75,15 @@ impl Input for InputImpl {
         // value would be silently dropped — `read_block_inputs` relies on
         // `try_take` to surface the value.
         Box::pin(async move {
-            let changed = self.reader.changed().await.is_ok();
+            // An unopened channel has had nothing sent on it, nor can it
+            // until this borrow ends: wait as on an open channel no
+            // writer sends on.
+            let Some(reader) = self.open_reader() else {
+                return std::future::pending().await;
+            };
+            let changed = reader.changed().await.is_ok();
             if changed {
-                self.reader.mark_changed();
+                reader.mark_changed();
             }
             changed
         })
@@ -85,8 +92,9 @@ impl Input for InputImpl {
     fn try_take(&mut self) -> Option<(Value, Status)> {
         // Watch's `has_changed` returns `Err` only if every sender was
         // dropped — treat that as "no fresh value" rather than propagating.
-        if self.reader.has_changed().unwrap_or(false) {
-            Some(self.reader.borrow_and_update().clone())
+        let reader = self.open_reader()?;
+        if reader.has_changed().unwrap_or(false) {
+            Some(reader.borrow_and_update().clone())
         } else {
             None
         }
@@ -145,6 +153,25 @@ mod test {
         output::{Output, OutputProps},
     };
     use crate::tokio_impl::output::OutputImpl;
+
+    /// An input's channel opens on first use, not when the input is made:
+    /// until then it reads as unchanged.
+    #[test]
+    fn an_input_opens_its_channel_on_first_use() {
+        let mut input = InputImpl::new("in", HaystackKind::Number, Uuid::new_v4());
+        assert!(input.channel.is_none());
+        assert_eq!(input.try_take(), None);
+        assert!(input.channel.is_none(), "reading does not open it");
+
+        input
+            .writer()
+            .send_replace((Value::make_number(1.0), Status::Ok));
+        assert!(input.channel.is_some());
+        assert_eq!(
+            input.try_take(),
+            Some((Value::make_number(1.0), Status::Ok))
+        );
+    }
 
     #[test]
     fn test_input_init() {

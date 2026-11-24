@@ -17,10 +17,10 @@
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
-use tokio::sync::{RwLock, mpsc};
+use tokio::sync::RwLock;
 
 use super::super::actor_step::{ExecutionGate, PanicHold, Step, run_one_step, yield_between_steps};
-use super::super::block_mailbox::BlockMailboxCmd;
+use super::super::block_mailbox::MailboxReceiver;
 use super::super::pin_changes::{PinSnapshot, send_to_watchers};
 use crate::base::Status;
 use crate::base::block::{Block, BlockState};
@@ -33,39 +33,55 @@ pub(super) type WatchersHandle = Arc<RwLock<BTreeMap<WatchId, WatchSender>>>;
 /// Per-block actor task. Owns the block by value; processes mailbox
 /// commands interleaved with `block.execute()` cycles, which run only
 /// while the engine's execution `gate` is open.
-pub(super) async fn block_actor_task<B>(
+///
+/// A plain `fn` returning an `async move` block rather than an
+/// `async fn`: an `async fn` moves its arguments into the state
+/// machine's locals, and rustc keeps both copies in the future
+/// (rust-lang/rust#62958), so the block — over a KiB for some — would
+/// be stored twice in every actor task. The `async move` block uses the
+/// captured `block` in place.
+#[expect(
+    clippy::manual_async_fn,
+    reason = "an `async fn` would store the block twice; see above"
+)]
+pub(super) fn block_actor_task<B>(
     mut block: B,
-    mut mailbox: mpsc::Receiver<BlockMailboxCmd>,
+    mut mailbox: MailboxReceiver,
     watchers: WatchersHandle,
     mut gate: ExecutionGate,
-) where
+) -> impl Future<Output = ()> + Send
+where
     B: MtBlock + 'static,
 {
-    let mut snapshot = PinSnapshot::default();
-    let mut last_state = BlockState::Running;
-    let mut hold = PanicHold::default();
+    async move {
+        let mut snapshot = PinSnapshot::default();
+        let mut last_state = BlockState::Running;
+        let mut hold = PanicHold::default();
 
-    loop {
-        let open = *gate.borrow_and_update();
+        loop {
+            let open = *gate.borrow_and_update();
 
-        // One step, optimistic fault recovery included — see
-        // single_threaded::actor and `actor_step`.
-        let step = run_one_step(&mut block, &mut mailbox, &mut gate, open, &mut hold).await;
+            // One step, optimistic fault recovery included — see
+            // single_threaded::actor and `actor_step`.
+            let step = run_one_step(&mut block, &mut mailbox, &mut gate, open, &mut hold).await;
 
-        propagate_status(&last_state, &mut block);
+            propagate_status(&last_state, &mut block);
 
-        change_of_value_check(&watchers, &block, &mut snapshot, &last_state).await;
+            change_of_value_check(&watchers, &block, &mut snapshot, &last_state).await;
 
-        if *block.state() != last_state {
-            last_state = block.state().clone();
+            if *block.state() != last_state {
+                last_state = block.state().clone();
+            }
+
+            if matches!(step, Step::Command(true))
+                || matches!(block.state(), BlockState::Terminated)
+            {
+                break;
+            }
+
+            // Co-operative yield, as on the single-threaded engine.
+            yield_between_steps().await;
         }
-
-        if matches!(step, Step::Command(true)) || matches!(block.state(), BlockState::Terminated) {
-            break;
-        }
-
-        // Co-operative yield, as on the single-threaded engine.
-        yield_between_steps().await;
     }
 }
 
@@ -142,15 +158,40 @@ mod test {
     use crate::base::block::connect_output;
     use crate::base::engine::messages::{BlockDefinition, WatchId};
     use crate::base::input::Input;
-    use crate::blocks::{InputImpl, math::Add};
-    use crate::tokio_impl::engine::block_mailbox::{BLOCK_MAILBOX_CAP, BlockMailboxCmd};
+    use crate::blocks::{InputImpl, control::Pid, math::Add};
+    use crate::tokio_impl::engine::block_mailbox::{
+        BlockMailboxCmd, MailboxSender, mailbox_channel,
+    };
     use crate::tokio_impl::engine::test_support::faults::{FaultOnce, REASON};
+
+    /// The actor task stores its block once. An `async fn` would also
+    /// keep the moved-in argument (rust-lang/rust#62958), so a larger
+    /// block would grow the task by twice its own size.
+    #[test]
+    fn actor_task_holds_its_block_once() {
+        fn task_size<B: crate::tokio_impl::MtBlock + 'static>(block: B) -> usize {
+            let (_mailbox, mailbox_rx) = mailbox_channel();
+            let (_gate, gate_rx) = watch::channel(true);
+            std::mem::size_of_val(&block_actor_task(
+                block,
+                mailbox_rx,
+                Default::default(),
+                gate_rx,
+            ))
+        }
+        let block_growth = size_of::<Pid>() - size_of::<Add>();
+        let task_growth = task_size(Pid::new()) - task_size(Add::new());
+        assert!(
+            task_growth < 2 * block_growth,
+            "a {block_growth} B larger block grew the actor task by {task_growth} B"
+        );
+    }
 
     /// Regression: see the single-threaded
     /// `actor_exits_when_its_mailbox_closes`.
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn actor_exits_when_its_mailbox_closes() {
-        let (mailbox_tx, mailbox_rx) = mpsc::channel(BLOCK_MAILBOX_CAP);
+        let (mailbox_tx, mailbox_rx) = mailbox_channel();
         let (_gate, gate_rx) = watch::channel(true);
         let task = tokio::spawn(block_actor_task(
             Add::new(),
@@ -171,7 +212,7 @@ mod test {
     /// `a_watcher_whose_receiver_is_gone_is_dropped`.
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn a_watcher_whose_receiver_is_gone_is_dropped() {
-        let (mailbox_tx, mailbox_rx) = mpsc::channel(BLOCK_MAILBOX_CAP);
+        let (mailbox_tx, mailbox_rx) = mailbox_channel();
         let (_gate, gate_rx) = watch::channel(true);
         let watchers = super::WatchersHandle::default();
         let (live, gone) = (WatchId::new(0), WatchId::new(1));
@@ -238,7 +279,7 @@ mod test {
     /// current-thread runtime runs the actor only while the test awaits,
     /// so the gate flip and the queued command reach it together.
     async fn a_queued_command_keeps_the_fault(pause: bool) {
-        let (mailbox_tx, mailbox_rx) = mpsc::channel(BLOCK_MAILBOX_CAP);
+        let (mailbox_tx, mailbox_rx) = mailbox_channel();
         let (gate, gate_rx) = watch::channel(true);
         let mut block = FaultOnce::new();
         let mut downstream = InputImpl::new("in", HaystackKind::Number, Uuid::new_v4());
@@ -272,9 +313,7 @@ mod test {
 
     /// Queues an [`Inspect`](BlockMailboxCmd::Inspect) without driving the
     /// actor, returning where its answer arrives.
-    fn queue_inspect(
-        mailbox: &mpsc::Sender<BlockMailboxCmd>,
-    ) -> oneshot::Receiver<BlockDefinition> {
+    fn queue_inspect(mailbox: &MailboxSender) -> oneshot::Receiver<BlockDefinition> {
         let (reply, inspected) = oneshot::channel();
         mailbox
             .try_send(BlockMailboxCmd::Inspect { reply })

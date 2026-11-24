@@ -6,6 +6,28 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [2.1.0] - Unreleased
+
+### Added
+
+- **`scale_bench` example:** runs one program template on many engines
+  at once, one per piece of equipment, each with its own connector, and
+  reports memory, CPU and push-to-publish latency per phase.
+
+### Changed
+
+- **Scheduled blocks take about half the memory.** A 21-block program
+  went from about 300 KB of heap per engine to 160 KB. Four changes:
+  - Block mailboxes carry their commands boxed, because a tokio channel
+    allocates 32 slots up front. This saves over 3 KB per block.
+  - Block actor tasks no longer store their block twice
+    (rust-lang/rust#62958).
+  - Blocks of one type share one descriptor instead of each copying its
+    names, pins and documentation.
+  - An input opens its channel the first time something links to it,
+    writes it or reads it from the engine, rather than when it is
+    created. Most constant inputs never open one.
+
 ## [2.0.0] - 2026-11-06
 
 Settles the API for the 2.x series: typed errors with stable codes, a
@@ -745,6 +767,7 @@ surfaces that 1.0 deliberately breaks (see the **Changed** /
 [#37]: https://github.com/rracariu/logic-mesh/pull/37
 [#42]: https://github.com/rracariu/logic-mesh/pull/42
 [#43]: https://github.com/rracariu/logic-mesh/pull/43
-[Unreleased]: https://github.com/rracariu/logic-mesh/compare/v2.0.0...HEAD
+[Unreleased]: https://github.com/rracariu/logic-mesh/compare/v2.1.0...HEAD
+[2.1.0]: https://github.com/rracariu/logic-mesh/compare/v2.0.0...v2.1.0
 [2.0.0]: https://github.com/rracariu/logic-mesh/compare/v1.0.0...v2.0.0
 [1.0.0]: https://github.com/rracariu/logic-mesh/releases/tag/v1.0.0

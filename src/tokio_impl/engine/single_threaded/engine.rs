@@ -15,7 +15,7 @@ use tokio::{
 };
 use uuid::Uuid;
 
-use super::super::block_mailbox::{BLOCK_MAILBOX_CAP, BlockMailboxCmd};
+use super::super::block_mailbox::mailbox_channel;
 use super::super::connectors::{self, ManagedConnectors};
 #[cfg(test)]
 use super::super::graph::LinkRecord;
@@ -325,7 +325,7 @@ impl<S: EngineState> SingleThreadedEngine<S> {
     where
         B: Block<Writer = WriterImpl, Reader = ReaderImpl> + 'static,
     {
-        let (mailbox_tx, mailbox_rx) = mpsc::channel::<BlockMailboxCmd>(BLOCK_MAILBOX_CAP);
+        let (mailbox_tx, mailbox_rx) = mailbox_channel();
         self.graph.insert(&block, mailbox_tx)?;
 
         let watchers = self.watchers.clone();
@@ -456,10 +456,24 @@ mod test {
 
     use tokio::time::timeout;
 
+    use super::super::super::block_mailbox::BlockMailboxCmd;
     use super::*;
     use crate::base::block::BlockProps;
     use crate::base::engine::messages::{EngineRequest, EngineResponse, Envelope, RequestId};
     use crate::blocks::math::Add;
+
+    /// Blocks of one type share one descriptor rather than holding a
+    /// copy each.
+    #[test]
+    fn blocks_of_one_type_share_their_descriptor() {
+        let mut eng = SingleThreadedEngine::new();
+        let (first, second) = (Add::new(), Add::new());
+        let ids = [*first.id(), *second.id()];
+        eng.schedule(first).unwrap();
+        eng.schedule(second).unwrap();
+        let desc = |id| std::ptr::from_ref(eng.block_handle(&id).unwrap().desc());
+        assert_eq!(desc(ids[0]), desc(ids[1]));
+    }
 
     /// Regression: reset awaited each `Terminate` send outside
     /// `run_until`, where no actor drains its mailbox, so one full

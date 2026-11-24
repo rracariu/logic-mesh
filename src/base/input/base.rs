@@ -19,7 +19,7 @@ use super::InputProps;
 /// and give an input a value with
 /// [`InputImpl::set`](crate::blocks::InputImpl::set), which also forwards
 /// it to the inputs this one links to.
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct BaseInput<Reader, Writer> {
     /// The block-unique input name.
     pub(crate) name: String,
@@ -29,10 +29,18 @@ pub struct BaseInput<Reader, Writer> {
     pub(crate) block_id: Uuid,
     /// The number of connections this input has.
     pub(crate) connection_count: usize,
-    /// The input reader.
-    pub(crate) reader: Reader,
-    /// The input writer.
-    pub(crate) writer: Writer,
+    /// The input's channel, reader and writer, once something used it.
+    ///
+    /// Opened on the first [`reader`](InputProps::reader) or
+    /// [`writer`](InputProps::writer) call: by a link to the input, an
+    /// engine pin write, or a block reading it. Most inputs of a typical
+    /// program are constants nothing links or writes at run time, and a
+    /// channel costs a few hundred bytes, so an input that never needs
+    /// one never pays for it. Until opened, the input reads as a fresh
+    /// channel would: nothing changed.
+    pub(crate) channel: Option<(Reader, Writer)>,
+    /// Opens [`channel`](Self::channel).
+    pub(crate) open: fn() -> (Reader, Writer),
     /// The input value.
     pub(crate) val: Option<Value>,
     /// The status of the last value received on this input. Tracks the
@@ -47,6 +55,33 @@ impl<Reader, Writer> BaseInput<Reader, Writer> {
     /// inputs that fan out to it.
     pub fn connection_count(&self) -> usize {
         self.connection_count
+    }
+
+    /// The input's channel, opened now if it was not yet.
+    fn opened_channel(&mut self) -> &mut (Reader, Writer) {
+        let open = self.open;
+        self.channel.get_or_insert_with(open)
+    }
+
+    /// The input's reader if its channel is open, without opening it.
+    pub(crate) fn open_reader(&mut self) -> Option<&mut Reader> {
+        self.channel.as_mut().map(|(reader, _)| reader)
+    }
+}
+
+impl<Reader: Default, Writer: Default> Default for BaseInput<Reader, Writer> {
+    fn default() -> Self {
+        Self {
+            name: String::default(),
+            kind: HaystackKind::default(),
+            block_id: Uuid::default(),
+            connection_count: 0,
+            channel: None,
+            open: || (Reader::default(), Writer::default()),
+            val: None,
+            status: Status::default(),
+            links: Vec::new(),
+        }
     }
 }
 
@@ -97,11 +132,11 @@ impl<Reader, Writer: Clone + Send> InputProps for BaseInput<Reader, Writer> {
     }
 
     fn reader(&mut self) -> &mut Self::Reader {
-        &mut self.reader
+        &mut self.opened_channel().0
     }
 
     fn writer(&mut self) -> &mut Self::Writer {
-        &mut self.writer
+        &mut self.opened_channel().1
     }
 
     fn value(&self) -> Option<&Value> {
