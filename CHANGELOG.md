@@ -4,6 +4,13 @@ All notable changes to this project are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.1] - 2026-11-28
+
+Republishes 2.1.0 with crate metadata that crates.io accepts. The
+`logic-mesh` 2.1.0 crate was rejected for having more than five
+keywords, so it was never published, while `logic_mesh_block_macro`
+2.1.0 and the 2.1.0 npm package were. 2.1.1 has no code changes.
+
 ## [2.1.0] - 2026-11-28
 
 ### Added
@@ -765,7 +772,8 @@ surfaces that 1.0 deliberately breaks (see the **Changed** /
 [#37]: https://github.com/rracariu/logic-mesh/pull/37
 [#42]: https://github.com/rracariu/logic-mesh/pull/42
 [#43]: https://github.com/rracariu/logic-mesh/pull/43
-[Unreleased]: https://github.com/rracariu/logic-mesh/compare/v2.1.0...HEAD
+[Unreleased]: https://github.com/rracariu/logic-mesh/compare/v2.1.1...HEAD
+[2.1.1]: https://github.com/rracariu/logic-mesh/compare/v2.1.0...v2.1.1
 [2.1.0]: https://github.com/rracariu/logic-mesh/compare/v2.0.0...v2.1.0
 [2.0.0]: https://github.com/rracariu/logic-mesh/compare/v1.0.0...v2.0.0
 [1.0.0]: https://github.com/rracariu/logic-mesh/releases/tag/v1.0.0

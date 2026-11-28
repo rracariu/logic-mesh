@@ -233,6 +233,11 @@ jobs:
       - name: Check that the packaged crates carry the license
         run: .github/scripts/check-crate-license.sh logic_mesh_block_macro logic-mesh
 
+      # crates.io checks keywords and categories only when it receives
+      # the upload, which `cargo package` never does.
+      - name: Check the crates' keywords and categories
+        run: .github/scripts/check-crate-metadata.sh logic_mesh_block_macro logic-mesh
+
   msrv:
     name: MSRV
     runs-on: ubuntu-latest

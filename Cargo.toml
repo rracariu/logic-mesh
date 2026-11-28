@@ -63,7 +63,7 @@ crate-type = ["cdylib", "rlib"]
 [dependencies]
 # Pinned exactly: the macro generates calls into `logic_mesh::__private`,
 # which only this exact version of the crate provides.
-logic_mesh_block_macro = { path = "block_macro", version = "=2.1.0" }
+logic_mesh_block_macro = { path = "block_macro", version = "=2.1.1" }
 serde = { version = "^1.0", features = ["derive"] }
 libhaystack = { version = "^4.1.1", default-features = false, features = [
 	"value",
