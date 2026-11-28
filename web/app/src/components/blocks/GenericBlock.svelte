@@ -60,9 +60,9 @@
   {#each Object.entries(block.outputs) as [name, output] (name)}
     <div class="pin-row pin-row-output">
       <span class="pin-name">{name}</span>
-      <span class="pin-value"
-        >{output.value != null ? format(output.value) : ''}</span
-      >
+      <span class="pin-value">
+        {output.value != null ? format(output.value) : ''}
+      </span>
       <Handle
         id={output.name}
         isValidConnection={validConnection}
@@ -89,9 +89,9 @@
         class="handle-dot handle-input"
       />
       <span class="pin-name">{name}</span>
-      <span class="pin-value"
-        >{input.value != null ? format(input.value) : ''}</span
-      >
+      <span class="pin-value">
+        {input.value != null ? format(input.value) : ''}
+      </span>
     </div>
   {/each}
 </BlockCommons>

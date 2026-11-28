@@ -168,9 +168,9 @@
         {#each blocksFiltered as block (block.lib + '/' + block.name)}
           <DropdownMenu.Item onclick={() => onAddBlock(block)}>
             <span>{capitalize(block.dis)}</span>
-            <span class="ml-auto text-xs text-muted-foreground"
-              >{capitalize(block.category)}</span
-            >
+            <span class="ml-auto text-xs text-muted-foreground">
+              {capitalize(block.category)}
+            </span>
           </DropdownMenu.Item>
         {/each}
         {#if blocksFiltered.length === 0}
@@ -184,9 +184,9 @@
             <DropdownMenu.Separator />
           {/if}
           <DropdownMenu.Sub>
-            <DropdownMenu.SubTrigger
-              >{capitalize(category)}</DropdownMenu.SubTrigger
-            >
+            <DropdownMenu.SubTrigger>
+              {capitalize(category)}
+            </DropdownMenu.SubTrigger>
             <DropdownMenu.SubContent>
               {#each blocksForCategory(category) as block (block.name)}
                 <DropdownMenu.Item onclick={() => onAddBlock(block)}>

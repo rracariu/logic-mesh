@@ -17,7 +17,6 @@
   "dependencies": {
     "@xyflow/svelte": "^1.7.1",
     "chart.js": "^4.6.1",
-    "clsx": "^2.1.1",
     "logic-mesh": "*",
     "mode-watcher": "^1.1.0",
     "svelte-sonner": "^1.2.3",
@@ -28,13 +27,14 @@
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@internationalized/date": "^3.12.4",
-    "@lucide/svelte": "^1.67.0",
+    "@lucide/svelte": "^1.83.0",
     "@sveltejs/adapter-static": "^4.0.1",
     "@sveltejs/kit": "^3.1.1",
     "@sveltejs/vite-plugin-svelte": "^7.3.1",
     "@tailwindcss/vite": "^4.3.4",
     "@types/node": "^22.20.5",
     "bits-ui": "^2.20.3",
+    "cn": "^0.5.2",
     "eslint": "^10.14.0",
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-svelte": "^3.23.1",
