@@ -1,7 +1,7 @@
 {
   "name": "logic-mesh",
   "author": "Radu Racariu <radu.racariu@gmail.com>",
-  "description": "Control logic engine using event based and reactive blocks written in Rust.",
+  "description": "Asynchronous Dataflow logic engine using event based and reactive blocks written in Rust.",
   "version": "2.1.0",
   "type": "module",
   "license": "BSD-3-Clause",
@@ -66,6 +66,9 @@
   },
   "keywords": [
     "dataflow",
+    "event-driven",
+    "asynchronous",
+    "graph",
     "control",
     "reactive",
     "wasm",

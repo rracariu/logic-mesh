@@ -6,9 +6,18 @@ edition = "2024"
 # it from here). Let-chains need 1.88, and so do several dependencies.
 rust-version = "1.88"
 authors = ["Radu Racariu <radu.racariu@gmail.com>"]
-description = "Control logic engine using event based and reactive blocks written in Rust."
+description = "Asynchronous Dataflow logic engine using event based and reactive blocks written in Rust."
 repository = "https://github.com/rracariu/logic-mesh"
-keywords = ["logic", "control", "reactive", "wasm", "low-code"]
+keywords = [
+	"asynchronous",
+	"event-driven",
+	"dataflow",
+	"logic",
+	"control",
+	"reactive",
+	"wasm",
+	"low-code",
+]
 categories = ["asynchronous", "wasm"]
 license = "BSD-3-Clause"
 # Keep the published crate to what a Rust user needs. The web/ tree is
