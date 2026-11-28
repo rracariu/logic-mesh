@@ -8,16 +8,7 @@ rust-version = "1.88"
 authors = ["Radu Racariu <radu.racariu@gmail.com>"]
 description = "Asynchronous Dataflow logic engine using event based and reactive blocks written in Rust."
 repository = "https://github.com/rracariu/logic-mesh"
-keywords = [
-	"asynchronous",
-	"event-driven",
-	"dataflow",
-	"logic",
-	"control",
-	"reactive",
-	"wasm",
-	"low-code",
-]
+keywords = ["asynchronous", "dataflow", "control", "reactive", "wasm"]
 categories = ["asynchronous", "wasm"]
 license = "BSD-3-Clause"
 # Keep the published crate to what a Rust user needs. The web/ tree is
