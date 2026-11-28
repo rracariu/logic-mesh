@@ -1,6 +1,6 @@
 [package]
 name = "logic-mesh"
-version = "2.1.0"
+version = "2.1.1"
 edition = "2024"
 # The lowest toolchain that builds the workspace (CI's `msrv` job reads
 # it from here). Let-chains need 1.88, and so do several dependencies.
